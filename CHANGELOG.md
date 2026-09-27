@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-27
+
+Usage for every CLI, and lighter on your machine.
+
+### Added
+
+- **Usage for every agent, not only Claude.** Codex shows its tokens and how
+  full its context is, opencode what it has cost (its own figure), Gemini and
+  Qwen their tokens, grok its context. Any other CLI shows what its own status
+  line says, such as Aider's session cost.
+- **Codex's limits beside Claude's.** Its 5-hour and weekly windows, as its
+  last run was told, under the agent list.
+- **A nearly full context shows on the agent's row** ("86% context").
+
+### Changed
+
+- **Lighter.** Usage is read only from what an agent has added since the last
+  look (a 240 MB conversation: a third of a second once, then next to
+  nothing). The chat no longer starts a second copy of the CLI while an agent
+  is starting, and only the last few conversations you looked at stay in
+  memory.
+
 ## [0.7.1] - 2026-09-27
 
 Your Claude limits, always in sight.
