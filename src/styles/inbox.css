@@ -107,6 +107,9 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-tm { font: 12px var(--mono); color: var(--ib-ink-3); }
 .iq-s { grid-column: 2 / 4; font-size: 12.5px; color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iq-row.st-needs .iq-l { color: var(--ib-needs); }
+/* what its conversation has used, at API prices */
+.iq-cost { font: 11.5px var(--mono); color: var(--ib-ink-3); }
+.iq-cost::before { content: "·"; margin: 0 6px; font-family: var(--sans); }
 .iq-row.st-review .iq-l { color: var(--ib-review); }
 .iq-row.st-working .iq-l { color: var(--ib-work); }
 .iq-row.st-stopped .iq-t { color: var(--ib-ink-2); font-weight: 400; }

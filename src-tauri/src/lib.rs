@@ -92,6 +92,7 @@ pub fn run() {
             commands::record_stop,
             commands::record_read,
             commands::claude_usage,
+            commands::claude_session_usage,
             commands::claude_transcript,
             transcripts::codex::codex_transcript,
             transcripts::opencode::opencode_transcript,

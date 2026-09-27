@@ -3,6 +3,7 @@
 // main.ts; the active workspace + settings-close are injected.
 
 import { claudeUsage, type ModelUsage } from "./ipc";
+import { money, usageCost } from "./pricing";
 import { basename } from "./workspaces";
 import { type Workspace } from "./panetypes";
 
@@ -16,43 +17,12 @@ export function configureUsage(deps: { getActiveWs: () => Workspace | null; clos
 const escHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// Approximate Claude API prices in USD per million tokens. Cache-write is the
-// 5-minute ephemeral rate (1.25× input); cache-read is 0.1× input. Kept as a
-// clearly-labelled estimate — matched by substring so model-id suffixes don't
-// matter. Models not listed here (e.g. fable) show tokens but no cost.
-interface Price { in: number; out: number; cacheWrite: number; cacheRead: number }
-const MODEL_PRICES: Array<{ match: string; p: Price }> = [
-  { match: "opus", p: { in: 15, out: 75, cacheWrite: 18.75, cacheRead: 1.5 } },
-  { match: "sonnet", p: { in: 3, out: 15, cacheWrite: 3.75, cacheRead: 0.3 } },
-  { match: "haiku", p: { in: 1, out: 5, cacheWrite: 1.25, cacheRead: 0.1 } },
-];
-
-function priceFor(model: string): Price | null {
-  const m = model.toLowerCase();
-  return MODEL_PRICES.find((x) => m.includes(x.match))?.p ?? null;
-}
-
-/** Estimated USD cost for one model's usage, or null when the model isn't priced. */
-function usageCost(u: ModelUsage): number | null {
-  const p = priceFor(u.model);
-  if (!p) return null;
-  return (
-    (u.input_tokens * p.in +
-      u.output_tokens * p.out +
-      u.cache_creation * p.cacheWrite +
-      u.cache_read * p.cacheRead) /
-    1e6
-  );
-}
-
 function fmtTokens(n: number): string {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
   if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
   return String(n);
 }
-function fmtCost(usd: number): string {
-  return usd < 0.01 && usd > 0 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
-}
+const fmtCost = money;
 
 /** Prettify a model id for the table (drop the vendor prefix + date suffix). */
 function shortModel(model: string): string {

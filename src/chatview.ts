@@ -14,6 +14,8 @@ import { openPalette, type PaletteItem } from "./inboxpalette";
 import { CONTEXT_HIGH, cliFacts, contextFill, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
+import { agentCost, forgetCost } from "./agentcost";
+import { money } from "./pricing";
 import { activityOnScreen, promptShown, stepDoing } from "./working";
 import { applyMention, mentionAt, mentionMatches, withFolders, type MentionHit } from "./mention";
 import { claudeSessions, claudeSessionsEverywhere, fsReadDataUrl, fsReadFile, pickFiles, savePastedFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
@@ -626,6 +628,7 @@ function sessionHtml(v: View): string {
     ["Started", m.started ? when(m.started) : ""],
     ["Context", m.context ? `${tokens(m.context)} tokens${(() => { const f = contextFill(v.pane.spec.badge, m.context, m.window, v.facts?.model ?? null); return f !== null ? ` · ${f}% full` : ""; })()}` : ""],
     ["Written", m.output ? `${tokens(m.output)} tokens` : ""],
+    ["Cost", (() => { const usd = agentCost(v.pane); return usd ? `${money(usd)} at API prices` : ""; })(), "What this conversation has used so far, priced at Anthropic's API list prices (a subscription plan isn't billed per token)"],
   ].filter((r): r is [string, string, string?] => !!r[1]);
   html += `<section class="cs-sec" aria-label="Session"><h3>Session</h3>${rows.length
     ? `<dl class="cs-dl">${rows.map(([k, val, full]) => `<div><dt>${k}</dt><dd title="${esc(full ?? val)}">${esc(val)}</dd></div>`).join("")}</dl>`
@@ -800,7 +803,7 @@ function draw(v: View, force = false): void {
   }
   const compact = v.el.querySelector<HTMLElement>(".cv-compact");
   if (compact) compact.hidden = !(fill !== null && fill >= CONTEXT_HIGH && profileOf(v.pane.spec.badge).compact && v.pane.running);
-  const sideSig = JSON.stringify([m.todos, m.files, m.tasks, m.turn, v.panelTab, v.selFile, v.selTask, v.pane.running, m.model, m.context, m.window, v.facts?.model, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
+  const sideSig = JSON.stringify([m.todos, m.files, m.tasks, m.turn, v.panelTab, v.selFile, v.selTask, v.pane.running, m.model, m.context, m.window, v.facts?.model, m.output, agentCost(v.pane), m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
   applyPanel(v);
   if (sideSig !== v.sideSig) {
     v.sideSig = sideSig;
@@ -1794,6 +1797,7 @@ export function hideChat(pane: Pane): void {
 /** Forget a pane's view (the pane was removed). */
 export function dropChat(paneId: string): void {
   const v = views.get(paneId);
+  forgetCost(paneId);
   if (v?.timer != null) window.clearInterval(v.timer);
   v?.off?.();
   if (v) forgetImages(v.chat.items);

@@ -255,46 +255,78 @@ pub async fn claude_usage(dir: String) -> Result<Vec<ModelUsage>, CommandError> 
 }
 
 fn claude_usage_impl(dir: &str) -> Vec<ModelUsage> {
-    use std::collections::HashMap;
-    let home = match std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
-        Ok(h) => h,
-        Err(_) => return Vec::new(),
-    };
-    let proj = Path::new(&home)
-        .join(".claude")
-        .join("projects")
-        .join(claude_project_slug(dir));
+    let Some(proj) = claude_project_dir(dir) else { return Vec::new() };
     let entries = match std::fs::read_dir(&proj) {
         Ok(e) => e,
         Err(_) => return Vec::new(), // no transcripts for this folder yet
     };
-    let mut by_model: HashMap<String, ModelUsage> = HashMap::new();
+    let mut sum = UsageSum::default();
     for ent in entries.flatten() {
         let path = ent.path();
         if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
             continue;
         }
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            sum.add(&content);
+        }
+    }
+    sum.rows()
+}
+
+/// Token usage of one Claude session (one agent's conversation), by model.
+#[tauri::command]
+pub async fn claude_session_usage(dir: String, session_id: String) -> Result<Vec<ModelUsage>, CommandError> {
+    run_blocking(move || {
+        if !is_session_id(&session_id) {
+            return Ok(Vec::new());
+        }
+        let Some(path) = claude_project_dir(&dir).map(|p| p.join(format!("{session_id}.jsonl"))) else {
+            return Ok(Vec::new());
         };
+        let mut sum = UsageSum::default();
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            sum.add(&content);
+        }
+        Ok(sum.rows())
+    })
+    .await
+}
+
+/// Usage summed by model. Claude Code writes one line per content block of a
+/// reply, each carrying the whole reply's usage, so a reply counts once (by
+/// its message id), not once per line.
+#[derive(Default)]
+struct UsageSum {
+    by_model: std::collections::HashMap<String, ModelUsage>,
+    seen: std::collections::HashSet<String>,
+}
+
+impl UsageSum {
+    fn add(&mut self, content: &str) {
         for line in content.lines() {
+            if !line.contains("\"usage\"") {
+                continue;
+            }
             let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
                 continue;
             };
             if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
                 continue;
             }
-            let Some(usage) = v.get("message").and_then(|m| m.get("usage")) else {
+            let Some(msg) = v.get("message") else { continue };
+            let Some(usage) = msg.get("usage") else { continue };
+            if let Some(id) = msg.get("id").and_then(|x| x.as_str()) {
+                if !self.seen.insert(id.to_string()) {
+                    continue;
+                }
+            }
+            let model = msg.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string();
+            if model == "<synthetic>" {
                 continue;
-            };
-            let model = v
-                .get("message")
-                .and_then(|m| m.get("model"))
-                .and_then(|m| m.as_str())
-                .unwrap_or("unknown")
-                .to_string();
+            }
             let get = |k: &str| usage.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
-            let e = by_model
+            let e = self
+                .by_model
                 .entry(model.clone())
                 .or_insert_with(|| ModelUsage { model, ..Default::default() });
             e.input_tokens += get("input_tokens");
@@ -304,11 +336,12 @@ fn claude_usage_impl(dir: &str) -> Vec<ModelUsage> {
             e.messages += 1;
         }
     }
-    let mut out: Vec<ModelUsage> = by_model.into_values().collect();
-    out.sort_by(|a, b| {
-        (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens))
-    });
-    out
+
+    fn rows(self) -> Vec<ModelUsage> {
+        let mut out: Vec<ModelUsage> = self.by_model.into_values().collect();
+        out.sort_by(|a, b| (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens)));
+        out
+    }
 }
 
 /// New lines of one Claude Code transcript, for the chat view.
@@ -838,6 +871,20 @@ fn programs_on_path_impl(programs: Vec<String>) -> Result<Vec<bool>, CommandErro
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn usage_counts_a_reply_once_however_many_lines_it_takes() {
+        let line = |id: &str, model: &str| format!(
+            r#"{{"type":"assistant","message":{{"id":"{id}","model":"{model}","usage":{{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"content":[]}}}}"#
+        );
+        let text = [line("m1", "claude-opus-5-5"), line("m1", "claude-opus-5-5"), line("m2", "claude-opus-5-5"), line("m3", "claude-haiku-4-5"), line("m4", "<synthetic>")].join("\n");
+        let mut sum = super::UsageSum::default();
+        sum.add(&text);
+        let rows = sum.rows();
+        assert_eq!(rows.len(), 2);
+        let opus = rows.iter().find(|r| r.model == "claude-opus-5-5").unwrap();
+        assert_eq!((opus.messages, opus.input_tokens, opus.output_tokens, opus.cache_read, opus.cache_creation), (2, 20, 10, 200, 40));
+    }
+
     use super::*;
 
     fn default_exts() -> Vec<String> {

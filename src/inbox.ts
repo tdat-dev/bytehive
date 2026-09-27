@@ -26,6 +26,8 @@ import { openMenu, type MenuItem } from "./ctxmenu";
 import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
 import { chatSupported, focusAgent, hideChat, showChat } from "./chatview";
+import { agentCost, onAgentCost } from "./agentcost";
+import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
 import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
@@ -495,12 +497,14 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         // The state in words, unless the line already is the state ("Needs you", "Stopped").
         const state = GROUP_LABEL[t.status.state];
         const line = said === state ? state : `${state} · ${said}`;
+        const usd = p ? agentCost(p) : null;
+        const cost = usd ? `<span class="iq-cost" title="What its conversation has used so far, at API prices">${money(usd)}</span>` : "";
         return `<li><button class="iq-row st-${t.status.state}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
           <span class="iq-mk" style="background:${esc(p?.color ?? "var(--muted)")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
           <span class="iq-more" data-more aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
-          <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}</span>
+          <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}${cost}</span>
         </button></li>`;
       }).join("")}</ul>
     </section>`;
@@ -1108,6 +1112,7 @@ function mount(): void {
   // Remember where everyone stands now, so only later changes count.
   for (const t of allTasks()) lastState.set(t.paneId, t.status.state);
   offTasks = onTasksChange(() => { onStateChanges(allTasks()); render(); });
+  onAgentCost(render);
   timer = window.setInterval(render, 1000);
   window.setTimeout(() => showTip("welcome"), 2600);
   render();

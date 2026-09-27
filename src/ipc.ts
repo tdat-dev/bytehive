@@ -321,6 +321,11 @@ export async function claudeUsage(dir: string): Promise<ModelUsage[]> {
   return invoke<ModelUsage[]>("claude_usage", { dir });
 }
 
+/** Token usage of one Claude session (one agent's conversation), by model. */
+export async function claudeSessionUsage(dir: string, sessionId: string): Promise<ModelUsage[]> {
+  return invoke<ModelUsage[]>("claude_session_usage", { dir, sessionId });
+}
+
 /* ---- detached (multi-window) support ---- */
 
 /** Open a new Maestro window that boots straight into a detached workspace.

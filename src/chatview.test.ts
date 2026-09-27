@@ -19,6 +19,7 @@ const io = vi.hoisted(() => ({
   savedFiles: [] as string[],
   picked: [] as string[],
   openedFiles: [] as string[],
+  usage: [] as unknown[],
 }));
 vi.mock("./agentbridge", () => ({ openFileInPanel: (p: string) => { io.openedFiles.push(p); } }));
 vi.mock("./confirmmodal", () => ({
@@ -34,6 +35,7 @@ vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
   claudeSessions: async () => io.sessions,
+  claudeSessionUsage: async () => io.usage,
   fsReadFile: async (root: string, path: string) => { io.readFiles.push([root, path]); return { content: "step 1\nerror: build failed\n", mtime: 0 }; },
   claudeSessionsEverywhere: async () => io.everywhere,
   fsReadDataUrl: async (root: string, path: string) => `data:image/png;base64,${btoa(root + "/" + path)}`,
@@ -397,6 +399,22 @@ describe("chat view", () => {
     await flush();
     expect(p.el.querySelector(".cv-ctx")!.textContent).toBe("17% context");
     expect(p.el.querySelector<HTMLButtonElement>("[data-compact]")!.hidden).toBe(true);
+  });
+
+  it("says what the conversation has cost at API prices", async () => {
+    io.usage = [{ model: "claude-opus-5-5", input_tokens: 0, output_tokens: 100_000, cache_creation: 0, cache_read: 1_000_000, messages: 3 }];
+    io.chunks = [j({ type: "assistant", message: { id: "m1", model: "claude-opus-5-5", usage: { input_tokens: 5, output_tokens: 5 }, content: [{ type: "text", text: "done" }] } })];
+    const p = pane();
+    (p as unknown as { id: string }).id = "p-cost";
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    const rows = [...p.el.querySelectorAll(".cs-dl div")].map((d) => [d.querySelector("dt")!.textContent, d.querySelector("dd")!.textContent]);
+    // 0.1M out at $20 + 1M cache reads at $0.20
+    expect(rows).toContainEqual(["Cost", "$2.20 at API prices"]);
+    dropChat("p-cost");
+    io.usage = [];
   });
 
   it("puts a message you sent back in the box to change and send again", async () => {
