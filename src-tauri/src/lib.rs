@@ -3,6 +3,7 @@ pub mod commands;
 pub mod core;
 pub mod dashboard;
 pub mod error;
+pub mod planusage;
 pub mod state;
 pub mod review;
 pub mod transcripts;
@@ -93,6 +94,7 @@ pub fn run() {
             commands::record_read,
             commands::claude_usage,
             commands::claude_session_usage,
+            planusage::claude_plan_usage,
             commands::claude_transcript,
             transcripts::codex::codex_transcript,
             transcripts::opencode::opencode_transcript,

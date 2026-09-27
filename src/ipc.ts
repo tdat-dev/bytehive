@@ -321,6 +321,16 @@ export async function claudeUsage(dir: string): Promise<ModelUsage[]> {
   return invoke<ModelUsage[]>("claude_usage", { dir });
 }
 
+/** One of the Claude plan's limits: the 5-hour window, the week, a model's week. */
+export interface PlanLimit { kind: string; percent: number; resets_at: string | null; severity: string; model: string | null }
+export interface PlanUsage { plan: string | null; limits: PlanLimit[] }
+
+/** How much of the Claude plan's limits is used, as Claude Code's /usage says.
+ *  Rejects with "not signed in" (API key, no sign-in) or "expired". */
+export async function claudePlanUsage(): Promise<PlanUsage> {
+  return invoke<PlanUsage>("claude_plan_usage");
+}
+
 /** Token usage of one Claude session (one agent's conversation), by model. */
 export async function claudeSessionUsage(dir: string, sessionId: string): Promise<ModelUsage[]> {
   return invoke<ModelUsage[]>("claude_session_usage", { dir, sessionId });

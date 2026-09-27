@@ -27,6 +27,7 @@ import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
 import { chatSupported, focusAgent, hideChat, showChat } from "./chatview";
 import { agentCost, onAgentCost } from "./agentcost";
+import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
@@ -509,7 +510,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
       }).join("")}</ul>
     </section>`;
     }).join("") : `<p class="iq-empty">No agents yet.</p>`) +
-    `</div>`;
+    `</div>` + planHtml(now);
   // Rebuilding every second would take the keyboard focus (and a click in
   // progress) away from the list; only a real change rebuilds it.
   const sig = html.replace(/<span class="iq-ago"[^>]*>[^<]*<\/span>/g, "");
@@ -1113,6 +1114,7 @@ function mount(): void {
   for (const t of allTasks()) lastState.set(t.paneId, t.status.state);
   offTasks = onTasksChange(() => { onStateChanges(allTasks()); render(); });
   onAgentCost(render);
+  startPlanMeter(render);
   timer = window.setInterval(render, 1000);
   window.setTimeout(() => showTip("welcome"), 2600);
   render();
@@ -1121,6 +1123,7 @@ function mount(): void {
 function unmount(): void {
   document.body.classList.remove("inbox-ui");
   unmountStart();
+  stopPlanMeter();
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();

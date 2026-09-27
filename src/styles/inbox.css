@@ -52,6 +52,28 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 }
 .inbox-head b { color: var(--ib-ink); font-weight: 600; }
 
+/* ---------- the plan's limits, at the foot of the list ---------- */
+.inbox-queue:has(.iq-plan) { display: flex; flex-direction: column; }
+.iq-plan {
+  position: sticky; bottom: -12px; margin: auto -8px -12px; padding: 12px 14px 14px;
+  display: grid; gap: 12px; background: var(--ib-panel); box-shadow: 0 -1px 0 var(--ib-line);
+  border-radius: 0 0 18px 18px;
+}
+.pl-h { margin: 0; font: 600 11.5px var(--sans); color: var(--ib-ink-3); display: flex; gap: 6px; align-items: baseline; }
+.pl-stale { font-weight: 400; }
+.pl-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ib-ink-3); }
+.pl-row { display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: 5px; font-size: 12.5px; }
+.pl-l { color: var(--ib-ink-2); }
+.pl-p { font: 500 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--ib-ink); }
+.pl-bar { grid-column: 1 / -1; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.pl-bar i { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: var(--ib-ink-2); transition: width 0.4s ease; }
+.pl-r { grid-column: 1 / -1; font-size: 11.5px; color: var(--ib-ink-3); }
+.pl-row.high .pl-p { color: var(--ib-needs); }
+.pl-row.high .pl-bar i { background: var(--ib-needs); }
+.pl-row.full .pl-p { color: var(--ib-del); }
+.pl-row.full .pl-bar i { background: var(--ib-del); }
+@media (prefers-reduced-motion: reduce) { .pl-bar i { transition: none; } }
+
 /* ---------- queue ---------- */
 .inbox-queue {
   grid-column: 1;

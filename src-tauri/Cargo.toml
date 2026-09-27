@@ -58,6 +58,9 @@ tungstenite = "0.21"
 notify = "8"
 trash = "5"
 rusqlite = { version = "0.31", features = ["bundled"] }
+# already built for the updater; used to ask Anthropic for the plan's usage
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 serial_test = "3"
