@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-27
+
+Answer from the chat, see what each agent costs.
+
+### Added
+
+- **Answer a question in the chat.** When an agent asks you something, its
+  options in the conversation pick with a click, the same as in its terminal.
+- **How full the context is.** The message box says it as a share ("62%
+  context"). Past 80% it turns amber and a Compact button sums the
+  conversation up before the CLI has to do it mid-task.
+- **Write to a stopped agent.** The message box stays when an agent stops:
+  what you send starts it again on the same conversation, then goes in. If it
+  can't start, your message goes back in the box.
+- **Edit or copy a message you sent.** Edit puts it back in the box to change
+  and send again.
+- **What each agent has cost.** Each Claude agent's row shows what its
+  conversation has used at API prices, and so does the chat's Session panel.
+
+### Fixed
+
+- **Usage counts each reply once.** Claude Code writes a reply over several
+  lines, and the Usage window counted every one of them (over twice too
+  much). It also priced every Opus at the old $15/$75; it now uses each
+  model's current price.
+- **A stopped agent's old question** no longer says it is waiting for you.
+
+### Changed
+
+- Releases build for Windows only; the macOS builds never shipped.
+
 ## [0.6.5] - 2026-09-26
 
 Bigger terminal text.
