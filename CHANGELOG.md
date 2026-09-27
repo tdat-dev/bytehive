@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-27
+
+Limit Guard: no agent left sitting at its usage limit.
+
+### Added
+
+- **Agents that run out of usage say so.** When Claude or Codex stops at its
+  5-hour or weekly limit, its row reads "Out of usage · back 7:09 PM" and you
+  get a notification.
+- **They carry on by themselves.** When the limit resets, Maestro tells the
+  agent to carry on where it left off. Turn it off in Settings → Inbox.
+- **Hand a task to another CLI.** From an agent's menu, or the chat of one
+  that ran out, start Codex, opencode or another CLI in the same folder. It
+  gets a brief of what the first agent was asked, its plan, the files it
+  changed and where it stopped, so it carries on instead of starting over.
+- **A warning at 90%.** A notification when Claude's or Codex's limit passes
+  90%, and New agent says when the CLI you picked is nearly out and which one
+  has room.
+
+### Changed
+
+- **Lighter chats.** A long conversation opens on its latest part (the last
+  4 MB) instead of reading all of it; the rest loads when you ask.
+- **Lighter terminals.** A terminal out of sight for 5 minutes keeps 1,000
+  lines of history instead of 5,000.
+
 ## [0.7.3] - 2026-09-27
 
 Every agent has a face.
