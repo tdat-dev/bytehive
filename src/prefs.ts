@@ -31,6 +31,10 @@ export interface Prefs {
   tips: boolean;
   /** Show the agent on screen as a conversation (Claude Code agents). */
   chatView: boolean;
+  /** Tell an agent that stopped at its plan's usage limit to carry on once the limit resets. */
+  autoResume: boolean;
+  /** Windows notification when a plan passes 90% of a limit, and when an agent runs out. */
+  limitNotify: boolean;
 }
 
 /** How many terminals Split may lay out: 2 side by side up to a 3 × 3 grid. */
@@ -52,6 +56,8 @@ export const DEFAULTS: Prefs = {
   restore: true,
   tips: true,
   chatView: true,
+  autoResume: true,
+  limitNotify: true,
 };
 
 const KEY = "maestro.prefs";

@@ -138,6 +138,9 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-tm { font: 12px var(--mono); color: var(--ib-ink-3); }
 .iq-s { grid-column: 2 / 4; font-size: 12.5px; color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iq-row.st-needs .iq-l { color: var(--ib-needs); }
+/* stopped at its plan's limit: waiting on the clock, not on you */
+.iq-row.limited .iq-l { color: var(--ib-needs); }
+.iq-row.limited .iq-mk::after { background: var(--ib-needs); box-shadow: 0 0 0 2px var(--ib-panel), inset 0 0 0 2px var(--ib-panel); }
 /* what its conversation has used, at API prices */
 .iq-cost { font: 11.5px var(--mono); color: var(--ib-ink-3); }
 .iq-cost::before, .iq-full::before { content: "·"; margin: 0 6px; font-family: var(--sans); color: var(--ib-ink-3); }
@@ -1020,3 +1023,7 @@ body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }
 @container (max-width: 860px) {
   body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .ib-acts { grid-row: 3; grid-column: 2 / -1; justify-self: start; margin-top: 10px; }
 }
+
+/* a new agent: how much of its CLI's plan is left, when little */
+.st-room { margin: 10px 4px 0; font-size: 12.5px; color: var(--ib-needs); }
+.im-room { margin: 4px 0 12px; color: var(--ib-needs); }

@@ -7,7 +7,7 @@ vi.mock("./ipc", () => ({
   codexPlanUsage: async () => io.codex,
 }));
 
-import { allReset, planHtml, planRows, resetWords, startPlanMeter, stopPlanMeter } from "./planmeter";
+import { allReset, planHtml, planRows, resetWords, roomNote, startPlanMeter, stopPlanMeter } from "./planmeter";
 
 const NOW = Date.parse("2026-09-27T08:57:00Z");
 const limit = (kind: string, percent: number, resets_at: string | null, model: string | null = null, severity = "normal") => ({ kind, percent, resets_at, severity, model });
@@ -74,6 +74,21 @@ describe("the plan's limits", () => {
     expect([...el.querySelectorAll(".pl-row")].map((r) => r.querySelector(".pl-p")!.textContent)).toEqual(["40%", "0%"]);
     expect(allReset(io.codex as never, soon + 1)).toBe(true);
     expect(planHtml(soon + 1)).toBe("");
+    stopPlanMeter();
+    io.codex = null;
+  });
+
+  it("tells a new agent how little room its CLI's plan has, and which one has room", async () => {
+    const soon = Date.now() + 2 * 3600_000;
+    io.fail = "";
+    io.answer = { provider: "Claude", plan: "max", limits: [{ kind: "session", percent: 93, resets_at: new Date(soon).toISOString(), severity: "normal", model: null }] };
+    io.codex = { provider: "Codex", plan: "plus", as_of_ms: Date.now(), limits: [{ kind: "session", percent: 20, resets_at: null, resets_ms: soon, severity: "normal", model: null }] };
+    startPlanMeter(() => {}, 0);
+    await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 0));
+    const clis = [{ badge: "claude", label: "Claude Code" }, { badge: "codex", label: "Codex" }];
+    expect(roomNote("claude", clis)).toMatch(/^Claude has used 93% of its 5-hour limit · resets .+\. Codex has room\.$/);
+    expect(roomNote("codex", clis)).toBe("");
     stopPlanMeter();
     io.codex = null;
   });

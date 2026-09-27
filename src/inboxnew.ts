@@ -3,6 +3,7 @@
 // (two or three is a race: compare their diffs, keep the best one).
 
 import { CLI_PRESETS, type CliPreset } from "./crew";
+import { roomNote } from "./planmeter";
 import { topNote } from "./hint";
 import { activeWs } from "./appstate";
 import { loadCrew, presetAvailable, refreshCliAvailability, saveTemplate, spawnAgents } from "./spawnmodal";
@@ -64,6 +65,7 @@ export function openNewAgent(opts: { count?: number } = {}): void {
             <input type="radio" name="naCli" value="${esc(p.id)}"${p.id === chosen ? " checked" : ""}${missing ? " disabled" : ""}><span>${esc(p.label)}</span></label>`;
         }).join("")}</div>
       </fieldset>
+      <p class="im-hint im-room" data-room hidden></p>
       <div class="im-row">
         <fieldset class="im-field">
           <legend class="im-label">How many</legend>
@@ -84,7 +86,16 @@ export function openNewAgent(opts: { count?: number } = {}): void {
   const task = el.querySelector<HTMLTextAreaElement>("#naTask")!;
   const start = el.querySelector<HTMLButtonElement>("[data-start]")!;
   const count = () => Number(form.querySelector<HTMLInputElement>('input[name="naCount"]:checked')?.value ?? 1);
+  // how much of the chosen CLI's plan is left, when little
+  const room = () => {
+    const cli = presets.find((p) => p.id === form.querySelector<HTMLInputElement>('input[name="naCli"]:checked')?.value);
+    const note = cli ? roomNote(cli.badge, presets.filter((p) => presetAvailable(p.program))) : "";
+    const n = el?.querySelector<HTMLElement>("[data-room]");
+    if (n) { n.textContent = note; n.hidden = !note; }
+  };
+  room();
   form.addEventListener("change", () => {
+    room();
     start.textContent = startLabel(count());
     el?.querySelector<HTMLElement>("[data-race]")?.toggleAttribute("hidden", count() < 2);
   });

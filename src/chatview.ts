@@ -60,6 +60,13 @@ export interface ChatState {
    *  of the question can pick; and how to pick one. */
   answers?: LiveOption[];
   onAnswer?: (n: number) => void;
+  /** It stopped at its plan's usage limit; when that lifts (ms), when known. */
+  limit?: { resetsAt: number | null } | null;
+  /** Whether Maestro tells it to carry on when the limit lifts. */
+  autoResume?: boolean;
+  /** CLIs that could carry on its task, and how to hand it over. */
+  handoffs?: Array<{ id: string; label: string }>;
+  onHandoff?: (id: string) => void;
 }
 
 /** "claude-opus-5-5" → "Opus 5.5", "Opus 5.5 (1M context)" → "Opus 5.5";
@@ -786,6 +793,21 @@ function draw(v: View, force = false): void {
       if (wd) { wd.textContent = now.detail; wd.hidden = !now.detail; }
     }
   }
+  // out of usage: when it comes back, and who could carry on meanwhile
+  const lim = v.el.querySelector<HTMLElement>(".cv-limit");
+  if (lim) {
+    const l = v.state.limit;
+    lim.hidden = !l;
+    if (l) {
+      const when = l.resetsAt ? new Date(l.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+      const text = `${esc(v.state.name)} is out of usage${when ? ` until <b>${when}</b>` : ""}.${when && v.state.autoResume ? " Maestro will tell it to carry on then." : ""}${v.state.handoffs?.length ? " Or another CLI can carry on now:" : ""}`;
+      const lt = lim.querySelector<HTMLElement>(".cv-lt")!;
+      if (lt.innerHTML !== text) lt.innerHTML = text;
+      const btns = (v.state.handoffs ?? []).slice(0, 3).map((h) => `<button type="button" data-handoff="${esc(h.id)}" title="Start a ${esc(h.label)} agent in this folder, briefed on what ${esc(v.state.name)} did">Continue with ${esc(h.label)}</button>`).join("");
+      const lh = lim.querySelector<HTMLElement>(".cv-lh")!;
+      if (lh.innerHTML !== btns) lh.innerHTML = btns;
+    }
+  }
   const why = v.el.querySelector<HTMLElement>(".cv-why");
   if (why) { why.textContent = v.state.problem ?? ""; why.hidden = !v.state.problem; }
   const hint = v.el.querySelector<HTMLElement>(".cv-shint");
@@ -1046,6 +1068,7 @@ function mount(pane: Pane): View {
     <div class="cv-foot" role="status">
       <button type="button" class="cv-jump" data-jump hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4" /></svg><span>Latest</span></button>
       <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="cv-wt">Working</span><span class="cv-wd" hidden></span></p>
+      <div class="cv-limit" role="status" hidden><p class="cv-lt"></p><div class="cv-lh"></div></div>
       <div class="cv-stopped"><span class="cv-sl">Stopped</span><span class="cv-shint">A message starts it again, on this conversation</span><span class="cv-why" hidden></span><button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></div>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
@@ -1583,6 +1606,8 @@ function mount(pane: Pane): View {
       input.setSelectionRange(text.length, text.length);
       return;
     }
+    const handoff = t.closest<HTMLElement>("[data-handoff]");
+    if (handoff) { v.state.onHandoff?.(handoff.dataset.handoff ?? ""); return; }
     if (t.closest("[data-compact]")) {
       const c = profileOf(pane.spec.badge).compact;
       if (c) void sendMessage(pane.id, c);
@@ -1847,6 +1872,13 @@ export function dropChat(paneId: string): void {
   if (v) forgetImages(v.chat.items);
   v?.el.remove();
   views.delete(paneId);
+}
+
+/** The conversation the chat has read for this agent, when it has one open (it may be
+  *  only the end of a long one: `skipped` bytes came before it). */
+export function chatOf(paneId: string): { chat: Chat; skipped: number } | null {
+  const v = views.get(paneId);
+  return v?.loaded && v.chat.items.length ? { chat: v.chat, skipped: v.skipped ?? 0 } : null;
 }
 
 export function chatShown(pane: Pane): boolean {

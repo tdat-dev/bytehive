@@ -7,6 +7,7 @@
 // projects. First run swaps the projects for three steps.
 
 import { workspaces } from "./appstate";
+import { roomNote } from "./planmeter";
 import { activateWorkspace, createWorkspace } from "./workspace";
 import { pickFolder } from "./ipc";
 import { addRecent, getRecents } from "./recents";
@@ -127,6 +128,7 @@ function composerHTML(): string {
         <span class="st-sp"></span>
         <button type="submit" class="st-go" aria-keyshortcuts="Enter">Start<kbd aria-hidden="true">↵</kbd></button>
       </div>
+      <p class="st-room" data-room hidden></p>
     </form>
     <div class="st-try" role="group" aria-label="Jobs to try">${STARTERS.map((s) => `<button type="button" class="st-starter" data-starter="${esc(s.job)}" title="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>
     <button type="button" class="st-help" data-st="help">See everything Maestro can do <kbd>?</kbd></button>`;
@@ -188,12 +190,24 @@ function syncChoices(recents: string[]): void {
       dirSel.value = keep === CHOOSE || recents.includes(keep) ? keep : recents[0] ?? CHOOSE;
     }
   }
+  syncRoom();
   el?.querySelectorAll<HTMLOptionElement>("#stCli option").forEach((o) => {
     const p = CLI_PRESETS.find((x) => x.id === o.value);
     const off = !!p && !presetAvailable(p.program);
     if (o.disabled !== off) o.disabled = off;
     if (off) o.dataset.note = NOT_INSTALLED; else delete o.dataset.note;
   });
+}
+
+/** How much of the chosen CLI's plan is left, when little. */
+function syncRoom(): void {
+  const n = el?.querySelector<HTMLElement>("[data-room]");
+  const id = el?.querySelector<HTMLSelectElement>("#stCli")?.value;
+  const cli = CLI_PRESETS.find((p) => p.id === id);
+  if (!n) return;
+  const note = cli ? roomNote(cli.badge, CLI_PRESETS.filter((p) => !p.shell && presetAvailable(p.program))) : "";
+  if (n.textContent !== note) n.textContent = note;
+  n.hidden = !note;
 }
 
 /** What a waiting agent wants, in a few words. */
@@ -243,6 +257,7 @@ export function mountStart(): void {
   const form = el.querySelector<HTMLFormElement>(".st-compose")!;
   const job = el.querySelector<HTMLTextAreaElement>("#stJob")!;
   form.addEventListener("submit", (e) => { e.preventDefault(); void start(form); });
+  form.addEventListener("change", syncRoom);
   // Enter starts, Shift+Enter is a new line, as in a chat box.
   job.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }

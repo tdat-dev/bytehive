@@ -320,6 +320,18 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv.asking .cv-compose { display: none; }
 .cv.asking .cv-thread { padding-bottom: var(--ask-h, 200px); }
 
+/* out of usage: when it comes back, and another CLI to carry on meanwhile */
+.cv-limit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; padding: 10px 14px; border-radius: 14px;
+  background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--ib-needs-line); font-size: 13px; color: var(--ib-ink-2); }
+.cv-limit[hidden] { display: none; }
+.cv-lt { margin: 0; flex: 1 1 18em; line-height: 1.5; }
+.cv-lt b { color: var(--ib-needs); font-weight: 600; }
+.cv-lh { display: flex; flex-wrap: wrap; gap: 6px; }
+.cv-lh button { height: 28px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
+.cv-lh button:first-child { background: #fff; color: #000; }
+.cv-lh button:hover { filter: brightness(1.12); }
+.cv-lh button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
 /* a conversation opened on its end: what came before is a click away */
 .cv-skip { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; margin: 4px 0 18px; font-size: 12.5px; color: var(--ib-ink-3); text-align: center; }
 .cv-skip .cv-earlier { margin: 0; }

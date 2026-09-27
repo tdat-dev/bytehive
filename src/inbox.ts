@@ -30,12 +30,13 @@ import { agentUsage, onAgentCost } from "./agentcost";
 import { faceSvg } from "./agentface";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
+import { handOff, handoffTargets, limitLiftsAt, startLimitGuard, stopLimitGuard } from "./limitguard";
 import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
-import { allTasks, answerOption, answerText, onTasksChange, type Task } from "./tasks";
+import { allTasks, answerOption, answerText, onTasksChange, taskOf, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
-import type { TaskState } from "./taskstate";
+import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
 
 /* ---------------- pure helpers (tested) ---------------- */
@@ -118,6 +119,8 @@ export function headline(list: Task[]): { lead: string; rest: string } {
 /** Short second line of a queue row, from the agent's side. */
 export function rowLine(t: Task): string {
   const a = t.status.ask;
+  const lim = t.status.limit;
+  if (lim) return lim.resetsAt ? `Out of usage · back ${clockOf(lim.resetsAt)}` : "Out of usage";
   switch (t.status.state) {
     case "needs":
       if (!a) return "Needs you";
@@ -247,7 +250,10 @@ function renderChat(list: Task[], pane: Pane | undefined): void {
   const a = t?.status.state === "needs" && t.status.ask?.kind === "question" ? t.status.ask : null;
   const answers = a?.options.filter((o) => !o.deny && o.n !== a.freeTextOption).map((o) => ({ n: o.n, label: o.label }));
   const onAnswer = (n: number) => { const o = currentAsk()?.options.find((x) => x.n === n); if (o) void pick(o); };
-  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, asking, branch: t?.branch ?? on.spec.branch ?? null, answers, onAnswer, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
+  const limit = t?.status.limit ? { resetsAt: limitLiftsAt(t, on.spec.badge) } : null;
+  const handoffs = limit ? handoffTargets(on) : [];
+  const onHandoff = (id: string) => { const c = handoffs.find((x) => x.id === id); if (c) void handOverTo(on.id, on.spec.name, c.id, c.label); };
+  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, asking, branch: t?.branch ?? on.spec.branch ?? null, answers, onAnswer, limit, autoResume: getPref("autoResume"), handoffs, onHandoff, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
   chatFor = on.id;
 }
 
@@ -444,6 +450,14 @@ function ensureStage(): void {
 }
 
 /** What the right-click menu on an agent offers. */
+/** Hand an agent's task to another CLI and say so. */
+async function handOverTo(paneId: string, from: string, presetId: string, label: string): Promise<void> {
+  topNote(`Starting a ${esc(label)} agent to carry on <b>${esc(from)}</b>'s task…`);
+  const name = await handOff(paneId, presetId, taskOf(paneId)?.status.limit ? "it hit its plan's usage limit" : "you asked another CLI to carry on");
+  topNote(name ? `<b>${esc(name)}</b> (${esc(label)}) carries on <b>${esc(from)}</b>'s task, with a brief of what it did` : `Couldn't start a ${esc(label)} agent`);
+  render();
+}
+
 export function agentMenu(t: Task): MenuItem[] {
   const pane = paneOf(t);
   const ws = workspaces.get(t.wsId);
@@ -468,6 +482,8 @@ export function agentMenu(t: Task): MenuItem[] {
     { label: "Changes", hint: key("Alt+R"), sep: true, disabled: !pane.spec.worktree && !pane.spec.cwd, run: () => { onStage(); openReview(); } },
     { label: "History", hint: key("Alt+H"), run: () => { onStage(); openHistory(); } },
     { label: "Copy branch name", disabled: !branch, run: () => { if (branch) void navigator.clipboard?.writeText(branch).catch(() => {}); } },
+    // Another CLI carries on its task, in the same folder, briefed from its conversation.
+    ...handoffTargets(pane).slice(0, 4).map((c, k) => ({ label: `Hand over to ${c.label}`, sep: k === 0, hint: k === 0 && t.status.limit ? "Out of usage" : undefined, run: () => { void handOverTo(pane.id, pane.spec.name, c.id, c.label); } })),
     // Starts it again in place; a Claude agent carries on its own conversation.
     { label: pane.running ? "Restart" : "Resume", sep: true, run: () => void pane.restart?.() },
     ...(chatSupported(pane) ? [{ label: "New conversation", run: () => void pane.restart?.({ fresh: true }) }] : []),
@@ -499,13 +515,13 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         const said = rowLine(t);
         // The state in words, unless the line already is the state ("Needs you", "Stopped").
         const state = GROUP_LABEL[t.status.state];
-        const line = said === state ? state : `${state} · ${said}`;
+        const line = said === state || t.status.limit ? said : `${state} · ${said}`;
         // what it has used: money when its CLI prices it, else tokens; its context once nearly full
         const use = p ? agentUsage(p) : null;
         const cost = use?.usd ? `<span class="iq-cost" title="${p?.spec.badge === "claude" ? "What its conversation has used so far, at API prices" : "What its conversation has cost so far, as its CLI says"}">${money(use.usd)}</span>`
           : use?.tokens ? `<span class="iq-cost" title="Tokens its conversation has used so far">${tokens(use.tokens)} tokens</span>` : "";
         const full = use?.contextPct != null && use.contextPct >= 80 ? `<span class="iq-full" title="Its context is nearly full: it will soon sum up the conversation and lose detail">${Math.round(use.contextPct)}% context</span>` : "";
-        return `<li><button class="iq-row st-${t.status.state}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
+        return `<li><button class="iq-row st-${t.status.state}${t.status.limit ? " limited" : ""}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
           <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${faceSvg(t.name, p?.color ?? "#888")}</span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
@@ -1135,6 +1151,7 @@ function mount(): void {
   offTasks = onTasksChange(() => { onStateChanges(allTasks()); render(); });
   onAgentCost(render);
   startPlanMeter(render);
+  startLimitGuard();
   timer = window.setInterval(render, 1000);
   window.setTimeout(() => showTip("welcome"), 2600);
   render();
@@ -1144,6 +1161,7 @@ function unmount(): void {
   document.body.classList.remove("inbox-ui");
   unmountStart();
   stopPlanMeter();
+  stopLimitGuard();
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();

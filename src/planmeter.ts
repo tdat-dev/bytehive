@@ -95,6 +95,64 @@ function sectionHtml(src: Source, now: number): string {
     </div>`).join("")}</div>`;
 }
 
+/** The plans as last read, leaving out ones whose every window has reset since. */
+export function planSnapshot(now = Date.now()): PlanUsage[] {
+  return [sources.claude.usage, sources.codex.usage].filter((u): u is PlanUsage => !!u && !allReset(u, now));
+}
+
+/** When the limit an agent of this plan ran into lifts: the soonest reset of a
+ *  window that is full (99% or more). Null when none is, or the plan isn't known. */
+export function planResetFor(provider: string, now = Date.now()): number | null {
+  const u = planSnapshot(now).find((x) => (x.provider ?? "Claude") === provider);
+  const resets = (u?.limits ?? [])
+    .filter((l) => l.percent >= 99)
+    .map((l) => Date.parse(resetOf(l) ?? ""))
+    .filter((t) => Number.isFinite(t) && t > now);
+  return resets.length ? Math.min(...resets) : null;
+}
+
+/** A limit's name in words ("5-hour limit"). */
+export function limitName(kind: string, model: string | null): string {
+  return kind === "session" ? "5-hour limit" : kind === "weekly_all" ? "weekly limit" : model ? `${model} weekly limit` : "limit";
+}
+
+/** When a limit resets, however its CLI says it. */
+export function limitResetsAt(l: PlanUsage["limits"][number]): number | null {
+  const t = Date.parse(resetOf(l) ?? "");
+  return Number.isFinite(t) ? t : null;
+}
+
+/** The fullest window of this plan (the one an agent would run out of first). */
+function fullest(provider: string, now: number): { percent: number; name: string; at: number | null } | null {
+  const u = planSnapshot(now).find((x) => (x.provider ?? "Claude") === provider);
+  let best: { percent: number; name: string; at: number | null } | null = null;
+  for (const l of u?.limits ?? []) {
+    const at = limitResetsAt(l);
+    if (at !== null && at <= now) continue;
+    if (!best || l.percent > best.percent) best = { percent: l.percent, name: limitName(l.kind, l.model), at };
+  }
+  return best;
+}
+
+/** For a New agent form: how much room the chosen CLI's plan has left, when
+ *  little (80% or more used), and another CLI that has room. "" otherwise. */
+export function roomNote(badge: string, others: Array<{ badge: string; label: string }>, now = Date.now()): string {
+  const provider = badge === "claude" ? "Claude" : badge === "codex" ? "Codex" : "";
+  const f = provider ? fullest(provider, now) : null;
+  if (!f || f.percent < 80) return "";
+  const at = f.at ? new Date(f.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+  const head = f.percent >= 99
+    ? `${provider} is out of its ${f.name}${at ? ` until ${at}` : ""}.`
+    : `${provider} has used ${Math.round(f.percent)}% of its ${f.name}${at ? ` · resets ${at}` : ""}.`;
+  const roomy = others.find((o) => {
+    if (o.badge === badge) return false;
+    const p = o.badge === "claude" ? "Claude" : o.badge === "codex" ? "Codex" : "";
+    const g = p ? fullest(p, now) : null;
+    return !g || g.percent < 80;
+  });
+  return roomy ? `${head} ${roomy.label} has room.` : head;
+}
+
 /** The meter's HTML for the foot of the list; "" when no plan has anything to say. */
 export function planHtml(now = Date.now()): string {
   const body = sectionHtml(sources.claude, now) + sectionHtml(sources.codex, now);

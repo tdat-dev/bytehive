@@ -8,6 +8,7 @@
 // on the difference.
 
 import { parseAsk, type Ask } from "./askparse";
+import { limitOnScreen, type LimitHit } from "./limits";
 
 export type TaskState = "needs" | "review" | "working" | "idle" | "stopped";
 
@@ -25,6 +26,8 @@ export interface TaskStatus {
   state: TaskState;
   /** Present when state is "needs": what it is asking and which keys answer it. */
   ask: Ask | null;
+  /** It stopped at its plan's usage limit (and when that lifts). */
+  limit?: LimitHit | null;
 }
 
 /** Spinners and streaming redraw several times a second; this long without a
@@ -41,8 +44,17 @@ export function deriveTaskState(f: TaskFacts, now: number): TaskStatus {
   const ask = parseAsk(f.screen);
   if (ask) return { state: "needs", ask };
   if (now - f.lastOutputAt <= WORKING_MS) return { state: "working", ask: null };
-  if (f.changedFiles !== null && f.changedFiles > 0) return { state: "review", ask: null };
-  return { state: "idle", ask: null };
+  // quiet after hitting its plan's limit: not done, waiting for the limit to lift
+  const limit = limitOnScreen(f.screen, now);
+  if (f.changedFiles !== null && f.changedFiles > 0) return { state: "review", ask: null, limit };
+  return { state: "idle", ask: null, limit };
+}
+
+/** "7:09 PM" today, "Thu 1:00 AM" later. */
+export function clockOf(at: number, now = Date.now()): string {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toDateString() === new Date(now).toDateString() ? time : `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
 }
 
 /** One line for a queue row or a notification, from the agent's point of view. */
@@ -53,6 +65,7 @@ export function statusLine(name: string, s: TaskStatus): string {
     if (a.kind === "edit") return a.detail ? `${name} wants to edit ${a.detail}` : `${name} wants to edit a file`;
     return `${name} asks: ${a.prompt}`;
   }
+  if (s.limit) return s.limit.resetsAt ? `${name} is out of usage until ${clockOf(s.limit.resetsAt)}` : `${name} is out of usage`;
   if (s.state === "review") return `${name} is done, changes ready to review`;
   if (s.state === "working") return `${name} is working`;
   if (s.state === "stopped") return `${name} stopped`;

@@ -43,7 +43,7 @@ vi.mock("./agentbridge", () => ({ revealPane: () => true }));
 vi.mock("./zoom", () => ({ paneFont: (_ws: unknown, bump = 0) => 13 + bump }));
 vi.mock("./ipc", () => ({ resizePty: async () => {}, killPty: async (id: string) => { state.killed.push(id); } }));
 vi.mock("./confirmmodal", () => ({ confirmModal: async () => ({ ok: state.confirm.ok, dontAsk: false, value: state.confirm.value }) }));
-vi.mock("./spawnmodal", () => ({ openModal: () => {} }));
+vi.mock("./spawnmodal", () => ({ openModal: () => {}, presetAvailable: (p: string) => p === "codex", loadCrew: () => ({ skipPerms: false }), spawnAgents: async () => ["Bob"] }));
 vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 
@@ -182,7 +182,7 @@ describe("inbox DOM", () => {
     const item = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(".cm-item")].find((b) => b.textContent!.startsWith(label))!;
     open();
     expect([...document.querySelectorAll(".cm-item span")].map((x) => x.textContent))
-      .toEqual(["Open", "Rename…", "Add to Grid", "Changes", "History", "Copy branch name", "Restart", "Stop", "Remove agent…"]);
+      .toEqual(["Open", "Rename…", "Add to Grid", "Changes", "History", "Copy branch name", "Hand over to Codex", "Restart", "Stop", "Remove agent…"]);
     item("Stop").click();
     await Promise.resolve();
     expect(state.killed).toEqual(["e"]);

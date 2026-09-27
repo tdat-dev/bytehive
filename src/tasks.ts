@@ -98,6 +98,10 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
     now,
   );
   const prev = tasks.get(pane.id);
+  // "resets 7pm" read after 7pm would be tomorrow's: the same notice keeps the
+  // time it was first read with
+  const was = prev?.status.limit;
+  if (status.limit && was && was.what === status.limit.what) status.limit = { ...status.limit, resetsAt: was.resetsAt ?? status.limit.resetsAt };
   return {
     paneId: pane.id,
     wsId: ws.id,
@@ -123,6 +127,8 @@ export function describe(t: Pick<Task, "status" | "changedFiles">): string | nul
       if (a?.kind === "run") return a.detail ? `Asked to run ${a.detail}` : "Asked to run a command";
       if (a?.kind === "edit") return a.detail ? `Asked to edit ${a.detail}` : "Asked to edit a file";
       return a ? `Asked: ${a.prompt}` : "Waited for you";
+    case "idle":
+      return t.status.limit ? "Hit its usage limit" : null;
     case "review": {
       const n = t.changedFiles ?? 0;
       return `Finished with ${n} file${n === 1 ? "" : "s"} changed`;
@@ -159,7 +165,7 @@ export function updateTasks(now: number = Date.now()): void {
       const next = toTask(ws, pane, now);
       const prev = tasks.get(pane.id);
       const moved = !prev || prev.status.state !== next.status.state || prev.status.ask?.prompt !== next.status.ask?.prompt ||
-        prev.status.ask?.detail !== next.status.ask?.detail;
+        prev.status.ask?.detail !== next.status.ask?.detail || !!prev.status.limit !== !!next.status.limit;
       if (moved) {
         changed = true;
         const text = describe(next);
