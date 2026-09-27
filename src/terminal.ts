@@ -6,6 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { paletteFor, backgroundAlpha, type TermPalette } from "./termtheme";
 import { createBgFilter } from "./ansibg";
+import { openMenu } from "./ctxmenu";
 
 /** How a pane paints: which palette, and whether the CLI's own background
  *  plate is stripped out of the byte stream on the way in. */
@@ -45,14 +46,19 @@ export interface TerminalHandle {
    *  de-duplicated by the emulator — not the raw byte stream). For the remote
    *  dashboard's read-only view. */
   snapshot(lines?: number): string;
+  /** Whether the program in this PTY has turned on bracketed paste (DECSET
+   *  2004). When it has, a long hand-off can be delivered the way a real paste
+   *  is — as one block it assembles itself instead of a burst it has to guess
+   *  at. Measured: 200-line message, 93 lines arrived without it, 200 with. */
+  bracketedPaste(): boolean;
 }
 
 /** Hard floor for auto-fit: below this the output is there but unreadable, so a
  *  very short pane keeps the floor and clips instead of shrinking forever. */
-export const AUTO_FIT_MIN = 12;
+export const AUTO_FIT_MIN = 13;
 /** …and auto-fit never drops more than this far below the size the user picked.
  *  It is a nudge for a cramped tile, not a licence to overrule the setting. */
-export const AUTO_FIT_DROP = 4;
+export const AUTO_FIT_DROP = 1;
 
 /**
  * Largest size in [`min`, `base`] whose measured row count reaches `target`,
@@ -111,9 +117,9 @@ const SEARCH_OPTS = {
     matchBackground: "#3f4a18",
     matchBorder: "#5e6b1f",
     matchOverviewRuler: "#5e6b1f",
-    activeMatchBackground: "#c6f135",
-    activeMatchBorder: "#c6f135",
-    activeMatchColorOverviewRuler: "#c6f135",
+    activeMatchBackground: "#f0bf6a",
+    activeMatchBorder: "#f0bf6a",
+    activeMatchColorOverviewRuler: "#f0bf6a",
   },
 } as const;
 
@@ -285,13 +291,20 @@ export function mountTerminal(
   // Right-click = copy the selection too. Copy-on-select can silently lose
   // the clipboard write on Windows (another process holding the clipboard
   // lock makes writeText reject), so a right-click retries the copy —
-  // deliberate and dependable, like Windows Terminal. With no selection the
-  // default context menu behaviour is left untouched.
+  // deliberate and dependable, like Windows Terminal. With no selection it
+  // opens the app's terminal menu instead of the WebView's page menu.
   container.addEventListener("contextmenu", (e) => {
-    const sel = term.getSelection();
-    if (!sel) return;
+    if (e.shiftKey && import.meta.env.DEV) return; // Inspect while developing
     e.preventDefault();
-    void navigator.clipboard.writeText(sel).catch(() => {});
+    const sel = term.getSelection();
+    if (sel) { void navigator.clipboard.writeText(sel).catch(() => {}); return; }
+    openMenu(e.clientX, e.clientY, [
+      { label: "Paste", hint: "Ctrl+V", run: () => {
+        void navigator.clipboard.readText().then((t) => { if (t) term.paste(t); term.focus(); }).catch(() => {});
+      } },
+      { label: "Select all", run: () => { term.selectAll(); term.focus(); } },
+      { label: "Clear", sep: true, run: () => { term.clear(); term.focus(); } },
+    ], "Terminal");
   });
 
   // Auto-fit: tiled panes get short fast (a 2x2 tidy leaves ~360px per tile),
@@ -376,6 +389,13 @@ export function mountTerminal(
         else cb(r.resultIndex + 1, r.resultCount);
       }),
     onTitleChange: (cb) => term.onTitleChange(cb),
+    bracketedPaste: () => {
+      try {
+        return term.modes.bracketedPasteMode;
+      } catch {
+        return false; // older emulator build — treat as off and type plainly
+      }
+    },
     snapshot: (lines = 40) => {
       try {
         const buf = term.buffer.active;

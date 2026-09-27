@@ -15,7 +15,18 @@ concurrency:
 jobs:
   release:
     name: Build & publish release
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows only. The macOS jobs never shipped: the arm64 build failed
+        # every release and the Intel runner (macos-13) is never handed out, so
+        # the run hung queued. Add them back (aarch64-apple-darwin on
+        # macos-latest) once someone runs Maestro on a Mac and it builds there.
+        include:
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            args: ""
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +38,8 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -49,3 +62,4 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+          args: ${{ matrix.args }}

@@ -27,13 +27,14 @@ export async function spawnPty(
   rows: number,
   env: Array<[string, string]>,
   onBytes: (bytes: Uint8Array) => void,
-): Promise<void> {
+): Promise<number> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
   // number[] path serialized every byte as a JSON number on both sides and
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
   ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
-  await invoke("pty_spawn", { agentId, program, args, cwd, cols, rows, env, onBytes: ch });
+  // The run number of this start; its exit event carries the same number.
+  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, onBytes: ch });
 }
 
 /** Re-attach a RUNNING agent's output to this window (tab detach hand-off).
@@ -52,13 +53,121 @@ export async function sendInput(agentId: string, data: string): Promise<void> {
   await invoke("pty_input", { agentId, data });
 }
 
-/** Hand a whole message to an agent: chunked, then Enter as its own keystroke.
- *  Use this instead of `sendInput(id, text + "\r")` — see typing.ts for what a
- *  single write does to Claude Code's composer. */
+/** How to read an agent pane's on-screen text, so a hand-off can check that its
+ *  Enter actually took. Set once at startup by the layer that owns the panes;
+ *  without it `sendMessage` still works, it just can't verify. */
+let paneScreen: ((agentId: string) => string) | null = null;
+export function setPaneScreenReader(fn: (agentId: string) => string): void {
+  paneScreen = fn;
+}
+
+/** Whether the program in a pane has bracketed paste on, so a hand-off can be
+ *  delivered as a marked block instead of a burst the program has to guess at.
+ *  Unset (or unknown pane) means "off" — the markers are only ever safe for a
+ *  program that asked for them. */
+let paneBracketedPaste: ((agentId: string) => boolean) | null = null;
+export function setPaneBracketedPasteReader(fn: (agentId: string) => boolean): void {
+  paneBracketedPaste = fn;
+}
+
+/** Hand a whole message to an agent: chunked, then Enter as its own keystroke,
+ *  then check the composer and press Enter again if the message is still
+ *  sitting in it. Use this instead of `sendInput(id, text + "\r")` — see
+ *  typing.ts for what a single write does to Claude Code's composer. */
 export function sendMessage(agentId: string, text: string, submit = true): Promise<void> {
-  return serialize(agentId, () =>
-    typeInto((data) => sendInput(agentId, data), text, submit),
-  );
+  const read = paneScreen;
+  const pasteMode = paneBracketedPaste;
+  return serialize(agentId, async () => {
+    const sent = await typeInto((data) => sendInput(agentId, data), text, submit, {
+      screen: read ? () => read(agentId) : undefined,
+      bracketedPaste: pasteMode ? pasteMode(agentId) : false,
+    });
+    if (!sent) {
+      console.warn(
+        `[maestro] message to ${agentId} is still in the composer after retrying Enter — ${text.length} chars`,
+      );
+    }
+  });
+}
+
+/** New complete lines of a Claude Code transcript from `offset`: the agent's
+ *  own session when `sessionId` is known, else the newest one written since
+ *  `sinceMs` in that folder. `path` is "" until a transcript exists. */
+export async function claudeTranscript(
+  dir: string,
+  sessionId: string | null,
+  sinceMs: number | null,
+  offset: number,
+): Promise<{ path: string; text: string; next: number }> {
+  return invoke("claude_transcript", { dir, sessionId, sinceMs, offset });
+}
+
+/** New complete lines of a Codex agent's rollout from `offset`: `path` once
+ *  known, else the newest rollout begun in `dir` since `sinceMs`. */
+export async function codexTranscript(
+  dir: string,
+  sinceMs: number | null,
+  path: string | null,
+  offset: number,
+): Promise<{ path: string; text: string; next: number }> {
+  return invoke("codex_transcript", { dir, sinceMs, path, offset });
+}
+
+/** Rows of an opencode agent's session changed after `cursor` (ms), as JSONL:
+ *  `session` once known, else the newest session in `dir` since `sinceMs`.
+ *  `path` is the session id ("" until one exists); `next` the new cursor. */
+export async function opencodeTranscript(
+  dir: string,
+  sinceMs: number | null,
+  session: string | null,
+  cursor: number,
+): Promise<{ path: string; text: string; next: number }> {
+  return invoke("opencode_transcript", { dir, sinceMs, session, cursor });
+}
+
+/** Save a file pasted into a chat (base64) under its own name; its path. */
+export async function savePastedFile(data: string, name: string): Promise<string> {
+  return invoke<string>("save_pasted_file", { data, name });
+}
+
+/** Native picker for one or more files (the chat's attach button). Empty when cancelled. */
+export async function pickFiles(defaultPath?: string): Promise<string[]> {
+  const res = await open({ multiple: true, directory: false, defaultPath });
+  return Array.isArray(res) ? res : typeof res === "string" ? [res] : [];
+}
+
+/** The files in `dir`, relative with forward slashes (git's list when it is a repo), for @ in the chat. */
+export async function workspaceFiles(dir: string): Promise<string[]> {
+  return invoke<string[]>("workspace_files", { dir });
+}
+
+/** Save a picture pasted into a chat (base64, no data: prefix) as a file; its path. */
+export async function savePastedImage(data: string, ext: string): Promise<string> {
+  return invoke<string>("save_pasted_image", { data, ext });
+}
+
+/** Whether `claude --resume <sessionId>` can pick this session up in `dir`. */
+export async function claudeSessionExists(dir: string, sessionId: string): Promise<boolean> {
+  return invoke<boolean>("claude_session_exists", { dir, sessionId });
+}
+
+/** One earlier Claude Code conversation in a folder. */
+export interface ClaudeSession { id: string; modified_ms: number; title: string; messages: number; /** The folder it ran in. */ cwd: string }
+
+/** The conversations Claude Code has in `dir`, newest first. */
+export async function claudeSessions(dir: string): Promise<ClaudeSession[]> {
+  return invoke<ClaudeSession[]>("claude_sessions", { dir });
+}
+
+/** The newest conversations in every folder, newest first. */
+export async function claudeSessionsEverywhere(limit = 60): Promise<ClaudeSession[]> {
+  return invoke<ClaudeSession[]>("claude_sessions_everywhere", { limit });
+}
+
+/** Run a program to completion in `cwd` (no window) and get its stdout. For
+ *  asking an agent CLI about itself; killed after `timeoutMs`. */
+export async function runCapture(program: string, args: string[], cwd: string | null, timeoutMs = 60_000): Promise<string> {
+  return invoke<string>("run_capture", { program, args, cwd, timeoutMs });
 }
 
 export async function resizePty(agentId: string, cols: number, rows: number): Promise<void> {
@@ -73,8 +182,8 @@ export async function killAll(): Promise<void> {
   await invoke("pty_kill_all");
 }
 
-export async function onExit(cb: (agentId: string, code: number) => void): Promise<UnlistenFn> {
-  return listen<{ id: string; code: number }>("pty-exit", (e) => cb(e.payload.id, e.payload.code));
+export async function onExit(cb: (agentId: string, code: number, run: number) => void): Promise<UnlistenFn> {
+  return listen<{ id: string; code: number; run: number }>("pty-exit", (e) => cb(e.payload.id, e.payload.code, e.payload.run));
 }
 
 /** A file drag-drop event from the OS. `leave` carries no paths/position. */
@@ -299,6 +408,13 @@ export async function worktreeRemove(
   branch?: string,
 ): Promise<void> {
   await invoke("worktree_remove", { repoRoot, path, branch: branch ?? null });
+}
+
+/** An agent leaves its worktree for the project folder, when the worktree holds
+ *  no work of its own (its Claude conversation is carried over). The project
+ *  folder, or null when the worktree keeps work and stays. */
+export async function worktreeLeave(path: string, session: string | null): Promise<string | null> {
+  return invoke<string | null>("worktree_leave", { path, session });
 }
 
 export interface RepoRef { path: string; name: string }

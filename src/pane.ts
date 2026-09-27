@@ -10,9 +10,11 @@ import {
   resizePty,
   killPty,
   spawnPty,
+  claudeSessionExists,
   attachPty,
   openExternal,
   worktreeAdd,
+  worktreeLeave,
   notify,
   recordStart,
   recordStop,
@@ -20,14 +22,25 @@ import {
 import { branchName } from "./worktree";
 import { launchSpec } from "./crew";
 import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
-import { layoutGrid, wirePaneDrag, wirePaneRename, toggleMax } from "./panelayout";
+import { layoutGrid, wirePaneRename, toggleMax } from "./panelayout";
 import { saveSession } from "./session";
 import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
-import { basename } from "./workspaces";
+import { taskLine, taskOf } from "./tasks";
+import { getPref } from "./prefs";
+import { basename, runDir } from "./workspaces";
+import { homeDir } from "@tauri-apps/api/path";
+
+let home: Promise<string> | null = null;
+/** The user's home folder, asked once. */
+function homeFolder(): Promise<string> {
+  home ??= homeDir().catch(() => "");
+  return home;
+}
 import { paneLook } from "./background";
 import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
+import { openMenu } from "./ctxmenu";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
@@ -130,10 +143,11 @@ function buildPaneEl(
       <span class="pb-name pane-name">${name}</span>
       ${roleChip}
       <span class="pb-cli">${badge}</span>
+      <span class="pb-where" data-where></span>
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
         <div class="pb-more">
-          <button class="pctrl" data-more aria-label="More actions" title="More">${MORE_SVG}</button>
+          <button class="pctrl" data-more aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More: search, record, restart">${MORE_SVG}</button>
           <div class="pb-more-menu" hidden>
             <button class="pctrl" data-search aria-label="Search output" title="Search output">${SEARCH_SVG}</button>
             <button class="pctrl rec-btn" data-record aria-label="Record session" title="Record">${REC_SVG}</button>
@@ -141,8 +155,8 @@ function buildPaneEl(
           </div>
         </div>
         <button class="pctrl" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
-        <button class="pctrl" data-max aria-label="Focus pane" title="Focus / back to canvas"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
-        <button class="pctrl danger" data-kill aria-label="Kill agent (tree)" title="Kill (tree)">${KILL_SVG}</button>
+        <button class="pctrl" data-max aria-label="Focus pane" title="Focus"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
+        <button class="pctrl danger" data-kill aria-label="Remove agent" title="Remove agent (stops it and closes its terminal)">${KILL_SVG}</button>
       </div>
     </div>
     <div class="pane-find" data-find hidden>
@@ -216,9 +230,10 @@ export function createAgent(
   term.setAutoFit(autoFitRows(PANE_MIN_ROWS, getZoom(ws)));
 
   // The persona name owns the title bar now; surface the terminal's own title
-  // as a hover tooltip instead of overwriting the name.
+  // as a hover tooltip on the name (not the whole pane, or it hangs over the chat).
   term.onTitleChange((title) => {
-    if (title.trim()) el.title = title;
+    const nameEl = el.querySelector<HTMLElement>(".pb-name");
+    if (title.trim() && nameEl) nameEl.title = title;
   });
 
   const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
@@ -227,45 +242,167 @@ export function createAgent(
   onUpdateCount();
 
   // A restored pane is parked as "stopped" — no PTY is spawned until the user
-  // hits ⟳ (which recreates the pane with restore=false → boots normally).
+  // hits ⟳ (pane.restart boots it in place).
   if (restore) {
     setStatus(pane, "stopped", "");
     el.classList.add("stopped"); // dims the parked pane (cleared on boot)
-    term.write(enc.encode("\r\n\x1b[90m  [stopped — click ⟳ to resume]\x1b[0m\r\n"));
+    term.write(enc.encode("\r\n\x1b[90m  [stopped — Resume to carry on]\x1b[0m\r\n"));
   }
 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
   el.querySelector("[data-record]")?.addEventListener("click", () => void toggleRecord(ws, pane));
-  el.querySelector("[data-restart]")?.addEventListener("click", async () => {
-    await removeAgent(ws, id);
-    await createAgent(ws, spec)();
-  });
+  el.querySelector("[data-restart]")?.addEventListener("click", () => void pane.restart?.());
   el.querySelector("[data-max]")?.addEventListener("click", (e) => toggleMax(ws, pane, e as MouseEvent));
-  // "⋯ more" reveals the extra controls (search / record / restart) so the
-  // header shows the mockup's exact three by default. Toggle on click; close
-  // after a pick or when the pointer leaves the pane.
-  const moreMenu = el.querySelector<HTMLElement>(".pb-more-menu");
-  if (moreMenu) {
-    el.querySelector("[data-more]")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      moreMenu.hidden = !moreMenu.hidden;
-    });
-    moreMenu.addEventListener("click", () => { moreMenu.hidden = true; });
-    el.addEventListener("mouseleave", () => { moreMenu.hidden = true; });
-  }
+  // "⋯ more" opens the extra controls (search / record / restart) as a menu
+  // with words, keyboard and Esc included; the hidden buttons still do the work.
+  const moreBtn = el.querySelector<HTMLElement>("[data-more]");
+  moreBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const r = moreBtn.getBoundingClientRect();
+    const press = (sel: string) => () => el.querySelector<HTMLElement>(sel)?.click();
+    const chat = el.classList.contains("chat-on");
+    moreBtn.setAttribute("aria-expanded", "true");
+    openMenu(r.right - 200, r.bottom + 6, [
+      // The find bar searches the terminal, which the chat covers.
+      { label: "Search output", hint: chat ? "In Terminal" : undefined, disabled: chat, run: press("[data-search]") },
+      { label: pane.recording ? "Stop recording" : "Record session", run: press("[data-record]") },
+      { label: pane.running ? "Restart" : "Resume", run: press("[data-restart]") },
+    ], `${pane.spec.name} actions`);
+    const off = () => { moreBtn.setAttribute("aria-expanded", "false"); window.removeEventListener("pointerdown", off, true); window.removeEventListener("keydown", off, true); };
+    window.addEventListener("pointerdown", off, true);
+    window.addEventListener("keydown", off, true);
+  });
   el.querySelector<HTMLElement>("[data-drag]")?.addEventListener("dblclick", (e) => {
     const tgt = e.target as HTMLElement;
     if (tgt.closest(".pctrl") || tgt.closest(".pb-name") || tgt.closest("[data-edit]")) return; // buttons + rename aren't focus triggers
     toggleMax(ws, pane);
   });
   onWirePaneSearch(pane);
-  wirePaneDrag(ws, pane);
   wirePaneRename(ws, pane);
   // Clicking / focusing into a flagged pane means the user is now looking at it.
   el.addEventListener("pointerdown", () => clearAttention(pane));
   el.addEventListener("focusin", () => clearAttention(pane));
 
   saveSession();
+
+  // Start the CLI in this pane. Also how a stopped or restored agent starts
+  // again: in place, so the pane keeps its id, its place on the stage, its chat
+  // and its spot in the Grid (see restart below).
+  const boot = async () => {
+    if (!ws.panes.has(id)) return; // killed before its turn to boot
+    const { cols, rows } = term.fit();
+    try {
+      // Isolated agents get their own worktree+branch; point the PTY cwd there.
+      let cwd = spec.cwd;
+      if (spec.resumeIn) {
+        // Carrying on a conversation from another folder: Claude only resumes it there.
+        cwd = spec.resumeIn;
+      } else if (ws.isolated && ws.repoRoot && !spec.worktree) {
+        try {
+          spec.branch = branchName(spec.name, id.slice(-6));
+          spec.worktree = await worktreeAdd(ws.repoRoot, spec.branch);
+          cwd = spec.worktree;
+          const subEl = el.querySelector<HTMLElement>("[data-sub]");
+          if (subEl) subEl.textContent = spec.branch;
+          saveSession();
+        } catch (e) {
+          term.write(enc.encode(`\r\n\x1b[33m[worktree failed, using project dir: ${onErrMsg(e)}]\x1b[0m\r\n`));
+        }
+      } else if (spec.worktree) {
+        cwd = spec.worktree;
+        // Agents work in the project folder unless a worktree each is on: one
+        // made before leaves it, if it holds no work of its own.
+        if (!getPref("worktree")) {
+          const home = await worktreeLeave(spec.worktree, spec.badge === "claude" ? spec.sessionId ?? null : null).catch(() => null);
+          if (home) {
+            delete spec.worktree;
+            delete spec.branch;
+            cwd = spec.cwd ?? home;
+            const subEl = el.querySelector<HTMLElement>("[data-sub]");
+            if (subEl) subEl.textContent = "";
+            saveSession();
+          }
+        }
+      }
+      // Start the CLI in a folder Maestro chose and wrote down (never the PTY's
+      // silent default), so the chat view reads the transcript of this run.
+      cwd = runDir({ worktree: spec.worktree, cwd }, await homeFolder());
+      spec.ranIn = cwd;
+      // Enforce Maestro's protocol at the system-prompt level so a Claude agent
+      // MUST follow it (not a soft MCP hint, not a button). The director gets the
+      // dispatch prompt; every other Claude gets the plan-first worker one.
+      // Only claude exposes --append-system-prompt; other CLIs still get the MCP
+      // tools + server instructions. New array — never mutate spec.args, or a
+      // restart would append the flag again and again.
+      const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
+      const own = spec.badge === "claude" ? await claudeSessionArgs(spec, cwd) : [];
+      if (own.length) saveSession(); // the chat view finds this run's transcript after a restart too
+      const args =
+        spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws] : spec.args;
+      // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
+      // can actually launch them — see launchSpec.
+      const launch = launchSpec(spec.program, args);
+      // Identity for the child process: maestro-mcp uses MAESTRO_AGENT to
+      // stamp who moved/finished a board card (see mcp/src/server.ts).
+      const envPairs: Array<[string, string]> = [
+        ["MAESTRO_AGENT", spec.name],
+        ["MAESTRO_WORKSPACE", cwd ?? ""],
+      ];
+      pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
+        pane.lastOutputAt = Date.now();
+        if (pane.attention) clearAttention(pane); // agent is producing output again
+        // After a tab detach this xterm is disposed but the PTY lives on (the
+        // new window owns it) — never write into a dropped pane.
+        if (ws.panes.has(id)) term.write(bytes);
+      });
+      pane.running = true;
+      pane.error = undefined;
+      pane.spawnedAt = Date.now();
+      pane.lastOutputAt = Date.now();
+      setStatus(pane, "running", "run");
+      onUpdateCount();
+      // Re-fit once the grid layout has settled; correct the PTY size if it moved.
+      requestAnimationFrame(() => {
+        const s = term.fit();
+        if (s.cols !== cols || s.rows !== rows) void resizePty(id, s.cols, s.rows);
+      });
+    } catch (e) {
+      pane.error = onErrMsg(e);
+      setStatus(pane, "spawn failed", "err");
+      term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${pane.error}]\x1b[0m\r\n`));
+    }
+  };
+
+  /** Start again in this same pane: end the old process, clear the screen,
+   *  boot. The old process's exit event carries its run number, so it can't
+   *  mark the new run as exited (bridges.ts). */
+  let restarting = false;
+  pane.restart = async (opts = {}) => {
+    if (restarting) return;
+    restarting = true;
+    try {
+      // A new conversation, or a given earlier one; otherwise its own again.
+      if (opts.fresh) { delete spec.sessionId; delete spec.resumeIn; }
+      else if (opts.session) {
+        spec.sessionId = opts.session;
+        // One from another folder runs there; one from its own folder brings it home.
+        if (opts.dir) spec.resumeIn = opts.dir; else delete spec.resumeIn;
+      }
+      if (pane.recording) await stopRecording(pane);
+      await killPty(id).catch(() => {});
+      pane.running = false;
+      pane.spawnedAt = null;
+      clearAttention(pane);
+      el.classList.remove("stopped");
+      term.reset();
+      setStatus(pane, "starting", "");
+      onUpdateCount();
+      await boot();
+      saveSession();
+    } finally {
+      restarting = false;
+    }
+  };
 
   // Detach hand-off: the agent is already alive in the backend — just point
   // its output at this window. The backend replays buffered scrollback first.
@@ -295,66 +432,24 @@ export function createAgent(
     };
   }
 
-  return async () => {
-    if (!ws.panes.has(id)) return; // killed before its turn to boot
-    const { cols, rows } = term.fit();
-    try {
-      // Isolated agents get their own worktree+branch; point the PTY cwd there.
-      let cwd = spec.cwd;
-      if (ws.isolated && ws.repoRoot && !spec.worktree) {
-        try {
-          spec.branch = branchName(spec.name, id.slice(-6));
-          spec.worktree = await worktreeAdd(ws.repoRoot, spec.branch);
-          cwd = spec.worktree;
-          const subEl = el.querySelector<HTMLElement>("[data-sub]");
-          if (subEl) subEl.textContent = spec.branch;
-          saveSession();
-        } catch (e) {
-          term.write(enc.encode(`\r\n\x1b[33m[worktree failed, using project dir: ${onErrMsg(e)}]\x1b[0m\r\n`));
-        }
-      } else if (spec.worktree) {
-        cwd = spec.worktree;
-      }
-      // Enforce Maestro's protocol at the system-prompt level so a Claude agent
-      // MUST follow it (not a soft MCP hint, not a button). The director gets the
-      // dispatch prompt; every other Claude gets the plan-first worker one.
-      // Only claude exposes --append-system-prompt; other CLIs still get the MCP
-      // tools + server instructions. New array — never mutate spec.args, or a
-      // restart would append the flag again and again.
-      const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
-      const args =
-        spec.badge === "claude" ? [...spec.args, "--append-system-prompt", laws] : spec.args;
-      // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
-      // can actually launch them — see launchSpec.
-      const launch = launchSpec(spec.program, args);
-      // Identity for the child process: maestro-mcp uses MAESTRO_AGENT to
-      // stamp who moved/finished a board card (see mcp/src/server.ts).
-      const envPairs: Array<[string, string]> = [
-        ["MAESTRO_AGENT", spec.name],
-        ["MAESTRO_WORKSPACE", cwd ?? ""],
-      ];
-      await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
-        pane.lastOutputAt = Date.now();
-        if (pane.attention) clearAttention(pane); // agent is producing output again
-        // After a tab detach this xterm is disposed but the PTY lives on (the
-        // new window owns it) — never write into a dropped pane.
-        if (ws.panes.has(id)) term.write(bytes);
-      });
-      pane.running = true;
-      pane.spawnedAt = Date.now();
-      pane.lastOutputAt = Date.now();
-      setStatus(pane, "running", "run");
-      onUpdateCount();
-      // Re-fit once the grid layout has settled; correct the PTY size if it moved.
-      requestAnimationFrame(() => {
-        const s = term.fit();
-        if (s.cols !== cols || s.rows !== rows) void resizePty(id, s.cols, s.rows);
-      });
-    } catch (e) {
-      setStatus(pane, "spawn failed", "err");
-      term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${onErrMsg(e)}]\x1b[0m\r\n`));
-    }
-  };
+  return boot;
+}
+
+/** Claude's session for this run, remembered on the spec: its own one again
+ *  (`--resume`) when it exists, else a new one (`--session-id`); none when the
+ *  preset already picks or resumes a session itself. */
+export async function claudeSessionArgs(
+  spec: AgentSpec,
+  dir: string,
+  exists: (dir: string, id: string) => Promise<boolean> = claudeSessionExists,
+): Promise<string[]> {
+  const picks = spec.args.some((a) => /^(--session-id|--resume|--continue|-r|-c)(=|$)/.test(a));
+  if (picks) { delete spec.sessionId; return []; }
+  // Its own conversation, when Claude still has it: a restart, an app restart
+  // or Resume all carries on where it was instead of starting blank.
+  if (spec.sessionId && (await exists(dir, spec.sessionId).catch(() => false))) return ["--resume", spec.sessionId];
+  spec.sessionId = crypto.randomUUID();
+  return ["--session-id", spec.sessionId];
 }
 
 export async function removeAgent(ws: Workspace, id: string) {
@@ -371,7 +466,6 @@ export async function removeAgent(ws: Workspace, id: string) {
   ws.panes.delete(id);
   layoutGrid(ws);
   onUpdateCount();
-  refreshAttnTabs(); // the removed pane may have been the tab's only alert
   saveSession();
 }
 
@@ -476,7 +570,6 @@ export function clearAttention(pane: Pane) {
   pane.el.querySelector(".pb-dot")?.classList.remove("work");
   // Let the next tick re-derive the run/idle status; set a sane default now.
   setStatus(pane, pane.running ? "running" : "idle", pane.running ? "run" : "");
-  refreshAttnTabs();
 }
 
 /** Raise a pane's attention flag (pill + tab + optional OS notification). */
@@ -486,19 +579,12 @@ function setAttention(pane: Pane, ws: Workspace) {
   pane.el.classList.add("attention");
   pane.el.querySelector(".pb-dot")?.classList.add("work");
   setStatus(pane, "needs you", "wait");
-  refreshAttnTabs();
   // Notify only while the window is unattended, once per flag.
-  if (!pane.attentionNotified && (document.hidden || !document.hasFocus())) {
+  if (!pane.attentionNotified && getPref("notifyNeeds") && (document.hidden || !document.hasFocus())) {
     pane.attentionNotified = true;
-    void notify(`${pane.spec.name} needs you`, ws.name).catch(() => {});
-  }
-}
-
-/** Tab dot turns amber when any of its panes is asking for attention. */
-function refreshAttnTabs() {
-  for (const w of workspaces.values()) {
-    const want = [...w.panes.values()].some((p) => p.attention);
-    w.tabEl.classList.toggle("attn", want);
+    // Say what it wants when the screen shows it ("Ana wants to run npm test").
+    const line = taskOf(pane.id)?.status.state === "needs" ? taskLine(pane.id) : null;
+    void notify(line ?? `${pane.spec.name} needs you`, ws.name).catch(() => {});
   }
 }
 

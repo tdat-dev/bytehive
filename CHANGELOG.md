@@ -7,6 +7,252 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-09-26
+
+Bigger terminal text.
+
+### Changed
+
+- **Terminals read bigger.** The default text size is 15 instead of 13, and a
+  short tile no longer shrinks the text to squeeze in more lines. Settings and
+  Ctrl+wheel still make it bigger or smaller.
+
+## [0.6.4] - 2026-09-26
+
+The agent list stays put.
+
+### Changed
+
+- **The list keeps its order.** Projects stay in the order you opened them and
+  agents in the order they were made; clicking or answering an agent no
+  longer re-sorts everything. Who needs you is an amber row where it is, and
+  a count on its project's name.
+- **Projects fold.** Click a project's name to fold its agents away; it stays
+  folded, and still shows how many need you.
+
+## [0.6.3] - 2026-09-26
+
+The chat grows up: a work panel beside the conversation, files in every way
+you'd expect, and a working line that says what the agent is doing.
+
+### Added
+
+- **A work panel beside the conversation.** Changes (new and edited files,
+  the picked one's diff large), Background (what the agent left running, with
+  its output) and Session (plan, model, earlier conversations). Drag to
+  resize, hide it, and on a narrow window it slides over the chat.
+- **@ picks a file or folder** of the agent's folder as you type.
+- **Files in by drop, paste or the + button.** Pictures attach with a
+  thumbnail; other files go in as @path. Files copied in Explorer paste too.
+- **Questions the agent asks you** show as a card in the chat, with the
+  options and, once you answer, what you picked.
+- **Ctrl+F** finds in the conversation; **Copy** on code blocks; file names in
+  answers open in the code panel.
+- Up in an empty composer brings back what you sent; drafts stay per agent.
+
+### Changed
+
+- **The working line says what the agent is doing**: the step it runs, or
+  what Claude Code shows ("Pondering… 42s · 1.2k tokens"), and for how long.
+- What you send shows at once, until the conversation has it.
+- Reading further up, new messages no longer pull you down; a button says
+  they came.
+
+### Fixed
+
+- A long conversation opens once, at the bottom, instead of scrolling in
+  slice by slice.
+
+## [0.6.2] - 2026-09-25
+
+Agents work in your project folder, and the list says which project each one is in.
+
+### Changed
+
+- **Agents work in the project folder.** A git worktree and branch per agent
+  (the maestro/... branches) is now off by default; turn it on in Settings >
+  Agents if you want it. An agent made before leaves its worktree on its next
+  start when the worktree holds no work of its own, and carries its
+  conversation over.
+- **Agents listed by project.** Each project is a group with its name over its
+  agents, the project with an agent that needs you first. The "All projects"
+  chips are gone; an agent's state is a dot on its mark and its second line.
+
+## [0.6.1] - 2026-09-25
+
+The chat view does what the agent CLIs do, for Codex and opencode too.
+
+### Added
+
+- **Chat for Codex and opencode agents.** Their conversations read like a
+  Claude agent's: what you asked, what they said, each command and edit with
+  its result and diff.
+- **Effort and permissions in the composer.** Beside the model: how hard the
+  agent thinks, and what it may do without asking (Ask first, Accept edits,
+  Plan, Bypass…), changed the way the CLI itself does. A mode that never asks
+  is tinted.
+- **In the background.** The side panel lists the commands an agent left
+  running (a dev server, a build, a watch): running, done, failed or stopped,
+  with their output a click away.
+- **Paste pictures into the chat** with Ctrl+V; click one to see it full size
+  before sending.
+
+### Changed
+
+- **Files changed says what is new.** New files and edited ones are listed
+  apart, newest first; a dot marks what the latest reply changed; click a file
+  to see its diff right there.
+- Small pictures in the conversation grow to a readable size.
+
+### Fixed
+
+- Messages you type in the terminal while an agent is working now show in the
+  chat.
+- Resume a conversation from another project: Maestro starts the agent in that
+  conversation's folder instead of Claude saying it is from a different
+  directory.
+- Maestro accepts the Chrome Web Store build of Maestro for Chrome.
+
+## [0.6.0] - 2026-09-25
+
+A new face for Maestro, agents you can read like a conversation, and agents
+that can use your real Chrome while you watch.
+
+### Added
+
+- **Agent Inbox.** The list on the left says who needs you, who is working and
+  who has stopped; the stage shows one agent at a time (Focus) or several side
+  by side (Grid, up to nine). Right-click an agent for its actions; Ctrl+K jumps
+  anywhere; Ctrl+, opens Settings.
+
+- **Chat view.** In Focus, a Claude Code agent reads as a conversation: what you
+  asked, what it said, and each step it took, folded to one line until you open
+  it. Pick the model and the command from its own CLI, resume, start a new
+  conversation, and see the screenshots and images it looked at, full size on a
+  click.
+
+- **Maestro for Chrome.** A Chrome extension (Edge and Brave too) that lets your
+  agents use your real browser, signed in as you. Each agent works in its own
+  tab group, named after it:
+  - its cursor glides and clicks on the page, with its name, and a pill says
+    "Ana is using this tab" with a Stop button;
+  - Maestro shows a live view of the agent's tab, sharp when enlarged, with Stop;
+  - clicks that send, post, pay or delete wait for your OK in Maestro;
+  - on a login page or a CAPTCHA the agent stops and lets you handle it;
+  - agents get browser tools through maestro-mcp: open pages, read them, click,
+    type, fill forms, upload files, read the console and network log, answer
+    dialogs, record a GIF, resize the window.
+
+  Settings → Browser lists every Chrome, Edge and Brave profile on the computer
+  and walks you through adding the extension to one.
+
+### Changed
+
+- **One Cinema look** under every surface: dialogs, menus, tips, toasts, the
+  file tree and the tool panels. The app's own menus and drop-downs replace the
+  Windows ones.
+- The Maestro M logo and its launch animation are back.
+
+### Fixed
+
+- Enter on Cancel no longer confirms a dialog, and every dialog keeps the
+  keyboard until it closes.
+- Agents start in a folder Maestro picks and records, so Resume finds their
+  conversation again; a project whose folder is gone no longer runs agents
+  somewhere else.
+- The Grid header no longer jumps when you switch to it.
+
+## [0.5.9] - 2026-09-05
+
+The command bar turned into a place you can actually read the conversation, and
+the loose buttons around it collected into one.
+
+### Added
+
+- **The Fleet Console.** Focusing the bottom bar (or tapping its grip) slides a
+  thread up out of it: what you broadcast and what the Director handed to which
+  agent, as chat bubbles — yours on the right, agents' on the left with their
+  avatar — over a live members strip that flags who needs you. Click a bubble to
+  jump to that agent; a badge counts what arrived while it was closed. Built on
+  the hand-off log that was already being kept, so it costs nothing when shut.
+
+- **One "+" for the composer's actions.** The floating gear and the +Agent pill
+  are gone; a single button at the left opens one menu — New agents, Settings,
+  Clear conversation.
+
+### Changed
+
+- **The composer is one bar now, not a row of pills.** A single glass surface
+  with the focus ring around the whole thing, every control a quiet ghost on it
+  and Send the one accent disc; the target chip sits inside it. The thread,
+  grip, bubbles and members strip were restyled to match — a tighter dark
+  system that keeps the canvas-first identity.
+
+## [0.5.8] - 2026-09-05
+
+Finding the right agent — and telling it apart from the other nine — when the
+canvas is full. Three pieces of the same problem: knowing which agent you're
+looking at, and saying who a message is for.
+
+### Added
+
+- **A fleet switcher (Ctrl+K).** One shortcut opens a palette of every agent in
+  every workspace, grouped by whether it needs you, is running, or is idle, each
+  row carrying its name, CLI, folder or branch, and a plain-word status (never
+  colour alone). Type to filter by name, CLI, workspace or folder; move with the
+  arrows; press Enter or Ctrl+1–9 to jump straight there. The agent you're
+  looking at is marked "On stage".
+
+- **A target chip on the command bar.** The cryptic "@name to target one" hint is
+  now a real chip: it shows Fleet by default, or the one agent you picked, and
+  opens a list of everyone with their live status. A plain message goes where the
+  chip points; an @mention in the text still overrides it per line.
+
+### Changed
+
+- **A pane opened large now says whose it is.** The focused stage carries a
+  bigger avatar with a live status ring, the name at reading size, and a
+  workspace · branch subtitle. The "Others" rail beside it is sorted so an agent
+  waiting on you rises to the top, counts the fleet, and has its own way into the
+  Ctrl+K switcher.
+
+### Fixed
+
+- **Jumping to an agent while another is on stage now works.** Revealing a pane
+  in focus mode swaps the stage to it instead of focusing a hidden terminal that
+  never comes forward — the message-flow and fleet views gain the same fix.
+
+## [0.5.5] - 2026-08-02
+
+Hand-offs between agents were arriving late, glued together, or with pieces
+missing. Watching a real fleet for an afternoon turned up two separate faults
+behind it, both in the last inch of the delivery — the part that types into
+another agent's terminal.
+
+### Fixed
+
+- **A hand-off no longer sits in the target's composer waiting for someone to
+  press Enter.** Any message past one chunk arrives as a burst, and the Enter
+  that follows lands while the TUI is still assembling it, so it reads as a
+  newline in the text rather than a keypress. The message then waits — until
+  the next short message's Enter submits both glued together, in the wrong
+  order. Maestro now looks at the composer after pressing Enter and presses
+  again while the message it just typed is still sitting there. It only ever
+  re-presses for text that matches what it typed: the screen it reads has no
+  colour, so a dimmed history suggestion in an empty box looks exactly like
+  typed text, and submitting that would put words in your mouth. Works for
+  Claude Code's ruled input box and for boxless prompts like Codex.
+
+- **A long hand-off arrives whole.** Chunked typing was not only losing the
+  Enter, it was losing content. Measured against a live pane with a 200-line,
+  10k-character message: 93 lines arrived, the rest gone in whole runs of one
+  to two kilobytes, with one surviving line spliced mid-word. The bytes are not
+  lost in transit — a probe recording its own stdin received all 10,000 of
+  them — it is the TUI inferring where a paste begins and ends from timing
+  alone. Maestro now marks the block the way a terminal does for a real paste,
+  and only for a program that asked for that mode, so a plain shell still gets
+  plain text. Same message, same pane: 200 of 200 lines.
+
 ## [0.5.4] - 2026-08-01
 
 One working language for the fleet, and the last hand-off surface that still

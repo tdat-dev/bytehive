@@ -3,12 +3,12 @@
    riding the tip, a flash blooms on completion, a light burst + rings + a
    signal field radiate, then the splash fades while Home focuses in. Effects
    overlap heavily so it reads fast despite the richness. */
-.intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;pointer-events:none;overflow:hidden;
+.intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;place-content:center;pointer-events:none;overflow:hidden;
   background:
     radial-gradient(820px 440px at 50% 42%, rgba(198,241,53,.10), transparent 62%),
     radial-gradient(560px 560px at 50% 100%, rgba(94,194,240,.05), transparent 60%),
     var(--bg);
-  animation:introOut .5s ease 1.05s forwards}
+  animation:introOut .5s ease 1.32s forwards}
 @keyframes introOut{to{opacity:0;visibility:hidden}}
 
 /* ---- depth layers ---- */
@@ -71,32 +71,33 @@
 
 /* ---- signal field — nodes radiate from the mark like an orchestrated fleet ---- */
 .intro-signals{position:absolute;inset:0;display:grid;place-items:center}
-.intro-signals .sig{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--accent);
-  box-shadow:0 0 9px var(--accent),0 0 3px #fff;opacity:0;transform:translate(0,0) scale(0);
+.intro-signals .sig{position:absolute;width:7px;height:7px;border-radius:50%;background:#c6f135;
+  box-shadow:0 0 9px #c6f135,0 0 3px #fff;opacity:0;transform:translate(0,0) scale(0);
   animation:introSig .92s ease-out var(--d,.7s) forwards}
 @keyframes introSig{
   0%{opacity:0;transform:translate(0,0) scale(0)}
   22%{opacity:1;transform:translate(calc(var(--tx)*.3),calc(var(--ty)*.3)) scale(1)}
   100%{opacity:0;transform:translate(var(--tx),var(--ty)) scale(.35)}}
 
-/* ===== Home focuses in beneath the fading splash, staggered + blur-to-sharp ===== */
-.boot .hero .logo-glow,.boot .hero p,
-.boot .card-primary,.boot .card-row,.boot .recents,.boot .home-foot{opacity:0}
-.boot .hero .logo-glow{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) .85s forwards}
-.boot .hero p{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.00s forwards}
-.boot .card-primary{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.08s forwards}
-.boot .card-row{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.16s forwards}
-.boot .recents{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.24s forwards}
-.boot .home-foot{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.28s forwards}
-@keyframes focusIn{from{opacity:0;transform:translateY(18px) scale(.965)}to{opacity:1;transform:none}}
-
-/* wordmark: wipe-reveal from blur + a shine band sweeping across the letters */
-.boot .hero h1{opacity:0;
-  background:linear-gradient(105deg, var(--text) 0%, var(--text) 40%, #f4ffcf 50%, var(--text) 60%, var(--text) 100%);
+/* the name, under the mark: wipes in once the M is drawn, then a shine
+   crosses the letters */
+.intro-word{position:relative;margin-top:-54px;font:600 30px/1 var(--sans);letter-spacing:-.03em;opacity:0;
+  background:linear-gradient(105deg,#f4f4f5 0%,#f4f4f5 40%,#f4ffcf 50%,#f4f4f5 60%,#f4f4f5 100%);
   background-size:280% 100%;background-position:120% 0;
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
-  animation:wmReveal .55s cubic-bezier(.2,.7,.2,1) .92s forwards, wmShine .7s ease 1.18s forwards}
+  animation:wmReveal .55s cubic-bezier(.2,.7,.2,1) .62s forwards, wmShine .7s ease .9s forwards}
 @keyframes wmReveal{
   0%{opacity:0;clip-path:inset(0 100% 0 0);transform:translateY(14px)}
   100%{opacity:1;clip-path:inset(0 0 0 0);transform:none}}
 @keyframes wmShine{0%{background-position:120% 0}100%{background-position:-40% 0}}
+
+/* ===== the start screen focuses in beneath the fading splash, staggered ===== */
+.boot .inbox-start .st-brand,.boot .inbox-start h1,.boot .inbox-start .st-status,
+.boot .inbox-start .st-compose,.boot .inbox-start .st-try,.boot .inbox-start .st-live{opacity:0}
+.boot .inbox-start .st-brand{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.15s forwards}
+.boot .inbox-start h1{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.25s forwards}
+.boot .inbox-start .st-status{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.32s forwards}
+.boot .inbox-start .st-compose{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.38s forwards}
+.boot .inbox-start .st-try{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.46s forwards}
+.boot .inbox-start .st-live{animation:focusIn .5s cubic-bezier(.2,.7,.2,1) 1.54s forwards}
+@keyframes focusIn{from{opacity:0;transform:translateY(18px) scale(.965)}to{opacity:1;transform:none}}

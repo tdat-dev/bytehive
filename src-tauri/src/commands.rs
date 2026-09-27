@@ -16,7 +16,13 @@ use portable_pty::PtySize;
 struct ExitPayload {
     id: String,
     code: u32,
+    /// Which run of this agent id ended (see `pty_spawn`'s return value).
+    run: u64,
 }
+
+/// Numbers every spawn. An agent restarted in place keeps its id; the run
+/// tells its old process's late exit apart from the new one.
+static NEXT_RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[tauri::command]
 pub async fn pty_spawn(
@@ -34,12 +40,19 @@ pub async fn pty_spawn(
     // number — pathologically slow under a chatty agent's output and the cause
     // of the whole-app lag when a fleet is producing a lot of terminal output.
     on_bytes: Channel<InvokeResponseBody>,
-) -> Result<(), CommandError> {
+) -> Result<u64, CommandError> {
     let mut spec = CommandSpec::new(program);
     for a in args {
         spec = spec.arg(a);
     }
     spec.cwd = cwd.filter(|s| !s.is_empty());
+    // portable-pty falls back to the home folder when the cwd is missing, so an
+    // agent would run somewhere nobody chose. Refuse and say which folder.
+    if let Some(dir) = &spec.cwd {
+        if !Path::new(dir).is_dir() {
+            return Err(CommandError::Failed(format!("The folder {dir} doesn't exist anymore.")));
+        }
+    }
     spec.env = env.unwrap_or_default();
     let size = PtySize {
         rows,
@@ -51,6 +64,7 @@ pub async fn pty_spawn(
     let app2 = app.clone();
     let exit_id = agent_id.clone();
     let registry = state.registry.clone();
+    let run = NEXT_RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     run_blocking(move || {
         let mut reg = registry
@@ -64,10 +78,11 @@ pub async fn pty_spawn(
                 let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
             },
             move |code| {
-                let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code });
+                let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code, run });
             },
         )
-        .map_err(CommandError::from)
+        .map_err(CommandError::from)?;
+        Ok(run)
     })
     .await
 }
@@ -296,6 +311,424 @@ fn claude_usage_impl(dir: &str) -> Vec<ModelUsage> {
     out
 }
 
+/// New lines of one Claude Code transcript, for the chat view.
+#[derive(Serialize, Default, Clone)]
+pub struct TranscriptChunk {
+    /// The file read, or "" when none was found yet.
+    pub path: String,
+    /// Complete JSONL lines from `offset` on (a half-written last line waits).
+    pub text: String,
+    /// Where to read from next time.
+    pub next: u64,
+}
+
+/// Where pictures pasted into the chat composer are kept, and for how long.
+const PASTE_DIR: &str = "maestro-paste";
+const PASTE_KEEP_SECS: u64 = 7 * 24 * 3600;
+
+/// Save a picture pasted into the chat composer (base64) as a file, so it can
+/// reach the agent the way a dropped file does: as a path. Returns the path.
+#[tauri::command]
+pub async fn save_pasted_image(data: String, ext: String) -> Result<String, CommandError> {
+    run_blocking(move || save_pasted_image_in(&std::env::temp_dir().join(PASTE_DIR), &data, &ext)).await
+}
+
+/// Most a file pasted into the chat may be (base64 grows it by a third on the way).
+const PASTE_FILE_MAX: usize = 50 * 1024 * 1024;
+
+/// Save a file pasted into the chat composer (copied in Explorer: the page gets
+/// its content, not where it lives) under its own name, in a folder of its own
+/// so two pastes of `notes.txt` don't collide. Returns the path.
+#[tauri::command]
+pub async fn save_pasted_file(data: String, name: String) -> Result<String, CommandError> {
+    run_blocking(move || save_pasted_file_in(&std::env::temp_dir().join(PASTE_DIR), &data, &name)).await
+}
+
+fn save_pasted_file_in(dir: &Path, data: &str, name: &str) -> Result<String, CommandError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    // Only the name: no folders, nothing Windows refuses in a file name.
+    let clean: String = Path::new(name)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { '_' } else { c })
+        .collect();
+    let clean = clean.trim().trim_end_matches('.').to_string();
+    let clean = if clean.is_empty() { "pasted".to_string() } else { clean };
+    if data.len() / 4 * 3 > PASTE_FILE_MAX {
+        return Err(CommandError::Failed(format!("{clean} is over {} MB", PASTE_FILE_MAX / 1024 / 1024)));
+    }
+    let bytes = STANDARD
+        .decode(data.trim())
+        .map_err(|e| CommandError::Failed(format!("bad file data: {e}")))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut folder = dir.join(format!("files-{stamp}"));
+    let mut n = 1;
+    while folder.exists() {
+        folder = dir.join(format!("files-{stamp}-{n}"));
+        n += 1;
+    }
+    std::fs::create_dir_all(&folder).map_err(|e| CommandError::Failed(e.to_string()))?;
+    let path = folder.join(&clean);
+    std::fs::write(&path, bytes).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+fn save_pasted_image_in(dir: &Path, data: &str, ext: &str) -> Result<String, CommandError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
+        return Err(CommandError::Failed(format!("not a picture type: {ext}")));
+    }
+    let bytes = STANDARD
+        .decode(data.trim())
+        .map_err(|e| CommandError::Failed(format!("bad picture data: {e}")))?;
+    std::fs::create_dir_all(dir).map_err(|e| CommandError::Failed(e.to_string()))?;
+    // Pastes from earlier sessions go after a week.
+    if let Ok(list) = std::fs::read_dir(dir) {
+        for entry in list.flatten() {
+            let old = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age.as_secs() > PASTE_KEEP_SECS);
+            if old {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut path = dir.join(format!("pasted-{stamp}.{ext}"));
+    let mut n = 1;
+    while path.exists() {
+        path = dir.join(format!("pasted-{stamp}-{n}.{ext}"));
+        n += 1;
+    }
+    std::fs::write(&path, bytes).map_err(|e| CommandError::Failed(e.to_string()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Most bytes one read hands back, so a long session loads in slices.
+const TRANSCRIPT_SLICE: u64 = 2 * 1024 * 1024;
+
+/// Read an agent's transcript under `~/.claude/projects/<slug of dir>/`: the
+/// `<session_id>.jsonl` Maestro started it with, or, when that is unknown, the
+/// newest transcript written since `since_ms` (an agent started by hand).
+/// Returns the complete lines after `offset`.
+#[tauri::command]
+pub async fn claude_transcript(
+    dir: String,
+    session_id: Option<String>,
+    since_ms: Option<u64>,
+    offset: u64,
+) -> Result<TranscriptChunk, CommandError> {
+    run_blocking(move || Ok(claude_transcript_impl(&dir, session_id.as_deref(), since_ms, offset))).await
+}
+
+fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<u64>, offset: u64) -> TranscriptChunk {
+    use std::io::{Read, Seek, SeekFrom};
+    let home = match std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        Ok(h) => h,
+        Err(_) => return TranscriptChunk::default(),
+    };
+    let proj = Path::new(&home).join(".claude").join("projects").join(claude_project_slug(dir));
+    let path = match session_id {
+        // A session id is a UUID; anything else never reaches the filesystem.
+        Some(id) if !id.is_empty() && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') => {
+            proj.join(format!("{id}.jsonl"))
+        }
+        _ => {
+            let since = since_ms.unwrap_or(0);
+            let Ok(entries) = std::fs::read_dir(&proj) else {
+                return TranscriptChunk::default();
+            };
+            let mut best: Option<(u128, std::path::PathBuf)> = None;
+            for ent in entries.flatten() {
+                let p = ent.path();
+                if p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                let Ok(meta) = ent.metadata() else { continue };
+                let Ok(modified) = meta.modified() else { continue };
+                let ms = modified
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0);
+                if ms < since as u128 {
+                    continue;
+                }
+                if best.as_ref().map_or(true, |(b, _)| ms > *b) {
+                    best = Some((ms, p));
+                }
+            }
+            match best {
+                Some((_, p)) => p,
+                None => return TranscriptChunk::default(),
+            }
+        }
+    };
+    let Ok(mut file) = std::fs::File::open(&path) else {
+        return TranscriptChunk { path: String::new(), text: String::new(), next: offset };
+    };
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    // The file was replaced or cut: start over.
+    let start = if offset > size { 0 } else { offset };
+    let want = (size - start).min(TRANSCRIPT_SLICE);
+    let mut buf = vec![0u8; want as usize];
+    if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut buf).is_err() {
+        return TranscriptChunk { path: path.to_string_lossy().into_owned(), text: String::new(), next: start };
+    }
+    // Hand back whole lines only; the rest is read next time.
+    let cut = match buf.iter().rposition(|&b| b == b'\n') {
+        Some(i) => i + 1,
+        None => 0,
+    };
+    buf.truncate(cut);
+    TranscriptChunk {
+        path: path.to_string_lossy().into_owned(),
+        text: String::from_utf8_lossy(&buf).into_owned(),
+        next: start + cut as u64,
+    }
+}
+
+/// Where Claude Code keeps the transcripts of sessions run in `dir`.
+pub(crate) fn claude_project_dir(dir: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
+    Some(Path::new(&home).join(".claude").join("projects").join(claude_project_slug(dir)))
+}
+
+/// A session id is a UUID; anything else never reaches the filesystem.
+fn is_session_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+/// Whether Claude Code has a transcript for this session in `dir`, i.e.
+/// whether `claude --resume <id>` can pick it up.
+#[tauri::command]
+pub async fn claude_session_exists(dir: String, session_id: String) -> Result<bool, CommandError> {
+    run_blocking(move || {
+        Ok(is_session_id(&session_id)
+            && claude_project_dir(&dir).map_or(false, |p| p.join(format!("{session_id}.jsonl")).is_file()))
+    })
+    .await
+}
+
+/// One earlier conversation, for "resume a conversation".
+#[derive(Serialize, Clone)]
+pub struct SessionInfo {
+    pub id: String,
+    pub modified_ms: u64,
+    /// Claude's own title for it, else your first message.
+    pub title: String,
+    pub messages: u32,
+    /// The folder it ran in: `claude --resume` only picks it up from there.
+    pub cwd: String,
+}
+
+/// The conversations Claude Code has in `dir`, newest first. Sessions with
+/// nothing you typed (a local /cost, a /model) are left out. Only the start of
+/// each file is read: the title and the first message are near the top.
+#[tauri::command]
+pub async fn claude_sessions(dir: String) -> Result<Vec<SessionInfo>, CommandError> {
+    run_blocking(move || Ok(claude_sessions_impl(&dir))).await
+}
+
+/// The newest conversations in every folder, so one begun elsewhere can be
+/// carried on (in its own folder).
+#[tauri::command]
+pub async fn claude_sessions_everywhere(limit: usize) -> Result<Vec<SessionInfo>, CommandError> {
+    run_blocking(move || Ok(claude_sessions_everywhere_impl(limit.clamp(1, 200)))).await
+}
+
+fn claude_sessions_impl(dir: &str) -> Vec<SessionInfo> {
+    let Some(proj) = claude_project_dir(dir) else { return Vec::new() };
+    let mut out: Vec<SessionInfo> = session_files(&proj).into_iter().filter_map(|(path, ms)| session_info(&path, ms)).collect();
+    out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+    out.truncate(40);
+    out
+}
+
+fn claude_sessions_everywhere_impl(limit: usize) -> Vec<SessionInfo> {
+    let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Vec::new() };
+    let root = Path::new(&home).join(".claude").join("projects");
+    let Ok(projects) = std::fs::read_dir(&root) else { return Vec::new() };
+    let mut files: Vec<(std::path::PathBuf, u64)> = projects.flatten().filter(|p| p.path().is_dir()).flat_map(|p| session_files(&p.path())).collect();
+    // Only the newest files are opened: a few extra for the ones with nothing typed.
+    files.sort_by(|a, b| b.1.cmp(&a.1));
+    files.truncate(limit * 2);
+    let mut out: Vec<SessionInfo> = files.into_iter().filter_map(|(path, ms)| session_info(&path, ms)).collect();
+    out.truncate(limit);
+    out
+}
+
+/// The session transcripts in one project folder, with when each last changed.
+fn session_files(proj: &Path) -> Vec<(std::path::PathBuf, u64)> {
+    let Ok(entries) = std::fs::read_dir(proj) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter_map(|ent| {
+            let path = ent.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                return None;
+            }
+            let id = path.file_stem().and_then(|s| s.to_str())?;
+            if !is_session_id(id) {
+                return None;
+            }
+            let ms = ent
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            Some((path, ms))
+        })
+        .collect()
+}
+
+/// What the start of a transcript says: its title, how many messages you
+/// typed, the folder it ran in. None when you typed nothing.
+fn session_info(path: &Path, modified_ms: u64) -> Option<SessionInfo> {
+    use std::io::Read;
+    let id = path.file_stem().and_then(|s| s.to_str())?.to_string();
+    let file = std::fs::File::open(path).ok()?;
+    let mut head = Vec::new();
+    let _ = file.take(768 * 1024).read_to_end(&mut head);
+    let text = String::from_utf8_lossy(&head);
+    let mut title: Option<String> = None;
+    let mut first: Option<String> = None;
+    let mut cwd = String::new();
+    let mut messages = 0u32;
+    for line in text.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        if cwd.is_empty() {
+            if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
+                cwd = c.to_string();
+            }
+        }
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("ai-title") => {
+                if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
+                    title = Some(t.to_string());
+                }
+            }
+            Some("user") => {
+                if v.get("isMeta").and_then(|x| x.as_bool()) == Some(true) {
+                    continue;
+                }
+                let human = v.get("origin").and_then(|o| o.get("kind")).and_then(|k| k.as_str()).map_or(true, |k| k == "human");
+                let content = v.get("message").and_then(|m| m.get("content"));
+                let said = match content {
+                    Some(serde_json::Value::String(s)) => Some(s.clone()),
+                    Some(serde_json::Value::Array(parts)) => parts
+                        .iter()
+                        .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
+                        .and_then(|p| p.get("text").and_then(|t| t.as_str()).map(str::to_string)),
+                    _ => None,
+                };
+                let Some(said) = said else { continue };
+                if !human || said.starts_with('<') || said.starts_with("[Request interrupted") {
+                    continue; // commands, their output, caveats, tool results
+                }
+                messages += 1;
+                if first.is_none() {
+                    first = Some(said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(90).collect());
+                }
+            }
+            _ => {}
+        }
+    }
+    if messages == 0 {
+        return None;
+    }
+    Some(SessionInfo { id, modified_ms, title: title.or(first).unwrap_or_default(), messages, cwd })
+}
+
+/// Most output `run_capture` keeps: a CLI that prints more is cut here.
+const CAPTURE_MAX: usize = 8 * 1024 * 1024;
+
+/// Run a program to completion (no window, no stdin) in `cwd` and return its
+/// stdout. For asking an agent CLI about itself, e.g. Claude Code's
+/// `claude -p /cost --output-format stream-json --verbose`, whose first
+/// event lists its commands, skills and model without calling the model.
+/// Killed (with its child processes) after `timeout_ms`.
+#[tauri::command]
+pub async fn run_capture(
+    program: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<String, CommandError> {
+    run_blocking(move || run_capture_impl(&program, &args, cwd.as_deref(), timeout_ms.unwrap_or(60_000))).await
+}
+
+fn run_capture_impl(program: &str, args: &[String], cwd: Option<&str>, timeout_ms: u64) -> Result<String, CommandError> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let mut cmd = Command::new(program);
+    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
+        if !Path::new(dir).is_dir() {
+            return Err(CommandError::Failed(format!("The folder {dir} doesn't exist anymore.")));
+        }
+        cmd.current_dir(dir);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = cmd.spawn().map_err(|e| CommandError::Failed(format!("couldn't start {program}: {e}")))?;
+    let pid = child.id();
+    let mut out = child.stdout.take().ok_or_else(|| CommandError::Failed("no stdout".into()))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 64 * 1024];
+        loop {
+            match out.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if buf.len() < CAPTURE_MAX {
+                        buf.extend_from_slice(&chunk[..n.min(CAPTURE_MAX - buf.len())]);
+                    }
+                }
+            }
+        }
+        let _ = tx.send(buf);
+    });
+    match rx.recv_timeout(std::time::Duration::from_millis(timeout_ms)) {
+        Ok(buf) => {
+            let _ = child.wait();
+            Ok(String::from_utf8_lossy(&buf).into_owned())
+        }
+        Err(_) => {
+            // Take the whole tree down: a .cmd shim leaves its node process behind.
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = Command::new("taskkill")
+                    .args(["/T", "/F", "/PID", &pid.to_string()])
+                    .creation_flags(0x0800_0000)
+                    .status();
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(CommandError::Failed(format!("{program} took longer than {} s", timeout_ms / 1000)))
+        }
+    }
+}
+
 /// Show or hide the system-tray icon. Driven by the frontend "Hide to tray"
 /// setting so the icon only appears for users who opt in.
 #[tauri::command]
@@ -449,5 +882,71 @@ mod tests {
             "C:\\Windows\\System32\\no-such-binary.exe",
             &default_exts()
         ));
+    }
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+
+    #[test]
+    fn a_pasted_picture_is_saved_as_its_own_file() {
+        let dir = std::env::temp_dir().join(format!("maestro-paste-test-{}", std::process::id()));
+        let a = save_pasted_image_in(&dir, "iVBORw0KGgo=", "PNG").unwrap();
+        let b = save_pasted_image_in(&dir, "iVBORw0KGgo=", ".png").unwrap();
+        assert_ne!(a, b);
+        assert!(a.ends_with(".png"));
+        assert_eq!(std::fs::read(&a).unwrap(), b"\x89PNG\r\n\x1a\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pasted_file_keeps_its_name_in_a_folder_of_its_own() {
+        let dir = std::env::temp_dir().join(format!("maestro-paste-test3-{}", std::process::id()));
+        let a = save_pasted_file_in(&dir, "aGk=", "notes.txt").unwrap();
+        let b = save_pasted_file_in(&dir, "aGk=", "notes.txt").unwrap();
+        assert!(a.ends_with("notes.txt") && b.ends_with("notes.txt"));
+        assert_ne!(a, b);
+        assert_eq!(std::fs::read(&a).unwrap(), b"hi");
+        // a name can't climb out of the folder or carry what Windows refuses
+        let c = save_pasted_file_in(&dir, "aGk=", "..\\..\\evil:name?.txt").unwrap();
+        assert!(Path::new(&c).starts_with(&dir));
+        assert!(c.ends_with("evil_name_.txt"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_pictures_and_real_base64_are_saved() {
+        let dir = std::env::temp_dir().join(format!("maestro-paste-test2-{}", std::process::id()));
+        assert!(save_pasted_image_in(&dir, "iVBORw0KGgo=", "exe").is_err());
+        assert!(save_pasted_image_in(&dir, "not base64!", "png").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+
+    #[test]
+    fn a_session_says_its_folder_title_and_what_you_typed() {
+        let dir = std::env::temp_dir().join(format!("maestro-sessions-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let id = "11111111-2222-3333-4444-555555555555";
+        let lines = [
+            r#"{"type":"user","cwd":"D:\\zoldify","origin":{"kind":"human"},"message":{"content":"fix   the build"}}"#,
+            r#"{"type":"user","cwd":"D:\\zoldify","origin":{"kind":"task-notification"},"message":{"content":"done"}}"#,
+            r#"{"type":"ai-title","aiTitle":"Fix the build"}"#,
+        ];
+        let path = dir.join(format!("{id}.jsonl"));
+        std::fs::write(&path, lines.join("\n")).unwrap();
+        let s = session_info(&path, 7).unwrap();
+        assert_eq!((s.id.as_str(), s.title.as_str(), s.messages, s.cwd.as_str(), s.modified_ms), (id, "Fix the build", 1, "D:\\zoldify", 7));
+        // nothing typed: not a conversation to resume
+        let empty = dir.join("22222222-2222-3333-4444-555555555555.jsonl");
+        std::fs::write(&empty, r#"{"type":"user","origin":{"kind":"task-notification"},"message":{"content":"x"}}"#).unwrap();
+        assert!(session_info(&empty, 1).is_none());
+        assert_eq!(session_files(&dir).len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

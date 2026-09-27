@@ -6,9 +6,17 @@
 // attention/status bookkeeping, recording stop) are injected via
 // configureBridges to avoid a circular import.
 
-import { sendMessage, onDragDrop, onExit } from "./ipc";
+import {
+  sendMessage,
+  setPaneScreenReader,
+  setPaneBracketedPasteReader,
+  onDragDrop,
+  onExit,
+} from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
+import { dropFilesToAgent, typeToAgent } from "./chatview";
 import { workspaces, activeWs } from "./appstate";
+import { focusPane } from "./panelayout";
 import {
   setAgentSender,
   setPaneTargeting,
@@ -74,7 +82,11 @@ function setDropTarget(p: Pane | null, agent = false) {
  *  the OS file-drop (paths from outside the app) and the in-app file-tree drag. */
 function dropPathsIntoPane(target: Pane, paths: string[]) {
   if (paths.length === 0) return;
+  // Shown as a chat: pictures attach, other files go in as @path.
+  if (dropFilesToAgent(target, paths)) return;
   const text = paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
+  // Shown as a chat: the path goes where you are typing, not into the hidden terminal.
+  if (typeToAgent(target, text)) return;
   void sendMessage(target.id, text, false).catch(() => {});
   target.term.focus();
 }
@@ -202,6 +214,13 @@ export function initBridges(): void {
           attention: p.attention,
           spawnedAt: p.spawnedAt,
           lastOutputAt: p.lastOutputAt,
+          badge: p.spec.badge,
+          role: p.spec.role,
+          cwd: p.spec.cwd,
+          branch: p.spec.branch,
+          // "on stage" = the pane filling the focus stage of the ACTIVE canvas,
+          // i.e. the agent the person is looking at right now.
+          onStage: ws === activeWs && p.el.classList.contains("focused"),
         });
     return out;
   });
@@ -210,9 +229,34 @@ export function initBridges(): void {
     const pane = ws?.panes.get(paneId);
     if (!ws || !pane) return false;
     if (ws !== activeWs) activateWorkspace(ws);
-    pane.term.focus();
-    pane.el.scrollIntoView({ block: "nearest" });
+    // On a canvas in focus mode the other panes are display:none, so focusing a
+    // hidden terminal does nothing visible — swap the stage to this pane instead.
+    if (ws.gridEl.classList.contains("has-focus")) {
+      focusPane(ws, pane);
+    } else {
+      pane.term.focus();
+      pane.el.scrollIntoView({ block: "nearest" });
+    }
     return true;
+  });
+
+  // Let a hand-off see the pane it typed into, so it can tell whether its Enter
+  // took. Panes live per workspace, and a message can go to a background one.
+  setPaneScreenReader((id) => {
+    for (const ws of workspaces.values()) {
+      const pane = ws.panes.get(id);
+      if (pane) return pane.term.snapshot(20);
+    }
+    return "";
+  });
+  // …and whether that pane asked for bracketed paste, so a long hand-off can be
+  // marked as one block instead of arriving as a burst it has to guess at.
+  setPaneBracketedPasteReader((id) => {
+    for (const ws of workspaces.values()) {
+      const pane = ws.panes.get(id);
+      if (pane) return pane.term.bracketedPaste();
+    }
+    return false;
   });
 
   // Fleet file-bridge: publish each workspace's roster to .maestro/fleet.json and
@@ -295,10 +339,12 @@ export function initBridges(): void {
   });
 
   /* pty-exit listener LAST + guarded so it can never block the wiring above. */
-  onExit((id, code) => {
+  onExit((id, code, run) => {
     for (const w of workspaces.values()) {
       const p = w.panes.get(id);
       if (p) {
+        // The exit of a run this pane has already replaced (restart in place).
+        if (p.run !== undefined && run !== p.run) break;
         p.running = false;
         p.spawnedAt = null;
         clearAttention(p); // a dead agent isn't waiting on anyone

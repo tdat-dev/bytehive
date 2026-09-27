@@ -23,26 +23,6 @@
   -webkit-mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
   mask: radial-gradient(120% 100% at 50% 40%, #000 55%, transparent);
 }
-/* The fleet sigil (sigilcanvas.ts). Above the wallpaper, BELOW every pane —
-   it is scenery seen through the glass, never an overlay on the text. It was
-   briefly moved on top to make it visible and that was the wrong trade: it
-   read as clutter across the terminals. The visibility problem belongs to the
-   glass blur below, not to the stacking order. Never interactive. */
-.grid.canvas > canvas.sigil {
-  position: absolute;
-  /* No `inset: 0` — sigilcanvas.ts parks this over the sigil's own centred
-     square (sigilBox) and sets left/top/width/height in px. Stretching it to
-     the grid would quadruple the pixels cleared and composited every frame,
-     which is what smooth animation is being bought with. */
-  z-index: 1;
-  pointer-events: none;
-}
-/* The focus stage covers the canvas and dims what's left; the sigil would only
-   show up as haze behind the scrim. (The draw loop stops in focus mode too —
-   this is the visual half of the same decision.) */
-.grid.canvas.has-focus > canvas.sigil {
-  display: none;
-}
 .grid.canvas .pane {
   position: absolute;
   z-index: 2;
@@ -55,7 +35,7 @@
      the terminal agree. At the default "Glass" opacity it is fully transparent
      and the wallpaper reads straight through the pane — the border, the title
      bar and the text are all that remain. */
-  background: var(--pane-plate, rgba(12, 14, 19, 0.62));
+  background: var(--pane-plate, rgba(10,10,12, 0.62));
   border: 1px solid var(--line-2);
   box-shadow: 0 22px 50px -22px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s;
@@ -123,7 +103,7 @@
   /* Its own plate, independent of the pane's: the dot, the name and the buttons
      are chrome, and they have to stay readable and hittable over any wallpaper
      even when the body below them is fully see-through. */
-  background: rgba(12, 14, 19, 0.55);
+  background: rgba(10,10,12, 0.55);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
   cursor: grab;
@@ -159,8 +139,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   /* dots don't breathe */
-  .grid.canvas .pane.run .pb-dot,
-  .cloud-rail .rc .av .s.running {
+  .grid.canvas .pane.run .pb-dot {
     animation: none;
   }
 }
@@ -223,11 +202,11 @@
   right: 0;
   display: flex;
   gap: 1px;
-  padding: 3px;
-  background: var(--surface-1);
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  box-shadow: 0 12px 30px -12px rgba(0, 0, 0, 0.7);
+  padding: 4px;
+  background: var(--surface-2);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   z-index: 10;
 }
 .grid.canvas .pb-more-menu[hidden] { display: none; }
@@ -329,7 +308,7 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: rgba(6, 8, 11, 0.55);
+  background: rgba(0,0,0, 0.55);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
@@ -344,7 +323,7 @@
      and a zoom-in on entry — the mockup's focus-stage feel. */
   border-radius: 16px;
   box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9),
-    0 0 0 1px color-mix(in oklab, var(--stg, #27b9a3) 22%, transparent);
+    0 0 0 1px color-mix(in oklab, var(--stg, #6fd6a0) 22%, transparent);
   transform-origin: var(--ox, 50%) var(--oy, 50%);
   animation: zoomIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -362,104 +341,44 @@
 .grid.canvas.has-focus .pane.focused .pane-bar { height: 38px; }
 .grid.canvas.has-focus .pane.focused .pb-name { font-size: 14.5px; }
 .grid.canvas.has-focus .pane.focused .pb-dot { width: 9px; height: 9px; }
-.cloud-rail {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: var(--rail-w, 74px);
-  z-index: 8;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  overflow-y: auto;
-  padding: 12px 8px;
+/* ---------- focus-stage identity ----------
+   When a pane fills the stage it must SHOUT whose it is (the whole point of
+   opening it large): a bigger avatar that carries a live status ring, the name
+   at reading size, and a muted subtitle naming the workspace + where it works.
+   Nothing here changes the tiled bar — it's all scoped to .pane.focused. */
+.grid.canvas.has-focus .pane.focused .pb-av {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 15px;
 }
-.grid.canvas:not(.has-focus) .cloud-rail {
-  display: none;
+/* live status ring on the stage avatar — colour follows the classes setStatus /
+   attention already toggle, so it stays truthful without a render loop. The word
+   in .pb-where + the ring keep status off colour-alone. */
+.grid.canvas.has-focus .pane.focused.run .pb-av {
+  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px color-mix(in oklab, var(--run) 65%, transparent);
 }
-.cloud-rail .rc {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 2px;
-  border-radius: 12px;
-  cursor: pointer;
-  width: 100%;
-  background: none;
-  border: 0;
+.grid.canvas.has-focus .pane.focused.attention .pb-av {
+  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px color-mix(in oklab, var(--amber) 78%, transparent);
 }
-.cloud-rail .rc:hover {
-  background: var(--surface-1);
+.grid.canvas.has-focus .pane.focused .pb-name {
+  font-size: 15px;
+  max-width: 280px;
 }
-.cloud-rail .rc .av {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 800;
-  color: #0a0d07;
-  position: relative;
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in oklab, var(--hue) 55%, transparent);
-  transition: transform 0.15s;
-}
-.cloud-rail .rc:hover .av {
-  transform: scale(1.08);
-}
-.rail-lbl {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  font-weight: 700;
-  color: #5a6472;
-  text-align: center;
-}
-.cloud-rail .rc .av .s {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 2px solid var(--surface-0);
-}
-.cloud-rail .rc .av .s.running {
-  background: var(--run);
-  animation: breathe 2.4s ease-in-out infinite;
-}
-.cloud-rail .rc .av .s.idle {
-  background: var(--idle);
-}
-.cloud-rail .rc .av .s.attention {
-  background: #ffb84c;
-  box-shadow: 0 0 7px #ffb84c;
-}
-/* The director in the rail: the same filled accent plate, so "accent = the one
-   who dispatches" holds in focus mode too. */
-.cloud-rail .rc[data-role="director"],
-.cloud-rail .rc[data-role="director"]:hover {
-  background: var(--accent);
-}
-.cloud-rail .rc[data-role="director"] .n {
-  color: var(--accent-ink);
-  font-weight: 700;
-}
-.cloud-rail .rc[data-role="director"] .av {
-  /* the ring's outer stop is --bg elsewhere; on the plate it has to be the plate */
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 3px color-mix(in oklab, var(--accent-ink) 45%, transparent);
-}
-.cloud-rail .rc .n {
-  font-size: 9.5px;
-  font-weight: 600;
+.pb-where { display: none; }
+.grid.canvas.has-focus .pane.focused .pb-where {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
   color: var(--muted);
-  max-width: 66px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 280px;
+  padding-left: 2px;
+}
+.grid.canvas .pane[data-role="director"] .pb-where {
+  color: color-mix(in oklab, var(--accent-ink) 78%, transparent);
 }
 
 /* scrollbars: slim, hidden until the area is scrolled or hovered */

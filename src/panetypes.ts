@@ -16,6 +16,11 @@ export interface AgentSpec {
   role?: "conductor"; // a conductor gets the orchestration system prompt
   worktree?: string; // worktree path once created (isolated agents)
   branch?: string; // the agent's git branch (isolated agents)
+  title?: string; // what it was asked to do, short ("Fix the flaky upload test")
+  race?: { id: string; n: number; of: number }; // one of several agents given the same job
+  sessionId?: string; // Claude Code session of the current run, so the chat view finds its transcript
+  resumeIn?: string; // a conversation begun in another folder is carried on there: the CLI runs in it, no worktree
+  ranIn?: string; // the folder the CLI was started in: its worktree, the project folder, or home for a project without one
 }
 
 /** One agent pane: its DOM, its terminal, and live status bookkeeping. */
@@ -33,6 +38,11 @@ export interface Pane {
   color: string;
   spec: AgentSpec; // the launch recipe — kept so the session can be serialized + re-booted
   toggleFind?: () => void; // open/close this pane's find bar (set by wirePaneSearch)
+  error?: string; // why the last start failed ("The folder … doesn't exist anymore.")
+  run?: number; // run number of the current process (pty_spawn); an older run's exit is ignored
+  /** Start again in this same pane (keeps id, stage, chat, Grid spot): its own
+   *  conversation again, a new one (fresh), or an earlier one (session). */
+  restart?: (opts?: { fresh?: boolean; session?: string; dir?: string }) => Promise<void>;
   recording?: string; // absolute path of the active recording file, when recording
 }
 
@@ -44,7 +54,6 @@ export interface Workspace {
   repoRoot: string | null; // git repo root when isolated; else null
   isolated: boolean; // create a worktree per agent
   gridEl: HTMLElement;
-  tabEl: HTMLElement;
   panes: Map<string, Pane>;
   layout: Map<string, Tile>; // canvas position + size per pane id
 }

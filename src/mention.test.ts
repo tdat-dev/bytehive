@@ -1,46 +1,27 @@
-import { describe, it, expect } from "vitest";
-import { activeMention, matchNames, splitMentions } from "./mention";
+import { describe, expect, it } from "vitest";
+import { applyMention, mentionAt, mentionMatches, withFolders } from "./mention";
 
-describe("activeMention", () => {
-  it("returns the @token being typed at the caret", () => {
-    expect(activeMention("@An", 3)).toBe("An");
-    expect(activeMention("hi @", 4)).toBe("");
-    expect(activeMention("hi @Bo", 6)).toBe("Bo");
+describe("@ mentions", () => {
+  it("finds the @word being typed, not an email or a finished one", () => {
+    expect(mentionAt("look at @src/ch", 15)).toEqual({ start: 8, query: "src/ch" });
+    expect(mentionAt("@", 1)).toEqual({ start: 0, query: "" });
+    expect(mentionAt("mail me@home", 12)).toBeNull();
+    expect(mentionAt("@done now", 9)).toBeNull();
   });
-  it("is null when the caret is not inside an @token", () => {
-    expect(activeMention("hi there", 8)).toBeNull();
-    expect(activeMention("@Ana x", 6)).toBeNull(); // caret after a space
-    expect(activeMention("", 0)).toBeNull();
-  });
-});
 
-describe("matchNames", () => {
-  it("matches by case-insensitive prefix; empty query matches all", () => {
-    expect(matchNames("a", ["Ana", "Bob", "Ada"])).toEqual(["Ana", "Ada"]);
-    expect(matchNames("", ["Ana", "Bob"])).toEqual(["Ana", "Bob"]);
-    expect(matchNames("z", ["Ana"])).toEqual([]);
+  it("offers files and their folders, the name before the path, short before long", () => {
+    const all = withFolders(["src/chatview.ts", "src/chatmodel.ts", "src/styles/chat.css", "docs/chat-notes.md", "README.md"]);
+    expect(all.filter((h) => h.folder).map((h) => h.path).sort()).toEqual(["docs/", "src/", "src/styles/"]);
+    expect(mentionMatches(all, "chatv").map((h) => h.path)).toEqual(["src/chatview.ts"]);
+    expect(mentionMatches(all, "chat").map((h) => h.path).slice(0, 3)).toEqual(["src/styles/chat.css", "src/chatview.ts", "src/chatmodel.ts"]);
+    expect(mentionMatches(all, "styles").map((h) => h.path)[0]).toBe("src/styles/");
+    // letters in order, for a quick abbreviation
+    expect(mentionMatches(all, "cvw").map((h) => h.path)).toEqual(["src/chatview.ts"]);
+    expect(mentionMatches(all, "zzz")).toEqual([]);
   });
-});
 
-describe("splitMentions", () => {
-  const names = ["Ana", "Bob"];
-  it("fans a multi-mention line out into per-agent messages", () => {
-    expect(splitMentions("@Ana run tests @Bob deploy", names)).toEqual([
-      { name: "Ana", body: "run tests" },
-      { name: "Bob", body: "deploy" },
-    ]);
-  });
-  it("routes leading text (before any mention) to the whole fleet", () => {
-    expect(splitMentions("do it @Ana now", names)).toEqual([
-      { name: null, body: "do it" },
-      { name: "Ana", body: "now" },
-    ]);
-  });
-  it("no mention → one whole-fleet segment; blank → nothing", () => {
-    expect(splitMentions("hello everyone", names)).toEqual([{ name: null, body: "hello everyone" }]);
-    expect(splitMentions("   ", names)).toEqual([]);
-  });
-  it("ignores an @word that is not a known agent", () => {
-    expect(splitMentions("@nobody hi", names)).toEqual([{ name: null, body: "@nobody hi" }]);
+  it("puts the pick in place of the @word, with a space after, quoting a path with spaces", () => {
+    expect(applyMention("see @cha now", 4, 8, "src/chatview.ts")).toEqual({ text: "see @src/chatview.ts now", caret: 21 });
+    expect(applyMention("@x", 0, 2, "My Docs/a.md")).toEqual({ text: '@"My Docs/a.md" ', caret: 16 });
   });
 });

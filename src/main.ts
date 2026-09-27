@@ -2,28 +2,28 @@
 // here) so the first paint is fully styled — see the note in index.html.
 import { resizePty, killAll, setTrayTooltip } from "./ipc";
 import { CLI_PRESETS } from "./crew";
-import { type Pane } from "./panetypes";
-import { configurePaneLayout, tidyLayout } from "./panelayout";
-import { configureBroadcast, initBroadcast, updateBcast, focusBroadcast } from "./broadcast";
-import { configureRecents, getRecents, renderRecents } from "./recents";
+import { type Pane, type Workspace } from "./panetypes";
+import { installModalTrap } from "./confirmmodal";
+import { configurePaneLayout } from "./panelayout";
 import { configureUsage, initUsage } from "./usage";
 import { configureReplay, initReplay } from "./replay";
 import { configureDashboard, initDashboard } from "./dashboard";
-import { configureSpawnModal, initSpawnModal, openModal, spawnCrew, loadCrew, renderCrew, loadTemplates, saveTemplates, templateSummary } from "./spawnmodal";
-import { configureSpawnMenu, initSpawnMenu } from "./spawnmenu";
-import { configureWizard, initWizard, openWizard, isPresetAvailable, refreshCliAvailability, launchPreset } from "./wizard_ui";
+import { configureSpawnModal, spawnCrew, loadTemplates, refreshCliAvailability } from "./spawnmodal";
+import { addRecent } from "./recents";
 import { closeSettings, initSettingsModal } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
-import { confirmModal } from "./confirmmodal";
+import { updateTasks } from "./tasks";
+import { initInbox } from "./inbox";
+import { initBrowserView } from "./browserview";
+import { enhanceSelects } from "./selectmenu";
+import { blockNativeMenu } from "./ctxmenu";
+import { openNewAgent } from "./inboxnew";
+import { getPref } from "./prefs";
 import { wirePaneSearch } from "./panesearch";
-import { initMascotView } from "./mascotview";
-import { initVoice } from "./voice";
 import { configureBackground, initBackground, applyBackground } from "./background";
-import { initSigil } from "./sigilcanvas";
-import { initTopbarChrome } from "./topbarchrome";
 import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
@@ -82,7 +82,6 @@ const isDetachedWindow = DETACH_KEY !== null;
 
 const homeEl = document.getElementById("home") as HTMLElement;
 const appEl = document.getElementById("app") as HTMLElement;
-const tabAdd = document.getElementById("railAdd") as HTMLElement;
 
 // Code panel (right): file tree + editor, wired up in the startup block.
 let fileTree: FileTreeApi | null = null;
@@ -99,44 +98,47 @@ function showView() {
   }
   syncResume();
 }
-/** Sync the "Back to workspace" affordance shown on Home when tabs are alive. */
+/** Sync the "Back to your agents" pill shown on the start screen while projects are open. */
 function syncResume() {
   const bar = document.getElementById("homeResume");
   if (!bar) return;
   bar.hidden = workspaces.size === 0;
   const c = document.getElementById("homeResumeCount");
-  if (c) c.textContent = workspaces.size ? `${workspaces.size} workspace${workspaces.size > 1 ? "s" : ""}` : "";
+  if (c) c.textContent = workspaces.size ? `${workspaces.size} project${workspaces.size > 1 ? "s" : ""}` : "";
 }
-/** Show the "Resume all" topbar button when the active workspace has any parked
- *  (stopped) or exited pane, with a live count — so the whole fleet can be booted
- *  in one click instead of hitting ⟳ on every pane. */
+/** Every agent that isn't running, in every project: the list on the left
+ *  shows them all, so Resume all covers them all. */
+function stoppedPanes(): Array<{ ws: Workspace; p: Pane }> {
+  const out: Array<{ ws: Workspace; p: Pane }> = [];
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) if (!p.running) out.push({ ws, p });
+  return out;
+}
+/** Show the "Resume all" topbar button when any agent is parked (stopped) or
+ *  exited, with a live count — so the whole fleet can be booted in one click. */
 function syncResumeAll() {
   const btn = document.getElementById("btnResumeAll");
   if (!btn) return;
-  const n = activeWs ? [...activeWs.panes.values()].filter((p) => !p.running).length : 0;
+  const n = stoppedPanes().length;
   btn.hidden = n === 0;
   const c = document.getElementById("btnResumeAllCount");
   if (c) c.textContent = n ? String(n) : "";
 }
-/** Boot every non-running pane in the active workspace, one at a time. Mirrors a
- *  pane's ⟳ (removeAgent → createAgent), but SEQUENTIALLY on purpose: a parallel
- *  fleet spawn hammers ConPTY + git worktree_add and freezes the UI (see the
- *  sync-spawn freeze fix). Specs are snapshot first because booting swaps each
- *  pane for a fresh id, which would mutate the map mid-iteration. */
+/** Start every non-running pane in the active workspace again, in place (each
+*  keeps its id, stage, chat and Grid spot), one at a time on purpose: a
+*  parallel fleet spawn hammers ConPTY + git worktree_add and freezes the UI
+*  (see the sync-spawn freeze fix). */
 let resumingAll = false;
 async function resumeAllStopped() {
-  if (resumingAll || !activeWs) return;
-  const ws = activeWs;
-  const targets = [...ws.panes.values()].filter((p) => !p.running).map((p) => ({ id: p.id, spec: p.spec }));
+  if (resumingAll) return;
+  const targets = stoppedPanes();
   if (!targets.length) return;
   resumingAll = true;
   const btn = document.getElementById("btnResumeAll") as HTMLButtonElement | null;
   if (btn) btn.disabled = true;
   try {
-    for (const t of targets) {
-      if (!ws.panes.has(t.id)) continue; // killed before its turn
-      await removeAgent(ws, t.id);
-      await createAgent(ws, t.spec)();
+    for (const { ws, p } of targets) {
+      if (!ws.panes.has(p.id)) continue; // killed before its turn
+      await p.restart?.();
     }
   } finally {
     resumingAll = false;
@@ -182,15 +184,7 @@ function updateCount() {
     const run = [...w.panes.values()].filter((p) => p.running).length;
     totalRun += run;
     total += w.panes.size;
-    const c = w.tabEl.querySelector<HTMLElement>(".tcount");
-    if (c) c.textContent = w.panes.size ? String(w.panes.size) : "";
-    w.tabEl.classList.toggle("live", run > 0);
   }
-  const run = document.getElementById("runCount");
-  if (run) run.textContent = String(totalRun);
-  const tot = document.getElementById("agentCount");
-  if (tot) tot.textContent = String(total);
-  updateBcast();
   syncResumeAll(); // parked/exited count may have changed
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
   // The tray belongs to the main window; detached windows leave it alone.
@@ -207,68 +201,47 @@ function updateCount() {
 // (cluster extracted to its own module)
 /* ---------------- home + workspace triggers ---------------- */
 
-document.getElementById("btnNewWorkspace")?.addEventListener("click", () => openWizard());
-document.getElementById("btnNewAgent")?.addEventListener("click", () => openModal("current"));
-document.getElementById("btnTidy")?.addEventListener("click", () => {
-  if (!activeWs) return;
-  tidyLayout(activeWs);
-  const n = activeWs.panes.size;
-  topNote(`Tidied ${n} pane${n === 1 ? "" : "s"} into a grid`);
-});
-configurePaneLayout({ updateBcast, saveSession });
-configureBroadcast({ getActiveWs: () => activeWs });
-initBroadcast();
-initVoice();
-configureRecents({ openWizard });
+configurePaneLayout({ saveSession });
 configureUsage({ getActiveWs: () => activeWs, closeSettings });
 initUsage();
 configureReplay({ paneToast, errMsg, closeSettings });
 initReplay();
 configureDashboard({ errMsg });
 initDashboard();
-configureSpawnModal({ createAgent, createWorkspace, cliLook, confirmModal, isPresetAvailable, refreshCliAvailability });
-configureWizard({ loadCrew, spawnCrew, loadTemplates, saveTemplates, templateSummary, confirmModal, renderCrew });
+configureSpawnModal({ createAgent, createWorkspace, cliLook });
+void refreshCliAvailability(); // which CLIs New agent can offer
 configureSession({ createWorkspace, createAgent });
-configureScheduler({ closeSettings, loadTemplates, launchPreset });
+configureScheduler({
+  closeSettings,
+  loadTemplates,
+  // A scheduled preset opens as its own project and starts its crew.
+  launchPreset: (state, dir, skipPerms) => {
+    if (dir) addRecent(dir);
+    void spawnCrew(state, dir || null, skipPerms, "new");
+  },
+});
 configurePane({ errMsg, updateCount, showWorkspace, wirePaneSearch });
 configureWorkspace({ createAgent, removeAgent, updateCount, showWorkspace, showView, syncResumeAll, setFileTreeRoot: (dir) => fileTree?.setRoot(dir), applyBackground });
 configureBackground({ toast: paneToast, onLookChange: retheme });
 configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZoom(ws, z), note: topNote });
-configureSpawnMenu({ spawnCrew, isPresetAvailable, refreshCliAvailability });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
-initSpawnModal();
-initWizard();
 initSettingsModal();
+initInbox(); // the Agent Inbox interface
+initBrowserView(); // live view + Stop for the agent using a browser
+enhanceSelects(); // every drop-down uses the app menu, not the Windows popup
+blockNativeMenu(import.meta.env.DEV);
+installModalTrap(); // no Back/Refresh/Print page menu on right-click
 initScheduler();
 initWorkspace();
 initBackground();
-initSigil();
-initSpawnMenu();
-initTopbarChrome();
 initZoomUi();
 initHint();
-initMascotView();
 initBridges();
 initQuitLife();
-tabAdd?.addEventListener("click", () => openWizard());
 
 document.getElementById("btnHome")?.addEventListener("click", goHome);
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 document.getElementById("btnResumeAll")?.addEventListener("click", () => void resumeAllStopped());
-
-document.getElementById("btnQuick")?.addEventListener("click", () => {
-  const dir = getRecents()[0] ?? null;
-  const ps = CLI_PRESETS.find((p) => p.id === "powershell")!;
-  const ws = createWorkspace(dir);
-  void createAgent(ws, {
-    program: ps.program,
-    args: ps.args,
-    cwd: dir,
-    name: dir ? basename(dir) : "powershell",
-    badge: ps.badge,
-    ...cliLook(ps.badge, ps.label),
-  })();
-});
 
 // (extracted to its own module)
 /* ---------------- frameless window controls ---------------- */
@@ -349,13 +322,14 @@ initIdleAnimationPause(repaintAfterResume);
 
 /* ---------------- keyboard shortcuts ---------------- */
 // Windows-Terminal-ish chords, chosen to avoid keys the CLIs themselves use
-// (no bare Ctrl+letter). All shortcuts are inert while a modal/wizard is open.
+// (no bare Ctrl+letter). All shortcuts are inert while a modal is open.
 //   Alt+1..9            focus the nth pane (DOM order) of the active workspace
 //   Ctrl+Tab            next workspace tab (cycles)
 //   Ctrl+Shift+Tab      previous workspace tab (cycles)
-//   Ctrl+Shift+T        open the new-workspace wizard
+//   Ctrl+Shift+T        New agent
 //   Ctrl+Shift+F        toggle the find bar of the focused pane
 //   Ctrl+Shift+B        focus the broadcast input
+//   Ctrl+K              open the fleet switcher (jump to any agent) — see switcher.ts
 
 /** Cycle the active workspace tab by ±1 (wraps). Only meaningful in app view. */
 function cycleWorkspace(dir: 1 | -1) {
@@ -378,11 +352,13 @@ function focusedPane(): Pane | null {
 }
 
 document.addEventListener("keydown", (e) => {
-  // Any open backdrop (spawn / wizard / confirm / settings) swallows shortcuts.
+  // Any open backdrop (confirm / settings / …) swallows shortcuts.
   if (document.querySelector(".backdrop.open")) return;
 
-  // Alt+1..9 → focus that pane (no other modifiers).
+  // Alt+1..9 → focus that pane (no other modifiers). In the Inbox they answer
+  // the agent on screen instead (inbox.ts), and there is no row of panes.
   if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code.startsWith("Digit")) {
+    if (document.body.classList.contains("inbox-ui")) return;
     const n = Number(e.code.slice(5));
     if (n >= 1 && n <= 9 && activeWs) {
       const pane = [...activeWs.panes.values()][n - 1];
@@ -409,13 +385,10 @@ document.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (k === "t") {
     e.preventDefault();
-    openWizard();
+    openNewAgent();
   } else if (k === "f") {
     e.preventDefault();
     focusedPane()?.toggleFind?.();
-  } else if (k === "b") {
-    e.preventDefault();
-    focusBroadcast();
   } else if (k === "k") {
     e.preventDefault();
     dockToggle("kanban");
@@ -444,6 +417,7 @@ function tick() {
   if (clk) clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   // Live uptime + active/idle activity on every running pane, across all workspaces.
   const now = Date.now();
+  updateTasks(now); // derived task state first, so attention notifications can say what the agent wants
   updateAttention(now);
   for (const w of workspaces.values())
     for (const pane of w.panes.values()) {
@@ -467,7 +441,6 @@ tick();
 setInterval(tick, 1000);
 
 /* ---------------- init ---------------- */
-renderRecents();
 if (isDetachedWindow) {
   // A detached window must NOT kill-all (other windows' agents are alive) and
   // boots from its hand-off payload instead of the saved session.
@@ -478,7 +451,7 @@ if (isDetachedWindow) {
   void killAll().catch(() => {});
   // Recreate last session's tabs as STOPPED panes (no PTY spawn) before showing
   // the view, so reopening the app doesn't auto-launch a heavy fleet.
-  restoreSession();
+  if (getPref("restore")) restoreSession();
 }
 showView();
 
@@ -493,7 +466,7 @@ showView();
     intro?.remove();
   };
   // A detached window should feel like a continuation, not a fresh app launch.
-  window.setTimeout(clearIntro, isDetachedWindow ? 0 : 1850);
+  window.setTimeout(clearIntro, isDetachedWindow ? 0 : 2100);
 }
 
 // Silently check GitHub Releases for a newer signed build; prompts only if one

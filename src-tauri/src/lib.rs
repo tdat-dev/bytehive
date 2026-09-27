@@ -1,9 +1,11 @@
+pub mod browser;
 pub mod commands;
 pub mod core;
 pub mod dashboard;
 pub mod error;
 pub mod state;
 pub mod review;
+pub mod transcripts;
 pub mod worktree;
 
 use crate::state::AppState;
@@ -70,8 +72,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
+        .manage(browser::BrowserState::default())
         .setup(|app| {
             build_tray(app)?;
+            browser::start(app.handle(), &app.state::<browser::BrowserState>());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -88,9 +92,20 @@ pub fn run() {
             commands::record_stop,
             commands::record_read,
             commands::claude_usage,
+            commands::claude_transcript,
+            transcripts::codex::codex_transcript,
+            transcripts::opencode::opencode_transcript,
+            commands::save_pasted_image,
+            commands::save_pasted_file,
+            commands::run_capture,
+            commands::claude_session_exists,
+            commands::claude_sessions,
+            commands::claude_sessions_everywhere,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,
+            worktree::worktree_leave,
+            worktree::workspace_files,
             review::git_repos_under,
             review::repo_diff,
             review::git_changed_files,
@@ -120,6 +135,15 @@ pub fn run() {
             dashboard::dashboard_start,
             dashboard::dashboard_stop,
             dashboard::dashboard_push,
+            browser::browser_status,
+            browser::browser_profiles,
+            browser::browser_open_profile,
+            browser::browser_activity,
+            browser::browser_pause,
+            browser::browser_peek,
+            browser::browser_asks,
+            browser::browser_answer,
+            browser::browser_set_ask,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
