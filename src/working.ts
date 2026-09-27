@@ -18,6 +18,13 @@ export function activityOnScreen(screen: string): { verb: string; detail: string
   return verb || detail ? { verb, detail } : null;
 }
 
+/** The CLI has drawn its input line and takes a message: Claude's and Codex's
+ *  `>`/`›` prompt near the bottom, or a hint line only an idle prompt shows. */
+export function promptShown(screen: string): boolean {
+  const lines = screen.split(/\r?\n/).filter((l) => l.trim()).slice(-12);
+  return lines.some((l) => /^\s*[│┃|]?\s*[>›❯](\s|$)/.test(l) || /\? for shortcuts|shift\+tab to cycle|ctrl\+p commands|enter to send/i.test(l));
+}
+
 const DOING: Record<string, string> = {
   Ran: "Running",
   Read: "Reading",

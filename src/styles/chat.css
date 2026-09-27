@@ -27,7 +27,14 @@
 .cv-thread { width: min(780px, 100%); margin: 0 auto; padding: 28px 28px 24px; display: flex; flex-direction: column; gap: 14px; }
 
 /* you */
-.cv-u { display: flex; justify-content: flex-end; margin-top: 10px; }
+.cv-u { display: flex; flex-direction: column; align-items: flex-end; margin-top: 10px; }
+/* a message you sent: bring it back to change and send again, or copy it */
+.cv-uacts { display: flex; gap: 2px; margin-top: 3px; opacity: 0; transition: opacity 0.12s; }
+.cv-u:hover .cv-uacts, .cv-uacts:focus-within { opacity: 1; }
+.cv-uacts button { min-height: 24px; padding: 3px 8px; border-radius: 6px; font-size: 12px; color: var(--ib-ink-3); }
+.cv-uacts button:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
+.cv-uacts button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+@media (hover: none) { .cv-uacts { opacity: 1; } }
 .cv-bubble {
   max-width: min(78%, 620px); padding: 11px 15px; border-radius: 18px 18px 6px 18px;
   background: var(--surface-3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
@@ -183,6 +190,12 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-ql { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cv-ql b { font-weight: 500; color: inherit; }
 .cv-ql span { font-size: 12.5px; line-height: 1.5; color: var(--ib-ink-3); }
+/* an option of the question on its screen: picks with a click */
+.cv-qo li.pick { padding: 0; }
+.cv-qb { display: flex; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left; font: inherit; color: var(--ib-ink); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.cv-qb:hover { background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--ib-needs-line); }
+.cv-qb:hover .cv-qm { box-shadow: inset 0 0 0 1.5px var(--ib-needs); }
+.cv-qb:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .cv-qa { margin: 10px 0 0; font-size: 13px; color: var(--ib-ink); }
 .cv-qs { margin: 12px 0 0; font-size: 12.5px; color: var(--ib-ink-3); display: flex; align-items: center; gap: 8px; }
 .cv-qs.wait { color: var(--ib-needs); }
@@ -290,6 +303,10 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-chip.busy { cursor: progress; color: var(--ib-ink-3); }
 .cv-chip.busy .cv-chip-t::after { content: "…"; }
 .cv-ctx { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ib-ink-3); white-space: nowrap; }
+/* nearly full: say so, and offer to sum it up */
+.cv-ctx.high { color: var(--ib-needs); }
+.cv-compact { color: var(--ib-needs); background: var(--ib-needs-bg); }
+.cv-compact:hover { color: var(--ib-needs); background: oklch(0.83 0.13 75 / 0.2); }
 .cv-stop { display: none; height: 28px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
 .cv.working .cv-stop { display: inline-flex; align-items: center; }
 .cv-stop:hover { background: rgba(255, 255, 255, 0.14); }
@@ -305,14 +322,15 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 
 /* a stopped agent: say so (and why, when it failed), offer to carry on */
 .cv-stopped { display: none; }
+/* stopped, the message box stays: what you send starts it again on this conversation */
 .cv.stopped .cv-stopped {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 12px; margin: 0; padding: 14px;
-  border-radius: 18px; background: var(--ib-raise); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  font-size: 13.5px; color: var(--ib-ink-3);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 8px; padding: 0 4px;
+  font-size: 13px; color: var(--ib-ink-3);
 }
-.cv.stopped .cv-compose { display: none; }
-.cv-why { flex-basis: 100%; text-align: center; color: var(--ib-del); font-size: 13px; overflow-wrap: anywhere; }
-.cv-restart, .cv-new { height: 32px; padding: 0 14px; border-radius: 999px; font: 600 13px var(--sans); }
+.cv-sl { color: var(--ib-ink-2); font-weight: 600; }
+.cv-shint { flex: 1; min-width: 12em; }
+.cv-why { flex-basis: 100%; order: 9; color: var(--ib-del); font-size: 13px; overflow-wrap: anywhere; }
+.cv-restart, .cv-new { height: 28px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); }
 .cv-restart { background: #fff; color: #000; }
 .cv-restart:hover { background: #e9e9ec; }
 .cv-new { color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }

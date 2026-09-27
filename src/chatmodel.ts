@@ -295,6 +295,9 @@ export interface ChatMeta {
   context: number;
   /** Tokens it has written in this conversation. */
   output: number;
+  /** How many tokens its context holds, when the conversation says: Codex
+   *  does, Claude once you switch models (or through a "[1m]" model id). */
+  window: number | null;
   /** When the conversation began. */
   started: number | null;
   /** Newest change first. */
@@ -312,7 +315,7 @@ export interface ChatMeta {
 }
 
 export function newMeta(): ChatMeta {
-  return { model: null, context: 0, output: 0, started: null, files: [], todos: null, effort: null, permission: null, tasks: [], turn: 0 };
+  return { model: null, context: 0, output: 0, window: null, started: null, files: [], todos: null, effort: null, permission: null, tasks: [], turn: 0 };
 }
 
 /** Keeps ChatMeta.files: one entry per file, summed, newest change first. */
@@ -449,6 +452,7 @@ export function createChat(): Chat {
     const switched = /<local-command-stdout>Set model to `([^`]+)`/.exec(raw);
     if (switched) {
       meta.model = switched[1].replace(/\s*\(default\)\s*$/i, "").trim();
+      meta.window = /\b1M context\b/i.test(meta.model) ? 1_000_000 : 200_000;
       items.push({ kind: "note", id: id(), text: `Switched to ${meta.model}`, at });
       return;
     }
@@ -498,7 +502,10 @@ export function createChat(): Chat {
   function onAssistant(v: Input, at: number): void {
     const msg = (v.message ?? {}) as Input;
     const content = msg.content;
-    if (typeof msg.model === "string" && msg.model !== "<synthetic>") meta.model = msg.model;
+    if (typeof msg.model === "string" && msg.model !== "<synthetic>") {
+      meta.model = msg.model;
+      if (/\[1m\]/i.test(msg.model)) meta.window = 1_000_000;
+    }
     // One reply is written as several lines that share its id and its usage.
     const usage = msg.usage as Record<string, number> | undefined;
     const mid = str(msg.id);

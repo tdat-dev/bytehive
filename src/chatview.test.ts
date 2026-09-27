@@ -320,14 +320,105 @@ describe("chat view", () => {
     expect(p.el.classList.contains("chat-on")).toBe(false);
   });
 
-  it("offers Resume instead of a composer when the agent is stopped", async () => {
+  it("picks an option of the question on its screen with a click in the chat", async () => {
+    const ask = { questions: [{ question: "Which layout?", options: [{ label: "Chat left" }, { label: "Chat wide" }] }] };
+    io.chunks = [j({ type: "assistant", message: { content: [{ type: "tool_use", id: "q1", name: "AskUserQuestion", input: ask }] } })];
+    const picked: number[] = [];
+    const p = pane();
+    // the screen cuts the second one short
+    showChat(p, { name: "Ana", state: "needs", answers: [{ n: 1, label: "Chat left" }, { n: 2, label: "Chat wide (keep it…" }], onAnswer: (n) => picked.push(n) });
+    await flush();
+    const card = p.el.querySelector(".cv-ask")!;
+    const opts = [...card.querySelectorAll<HTMLButtonElement>("[data-answer]")];
+    expect(opts.map((b) => b.querySelector("b")!.textContent)).toEqual(["Chat left", "Chat wide"]);
+    expect(card.querySelector(".cv-qs")!.textContent).toContain("pick one here");
+    opts[1].click();
+    expect(picked).toEqual([2]);
+    // nothing on screen to pick: the options are only words
+    showChat(p, { name: "Ana", state: "needs" });
+    expect(p.el.querySelector("[data-answer]")).toBeNull();
+  });
+
+  it("starts a stopped agent again on its conversation when you write to it, then sends", async () => {
+    const p = pane();
+    p.running = false;
+    const restarts: unknown[] = [];
+    (p as unknown as { restart: (o?: unknown) => Promise<void> }).restart = async (o) => { restarts.push(o); p.running = true; io.screen = "────────────\n> \n────────────\n  ? for shortcuts"; };
+    showChat(p, { name: "Ana", state: "stopped" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    input.value = "carry on with the header";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await flush();
+    expect(restarts).toEqual([undefined]); // its own conversation, not a new one
+    expect(p.el.querySelector(".cv-u.sending .cv-sending")!.textContent).toBe("Resuming it first…");
+    expect(io.sent).toEqual([]); // not before its prompt is up
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(io.sent).toEqual([["p1", "carry on with the header"]]);
+  });
+
+  it("gives the message back when the stopped agent couldn't start", async () => {
+    const p = pane();
+    p.running = false;
+    (p as unknown as { restart: () => Promise<void> }).restart = async () => {};
+    showChat(p, { name: "Ana", state: "stopped", problem: "The folder D:/gone doesn't exist anymore." });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    input.value = "try again please";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await flush();
+    expect(io.sent).toEqual([]);
+    expect(input.value).toBe("try again please");
+    expect(p.el.querySelector(".cv-u.sending")).toBeNull();
+  });
+
+  it("says how full the context is and offers to compact it when nearly full", async () => {
+    io.chunks = [j({ type: "assistant", message: { id: "m1", model: "claude-opus-5-5", usage: { input_tokens: 10, cache_read_input_tokens: 169_990, output_tokens: 5 }, content: [{ type: "text", text: "done" }] } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const ctx = p.el.querySelector<HTMLElement>(".cv-ctx")!;
+    expect(ctx.textContent).toBe("85% context");
+    expect(ctx.classList.contains("high")).toBe(true);
+    const compact = p.el.querySelector<HTMLButtonElement>("[data-compact]")!;
+    expect(compact.hidden).toBe(false);
+    compact.click();
+    expect(io.sent).toEqual([["p1", "/compact"]]);
+  });
+
+  it("reads a 1M model's context against a million", async () => {
+    io.chunks = [
+      j({ type: "user", origin: { kind: "human" }, message: { content: "<local-command-stdout>Set model to `Opus 5.5 (1M context) (default)` and saved as your default for new sessions</local-command-stdout>" } }) +
+      j({ type: "assistant", message: { id: "m1", model: "claude-opus-5-5", usage: { input_tokens: 170_000, output_tokens: 5 }, content: [{ type: "text", text: "done" }] } }),
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    expect(p.el.querySelector(".cv-ctx")!.textContent).toBe("17% context");
+    expect(p.el.querySelector<HTMLButtonElement>("[data-compact]")!.hidden).toBe(true);
+  });
+
+  it("puts a message you sent back in the box to change and send again", async () => {
+    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "make the header sticky" } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    (p.el.querySelector("[data-edit-msg]") as HTMLButtonElement).click();
+    const input = p.el.querySelector("textarea")!;
+    expect(input.value).toBe("make the header sticky");
+    expect(document.activeElement).toBe(input);
+    expect(io.sent).toEqual([]);
+  });
+
+  it("offers Resume when the agent is stopped, and keeps the composer", async () => {
     const p = pane();
     let restarted = 0;
     (p as unknown as { restart: () => Promise<void> }).restart = async () => { restarted++; };
     showChat(p, { name: "Ana", state: "stopped" });
     await flush();
     expect(p.el.querySelector(".cv")!.classList.contains("stopped")).toBe(true);
-    expect(p.el.querySelector(".cv-empty span")!.textContent).toBe("Resume it to carry on, or start a new conversation.");
+    expect(p.el.querySelector(".cv-empty span")!.textContent).toBe("Write below to start it again, or start a new conversation.");
     (p.el.querySelector("[data-restart-agent]") as HTMLButtonElement).click();
     expect(restarted).toBe(1);
   });
@@ -462,7 +553,7 @@ describe("chat view", () => {
     (side.querySelector('[data-tab="session"]') as HTMLButtonElement).click();
     expect(side.querySelector('[aria-label="Plan"] h3')!.textContent).toContain("1 of 2");
     const session = [...side.querySelectorAll(".cs-dl div")].map((d) => [d.querySelector("dt")!.textContent, d.querySelector("dd")!.textContent]);
-    expect(session).toEqual(expect.arrayContaining([["Model", "Opus 5.5"], ["Branch", "maestro/ana"], ["Context", "45k tokens"]]));
+    expect(session).toEqual(expect.arrayContaining([["Model", "Opus 5.5"], ["Branch", "maestro/ana"], ["Context", "45k tokens · 23% full"]]));
     expect(p.el.querySelector(".cv-tf span")!.textContent).toBe("Worked for 1m 12s");
     expect(p.el.querySelector(".cv-model .cv-chip-t")!.textContent).toBe("Opus 5.5");
   });

@@ -204,6 +204,9 @@ describe("switching the model", () => {
     const chat = createChat();
     chat.feed(row("<local-command-stdout>Set model to `Opus 5.5 (1M context) (default)` and saved as your default for new sessions</local-command-stdout>"));
     expect(chat.meta.model).toBe("Opus 5.5 (1M context)");
+    expect(chat.meta.window).toBe(1_000_000);
+    chat.feed(row("<local-command-stdout>Set model to `Sonnet 5` and saved as your default for new sessions</local-command-stdout>"));
+    expect(chat.meta.window).toBe(200_000);
   });
 
   it("keeps what a step saw: a screenshot's picture, not the word [image]", () => {

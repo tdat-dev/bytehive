@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const io = vi.hoisted(() => ({ runs: 0, out: "" }));
 vi.mock("./ipc", () => ({ runCapture: async () => { io.runs++; return io.out; } }));
 
-import { cliFacts, parseClaudeInit, profileOf } from "./cliprofile";
+import { cliFacts, contextFill, parseClaudeInit, profileOf } from "./cliprofile";
 
 const init = (o: object) => JSON.stringify({ type: "system", subtype: "init", ...o });
 
@@ -39,5 +39,21 @@ describe("cliprofile", () => {
     expect(profileOf("codex").modelCommand).toBe("/model");
     expect(profileOf("opencode").modelCommand).toBe("/models");
     expect(profileOf("aider").modelCommand).toBeUndefined();
+  });
+});
+
+describe("how full an agent's context is", () => {
+  it("reads Claude against 200k, or a million for a [1m] model or one already past 200k", () => {
+    expect(contextFill("claude", 100_000, null, "claude-opus-5-5")).toBe(50);
+    expect(contextFill("claude", 100_000, null, "claude-opus-5-5[1m]")).toBe(10);
+    expect(contextFill("claude", 300_000, null, "claude-sonnet-5")).toBe(30);
+    // what the conversation says wins over the folder's default
+    expect(contextFill("claude", 100_000, 200_000, "claude-opus-5-5[1m]")).toBe(50);
+  });
+
+  it("uses the window a CLI reports, and can't tell without one", () => {
+    expect(contextFill("codex", 136_000, 272_000, null)).toBe(50);
+    expect(contextFill("codex", 136_000, null, null)).toBeNull();
+    expect(contextFill("claude", 0, null, null)).toBeNull();
   });
 });

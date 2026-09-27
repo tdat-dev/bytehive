@@ -49,7 +49,22 @@ export interface CliProfile {
   models?: CliModel[];
   /** Ask the CLI for its commands, run in the agent's folder. */
   discover?: (program: string, dir: string | null) => Promise<CliFacts>;
+  /** Its command that sums up the conversation so far to free the context. */
+  compact?: string;
+  /** Its context window when the conversation doesn't say, from the model it
+   *  runs by default and how much it already holds. */
+  window?: (defaultModel: string | null, context: number) => number;
 }
+
+/** How full the agent's context is, 0–100; null when it can't be told. */
+export function contextFill(badge: string, context: number, window: number | null, defaultModel: string | null): number | null {
+  if (!context) return null;
+  const w = window ?? profileOf(badge).window?.(defaultModel, context) ?? null;
+  return w ? Math.min(100, Math.round((context / w) * 100)) : null;
+}
+
+/** Past this share of its context an agent is worth compacting. */
+export const CONTEXT_HIGH = 80;
 
 export interface CliFacts {
   commands: CliCommand[];
@@ -131,9 +146,13 @@ export const PROFILES: Record<string, CliProfile> = {
       { label: "Opus Plan", value: "opusplan", hint: "Opus plans, Sonnet builds" },
     ],
     discover: claudeDiscover,
+    compact: "/compact",
+    // 200k, or 1M for a "[1m]" model; only a 1M model can hold more than 200k.
+    window: (model, context) => (/\[1m\]|\b1m context\b/i.test(model ?? "") || context > 200_000 ? 1_000_000 : 200_000),
   },
   codex: {
     modelCommand: "/model",
+    compact: "/compact",
     // Codex sets effort with the model, in its own /model picker.
     effort: { name: "Effort", choices: [{ id: "minimal", label: "Minimal" }, ...EFFORTS.slice(0, 3), { id: "xhigh", label: "Extra high" }], picker: "/model" },
     permission: {

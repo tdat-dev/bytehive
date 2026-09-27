@@ -339,6 +339,7 @@ export function createCodexChat(): Chat {
               const total = (info?.total_token_usage ?? null) as Record<string, number> | null;
               // Cached input is part of input_tokens in Codex's count.
               if (last) meta.context = last.input_tokens ?? 0;
+              if (typeof info?.model_context_window === "number" && info.model_context_window > 0) meta.window = info.model_context_window;
               if (total) outputTokens = total.output_tokens ?? outputTokens;
               meta.output = outputTokens;
             } else if (p.type === "patch_apply_end") {

@@ -11,10 +11,10 @@ import { ICON_CLOSE } from "./icons";
 import { openFileInPanel } from "./agentbridge";
 import { openMenu } from "./ctxmenu";
 import { openPalette, type PaletteItem } from "./inboxpalette";
-import { cliFacts, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
+import { CONTEXT_HIGH, cliFacts, contextFill, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
-import { activityOnScreen, stepDoing } from "./working";
+import { activityOnScreen, promptShown, stepDoing } from "./working";
 import { applyMention, mentionAt, mentionMatches, withFolders, type MentionHit } from "./mention";
 import { claudeSessions, claudeSessionsEverywhere, fsReadDataUrl, fsReadFile, pickFiles, savePastedFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
@@ -54,6 +54,10 @@ export interface ChatState {
   onReview?: () => void;
   /** Show this agent's terminal (for the CLI's own pickers). */
   onTerminal?: () => void;
+  /** The options of the question on its screen now, which the chat's own copy
+   *  of the question can pick; and how to pick one. */
+  answers?: LiveOption[];
+  onAnswer?: (n: number) => void;
 }
 
 /** "claude-opus-5-5" → "Opus 5.5", "Opus 5.5 (1M context)" → "Opus 5.5";
@@ -126,6 +130,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const POLL_MS = 800;
 const WINDOW = 160; // items drawn at once; "Show earlier" widens it
 const SLICES_PER_TICK = 12; // a long session loads in a few ticks, not one freeze
+/** How long a stopped agent gets to start again before a message to it gives up. */
+const WAKE_MS = 30_000;
 
 /** Agents whose transcript we can read. */
 export function chatSupported(pane: Pane): boolean {
@@ -347,7 +353,8 @@ function stepHtml(s: StepItem, open: boolean): string {
 function itemHtml(it: ChatItem, open: Set<string>): string {
   switch (it.kind) {
     case "user":
-      return `<div class="cv-u" data-id="${it.id}"><div class="cv-bubble">${it.pics?.length ? shotsHtml(it.id, it.pics, "Image") : ""}${esc(it.text)}${it.images && !it.pics?.length ? `<span class="cv-img">${it.images} image${it.images === 1 ? "" : "s"}</span>` : ""}</div></div>`;
+      return `<div class="cv-u" data-id="${it.id}"><div class="cv-bubble">${it.pics?.length ? shotsHtml(it.id, it.pics, "Image") : ""}${esc(it.text)}${it.images && !it.pics?.length ? `<span class="cv-img">${it.images} image${it.images === 1 ? "" : "s"}</span>` : ""}</div>${it.text
+        ? `<div class="cv-uacts"><button type="button" data-edit-msg="${it.id}" title="Put it back in the message box to change and send again">Edit</button><button type="button" data-copy-msg="${it.id}" title="Copy this message">Copy</button></div>` : ""}</div>`;
     case "text":
       return `<div class="cv-a" data-id="${it.id}">${markdown(it.id, it.text)}</div>`;
     case "note":
@@ -359,7 +366,7 @@ function itemHtml(it: ChatItem, open: Set<string>): string {
 
 /** The conversation by turns: each of your messages, what followed, and for a
  *  finished turn a footer (how long it worked, when, Copy). */
-function threadHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>, working: boolean): string {
+function threadHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>, working: boolean, live: LiveOption[] = [], stopped = false): string {
   const turns = turnsOf(items);
   return turns.map((t, k) => {
     const said = t.items.some((i) => i.kind === "text");
@@ -368,12 +375,12 @@ function threadHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>,
     const foot = said && done
       ? `<div class="cv-tf">${t.took ? `<span>Worked for ${took(t.took)}</span>` : ""}${lastAt ? `<time>${when(lastAt)}</time>` : ""}<button type="button" class="cv-copy" data-copy="${t.items[0].id}" aria-label="Copy this answer">Copy</button></div>`
       : "";
-    return runsHtml(t.items, open, expanded) + foot;
+    return runsHtml(t.items, open, expanded, live, stopped) + foot;
   }).join("");
 }
 
 /** Steps between two messages sit together; a long run folds its start. */
-function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>): string {
+function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>, live: LiveOption[] = [], stopped = false): string {
   let html = "";
   let run: StepItem[] = [];
   const flush = () => {
@@ -390,7 +397,7 @@ function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>): 
   };
   for (const it of items) {
     // A question to you is part of the conversation, never folded away with the steps.
-    if (it.kind === "step" && it.questions?.length) { flush(); html += askHtml(it); continue; }
+    if (it.kind === "step" && it.questions?.length) { flush(); html += askHtml(it, live, stopped); continue; }
     if (it.kind === "step") { run.push(it); continue; }
     flush();
     html += itemHtml(it, open);
@@ -399,22 +406,47 @@ function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>): 
   return html;
 }
 
+/** An option of the question on the agent's screen right now, and the number that picks it. */
+export interface LiveOption { n: number; label: string }
+
+/** The option on screen that is this one of the transcript's: the same words,
+ *  or one cut short of the other ("Chat left + work panel…"). */
+export function liveMatch(label: string, live: LiveOption[]): LiveOption | undefined {
+  const norm = (t: string) => t.toLowerCase().replace(/[…]|\.\.\.$/g, "").replace(/\s+/g, " ").trim();
+  const want = norm(label);
+  if (!want) return undefined;
+  return live.find((o) => norm(o.label) === want)
+    ?? live.find((o) => { const got = norm(o.label); return got.length >= 4 && (want.startsWith(got) || got.startsWith(want)); });
+}
+
 /** What the agent asked you (AskUserQuestion): the question, its options with
- *  what each means, and what you picked, or that it waits for you. */
-function askHtml(s: StepItem): string {
-  const waiting = !s.done;
+ *  what each means, and what you picked, or that it waits for you. While it
+ *  waits, the options of the question on its screen pick with a click. */
+function askHtml(s: StepItem, live: LiveOption[] = [], stopped = false): string {
+  // An agent that stopped is not waiting any more, whatever its last question.
+  const lapsed = !s.done && stopped;
+  const waiting = !s.done && !stopped;
   const turnedDown = s.done && s.error;
+  let clickable = false;
   const qs = (s.questions ?? []).map((q) => {
     const picked = new Set((q.answer ?? "").split(/,\s*/).filter(Boolean));
     const ownWords = q.answer && !q.options.some((o) => picked.has(o.label)) ? q.answer : "";
     return `<section class="cv-q">${q.header ? `<span class="cv-qh">${esc(q.header)}</span>` : ""}<p class="cv-qt">${esc(q.question)}</p>
       <ul class="cv-qo${q.multi ? " multi" : ""}">${q.options.map((o) => {
         const on = picked.has(o.label);
-        return `<li${on ? ` class="on"` : ""}><span class="cv-qm" aria-hidden="true"></span><span class="cv-ql"><b>${esc(o.label)}</b>${o.description ? `<span>${esc(o.description)}</span>` : ""}</span>${on ? `<span class="ia-sr">(your answer)</span>` : ""}</li>`;
+        const inner = `<span class="cv-qm" aria-hidden="true"></span><span class="cv-ql"><b>${esc(o.label)}</b>${o.description ? `<span>${esc(o.description)}</span>` : ""}</span>${on ? `<span class="ia-sr">(your answer)</span>` : ""}`;
+        const pick = waiting && !q.multi ? liveMatch(o.label, live) : undefined;
+        if (pick) clickable = true;
+        return pick
+          ? `<li class="pick"><button type="button" class="cv-qb" data-answer="${pick.n}" title="Answer “${esc(o.label)}”">${inner}</button></li>`
+          : `<li${on ? ` class="on"` : ""}>${inner}</li>`;
       }).join("")}</ul>${ownWords ? `<p class="cv-qa">You answered: ${esc(ownWords)}</p>` : ""}</section>`;
   }).join("");
-  const note = waiting ? `<p class="cv-qs wait"><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Waiting for your answer: pick it in the answer card, or in the terminal.</p>`
-    : turnedDown ? `<p class="cv-qs">You chose to talk it over instead of picking.</p>` : "";
+  const note = waiting ? `<p class="cv-qs wait"><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>${clickable
+    ? "Waiting for your answer: pick one here, or answer in your own words in the answer card."
+    : "Waiting for your answer: pick it in the answer card, or in the terminal."}</p>`
+    : turnedDown ? `<p class="cv-qs">You chose to talk it over instead of picking.</p>`
+    : lapsed ? `<p class="cv-qs">It stopped before you answered.</p>` : "";
   return `<div class="cv-ask${waiting ? " waiting" : ""}" data-id="${s.id}" role="group" aria-label="${esc(s.verb)} ${esc(s.target)}">
     <div class="cv-ask-h">${iconFor(s)}<span>${waiting ? "Asks you" : "Asked you"}</span></div>${qs}${note}</div>`;
 }
@@ -463,7 +495,7 @@ interface View {
   /** Runs after the thread is drawn again (find marks its matches anew). */
   afterDraw?: () => void;
   /** What you sent that the conversation doesn't show yet. */
-  sending: Array<{ text: string; at: number }>;
+  sending: Array<{ text: string; at: number; note?: string }>;
   /** Put files in its message (a drop from outside the app lands here). */
   addFiles?: (paths: string[]) => void;
   /** Its folder's files for @, asked now and then. */
@@ -592,7 +624,7 @@ function sessionHtml(v: View): string {
     ["Branch", s.branch ?? ""],
     ["Folder", v.pane.spec.ranIn ? tail(v.pane.spec.ranIn, 1) : "", v.pane.spec.ranIn],
     ["Started", m.started ? when(m.started) : ""],
-    ["Context", m.context ? `${tokens(m.context)} tokens` : ""],
+    ["Context", m.context ? `${tokens(m.context)} tokens${(() => { const f = contextFill(v.pane.spec.badge, m.context, m.window, v.facts?.model ?? null); return f !== null ? ` · ${f}% full` : ""; })()}` : ""],
     ["Written", m.output ? `${tokens(m.output)} tokens` : ""],
   ].filter((r): r is [string, string, string?] => !!r[1]);
   html += `<section class="cs-sec" aria-label="Session"><h3>Session</h3>${rows.length
@@ -631,7 +663,7 @@ function emptyHtml(v: View): string {
     ? `<div class="cv-starters">${STARTERS.map((s) => `<button type="button" data-starter="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>` : ""}</div>`;
   if (!v.loaded) return box("", `Loading the conversation…`);
   if (v.state.problem) return box(`${name} couldn't start`, esc(v.state.problem));
-  if (st === "stopped") return box(name, "Resume it to carry on, or start a new conversation.");
+  if (st === "stopped") return box(name, "Write below to start it again, or start a new conversation.");
   if (st === "needs") return box(`${name} is waiting on you`, "Answer below to let it carry on.");
   if (st === "working") return box(`${name} is starting…`, "Its first steps show up here as it takes them.");
   return box(`What should ${name} do?`, "Say it in your own words below, or start from one of these.", true);
@@ -643,11 +675,13 @@ function focusKey(root: HTMLElement): string | null {
   if (!a || !root.contains(a)) return null;
   const item = a.closest<HTMLElement>("[data-id]")?.dataset.id;
   if (a.matches("[data-shot]")) return `[data-shot="${a.dataset.shot}"][data-k="${a.dataset.k}"]`;
-  for (const sel of [".cv-sh", "[data-copy]", "[data-expand]", "[data-fold]", "[data-earlier]", "[data-starter]"]) {
+  for (const sel of [".cv-sh", "[data-copy]", "[data-expand]", "[data-fold]", "[data-earlier]", "[data-starter]", "[data-edit-msg]", "[data-copy-msg]"]) {
     if (!a.matches(sel)) continue;
     if (sel === "[data-copy]") return `[data-copy="${a.dataset.copy}"]`;
     if (sel === "[data-expand]" || sel === "[data-fold]") return `[data-expand="${a.dataset.expand ?? a.dataset.fold}"], [data-fold="${a.dataset.fold ?? a.dataset.expand}"]`;
     if (sel === "[data-starter]") return `[data-starter="${CSS.escape(a.dataset.starter ?? "")}"]`;
+    if (sel === "[data-edit-msg]") return `[data-edit-msg="${a.dataset.editMsg}"]`;
+    if (sel === "[data-copy-msg]") return `[data-copy-msg="${a.dataset.copyMsg}"]`;
     return item ? `[data-id="${item}"] > ${sel}` : sel;
   }
   return null;
@@ -685,7 +719,7 @@ function draw(v: View, force = false): void {
   const items = v.chat.items;
   settleSending(v);
   const set = (s: Set<string>) => [...s].sort().join(",");
-  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}|${v.sending.length}`;
+  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}|${v.sending.map((x) => x.note ?? "").join(",")}|${(v.state.answers ?? []).map((a) => `${a.n}${a.label}`).join("/")}`;
   const scroller = v.el.querySelector<HTMLElement>(".cv-scroll")!;
   const thread = v.el.querySelector<HTMLElement>(".cv-thread")!;
   if (sig !== v.sig || force) {
@@ -700,8 +734,8 @@ function draw(v: View, force = false): void {
       const start = Math.max(0, items.length - v.window);
       // Nothing of a conversation still loading: half of it would jump as the rest comes in.
       thread.innerHTML = !v.loaded ? emptyHtml(v) : (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "") +
-        (items.length || v.sending.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working") : emptyHtml(v)) +
-        v.sending.map((s) => `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">Sending…</span></div>`).join("");
+        (items.length || v.sending.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working", v.state.answers, v.state.state === "stopped") : emptyHtml(v)) +
+        v.sending.map((s) => `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">${esc(s.note ?? "Sending…")}</span></div>`).join("");
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
       // Reading further up: new messages don't pull you down, they say they came.
       else if (v.loaded && items.length > v.seenItems) v.unseen = true;
@@ -728,6 +762,8 @@ function draw(v: View, force = false): void {
   }
   const why = v.el.querySelector<HTMLElement>(".cv-why");
   if (why) { why.textContent = v.state.problem ?? ""; why.hidden = !v.state.problem; }
+  const hint = v.el.querySelector<HTMLElement>(".cv-shint");
+  if (hint) hint.hidden = !!v.state.problem;
   const again = v.el.querySelector<HTMLElement>("[data-restart-agent]");
   if (again) again.textContent = v.state.problem ? "Try again" : "Resume";
   // the composer's model and context, the side panel
@@ -753,9 +789,18 @@ function draw(v: View, force = false): void {
     btn.title = `${set.name}${now ? `: ${now.label}` : ""} · change it`;
     btn.classList.toggle("warn", key === "permission" && /bypass|never|yolo|full/i.test(now?.id ?? ""));
   }
+  // How full its context is; near full, one click sums the conversation up.
+  const fill = contextFill(v.pane.spec.badge, m.context, m.window, v.facts?.model ?? null);
   const ctx = v.el.querySelector<HTMLElement>(".cv-ctx");
-  if (ctx) { ctx.textContent = m.context ? `${tokens(m.context)} in context` : ""; ctx.hidden = !m.context; }
-  const sideSig = JSON.stringify([m.todos, m.files, m.tasks, m.turn, v.panelTab, v.selFile, v.selTask, v.pane.running, m.model, m.context, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
+  if (ctx) {
+    ctx.textContent = !m.context ? "" : fill !== null ? `${fill}% context` : `${tokens(m.context)} in context`;
+    ctx.title = fill !== null ? `${tokens(m.context)} tokens in context, ${fill}% of what it can hold${fill >= CONTEXT_HIGH ? ". Compact it before it fills up and the CLI does it mid-task" : ""}` : "How much the agent is holding in mind right now";
+    ctx.hidden = !m.context;
+    ctx.classList.toggle("high", fill !== null && fill >= CONTEXT_HIGH);
+  }
+  const compact = v.el.querySelector<HTMLElement>(".cv-compact");
+  if (compact) compact.hidden = !(fill !== null && fill >= CONTEXT_HIGH && profileOf(v.pane.spec.badge).compact && v.pane.running);
+  const sideSig = JSON.stringify([m.todos, m.files, m.tasks, m.turn, v.panelTab, v.selFile, v.selTask, v.pane.running, m.model, m.context, m.window, v.facts?.model, m.output, m.started, v.state.branch, !!v.state.onReview, v.pane.spec.ranIn, v.sessions?.map((x) => x.id + x.modified_ms), v.pane.spec.sessionId]);
   applyPanel(v);
   if (sideSig !== v.sideSig) {
     v.sideSig = sideSig;
@@ -972,7 +1017,7 @@ function mount(pane: Pane): View {
     <div class="cv-foot" role="status">
       <button type="button" class="cv-jump" data-jump hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4" /></svg><span>Latest</span></button>
       <p class="cv-working" hidden><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="cv-wt">Working</span><span class="cv-wd" hidden></span></p>
-      <div class="cv-stopped"><span class="cv-sl">Stopped</span><span class="cv-why" hidden></span><button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></div>
+      <div class="cv-stopped"><span class="cv-sl">Stopped</span><span class="cv-shint">A message starts it again, on this conversation</span><span class="cv-why" hidden></span><button type="button" class="cv-restart" data-restart-agent>Resume</button><button type="button" class="cv-new" data-new-convo>New conversation</button></div>
       <form class="cv-compose">
         <label class="ia-sr" for="cv-in-${pane.id}">Message ${esc(pane.spec.name)}</label>
         <div class="cv-mention" id="cv-men-${pane.id}" role="listbox" aria-label="Files in its folder" hidden></div>
@@ -985,6 +1030,7 @@ function mount(pane: Pane): View {
           <button type="button" class="cv-chip cv-set" data-setting="permission" aria-haspopup="menu" hidden><svg class="cv-chip-i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 3 4v4c0 3 2.2 5 5 6 2.8-1 5-3 5-6V4z" /></svg><span class="cv-chip-t">Permissions</span><svg class="cv-chip-c" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4 5 6.5 7.5 4" /></svg></button>
           <button type="button" class="cv-chip cv-cmds" data-cmds aria-haspopup="dialog" title="The CLI's own commands (type / to open)"><span class="cv-chip-t">/ Commands</span></button>
           <span class="cv-ctx" title="How much the agent is holding in mind right now" hidden></span>
+          <button type="button" class="cv-chip cv-compact" data-compact hidden title="Sum up the conversation so far, so it has room to carry on">Compact</button>
           <span class="cv-sp"></span>
           <button type="button" class="cv-stop" data-stop title="Stop what it is doing (Esc)">Stop</button>
           <button type="submit" class="cv-send" aria-label="Send" title="Send (Enter)">
@@ -1215,31 +1261,24 @@ function mount(pane: Pane): View {
     }
     drawAtts();
   });
+  /** A stopped agent carries on its own conversation first; true once its CLI
+   *  shows its prompt and takes a message, false when it didn't start. */
+  const wake = async (): Promise<boolean> => {
+    if (pane.running) return true;
+    await pane.restart?.();
+    const until = Date.now() + WAKE_MS;
+    while (Date.now() < until) {
+      if (!pane.running) return false;
+      if (promptShown(screenOf(pane))) { await sleep(600); return true; }
+      await sleep(300);
+    }
+    return pane.running;
+  };
   const send = () => {
     const text = input.value.trim();
     if (!text && !atts.length) return;
-    if (atts.length) {
-      const sending = atts.splice(0);
-      drawAtts();
-      input.value = "";
-      grow();
-      void (async () => {
-        const paths = (await Promise.all(sending.map((a) => a.path))).filter((p): p is string => !!p);
-        sending.forEach((a) => URL.revokeObjectURL(a.url));
-        // Each picture goes in as its own path, the way a dropped file does, so
-        // the CLI attaches it; the words follow and send it all.
-        paths.forEach((p, k) => {
-          const last = k === paths.length - 1 && !text;
-          void sendMessage(pane.id, p, last);
-          if (!last) void sendMessage(pane.id, " ", false);
-        });
-        if (text) void sendMessage(pane.id, text);
-      })();
-      noteSent(text);
-      return;
-    }
     // /resume and /clear are Claude Code's; other CLIs answer their own commands.
-    const own = pane.spec.badge === "claude" ? chatCommand(text) : null;
+    const own = pane.spec.badge === "claude" && !atts.length ? chatCommand(text) : null;
     if (own) {
       input.value = "";
       grow();
@@ -1247,17 +1286,49 @@ function mount(pane: Pane): View {
       else void restartWith({ fresh: true }, "start a new conversation");
       return;
     }
+    const pics = atts.splice(0);
+    drawAtts();
     input.value = "";
     grow();
-    void sendMessage(pane.id, text);
-    noteSent(text);
+    const deliver = async () => {
+      if (!pics.length) { void sendMessage(pane.id, text); return; }
+      const paths = (await Promise.all(pics.map((a) => a.path))).filter((p): p is string => !!p);
+      pics.forEach((a) => URL.revokeObjectURL(a.url));
+      // Each picture goes in as its own path, the way a dropped file does, so
+      // the CLI attaches it; the words follow and send it all.
+      paths.forEach((p, k) => {
+        const last = k === paths.length - 1 && !text;
+        void sendMessage(pane.id, p, last);
+        if (!last) void sendMessage(pane.id, " ", false);
+      });
+      if (text) void sendMessage(pane.id, text);
+    };
+    const entry = noteSent(text);
+    if (pane.running) { void deliver(); return; }
+    // Stopped: it starts again on its own conversation, then gets the message.
+    if (entry) entry.note = "Resuming it first…";
+    draw(v, true);
+    void wake().then((ok) => {
+      if (entry) { delete entry.note; entry.at = Date.now(); }
+      if (ok) void deliver();
+      else {
+        // It didn't start: what you wrote goes back in the box, nothing lost.
+        v.sending = v.sending.filter((x) => x !== entry);
+        if (!input.value.trim()) { input.value = text; grow(); saveDraft(text); }
+        atts.push(...pics);
+        drawAtts();
+      }
+      draw(v, true);
+    });
   };
   /** What you sent shows at once, as sending, until the conversation has it. */
   const noteSent = (text: string) => {
-    if (text) v.sending.push({ text, at: Date.now() });
+    const entry = text ? { text, at: Date.now() } as View["sending"][number] : null;
+    if (entry) v.sending.push(entry);
     saveDraft("");
     hist.k = -1;
     draw(v, true);
+    return entry;
   };
   // The draft stays with the agent: switching agents or restarting Maestro keeps it.
   const draftKey = `maestro.chat.draft.${pane.id}`;
@@ -1458,6 +1529,32 @@ function mount(pane: Pane): View {
     }
     const ref = t.closest<HTMLElement>("[data-file-ref]");
     if (ref) { void openRef(ref.dataset.fileRef ?? ""); return; }
+    // An option of the question it is waiting on: the same as picking it in its terminal.
+    const answer = t.closest<HTMLElement>("[data-answer]");
+    if (answer) { v.state.onAnswer?.(Number(answer.dataset.answer)); return; }
+    // A message you sent: back in the box to change and send again, or copied.
+    const again = t.closest<HTMLElement>("[data-edit-msg], [data-copy-msg]");
+    if (again) {
+      const said = v.chat.items.find((i) => i.id === (again.dataset.editMsg ?? again.dataset.copyMsg));
+      const text = said?.kind === "user" ? said.text : "";
+      if (!text) return;
+      if (again.dataset.copyMsg) {
+        void navigator.clipboard?.writeText(text).then(() => { again.textContent = "Copied"; window.setTimeout(() => { again.textContent = "Copy"; }, 1400); }).catch(() => {});
+        return;
+      }
+      input.value = text;
+      grow();
+      saveDraft(text);
+      hist.k = -1;
+      input.focus();
+      input.setSelectionRange(text.length, text.length);
+      return;
+    }
+    if (t.closest("[data-compact]")) {
+      const c = profileOf(pane.spec.badge).compact;
+      if (c) void sendMessage(pane.id, c);
+      return;
+    }
     const attX = t.closest<HTMLElement>("[data-att-x]");
     if (attX) { dropAtt(Number(attX.dataset.attX)); input.focus(); return; }
     const attOpen = t.closest<HTMLElement>("[data-att-open]");

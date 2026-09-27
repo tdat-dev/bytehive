@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityOnScreen, stepDoing } from "./working";
+import { activityOnScreen, promptShown, stepDoing } from "./working";
 import type { StepItem } from "./chatmodel";
 
 describe("what a working agent is doing", () => {
@@ -18,5 +18,14 @@ describe("what a working agent is doing", () => {
     expect(stepDoing(step("Did a thing", "x"))).toBe("Did a thing x");
     // a command it described already says what it does
     expect(stepDoing(step("Ran", "Run the tests", false))).toBe("Run the tests");
+  });
+});
+
+describe("when a CLI takes a message", () => {
+  it("sees Claude's and Codex's prompt, not a screen still starting up", () => {
+    expect(promptShown("Welcome back!\n────────────\n> \n────────────\n  ? for shortcuts")).toBe(true);
+    expect(promptShown("some answer\n\n› \n  ⏎ send   ⌃J newline")).toBe(true);
+    expect(promptShown("Resuming conversation…")).toBe(false);
+    expect(promptShown("")).toBe(false);
   });
 });

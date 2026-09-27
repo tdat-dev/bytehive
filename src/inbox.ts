@@ -238,7 +238,11 @@ function renderChat(list: Task[], pane: Pane | undefined): void {
   // the way to reply, and the conversation keeps its end above it.
   const asking = !!askEl && !askEl.hidden && !askEl.classList.contains("min") && (askEl.dataset.key ?? "").startsWith(`${on.id}|`);
   if (asking && askEl) on.el.style.setProperty("--ask-h", `${askEl.offsetHeight + 24}px`);
-  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, asking, branch: t?.branch ?? on.spec.branch ?? null, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
+  // The question on its screen: the chat's copy of it picks its options too.
+  const a = t?.status.state === "needs" && t.status.ask?.kind === "question" ? t.status.ask : null;
+  const answers = a?.options.filter((o) => !o.deny && o.n !== a.freeTextOption).map((o) => ({ n: o.n, label: o.label }));
+  const onAnswer = (n: number) => { const o = currentAsk()?.options.find((x) => x.n === n); if (o) void pick(o); };
+  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, asking, branch: t?.branch ?? on.spec.branch ?? null, answers, onAnswer, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
   chatFor = on.id;
 }
 
