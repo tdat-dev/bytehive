@@ -15,5 +15,6 @@ logs/
 .maestro/
 # stray installer artifacts
 /maestro.exe
+/maestro.old*.exe
 /uninstall.exe
 *.lnk

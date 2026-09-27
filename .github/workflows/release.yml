@@ -18,13 +18,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Windows only. The macOS jobs never shipped: the arm64 build failed
+        # every release and the Intel runner (macos-13) is never handed out, so
+        # the run hung queued. Add them back (aarch64-apple-darwin on
+        # macos-latest) once someone runs Maestro on a Mac and it builds there.
         include:
-          - platform: macos-latest # Apple Silicon (arm64)
-            rust_target: aarch64-apple-darwin
-            args: "--target aarch64-apple-darwin"
-          - platform: macos-13 # Intel (x86_64)
-            rust_target: x86_64-apple-darwin
-            args: "--target x86_64-apple-darwin"
           - platform: windows-latest
             rust_target: x86_64-pc-windows-msvc
             args: ""
