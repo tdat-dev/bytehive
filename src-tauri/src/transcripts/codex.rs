@@ -32,7 +32,7 @@ pub async fn codex_transcript(
     .await
 }
 
-fn sessions_root() -> Option<PathBuf> {
+pub(crate) fn sessions_root() -> Option<PathBuf> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
     Some(Path::new(&home).join(".codex").join("sessions"))
 }
@@ -56,7 +56,7 @@ fn norm(p: &str) -> String {
 }
 
 /// The newest rollout whose session ran in `dir`, modified at or after `since_ms`.
-fn find_rollout(root: &Path, dir: &str, since_ms: u64) -> Option<PathBuf> {
+pub(crate) fn find_rollout(root: &Path, dir: &str, since_ms: u64) -> Option<PathBuf> {
     let want = norm(dir);
     // YYYY/MM/DD folders, newest first.
     let mut days: Vec<PathBuf> = Vec::new();
@@ -100,7 +100,7 @@ fn find_rollout(root: &Path, dir: &str, since_ms: u64) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-fn sorted_dirs(p: &Path) -> Vec<PathBuf> {
+pub(crate) fn sorted_dirs(p: &Path) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = std::fs::read_dir(p)
         .map(|it| it.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
         .unwrap_or_default();

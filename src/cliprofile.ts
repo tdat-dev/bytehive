@@ -147,8 +147,9 @@ export const PROFILES: Record<string, CliProfile> = {
     ],
     discover: claudeDiscover,
     compact: "/compact",
-    // 200k, or 1M for a "[1m]" model; only a 1M model can hold more than 200k.
-    window: (model, context) => (/\[1m\]|\b1m context\b/i.test(model ?? "") || context > 200_000 ? 1_000_000 : 200_000),
+    // 200k, or 1M for a "[1m]" model; only a 1M model can hold more than
+    // 200k. Before the model is known it can't be told (0).
+    window: (model, context) => (/\[1m\]|\b1m context\b/i.test(model ?? "") || context > 200_000 ? 1_000_000 : model ? 200_000 : 0),
   },
   codex: {
     modelCommand: "/model",
@@ -182,7 +183,9 @@ export function profileOf(badge: string): CliProfile {
 }
 
 const cache = new Map<string, { at: number; facts: Promise<CliFacts> }>();
-const FRESH_MS = 10 * 60_000;
+// Asking starts a copy of the CLI (and its hooks): once an hour is plenty,
+// and choosing a model asks again.
+const FRESH_MS = 60 * 60_000;
 
 /** The CLI's commands for this folder, asked once and kept for a while. */
 export function cliFacts(badge: string, program: string, dir: string | null, refresh = false): Promise<CliFacts> | null {

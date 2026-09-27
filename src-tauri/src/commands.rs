@@ -260,17 +260,23 @@ fn claude_usage_impl(dir: &str) -> Vec<ModelUsage> {
         Ok(e) => e,
         Err(_) => return Vec::new(), // no transcripts for this folder yet
     };
-    let mut sum = UsageSum::default();
-    for ent in entries.flatten() {
-        let path = ent.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-            continue;
-        }
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            sum.add(&content);
+    let paths: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl"))
+        .collect();
+    let mut total: std::collections::HashMap<String, ModelUsage> = std::collections::HashMap::new();
+    for p in paths {
+        for u in file_usage(&p) {
+            let e = total.entry(u.model.clone()).or_insert_with(|| ModelUsage { model: u.model.clone(), ..Default::default() });
+            e.input_tokens += u.input_tokens;
+            e.output_tokens += u.output_tokens;
+            e.cache_creation += u.cache_creation;
+            e.cache_read += u.cache_read;
+            e.messages += u.messages;
         }
     }
-    sum.rows()
+    sorted_usage(total.into_values().collect())
 }
 
 /// Token usage of one Claude session (one agent's conversation), by model.
@@ -280,68 +286,113 @@ pub async fn claude_session_usage(dir: String, session_id: String) -> Result<Vec
         if !is_session_id(&session_id) {
             return Ok(Vec::new());
         }
-        let Some(path) = claude_project_dir(&dir).map(|p| p.join(format!("{session_id}.jsonl"))) else {
-            return Ok(Vec::new());
-        };
-        let mut sum = UsageSum::default();
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            sum.add(&content);
-        }
-        Ok(sum.rows())
+        Ok(claude_project_dir(&dir).map(|p| file_usage(&p.join(format!("{session_id}.jsonl")))).unwrap_or_default())
     })
     .await
 }
 
-/// Usage summed by model. Claude Code writes one line per content block of a
-/// reply, each carrying the whole reply's usage, so a reply counts once (by
-/// its message id), not once per line.
-#[derive(Default)]
-struct UsageSum {
-    by_model: std::collections::HashMap<String, ModelUsage>,
-    seen: std::collections::HashSet<String>,
+fn sorted_usage(mut out: Vec<ModelUsage>) -> Vec<ModelUsage> {
+    out.sort_by(|a, b| (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens)));
+    out
 }
 
-impl UsageSum {
-    fn add(&mut self, content: &str) {
-        for line in content.lines() {
-            if !line.contains("\"usage\"") {
-                continue;
-            }
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-                continue;
-            };
-            if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
-                continue;
-            }
-            let Some(msg) = v.get("message") else { continue };
-            let Some(usage) = msg.get("usage") else { continue };
-            if let Some(id) = msg.get("id").and_then(|x| x.as_str()) {
-                if !self.seen.insert(id.to_string()) {
-                    continue;
-                }
-            }
-            let model = msg.get("model").and_then(|m| m.as_str()).unwrap_or("unknown").to_string();
-            if model == "<synthetic>" {
-                continue;
-            }
-            let get = |k: &str| usage.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
-            let e = self
-                .by_model
-                .entry(model.clone())
-                .or_insert_with(|| ModelUsage { model, ..Default::default() });
-            e.input_tokens += get("input_tokens");
-            e.output_tokens += get("output_tokens");
-            e.cache_creation += get("cache_creation_input_tokens");
-            e.cache_read += get("cache_read_input_tokens");
-            e.messages += 1;
+/// What one transcript has used so far, and how far it has been read.
+/// Transcripts only grow (a long session runs to hundreds of MB), so each
+/// call reads just the lines added since the last one, a line at a time.
+#[derive(Default)]
+struct FileUsage {
+    /// Bytes read so far (always at a line's end).
+    read: u64,
+    /// The last few reply ids: Claude Code writes a reply over several
+    /// consecutive lines, each carrying the whole reply's usage, so a reply
+    /// must count once, not once per line.
+    recent: std::collections::VecDeque<String>,
+    by_model: std::collections::HashMap<String, ModelUsage>,
+}
+
+const RECENT_IDS: usize = 32;
+
+impl FileUsage {
+    fn add_line(&mut self, line: &str) {
+        if !line.contains("\"usage\"") {
+            return;
         }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { return };
+        if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+            return;
+        }
+        let Some(msg) = v.get("message") else { return };
+        let Some(usage) = msg.get("usage") else { return };
+        if let Some(id) = msg.get("id").and_then(|x| x.as_str()) {
+            if self.recent.iter().any(|r| r == id) {
+                return;
+            }
+            if self.recent.len() == RECENT_IDS {
+                self.recent.pop_front();
+            }
+            self.recent.push_back(id.to_string());
+        }
+        let model = msg.get("model").and_then(|m| m.as_str()).unwrap_or("unknown");
+        if model == "<synthetic>" {
+            return;
+        }
+        let get = |k: &str| usage.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
+        let e = self
+            .by_model
+            .entry(model.to_string())
+            .or_insert_with(|| ModelUsage { model: model.to_string(), ..Default::default() });
+        e.input_tokens += get("input_tokens");
+        e.output_tokens += get("output_tokens");
+        e.cache_creation += get("cache_creation_input_tokens");
+        e.cache_read += get("cache_read_input_tokens");
+        e.messages += 1;
     }
 
-    fn rows(self) -> Vec<ModelUsage> {
-        let mut out: Vec<ModelUsage> = self.by_model.into_values().collect();
-        out.sort_by(|a, b| (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens)));
-        out
+    /// Read what was added to the file since last time (whole lines only: a
+    /// line still being written waits for the next call).
+    fn catch_up(&mut self, path: &Path) {
+        use std::io::{BufRead, Seek, SeekFrom};
+        let Ok(file) = std::fs::File::open(path) else { return };
+        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        if len < self.read {
+            *self = FileUsage::default(); // rewritten: start over
+        }
+        if len == self.read {
+            return;
+        }
+        let mut r = std::io::BufReader::with_capacity(256 * 1024, file);
+        if r.seek(SeekFrom::Start(self.read)).is_err() {
+            return;
+        }
+        let mut buf = Vec::with_capacity(64 * 1024);
+        loop {
+            buf.clear();
+            let n = match r.read_until(b'\n', &mut buf) {
+                Ok(n) => n,
+                Err(_) => break,
+            };
+            if n == 0 || buf.last() != Some(&b'\n') {
+                break;
+            }
+            self.read += n as u64;
+            if let Ok(line) = std::str::from_utf8(&buf) {
+                self.add_line(line);
+            }
+        }
     }
+}
+
+fn usage_cache() -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, FileUsage>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, FileUsage>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// One transcript's usage by model, read on from where it was last read.
+fn file_usage(path: &Path) -> Vec<ModelUsage> {
+    let mut cache = usage_cache().lock().unwrap_or_else(|e| e.into_inner());
+    let entry = cache.entry(path.to_path_buf()).or_default();
+    entry.catch_up(path);
+    sorted_usage(entry.by_model.values().cloned().collect())
 }
 
 /// New lines of one Claude Code transcript, for the chat view.
@@ -872,17 +923,27 @@ fn programs_on_path_impl(programs: Vec<String>) -> Result<Vec<bool>, CommandErro
 #[cfg(test)]
 mod tests {
     #[test]
-    fn usage_counts_a_reply_once_however_many_lines_it_takes() {
+    fn usage_counts_a_reply_once_and_reads_only_what_was_added() {
         let line = |id: &str, model: &str| format!(
-            r#"{{"type":"assistant","message":{{"id":"{id}","model":"{model}","usage":{{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}},"content":[]}}}}"#
+            "{{\"type\":\"assistant\",\"message\":{{\"id\":\"{id}\",\"model\":\"{model}\",\"usage\":{{\"input_tokens\":10,\"output_tokens\":5,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":20}},\"content\":[]}}}}\n"
         );
-        let text = [line("m1", "claude-opus-5-5"), line("m1", "claude-opus-5-5"), line("m2", "claude-opus-5-5"), line("m3", "claude-haiku-4-5"), line("m4", "<synthetic>")].join("\n");
-        let mut sum = super::UsageSum::default();
-        sum.add(&text);
-        let rows = sum.rows();
-        assert_eq!(rows.len(), 2);
+        let dir = std::env::temp_dir().join(format!("maestro-usage-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s.jsonl");
+        // a reply over two lines, another reply, a half-written line
+        std::fs::write(&path, [line("m1", "claude-opus-5-5"), line("m1", "claude-opus-5-5"), line("m2", "claude-opus-5-5"), "{\"type\":\"assi".to_string()].concat()).unwrap();
+        let first = super::file_usage(&path);
+        assert_eq!((first[0].messages, first[0].output_tokens, first[0].cache_read), (2, 10, 200));
+        // the half line finishes, more replies come
+        let mut rest = std::fs::read_to_string(&path).unwrap();
+        rest.truncate(rest.len() - "{\"type\":\"assi".len());
+        rest += &[line("m3", "claude-haiku-4-5"), line("m4", "<synthetic>"), line("m5", "claude-opus-5-5")].concat();
+        std::fs::write(&path, rest).unwrap();
+        let rows = super::file_usage(&path);
         let opus = rows.iter().find(|r| r.model == "claude-opus-5-5").unwrap();
-        assert_eq!((opus.messages, opus.input_tokens, opus.output_tokens, opus.cache_read, opus.cache_creation), (2, 20, 10, 200, 40));
+        assert_eq!((opus.messages, opus.input_tokens, opus.cache_creation), (3, 30, 60));
+        assert_eq!(rows.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     use super::*;

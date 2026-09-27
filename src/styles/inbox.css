@@ -59,6 +59,8 @@ body.inbox-ui #btnToggleCode { display: none !important; }
   display: grid; gap: 12px; background: var(--ib-panel); box-shadow: 0 -1px 0 var(--ib-line);
   border-radius: 0 0 18px 18px;
 }
+.pl-sec { display: grid; gap: 12px; }
+.pl-sec + .pl-sec { padding-top: 12px; border-top: 1px solid var(--ib-line); }
 .pl-h { margin: 0; font: 600 11.5px var(--sans); color: var(--ib-ink-3); display: flex; gap: 6px; align-items: baseline; }
 .pl-stale { font-weight: 400; }
 .pl-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ib-ink-3); }
@@ -131,7 +133,12 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-row.st-needs .iq-l { color: var(--ib-needs); }
 /* what its conversation has used, at API prices */
 .iq-cost { font: 11.5px var(--mono); color: var(--ib-ink-3); }
-.iq-cost::before { content: "·"; margin: 0 6px; font-family: var(--sans); }
+.iq-cost::before, .iq-full::before { content: "·"; margin: 0 6px; font-family: var(--sans); color: var(--ib-ink-3); }
+.iq-full { font: 11.5px var(--mono); color: var(--ib-needs); }
+/* short of room, the state keeps its words: the cost only takes what room is left */
+.iq-s .iq-cost, .iq-s .iq-full { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iq-s .iq-cost { flex: 1 1 0; }
+.iq-s .iq-full { flex: none; }
 .iq-row.st-review .iq-l { color: var(--ib-review); }
 .iq-row.st-working .iq-l { color: var(--ib-work); }
 .iq-row.st-stopped .iq-t { color: var(--ib-ink-2); font-weight: 400; }

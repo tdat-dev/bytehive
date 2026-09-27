@@ -27,13 +27,20 @@ pub struct PlanLimit {
     pub severity: String,
     /// The model a scoped limit is for ("Fable").
     pub model: Option<String>,
+    /// When it resets, as ms since 1970, for a CLI that says it that way.
+    pub resets_ms: Option<i64>,
 }
 
 #[derive(Serialize, Debug)]
 pub struct PlanUsage {
-    /// "max", "pro", … when the sign-in says.
+    /// Whose plan: "Claude", "Codex".
+    pub provider: String,
+    /// "max", "pro", "plus", … when the sign-in says.
     pub plan: Option<String>,
     pub limits: Vec<PlanLimit>,
+    /// When these numbers were true, for ones read from a CLI's last run
+    /// rather than asked just now.
+    pub as_of_ms: Option<i64>,
 }
 
 /// The limits out of the usage answer: its `limits` list when it has one,
@@ -50,6 +57,7 @@ pub fn parse_limits(v: &Value) -> Vec<PlanLimit> {
                     resets_at: l.get("resets_at").and_then(s),
                     severity: l.get("severity").and_then(s).unwrap_or_else(|| "normal".into()),
                     model: l.pointer("/scope/model/display_name").and_then(s),
+                    resets_ms: None,
                 })
             })
             .collect();
@@ -64,6 +72,7 @@ pub fn parse_limits(v: &Value) -> Vec<PlanLimit> {
                 resets_at: w.get("resets_at").and_then(s),
                 severity: "normal".into(),
                 model: None,
+                resets_ms: None,
             })
         })
         .collect()
@@ -91,7 +100,10 @@ pub async fn claude_plan_usage() -> Result<PlanUsage, CommandError> {
     let (token, plan) = credentials()?;
     // the same TLS the updater uses; installing it twice is harmless
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let res = reqwest::Client::new()
+    // one client for the app's life: its connections are kept and reused
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let res = CLIENT
+        .get_or_init(reqwest::Client::new)
         .get(USAGE_URL)
         .bearer_auth(token)
         .header("anthropic-beta", "oauth-2025-04-20")
@@ -107,7 +119,87 @@ pub async fn claude_plan_usage() -> Result<PlanUsage, CommandError> {
         return Err(CommandError::Failed(format!("Anthropic answered {status}")));
     }
     let body: Value = res.json().await.map_err(|e| CommandError::Failed(format!("unreadable answer: {e}")))?;
-    Ok(PlanUsage { plan, limits: parse_limits(&body) })
+    Ok(PlanUsage { provider: "Claude".into(), plan, limits: parse_limits(&body), as_of_ms: None })
+}
+
+/// Codex's plan limits, as its last request reported them: every
+/// `token_count` event in a rollout carries `rate_limits` (a 5-hour and a
+/// weekly window, how much is used, when each resets). Read from the end of
+/// the newest rollouts, nothing asked of OpenAI. Null when Codex hasn't run.
+#[tauri::command]
+pub async fn codex_plan_usage() -> Result<Option<PlanUsage>, CommandError> {
+    crate::error::run_blocking(|| Ok(codex_plan_usage_now())).await
+}
+
+fn codex_plan_usage_now() -> Option<PlanUsage> {
+    use crate::transcripts::codex::{sessions_root, sorted_dirs};
+    let root = sessions_root()?;
+    let mut days = Vec::new();
+    for y in sorted_dirs(&root).into_iter().rev() {
+        for m in sorted_dirs(&y).into_iter().rev() {
+            for d in sorted_dirs(&m).into_iter().rev() {
+                days.push(d);
+                if days.len() >= 14 {
+                    break;
+                }
+            }
+        }
+    }
+    let mut files: Vec<(i64, std::path::PathBuf)> = Vec::new();
+    for d in days {
+        for e in std::fs::read_dir(&d).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let ms = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as i64);
+            files.push((ms, p));
+        }
+    }
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    for (ms, p) in files.into_iter().take(20) {
+        let lines = crate::agentusage::tail_lines(&p, 512 * 1024);
+        if let Some(u) = codex_limits_in(&lines) {
+            return Some(PlanUsage { as_of_ms: Some(ms), ..u });
+        }
+    }
+    None
+}
+
+/// The newest `rate_limits` in these rollout lines.
+pub fn codex_limits_in(lines: &[String]) -> Option<PlanUsage> {
+    for line in lines.iter().rev() {
+        if !line.contains("\"rate_limits\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+        let Some(rl) = v.pointer("/payload/rate_limits").filter(|r| r.is_object()) else { continue };
+        let limits: Vec<PlanLimit> = ["primary", "secondary"]
+            .iter()
+            .filter_map(|k| {
+                let w = rl.get(*k).filter(|w| w.is_object())?;
+                let minutes = w.get("window_minutes").and_then(Value::as_u64).unwrap_or(0);
+                Some(PlanLimit {
+                    kind: match minutes {
+                        300 => "session".into(),
+                        10080 => "weekly_all".into(),
+                        m => format!("window_{m}"),
+                    },
+                    percent: w.get("used_percent").and_then(Value::as_f64).unwrap_or(0.0),
+                    resets_at: None,
+                    severity: "normal".into(),
+                    model: None,
+                    resets_ms: w.get("resets_at").and_then(Value::as_i64).map(|s| s * 1000),
+                })
+            })
+            .collect();
+        if limits.is_empty() {
+            continue;
+        }
+        let plan = rl.get("plan_type").and_then(Value::as_str).map(str::to_string);
+        return Some(PlanUsage { provider: "Codex".into(), plan, limits, as_of_ms: None });
+    }
+    None
 }
 
 #[cfg(test)]
@@ -140,6 +232,18 @@ mod tests {
         let u = tauri::async_runtime::block_on(claude_plan_usage()).map_err(|e| e.to_string());
         println!("{u:?}");
         assert!(u.is_ok());
+    }
+
+    #[test]
+    fn reads_codex_windows_from_its_rollout() {
+        let lines = vec![
+            r#"{"type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"primary":{"used_percent":12.0,"window_minutes":300,"resets_at":1787300000},"secondary":{"used_percent":80,"window_minutes":10080,"resets_at":1787317252},"plan_type":"plus"}}}"#.to_string(),
+            r#"{"type":"event_msg","payload":{"type":"agent_message"}}"#.to_string(),
+        ];
+        let u = codex_limits_in(&lines).unwrap();
+        assert_eq!(u.plan.as_deref(), Some("plus"));
+        assert_eq!(u.limits.iter().map(|l| (l.kind.as_str(), l.percent, l.resets_ms)).collect::<Vec<_>>(), vec![("session", 12.0, Some(1787300000000)), ("weekly_all", 80.0, Some(1787317252000))]);
+        assert!(codex_limits_in(&["{}".to_string()]).is_none());
     }
 
     #[test]

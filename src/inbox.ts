@@ -25,8 +25,8 @@ import { confirmModal } from "./confirmmodal";
 import { openMenu, type MenuItem } from "./ctxmenu";
 import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
-import { chatSupported, focusAgent, hideChat, showChat } from "./chatview";
-import { agentCost, onAgentCost } from "./agentcost";
+import { chatSupported, focusAgent, hideChat, showChat, tokens } from "./chatview";
+import { agentUsage, onAgentCost } from "./agentcost";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { money } from "./pricing";
 import { topNote } from "./hint";
@@ -498,14 +498,17 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         // The state in words, unless the line already is the state ("Needs you", "Stopped").
         const state = GROUP_LABEL[t.status.state];
         const line = said === state ? state : `${state} · ${said}`;
-        const usd = p ? agentCost(p) : null;
-        const cost = usd ? `<span class="iq-cost" title="What its conversation has used so far, at API prices">${money(usd)}</span>` : "";
+        // what it has used: money when its CLI prices it, else tokens; its context once nearly full
+        const use = p ? agentUsage(p) : null;
+        const cost = use?.usd ? `<span class="iq-cost" title="${p?.spec.badge === "claude" ? "What its conversation has used so far, at API prices" : "What its conversation has cost so far, as its CLI says"}">${money(use.usd)}</span>`
+          : use?.tokens ? `<span class="iq-cost" title="Tokens its conversation has used so far">${tokens(use.tokens)} tokens</span>` : "";
+        const full = use?.contextPct != null && use.contextPct >= 80 ? `<span class="iq-full" title="Its context is nearly full: it will soon sum up the conversation and lose detail">${Math.round(use.contextPct)}% context</span>` : "";
         return `<li><button class="iq-row st-${t.status.state}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
           <span class="iq-mk" style="background:${esc(p?.color ?? "var(--muted)")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
           <span class="iq-more" data-more aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
-          <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}${cost}</span>
+          <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}${cost}${full}</span>
         </button></li>`;
       }).join("")}</ul>
     </section>`;

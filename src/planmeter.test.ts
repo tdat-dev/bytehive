@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ answer: null as unknown, fail: "" }));
+const io = vi.hoisted(() => ({ answer: null as unknown, fail: "", codex: null as unknown }));
 vi.mock("./ipc", () => ({
   claudePlanUsage: async () => { if (io.fail) throw new Error(io.fail); return io.answer; },
+  codexPlanUsage: async () => io.codex,
 }));
 
-import { planHtml, planRows, resetWords, startPlanMeter, stopPlanMeter } from "./planmeter";
+import { allReset, planHtml, planRows, resetWords, startPlanMeter, stopPlanMeter } from "./planmeter";
 
 const NOW = Date.parse("2026-09-27T08:57:00Z");
 const limit = (kind: string, percent: number, resets_at: string | null, model: string | null = null, severity = "normal") => ({ kind, percent, resets_at, severity, model });
@@ -38,8 +39,8 @@ describe("the plan's limits", () => {
     io.answer = { plan: "max", limits: [limit("session", 2, "2026-09-27T12:09:59Z"), limit("weekly_all", 4, "2026-10-02T17:59:59Z")] };
     io.fail = "";
     let drawn = 0;
-    startPlanMeter(() => { drawn++; });
-    await new Promise((r) => setTimeout(r, 0));
+    startPlanMeter(() => { drawn++; }, 0);
+    await new Promise((r) => setTimeout(r, 5));
     await new Promise((r) => setTimeout(r, 0));
     expect(drawn).toBe(1);
     const el = document.createElement("div");
@@ -49,10 +50,31 @@ describe("the plan's limits", () => {
     stopPlanMeter();
     // an API key user: nothing to show
     io.fail = "not signed in";
-    startPlanMeter(() => {});
-    await new Promise((r) => setTimeout(r, 0));
+    startPlanMeter(() => {}, 0);
+    await new Promise((r) => setTimeout(r, 5));
     await new Promise((r) => setTimeout(r, 0));
     expect(planHtml(NOW)).toBe("");
     stopPlanMeter();
+  });
+
+  it("shows Codex's limits from its last run beside Claude's, and drops them once they have all reset", async () => {
+    io.fail = "not signed in";
+    const soon = NOW + 3600_000;
+    io.codex = { provider: "Codex", plan: "plus", as_of_ms: NOW - 60_000, limits: [
+      { kind: "session", percent: 40, resets_at: null, resets_ms: soon, severity: "normal", model: null },
+      { kind: "weekly_all", percent: 80, resets_at: null, resets_ms: NOW - 1000, severity: "normal", model: null },
+    ] };
+    startPlanMeter(() => {}, 0);
+    await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 0));
+    const el = document.createElement("div");
+    el.innerHTML = planHtml(NOW);
+    expect(el.querySelector(".pl-h")!.textContent).toBe("Codex Plus limits");
+    // the week has reset since: it starts from nothing
+    expect([...el.querySelectorAll(".pl-row")].map((r) => r.querySelector(".pl-p")!.textContent)).toEqual(["40%", "0%"]);
+    expect(allReset(io.codex as never, soon + 1)).toBe(true);
+    expect(planHtml(soon + 1)).toBe("");
+    stopPlanMeter();
+    io.codex = null;
   });
 });

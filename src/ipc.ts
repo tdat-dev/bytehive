@@ -322,13 +322,25 @@ export async function claudeUsage(dir: string): Promise<ModelUsage[]> {
 }
 
 /** One of the Claude plan's limits: the 5-hour window, the week, a model's week. */
-export interface PlanLimit { kind: string; percent: number; resets_at: string | null; severity: string; model: string | null }
-export interface PlanUsage { plan: string | null; limits: PlanLimit[] }
+export interface PlanLimit { kind: string; percent: number; resets_at: string | null; severity: string; model: string | null; resets_ms?: number | null }
+/** `as_of_ms`: when the numbers were true, for ones read from a CLI's last run. */
+export interface PlanUsage { provider?: string; plan: string | null; limits: PlanLimit[]; as_of_ms?: number | null }
 
 /** How much of the Claude plan's limits is used, as Claude Code's /usage says.
  *  Rejects with "not signed in" (API key, no sign-in) or "expired". */
 export async function claudePlanUsage(): Promise<PlanUsage> {
   return invoke<PlanUsage>("claude_plan_usage");
+}
+
+/** Codex's plan limits as its last request reported them (read from its rollout); null when Codex hasn't run. */
+export async function codexPlanUsage(): Promise<PlanUsage | null> {
+  return invoke<PlanUsage | null>("codex_plan_usage");
+}
+
+/** What an agent of Codex, opencode, Gemini, Qwen or grok has used, from where that CLI keeps it. */
+export interface AgentUsage { usd: number | null; tokens: number | null; context_pct: number | null; model: string | null }
+export async function agentUsage(badge: string, dir: string, sinceMs: number | null): Promise<AgentUsage> {
+  return invoke<AgentUsage>("agent_usage", { badge, dir, sinceMs });
 }
 
 /** Token usage of one Claude session (one agent's conversation), by model. */

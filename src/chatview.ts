@@ -134,6 +134,11 @@ const WINDOW = 160; // items drawn at once; "Show earlier" widens it
 const SLICES_PER_TICK = 12; // a long session loads in a few ticks, not one freeze
 /** How long a stopped agent gets to start again before a message to it gives up. */
 const WAKE_MS = 30_000;
+/** How long after an agent starts the chat may ask its CLI about itself. */
+const WARM_AFTER_MS = 20_000;
+/** Conversations kept in memory while not shown; older ones are let go and
+ *  read again when shown (a long one holds a lot). */
+const KEEP_HIDDEN = 3;
 
 /** Agents whose transcript we can read. */
 export function chatSupported(pane: Pane): boolean {
@@ -454,6 +459,8 @@ function askHtml(s: StepItem, live: LiveOption[] = [], stopped = false): string 
 }
 
 interface View {
+  /** When it was last put on show, to let go of the longest hidden first. */
+  shownAt?: number;
   el: HTMLElement;
   chat: Chat;
   offset: number;
@@ -1423,8 +1430,12 @@ function mount(pane: Pane): View {
     }
     openPalette(items, { placeholder: failed ? "Commands: type to search" : `${commands.length} commands from ${pane.spec.name}'s CLI: type to search` });
   };
-  // Warm the list up, so the first / opens at once.
-  void cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)?.then((f) => { v.facts = f; draw(v); }).catch(() => {});
+  // Warm the list up, so the first / opens at once. Asking starts a second
+  // copy of the CLI, so it waits until this one has finished starting.
+  const warm = window.setTimeout(() => {
+    if (views.get(pane.id) !== v) return;
+    void cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)?.then((f) => { v.facts = f; draw(v); }).catch(() => {});
+  }, Math.max(0, WARM_AFTER_MS - (Date.now() - (pane.spawnedAt ?? 0))));
   // @: a file or folder of the agent's folder, picked from a list as you type.
   let mention: { start: number; hits: MentionHit[]; k: number } | null = null;
   const menEl = el.querySelector<HTMLElement>(".cv-mention")!;
@@ -1684,7 +1695,7 @@ function mount(pane: Pane): View {
   // A redraw held for a selection happens once the selection is let go.
   const onSelection = () => { if (v.held && document.getSelection()?.isCollapsed) draw(v); };
   document.addEventListener("selectionchange", onSelection);
-  v.off = () => document.removeEventListener("selectionchange", onSelection);
+  v.off = () => { document.removeEventListener("selectionchange", onSelection); window.clearTimeout(warm); };
   views.set(pane.id, v);
   return v;
 }
@@ -1704,6 +1715,7 @@ export function showChat(pane: Pane, state: ChatState, focus = false): void {
   // another conversation: read it now rather than at the next tick
   if (follow(pane, v) && v.timer !== null) void poll(pane, v);
   pane.el.classList.add("chat-on");
+  v.shownAt = Date.now();
   if (v.timer === null) {
     v.timer = window.setInterval(() => void poll(pane, v), POLL_MS);
     void poll(pane, v).then(() => draw(v, true));
@@ -1792,6 +1804,9 @@ export function hideChat(pane: Pane): void {
   pane.el.classList.remove("chat-on");
   const v = views.get(pane.id);
   if (v && v.timer !== null) { window.clearInterval(v.timer); v.timer = null; }
+  // Only the few most recently shown hidden conversations stay in memory.
+  const hidden = [...views.entries()].filter(([, x]) => x.timer === null).sort((a, b) => (b[1].shownAt ?? 0) - (a[1].shownAt ?? 0));
+  for (const [id] of hidden.slice(KEEP_HIDDEN)) dropChat(id);
 }
 
 /** Forget a pane's view (the pane was removed). */

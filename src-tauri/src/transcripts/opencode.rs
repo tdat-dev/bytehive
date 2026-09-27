@@ -36,14 +36,14 @@ pub async fn opencode_transcript(
     .await
 }
 
-fn db_path() -> Option<PathBuf> {
+pub(crate) fn db_path() -> Option<PathBuf> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
     let db = Path::new(&home).join(".local").join("share").join("opencode").join("opencode.db");
     db.exists().then_some(db)
 }
 
 /// "D:\\Zoldify\\" and "d:/zoldify" are the same folder.
-fn same_dir(a: &str, b: &str) -> bool {
+pub(crate) fn same_dir(a: &str, b: &str) -> bool {
     let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
     norm(a) == norm(b)
 }
@@ -66,7 +66,7 @@ fn opencode_transcript_in(db: &Path, dir: &str, since_ms: Option<u64>, session: 
 }
 
 /// The newest conversation begun in `dir` (a helper agent's session has a parent: not those).
-fn newest_session(conn: &Connection, dir: &str, since_ms: Option<u64>) -> Option<String> {
+pub(crate) fn newest_session(conn: &Connection, dir: &str, since_ms: Option<u64>) -> Option<String> {
     let since = since_ms.unwrap_or(0) as i64;
     let mut stmt = conn
         .prepare("SELECT id, directory FROM session WHERE parent_id IS NULL AND time_updated >= ?1 ORDER BY time_updated DESC LIMIT 500")
