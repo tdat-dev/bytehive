@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-27
+
+Your Claude limits, always in sight.
+
+### Added
+
+- **5-hour and weekly limits under the agent list.** How much of your Claude
+  plan's 5-hour window and week is used, when each resets, and a model's own
+  weekly limit once you use it. The bars turn amber at 70% and red at 90%.
+  The numbers are the same ones Claude Code's /usage shows; checking them
+  costs nothing and nothing but the percentages leaves your machine's
+  sign-in. They refresh every 2 minutes and when you come back to Maestro.
+
 ## [0.7.0] - 2026-09-27
 
 Answer from the chat, see what each agent costs.
