@@ -41,6 +41,7 @@ import { paneLook } from "./background";
 import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
+import { faceSvg } from "./agentface";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
@@ -122,7 +123,6 @@ function buildPaneEl(
   color: string,
   role?: AgentSpec["role"],
 ): HTMLElement {
-  const initial = name.trim().charAt(0).toUpperCase() || "◆";
   const el = document.createElement("section");
   el.className = "pane";
   el.dataset.id = id;
@@ -139,7 +139,7 @@ function buildPaneEl(
   el.innerHTML = `
     <div class="pane-bar" data-drag>
       <span class="pb-dot"></span>
-      <span class="pb-av" style="background:${color}" aria-hidden="true">${initial}</span>
+      <span class="pb-av" style="--mk:${color}" aria-hidden="true">${faceSvg(name, color)}</span>
       <span class="pb-name pane-name">${name}</span>
       ${roleChip}
       <span class="pb-cli">${badge}</span>

@@ -127,6 +127,13 @@ body.inbox-ui #btnToggleCode { display: none !important; }
   font: 700 11px var(--sans);
   color: #050506;
 }
+/* an agent's pixel face (agentface.ts) on a dark tile of its colour */
+.iq-mk, .pal-mk:not(.letter), .pb-av {
+  background: color-mix(in oklch, var(--mk, #888) 22%, #111114);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--mk, #888) 38%, transparent);
+}
+.face { display: block; width: 66%; height: 66%; overflow: visible; }
+.face .fo { fill: #0b0b0e; }
 .iq-t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iq-tm { font: 12px var(--mono); color: var(--ib-ink-3); }
 .iq-s { grid-column: 2 / 4; font-size: 12.5px; color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

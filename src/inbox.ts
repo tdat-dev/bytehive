@@ -27,6 +27,7 @@ import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
 import { chatSupported, focusAgent, hideChat, showChat, tokens } from "./chatview";
 import { agentUsage, onAgentCost } from "./agentcost";
+import { faceSvg } from "./agentface";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { money } from "./pricing";
 import { topNote } from "./hint";
@@ -504,7 +505,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
           : use?.tokens ? `<span class="iq-cost" title="Tokens its conversation has used so far">${tokens(use.tokens)} tokens</span>` : "";
         const full = use?.contextPct != null && use.contextPct >= 80 ? `<span class="iq-full" title="Its context is nearly full: it will soon sum up the conversation and lose detail">${Math.round(use.contextPct)}% context</span>` : "";
         return `<li><button class="iq-row st-${t.status.state}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
-          <span class="iq-mk" style="background:${esc(p?.color ?? "var(--muted)")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span>
+          <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${faceSvg(t.name, p?.color ?? "#888")}</span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
           <span class="iq-more" data-more aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
@@ -820,7 +821,7 @@ function openCompare(raceId: string): void {
     <div class="cmp-grid">${racers.map((t) => {
       const p = paneOf(t);
       return `<section class="cmp-col">
-        <div class="cmp-h"><span class="iq-mk" style="background:${esc(p?.color ?? "#888")}" aria-hidden="true">${esc((t.name.trim()[0] ?? "?").toUpperCase())}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+        <div class="cmp-h"><span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${faceSvg(t.name, p?.color ?? "#888")}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
         <p class="cmp-n">${t.changedFiles == null ? "Changes unknown" : `${t.changedFiles} file${t.changedFiles === 1 ? "" : "s"} changed`}${lineCounts(t)}</p>
         <p class="cmp-l">${esc(rowLine(t))}</p>
         <button class="im-btn${t.status.state === "review" ? " primary" : ""}" data-review="${esc(t.paneId)}">Review</button>
@@ -852,7 +853,7 @@ export function paletteItems(): PaletteItem[] {
       group: GROUP_LABEL[t.status.state],
       label: t.name,
       sub: `${t.title ? `${t.title} · ` : ""}${t.project} · ${rowLine(t)}`,
-      mark: { color: p?.color ?? "#888", letter: (t.name.trim()[0] ?? "?").toUpperCase() },
+      mark: { color: p?.color ?? "#888", letter: (t.name.trim()[0] ?? "?").toUpperCase(), face: t.name },
       run: () => openTask(t),
     };
   });

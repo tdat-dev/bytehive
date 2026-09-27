@@ -9,6 +9,7 @@ import { resizePty } from "./ipc";
 import { paneFont } from "./zoom";
 import { basename } from "./workspaces";
 import { type Pane, type Workspace } from "./panetypes";
+import { faceSvg } from "./agentface";
 
 let onSessionChange: () => void = () => {};
 export function configurePaneLayout(deps: { saveSession: () => void }): void {
@@ -112,6 +113,9 @@ export function renamePane(pane: Pane, name: string): void {
   if (v) pane.spec.name = v;
   const nameEl = pane.el.querySelector<HTMLElement>(".pb-name");
   if (nameEl) nameEl.textContent = pane.spec.name;
+  // a new name is a new face
+  const av = pane.el.querySelector<HTMLElement>(".pb-av");
+  if (av) av.innerHTML = faceSvg(pane.spec.name, pane.color);
   onSessionChange();
 }
 
