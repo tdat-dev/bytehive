@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-27
+
+Every agent has a face.
+
+### Changed
+
+- **Pixel faces instead of letters.** Each agent now has a small pixel face
+  of its own, in its CLI's colour, so Ana and Alex no longer both wear an
+  "A" and a row of Claude agents is no longer a row of the same orange
+  square. The same agent always has the same face; renaming it gives it a new
+  one. The status dot stays in the corner.
+
 ## [0.7.2] - 2026-09-27
 
 Usage for every CLI, and lighter on your machine.
