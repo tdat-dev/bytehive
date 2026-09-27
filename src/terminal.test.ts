@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { mountTerminal, decodeOsc52, shrinkToFit, AUTO_FIT_MIN } from "./terminal";
+import { mountTerminal, decodeOsc52, shrinkToFit, AUTO_FIT_MIN, keepLines, SCROLLBACK_SHOWN, SCROLLBACK_HIDDEN, TRIM_AFTER_MS } from "./terminal";
 
 // Smoke test: verifies the module (and its @xterm + CSS imports) resolves and
 // compiles under the bundler. Real terminal rendering needs a browser and is
@@ -133,5 +133,14 @@ describe("terminal host layout (addon-fit contract)", () => {
     // injected by terminal.ts's JS import, after index.html's <link>. That tie
     // is exactly how the fix shipped once and changed nothing on screen.
     expect(rule(".term-host .xterm .xterm-viewport")).toMatch(/background-color:\s*transparent/);
+  });
+});
+
+describe("keepLines", () => {
+  it("keeps full history on screen and for a while after, then trims", () => {
+    expect(keepLines(true, 0)).toBe(SCROLLBACK_SHOWN);
+    expect(keepLines(false, TRIM_AFTER_MS - 1)).toBe(SCROLLBACK_SHOWN);
+    expect(keepLines(false, TRIM_AFTER_MS)).toBe(SCROLLBACK_HIDDEN);
+    expect(keepLines(true, TRIM_AFTER_MS * 10)).toBe(SCROLLBACK_SHOWN);
   });
 });

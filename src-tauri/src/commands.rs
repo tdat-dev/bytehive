@@ -404,6 +404,40 @@ pub struct TranscriptChunk {
     pub text: String,
     /// Where to read from next time.
     pub next: u64,
+    /// Where this text starts in the file: more than 0 on a first read that
+    /// was asked for only the end of a long conversation.
+    pub from: u64,
+}
+
+/// Where reading a transcript starts: at `offset`; or, on a first read
+/// (`offset` 0) asked for only the end, at the first whole line within the
+/// last `tail` bytes, so a long conversation opens without reading all of it.
+pub(crate) fn read_start(file: &mut std::fs::File, size: u64, offset: u64, tail: Option<u64>) -> u64 {
+    use std::io::{Read, Seek, SeekFrom};
+    // the file was replaced or cut: start over
+    if offset > size {
+        return 0;
+    }
+    if offset != 0 {
+        return offset;
+    }
+    let Some(t) = tail.filter(|t| *t > 0 && size > *t) else { return 0 };
+    let mut at = size - t;
+    let mut buf = vec![0u8; 64 * 1024];
+    while at < size {
+        if file.seek(SeekFrom::Start(at)).is_err() {
+            return 0;
+        }
+        let n = match file.read(&mut buf) {
+            Ok(0) | Err(_) => return size,
+            Ok(n) => n,
+        };
+        if let Some(i) = buf[..n].iter().position(|&b| b == b'\n') {
+            return at + i as u64 + 1;
+        }
+        at += n as u64;
+    }
+    size
 }
 
 /// Where pictures pasted into the chat composer are kept, and for how long.
@@ -513,11 +547,12 @@ pub async fn claude_transcript(
     session_id: Option<String>,
     since_ms: Option<u64>,
     offset: u64,
+    tail_bytes: Option<u64>,
 ) -> Result<TranscriptChunk, CommandError> {
-    run_blocking(move || Ok(claude_transcript_impl(&dir, session_id.as_deref(), since_ms, offset))).await
+    run_blocking(move || Ok(claude_transcript_impl(&dir, session_id.as_deref(), since_ms, offset, tail_bytes))).await
 }
 
-fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<u64>, offset: u64) -> TranscriptChunk {
+fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<u64>, offset: u64, tail_bytes: Option<u64>) -> TranscriptChunk {
     use std::io::{Read, Seek, SeekFrom};
     let home = match std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
         Ok(h) => h,
@@ -560,15 +595,14 @@ fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<
         }
     };
     let Ok(mut file) = std::fs::File::open(&path) else {
-        return TranscriptChunk { path: String::new(), text: String::new(), next: offset };
+        return TranscriptChunk { path: String::new(), text: String::new(), next: offset, from: offset };
     };
     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-    // The file was replaced or cut: start over.
-    let start = if offset > size { 0 } else { offset };
+    let start = read_start(&mut file, size, offset, tail_bytes);
     let want = (size - start).min(TRANSCRIPT_SLICE);
     let mut buf = vec![0u8; want as usize];
     if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut buf).is_err() {
-        return TranscriptChunk { path: path.to_string_lossy().into_owned(), text: String::new(), next: start };
+        return TranscriptChunk { path: path.to_string_lossy().into_owned(), text: String::new(), next: start, from: start };
     }
     // Hand back whole lines only; the rest is read next time.
     let cut = match buf.iter().rposition(|&b| b == b'\n') {
@@ -580,6 +614,7 @@ fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<
         path: path.to_string_lossy().into_owned(),
         text: String::from_utf8_lossy(&buf).into_owned(),
         next: start + cut as u64,
+        from: start,
     }
 }
 

@@ -34,6 +34,8 @@ export interface TerminalHandle {
   /** Keep at least `rows` rows visible by shrinking the font (never below
    *  AUTO_FIT_MIN) when the pane is too short for the base size. 0 = off. */
   setAutoFit(rows: number): void;
+  /** How many lines of history it keeps (fewer drops the oldest now). */
+  setScrollback(lines: number): void;
   /** Swap the palette and the plate-stripping mode live (background changed,
    *  or the user moved the opacity slider). Cells already on screen keep the
    *  plate they were drawn with until the CLI repaints them. */
@@ -56,6 +58,21 @@ export interface TerminalHandle {
 /** Hard floor for auto-fit: below this the output is there but unreadable, so a
  *  very short pane keeps the floor and clips instead of shrinking forever. */
 export const AUTO_FIT_MIN = 13;
+
+/** Lines of history a terminal on screen keeps. xterm holds ~12 bytes a
+ *  cell, so a wide terminal full of history is ~12 MB. */
+export const SCROLLBACK_SHOWN = 5000;
+/** …and one out of sight a while keeps: its chat (or the backend's replay)
+ *  has the rest. */
+export const SCROLLBACK_HIDDEN = 1000;
+/** How long out of sight before its history is trimmed. */
+export const TRIM_AFTER_MS = 5 * 60_000;
+
+/** Lines of history a terminal should keep, by whether it is on screen and
+ *  for how long it has not been. */
+export function keepLines(shown: boolean, hiddenForMs: number): number {
+  return shown || hiddenForMs < TRIM_AFTER_MS ? SCROLLBACK_SHOWN : SCROLLBACK_HIDDEN;
+}
 /** …and auto-fit never drops more than this far below the size the user picked.
  *  It is a nudge for a cramped tile, not a licence to overrule the setting. */
 export const AUTO_FIT_DROP = 1;
@@ -145,7 +162,7 @@ export function mountTerminal(
     fontSize: opts.fontSize ?? 13,
     lineHeight: 1.2,
     letterSpacing: 0,
-    scrollback: 5000, // generous history so search/scroll can reach older output
+    scrollback: SCROLLBACK_SHOWN, // generous history so search/scroll can reach older output
     // Needed for any alpha < 1 in the theme background. Harmless when the
     // palette is opaque, so it is unconditional rather than a second flag that
     // could drift out of sync with the palette.
@@ -348,6 +365,7 @@ export function mountTerminal(
       if (usedWebgl) liveWebgl--;
     },
     focus: () => term.focus(),
+    setScrollback: (n) => { if (term.options.scrollback !== n) term.options.scrollback = n; },
     findNext: (q) => {
       if (q) search.findNext(q, SEARCH_OPTS);
       else search.clearDecorations();

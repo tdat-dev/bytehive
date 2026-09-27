@@ -320,6 +320,10 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv.asking .cv-compose { display: none; }
 .cv.asking .cv-thread { padding-bottom: var(--ask-h, 200px); }
 
+/* a conversation opened on its end: what came before is a click away */
+.cv-skip { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; margin: 4px 0 18px; font-size: 12.5px; color: var(--ib-ink-3); text-align: center; }
+.cv-skip .cv-earlier { margin: 0; }
+
 /* a stopped agent: say so (and why, when it failed), offer to carry on */
 .cv-stopped { display: none; }
 /* stopped, the message box stays: what you send starts it again on this conversation */

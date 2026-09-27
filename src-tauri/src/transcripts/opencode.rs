@@ -62,7 +62,7 @@ fn opencode_transcript_in(db: &Path, dir: &str, since_ms: Option<u64>, session: 
         },
     };
     let (text, next) = rows_after(&conn, &id, cursor).unwrap_or_else(|_| (String::new(), cursor));
-    TranscriptChunk { path: id, text, next }
+    TranscriptChunk { path: id, text, next, from: 0 }
 }
 
 /// The newest conversation begun in `dir` (a helper agent's session has a parent: not those).

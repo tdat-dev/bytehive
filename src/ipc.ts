@@ -98,8 +98,9 @@ export async function claudeTranscript(
   sessionId: string | null,
   sinceMs: number | null,
   offset: number,
-): Promise<{ path: string; text: string; next: number }> {
-  return invoke("claude_transcript", { dir, sessionId, sinceMs, offset });
+  tailBytes?: number,
+): Promise<{ path: string; text: string; next: number; from?: number }> {
+  return invoke("claude_transcript", { dir, sessionId, sinceMs, offset, tailBytes: tailBytes ?? null });
 }
 
 /** New complete lines of a Codex agent's rollout from `offset`: `path` once
@@ -109,8 +110,9 @@ export async function codexTranscript(
   sinceMs: number | null,
   path: string | null,
   offset: number,
-): Promise<{ path: string; text: string; next: number }> {
-  return invoke("codex_transcript", { dir, sinceMs, path, offset });
+  tailBytes?: number,
+): Promise<{ path: string; text: string; next: number; from?: number }> {
+  return invoke("codex_transcript", { dir, sinceMs, path, offset, tailBytes: tailBytes ?? null });
 }
 
 /** Rows of an opencode agent's session changed after `cursor` (ms), as JSONL:

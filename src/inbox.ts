@@ -29,6 +29,7 @@ import { chatSupported, focusAgent, hideChat, showChat, tokens } from "./chatvie
 import { agentUsage, onAgentCost } from "./agentcost";
 import { faceSvg } from "./agentface";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
+import { keepLines } from "./terminal";
 import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
@@ -731,9 +732,24 @@ function render(): void {
   renderChat(list, pane);
   renderEmpty();
   renderStart();
+  keepHistory(pane);
   // History follows the stage: switch agents and it shows the new one's.
   if (historian?.paneId && pane && historian.paneId !== pane.id) historian.open(pane);
   historian?.refresh();
+}
+
+/** When each agent's terminal went out of sight. */
+const hiddenSince = new Map<string, number>();
+/** Terminals out of sight a while keep less history (keepLines): with many
+ *  agents, full histories are the biggest use of memory. */
+function keepHistory(stage: Pane | undefined, now = Date.now()): void {
+  const shown = new Set<string>(splitOn ? pins : []);
+  if (stage) shown.add(stage.id);
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) {
+    if (shown.has(p.id)) hiddenSince.delete(p.id);
+    else if (!hiddenSince.has(p.id)) hiddenSince.set(p.id, now);
+    p.term.setScrollback?.(keepLines(shown.has(p.id), now - (hiddenSince.get(p.id) ?? now)));
+  }
 }
 
 async function pick(option: AskOption): Promise<void> {

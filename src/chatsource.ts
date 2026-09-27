@@ -8,13 +8,17 @@ import { createOpencodeChat } from "./opencodemodel";
 import { claudeTranscript, codexTranscript, opencodeTranscript } from "./ipc";
 import type { Pane } from "./panetypes";
 
-export interface Chunk { path: string; text: string; next: number }
+/** `from`: where the text starts in the conversation's file; more than 0 when
+ *  a first read took only the end of a long one. */
+export interface Chunk { path: string; text: string; next: number; from?: number }
 
 export interface ChatSource {
   createChat(): Chat;
   /** What was written after `offset`. `path` names the conversation; another
    *  one means the agent is in a new conversation. "" until there is one. */
-  read(pane: Pane, dir: string, offset: number): Promise<Chunk>;
+  read(pane: Pane, dir: string, offset: number, tailBytes?: number): Promise<Chunk>;
+  /** It can start a first read near the end of a long conversation. */
+  tails?: boolean;
   /** It needs its own session id (or a start time) to know which conversation is its own. */
   needsSession?: boolean;
 }
@@ -25,14 +29,16 @@ const since = (pane: Pane) => (pane.spawnedAt ? pane.spawnedAt - 5000 : null);
 export const SOURCES: Record<string, ChatSource> = {
   claude: {
     createChat,
-    read: (pane, dir, offset) => claudeTranscript(dir, pane.spec.sessionId ?? null, since(pane), offset),
+    read: (pane, dir, offset, tail) => claudeTranscript(dir, pane.spec.sessionId ?? null, since(pane), offset, tail),
     needsSession: true,
+    tails: true,
   },
   // Codex and opencode pick their own session ids: the newest one begun in the
   // agent's folder since it started is its own.
   codex: {
     createChat: createCodexChat,
-    read: (pane, dir, offset) => codexTranscript(dir, since(pane), null, offset),
+    read: (pane, dir, offset, tail) => codexTranscript(dir, since(pane), null, offset, tail),
+    tails: true,
   },
   opencode: {
     createChat: createOpencodeChat,

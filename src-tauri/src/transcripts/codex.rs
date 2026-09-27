@@ -24,10 +24,11 @@ pub async fn codex_transcript(
     since_ms: Option<u64>,
     path: Option<String>,
     offset: u64,
+    tail_bytes: Option<u64>,
 ) -> Result<TranscriptChunk, CommandError> {
     run_blocking(move || {
         let Some(root) = sessions_root() else { return Ok(TranscriptChunk::default()) };
-        Ok(codex_transcript_in(&root, &dir, since_ms, path.as_deref(), offset))
+        Ok(codex_transcript_in(&root, &dir, since_ms, path.as_deref(), offset, tail_bytes))
     })
     .await
 }
@@ -37,7 +38,7 @@ pub(crate) fn sessions_root() -> Option<PathBuf> {
     Some(Path::new(&home).join(".codex").join("sessions"))
 }
 
-fn codex_transcript_in(root: &Path, dir: &str, since_ms: Option<u64>, path: Option<&str>, offset: u64) -> TranscriptChunk {
+fn codex_transcript_in(root: &Path, dir: &str, since_ms: Option<u64>, path: Option<&str>, offset: u64, tail: Option<u64>) -> TranscriptChunk {
     // A known path is only trusted inside the sessions folder.
     let known = path
         .filter(|p| !p.is_empty())
@@ -45,9 +46,9 @@ fn codex_transcript_in(root: &Path, dir: &str, since_ms: Option<u64>, path: Opti
         .filter(|p| p.is_file() && p.starts_with(root));
     let file = match known.or_else(|| find_rollout(root, dir, since_ms.unwrap_or(0))) {
         Some(p) => p,
-        None => return TranscriptChunk { path: String::new(), text: String::new(), next: offset },
+        None => return TranscriptChunk { path: String::new(), text: String::new(), next: offset, from: offset },
     };
-    read_slice(&file, offset)
+    read_slice(&file, offset, tail)
 }
 
 /// Slashes one way, no trailing slash, any case: how two folder names compare.
@@ -127,23 +128,22 @@ fn session_cwd(p: &Path) -> Option<String> {
 }
 
 /// Complete lines of `path` from `offset`, at most one slice.
-fn read_slice(path: &Path, offset: u64) -> TranscriptChunk {
+fn read_slice(path: &Path, offset: u64, tail: Option<u64>) -> TranscriptChunk {
     let shown = path.to_string_lossy().into_owned();
     let Ok(mut file) = std::fs::File::open(path) else {
-        return TranscriptChunk { path: String::new(), text: String::new(), next: offset };
+        return TranscriptChunk { path: String::new(), text: String::new(), next: offset, from: offset };
     };
     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-    // The file was replaced or cut: start over.
-    let start = if offset > size { 0 } else { offset };
+    let start = crate::commands::read_start(&mut file, size, offset, tail);
     let want = (size - start).min(SLICE);
     let mut buf = vec![0u8; want as usize];
     if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut buf).is_err() {
-        return TranscriptChunk { path: shown, text: String::new(), next: start };
+        return TranscriptChunk { path: shown, text: String::new(), next: start, from: start };
     }
     // Hand back whole lines only; the rest is read next time.
     let cut = buf.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     buf.truncate(cut);
-    TranscriptChunk { path: shown, text: String::from_utf8_lossy(&buf).into_owned(), next: start + cut as u64 }
+    TranscriptChunk { path: shown, text: String::from_utf8_lossy(&buf).into_owned(), next: start + cut as u64, from: start }
 }
 
 #[cfg(test)]
@@ -174,14 +174,34 @@ mod tests {
         let other = rollout(&root, "2026/09/25", "b", "D:\\other", "");
         std::thread::sleep(std::time::Duration::from_millis(20));
         let mine = rollout(&root, "2026/09/25", "c", "d:/APP/", "{\"type\":\"x\"}\n{\"half\":");
-        let got = codex_transcript_in(&root, "D:\\app", None, None, 0);
+        let got = codex_transcript_in(&root, "D:\\app", None, None, 0, None);
         assert_eq!(got.path, mine.to_string_lossy());
         // whole lines only: the half-written last one waits
         assert!(got.text.ends_with("{\"type\":\"x\"}\n"));
         assert_eq!(got.next, got.text.len() as u64);
         // a known path is read as is
-        let again = codex_transcript_in(&root, "D:\\app", None, Some(&other.to_string_lossy()), 0);
+        let again = codex_transcript_in(&root, "D:\\app", None, Some(&other.to_string_lossy()), 0, None);
         assert_eq!(again.path, other.to_string_lossy());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_first_read_can_start_near_the_end_on_a_whole_line() {
+        let root = tmp("tail");
+        let body: String = (0..200).map(|i| format!("{{\"n\":{i}}}\n")).collect();
+        let p = rollout(&root, "2026/09/25", "a", "D:/app", &body);
+        let size = std::fs::metadata(&p).unwrap().len();
+        let got = codex_transcript_in(&root, "D:/app", None, None, 0, Some(100));
+        assert!(got.from > 0 && got.from <= size - 90);
+        assert!(got.text.starts_with("{\"n\":"), "starts on a whole line: {:?}", &got.text[..20]);
+        assert!(got.text.ends_with("{\"n\":199}\n"));
+        assert_eq!(got.next, size);
+        // later reads go on from where it got to, tail or not
+        let more = codex_transcript_in(&root, "D:/app", None, None, got.next, Some(100));
+        assert_eq!((more.from, more.text.as_str()), (size, ""));
+        // a short file is read whole
+        let whole = codex_transcript_in(&root, "D:/app", None, None, 0, Some(size + 10));
+        assert_eq!(whole.from, 0);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -189,11 +209,11 @@ mod tests {
     fn nothing_before_since_or_outside_the_sessions_folder() {
         let root = tmp("since");
         let p = rollout(&root, "2026/09/25", "a", "D:\\app", "");
-        let got = codex_transcript_in(&root, "D:\\app", Some(u64::MAX / 2), None, 0);
+        let got = codex_transcript_in(&root, "D:\\app", Some(u64::MAX / 2), None, 0, None);
         assert_eq!(got.path, "");
         let outside = std::env::temp_dir().join(format!("maestro-codex-outside-{}.jsonl", std::process::id()));
         std::fs::write(&outside, "{}\n").unwrap();
-        let got = codex_transcript_in(&root, "D:\\nowhere", None, Some(&outside.to_string_lossy()), 0);
+        let got = codex_transcript_in(&root, "D:\\nowhere", None, Some(&outside.to_string_lossy()), 0, None);
         assert_eq!(got.path, "");
         assert_eq!(session_cwd(&p).as_deref(), Some("D:\\app"));
         let _ = std::fs::remove_file(&outside);

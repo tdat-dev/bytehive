@@ -139,6 +139,10 @@ const WARM_AFTER_MS = 20_000;
 /** Conversations kept in memory while not shown; older ones are let go and
  *  read again when shown (a long one holds a lot). */
 const KEEP_HIDDEN = 3;
+/** A conversation opens with this much of its end; the rest loads on request.
+ *  Long sessions run to hundreds of MB, and reading all of one to show its
+ *  last page cost seconds and a lot of memory. */
+const TAIL_BYTES = 4 * 1024 * 1024;
 
 /** Agents whose transcript we can read. */
 export function chatSupported(pane: Pane): boolean {
@@ -459,6 +463,10 @@ function askHtml(s: StepItem, live: LiveOption[] = [], stopped = false): string 
 }
 
 interface View {
+  /** Bytes of the start of the conversation not read (it opened on its end). */
+  skipped?: number;
+  /** Read it all: the person asked for the whole conversation. */
+  whole?: boolean;
   /** When it was last put on show, to let go of the longest hidden first. */
   shownAt?: number;
   el: HTMLElement;
@@ -665,6 +673,14 @@ async function readTaskOutput(v: View, t: BgTask): Promise<void> {
   draw(v);
 }
 
+/** The top of a conversation opened on its end: how much came before, and a way to read it. */
+function skippedHtml(v: View): string {
+  if (!v.skipped) return "";
+  const mb = v.skipped / (1024 * 1024);
+  const size = mb >= 1 ? `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB` : `${Math.max(1, Math.round(v.skipped / 1024))} KB`;
+  return `<div class="cv-skip"><span>Opened on its latest part: ${size} of earlier conversation isn't loaded, to keep Maestro light.</span><button type="button" class="cv-earlier" data-whole>Load the whole conversation</button></div>`;
+}
+
 /** What a conversation with nothing in it says, by what the agent is doing. */
 function emptyHtml(v: View): string {
   const name = esc(v.state.name);
@@ -729,7 +745,7 @@ function draw(v: View, force = false): void {
   const items = v.chat.items;
   settleSending(v);
   const set = (s: Set<string>) => [...s].sort().join(",");
-  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}|${v.sending.map((x) => x.note ?? "").join(",")}|${(v.state.answers ?? []).map((a) => `${a.n}${a.label}`).join("/")}`;
+  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}|${v.skipped ?? 0}|${v.sending.map((x) => x.note ?? "").join(",")}|${(v.state.answers ?? []).map((a) => `${a.n}${a.label}`).join("/")}`;
   const scroller = v.el.querySelector<HTMLElement>(".cv-scroll")!;
   const thread = v.el.querySelector<HTMLElement>(".cv-thread")!;
   if (sig !== v.sig || force) {
@@ -743,7 +759,7 @@ function draw(v: View, force = false): void {
       const back = focusKey(thread);
       const start = Math.max(0, items.length - v.window);
       // Nothing of a conversation still loading: half of it would jump as the rest comes in.
-      thread.innerHTML = !v.loaded ? emptyHtml(v) : (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "") +
+      thread.innerHTML = !v.loaded ? emptyHtml(v) : skippedHtml(v) + (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "") +
         (items.length || v.sending.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working", v.state.answers, v.state.state === "stopped") : emptyHtml(v)) +
         v.sending.map((s) => `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">${esc(s.note ?? "Sending…")}</span></div>`).join("");
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
@@ -926,6 +942,8 @@ function follow(pane: Pane, v: View): boolean {
   v.window = WINDOW;
   v.loaded = false;
   v.said = "";
+  v.skipped = 0;
+  v.whole = false;
   return true;
 }
 
@@ -954,7 +972,8 @@ async function poll(pane: Pane, v: View): Promise<void> {
     const first = !v.loaded;
     let caughtUp = false;
     for (let k = 0; first || k < SLICES_PER_TICK; k++) {
-      const r = await src.read(pane, dir, v.offset);
+      const r = await src.read(pane, dir, v.offset, first && v.offset === 0 && !v.whole && src.tails ? TAIL_BYTES : undefined);
+      if (first && v.offset === 0 && r.from) v.skipped = r.from;
       // Without a session id of its own (a preset that picks one), a new file
       // is the only sign of a new conversation.
       if (r.path && r.path !== v.path) {
@@ -1661,6 +1680,16 @@ function mount(pane: Pane): View {
     }
     if (t.closest("[data-review]")) { v.state.onReview?.(); return; }
     if (t.closest("[data-stop]")) { stop(); return; }
+    if (t.closest("[data-whole]")) {
+      forgetImages(v.chat.items);
+      v.chat = newChat(pane);
+      Object.assign(v, { offset: 0, path: "", sig: "", sideSig: "", loaded: false, said: "", skipped: 0, whole: true, window: WINDOW });
+      v.open.clear();
+      v.expanded.clear();
+      draw(v, true);
+      void poll(pane, v);
+      return;
+    }
     if (t.closest("[data-earlier]")) {
       // New messages go in above: keep the one you were reading where it was.
       const scroller = el.querySelector<HTMLElement>(".cv-scroll")!;

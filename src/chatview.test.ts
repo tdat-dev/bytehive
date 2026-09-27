@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const io = vi.hoisted(() => ({
   chunks: [] as string[],
-  asked: [] as Array<{ dir: string; sessionId: string | null; offset: number }>,
+  asked: [] as Array<{ dir: string; sessionId: string | null; offset: number; tail?: number | null }>,
+  skipFirst: 0,
   sent: [] as Array<[string, string]>,
   keys: [] as Array<[string, string]>,
   captured: [] as Array<{ program: string; args: string[]; cwd: string | null }>,
@@ -26,11 +27,13 @@ vi.mock("./confirmmodal", () => ({
   confirmModal: async (o: { title: string }) => { io.confirms.push(o.title); return { ok: io.confirmOk, dontAsk: false, value: "" }; },
 }));
 vi.mock("./ipc", () => ({
-  claudeTranscript: async (dir: string, sessionId: string | null, _since: number | null, offset: number) => {
-    io.asked.push({ dir, sessionId, offset });
+  claudeTranscript: async (dir: string, sessionId: string | null, _since: number | null, offset: number, tail?: number) => {
+    io.asked.push({ dir, sessionId, offset, tail: tail ?? null });
     if (io.hold) await io.hold;
     const text = io.chunks.shift() ?? "";
-    return { path: "C:/t.jsonl", text, next: offset + text.length };
+    // a long conversation: a first read asked for its end starts further in
+    const from = offset === 0 && tail && io.skipFirst ? io.skipFirst : offset;
+    return { path: "C:/t.jsonl", text, next: from + text.length, from };
   },
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
@@ -295,7 +298,7 @@ describe("chat view", () => {
     const p = pane();
     showChat(p, { name: "Ana", state: "working" });
     await flush();
-    expect(io.asked[0]).toEqual({ dir: "D:/wt/p1", sessionId: "11111111-2222-3333-4444-555555555555", offset: 0 });
+    expect(io.asked[0]).toEqual({ dir: "D:/wt/p1", sessionId: "11111111-2222-3333-4444-555555555555", offset: 0, tail: 4 * 1024 * 1024 });
     expect(p.el.classList.contains("chat-on")).toBe(true);
     expect(p.el.querySelector(".cv-bubble")!.textContent).toBe("fix the redirect");
     expect(p.el.querySelector(".cv-a strong")!.textContent).toBe("Done");
@@ -415,6 +418,28 @@ describe("chat view", () => {
     expect(rows).toContainEqual(["Cost", "$2.20 at API prices"]);
     dropChat("p-cost");
     io.usage = [];
+  });
+
+  it("opens a long conversation on its end, and reads it all when asked", async () => {
+    io.skipFirst = 150 * 1024 * 1024;
+    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "the latest ask" } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    expect(io.asked[0].tail).toBe(4 * 1024 * 1024);
+    const skip = p.el.querySelector(".cv-skip")!;
+    expect(skip.textContent).toContain("150 MB of earlier conversation");
+    expect(p.el.querySelector(".cv-bubble")!.textContent).toBe("the latest ask");
+    // the whole of it, from the start, no tail
+    io.skipFirst = 0;
+    io.asked = [];
+    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "the first ask" } }) + j({ type: "user", origin: { kind: "human" }, message: { content: "the latest ask" } })];
+    (skip.querySelector("[data-whole]") as HTMLButtonElement).click();
+    await flush();
+    await flush();
+    expect(io.asked[0]).toMatchObject({ offset: 0, tail: null });
+    expect(p.el.querySelector(".cv-skip")).toBeNull();
+    expect([...p.el.querySelectorAll(".cv-bubble")].map((b) => b.textContent)).toEqual(["the first ask", "the latest ask"]);
   });
 
   it("puts a message you sent back in the box to change and send again", async () => {
