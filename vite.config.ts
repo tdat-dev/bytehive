@@ -2,15 +2,15 @@
 import { defineConfig } from "vite";
 
 // Tauri expects a fixed dev-server port (matches devUrl in tauri.conf.json).
-// 3630, not Tauri's default 1420: Windows winnat/Hyper-V reserves shifting port
-// blocks and EACCES-blocks listening inside them. Those blocks keep crawling
-// through the 1000-2300 region — they swallowed 1430, then 1630 (1579-1678 as
-// of 2026-07-30). 3630 sits in the wide gap above them. Check with
-// `netsh interface ipv4 show excludedportrange protocol=tcp` before moving it.
+// 17630, not Tauri's default 1420: Windows winnat/Hyper-V reserves port blocks
+// inside the dynamic port range and EACCES-blocks listening there. On this
+// machine that range is 1024-15000 (`netsh int ipv4 show dynamicport tcp`),
+// which is why 1430, 1630 and 3630 were each swallowed in turn. A port above
+// the range is never reserved.
 export default defineConfig({
   clearScreen: false,
   server: {
-    port: 3630,
+    port: 17630,
     strictPort: true,
   },
   // Keep the test config here and nowhere else: a vitest.config.ts would be
