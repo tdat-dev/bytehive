@@ -387,6 +387,22 @@ fn ahead(s: &Sides, tip: &str) -> u64 {
     git(&["rev-list", "--count", &range], &s.main).ok().and_then(|n| n.parse().ok()).unwrap_or(0)
 }
 
+/// Everything on an agent's branch since it left the base: its commits and
+/// what it has not committed yet (new files too), as one unified diff. This is
+/// what a merge would bring in, which a plain working-tree diff misses once
+/// the agent commits its own work.
+#[tauri::command]
+pub async fn review_branch_diff(worktree_path: String) -> Result<String, CommandError> {
+    run_blocking(move || branch_diff_impl(&worktree_path).map_err(CommandError::Failed)).await
+}
+
+fn branch_diff_impl(worktree: &str) -> Result<String, String> {
+    let s = sides(worktree)?;
+    let tip = snapshot(&s)?;
+    let range = format!("{}...{}", s.base, tip);
+    git(&["-c", "core.quotepath=false", "diff", "--no-color", &range], &s.main)
+}
+
 /// Throw an agent's branch away: remove its worktree, uncommitted work and
 /// all, and delete the branch. The UI asks first.
 #[tauri::command]
@@ -580,6 +596,25 @@ mod tests {
         assert!(!wt.exists());
         assert!(g(&["branch", "--list", "agent"], &main).is_empty());
         assert_eq!(std::fs::read_to_string(main.join("a.txt")).unwrap(), "one\n");
+    }
+
+    #[test]
+    fn branch_diff_has_commits_and_uncommitted_work_but_not_the_base_s_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        std::fs::write(wt.join("a.txt"), "one\ncommitted\n").unwrap();
+        g(&["commit", "-qam", "agent edit"], &wt);
+        std::fs::write(wt.join("b.txt"), "bee\nuncommitted\n").unwrap();
+        std::fs::write(wt.join("new.txt"), "fresh\n").unwrap();
+        std::fs::write(main.join("base.txt"), "the base moved on\n").unwrap();
+        g(&["add", "-A"], &main);
+        g(&["commit", "-qm", "base moves"], &main);
+        let d = branch_diff_impl(&s(&wt)).unwrap();
+        assert!(d.contains("+committed") && d.contains("+uncommitted") && d.contains("+fresh"), "{d}");
+        assert!(!d.contains("base.txt"), "{d}");
+        // reading it changed nothing
+        assert_eq!(g(&["status", "--porcelain"], &wt), "M b.txt\n?? new.txt");
+        assert!(branch_diff_impl(&s(&main)).is_err());
     }
 
     #[test]

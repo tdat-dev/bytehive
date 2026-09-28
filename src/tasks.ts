@@ -28,6 +28,8 @@ export interface Task {
   /** Lines added and removed on its branch, when it has changes. */
   added: number | null;
   removed: number | null;
+  /** The branch its work was merged into, once Review merged it. */
+  mergedInto?: string | null;
   /** ms the current state began, for "waiting 4m" and queue order. */
   since: number;
 }
@@ -62,6 +64,20 @@ export function countLines(diff: string): { add: number; del: number } {
 }
 const listeners = new Set<(list: Task[]) => void>();
 
+/** Agents whose branch Review merged, until they start again. */
+const merged = new Map<string, { at: number; base: string; branch: string }>();
+
+/** Review merged this agent's branch into `base` (its worktree is gone). */
+export function markMerged(paneId: string, base: string, branch: string, at: number = Date.now()): void {
+  merged.set(paneId, { at, base, branch });
+  log(paneId, { at, kind: "merged", text: `Merged ${branch} into ${base}` });
+}
+
+/** Where this agent's work was merged, while it shows as merged. */
+export function mergedInfo(paneId: string): { base: string; branch: string } | null {
+  return merged.get(paneId) ?? null;
+}
+
 /** Changed files can only be pinned on one agent when it has its own worktree;
  *  agents sharing a checkout share one diff, so for them it stays unknown. */
 function changesFor(pane: Pane, now: number): { n: number | null; add: number | null; del: number | null } {
@@ -86,6 +102,10 @@ function changesFor(pane: Pane, now: number): { n: number | null; add: number | 
 }
 
 function toTask(ws: Workspace, pane: Pane, now: number): Task {
+  // Started again after the merge: it is on something new.
+  const m = merged.get(pane.id);
+  if (m && pane.spawnedAt != null && pane.spawnedAt > m.at) merged.delete(pane.id);
+  const done = merged.get(pane.id);
   const changes = changesFor(pane, now);
   const changedFiles = changes.n;
   const status = deriveTaskState(
@@ -94,6 +114,7 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
       lastOutputAt: pane.lastOutputAt,
       screen: pane.running ? pane.term.snapshot(SCREEN_LINES) : "",
       changedFiles,
+      merged: !!done,
     },
     now,
   );
@@ -114,6 +135,7 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
     changedFiles,
     added: changes.add,
     removed: changes.del,
+    mergedInto: done?.base ?? null,
     since: prev && prev.status.state === status.state ? prev.since : now,
   };
 }
@@ -135,6 +157,7 @@ export function describe(t: Pick<Task, "status" | "changedFiles">): string | nul
     }
     case "working": return "Started working";
     case "stopped": return "Stopped";
+    case "merged": return null; // markMerged wrote the line, with where it went
     default: return null;
   }
 }
@@ -174,14 +197,14 @@ export function updateTasks(now: number = Date.now()): void {
       tasks.set(pane.id, next);
     }
   for (const id of [...tasks.keys()])
-    if (!seen.has(id)) { tasks.delete(id); diffs.delete(id); history.delete(id); changed = true; }
+    if (!seen.has(id)) { tasks.delete(id); diffs.delete(id); history.delete(id); merged.delete(id); changed = true; }
   if (changed && listeners.size) {
     const list = allTasks();
     for (const cb of listeners) cb(list);
   }
 }
 
-const RANK: Record<TaskState, number> = { needs: 0, review: 1, working: 2, idle: 3, stopped: 4 };
+const RANK: Record<TaskState, number> = { needs: 0, review: 1, working: 2, idle: 3, stopped: 4, merged: 5 };
 
 /** Every task, the queue's order: what needs you first, longest waiting first. */
 export function allTasks(): Task[] {

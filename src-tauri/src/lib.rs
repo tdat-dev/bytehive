@@ -123,6 +123,7 @@ pub fn run() {
             review::review_remove_worktree,
             land::review_land,
             land::review_discard_branch,
+            land::review_branch_diff,
             core::fs::fs_read_dir,
             core::fs::fs_read_file,
             core::fs::fs_stat,

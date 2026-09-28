@@ -10,7 +10,7 @@
 import { parseAsk, type Ask } from "./askparse";
 import { limitOnScreen, type LimitHit } from "./limits";
 
-export type TaskState = "needs" | "review" | "working" | "idle" | "stopped";
+export type TaskState = "needs" | "review" | "working" | "idle" | "stopped" | "merged";
 
 export interface TaskFacts {
   running: boolean;
@@ -20,6 +20,8 @@ export interface TaskFacts {
   screen: string;
   /** Files changed on the agent's branch vs HEAD; null when unknown (no repo, not checked yet). */
   changedFiles: number | null;
+  /** Its branch was merged into the base (and its worktree removed) from Review. */
+  merged?: boolean;
 }
 
 export interface TaskStatus {
@@ -35,10 +37,11 @@ export interface TaskStatus {
 export const WORKING_MS = 2500;
 
 /** Order the queue uses: what needs you first, then what's ready for you. */
-export const STATE_RANK: Record<TaskState, number> = { needs: 0, review: 1, working: 2, idle: 3, stopped: 4 };
+export const STATE_RANK: Record<TaskState, number> = { needs: 0, review: 1, working: 2, idle: 3, stopped: 4, merged: 5 };
 
 export function deriveTaskState(f: TaskFacts, now: number): TaskStatus {
-  if (!f.running) return { state: "stopped", ask: null };
+  // A merged agent was stopped to land its branch: its job is done, not cut short.
+  if (!f.running) return { state: f.merged ? "merged" : "stopped", ask: null };
   // A prompt on screen wins over recency: selectors redraw while you move the
   // cursor, and a question is still a question the moment it appears.
   const ask = parseAsk(f.screen);
@@ -69,5 +72,6 @@ export function statusLine(name: string, s: TaskStatus): string {
   if (s.state === "review") return `${name} is done, changes ready to review`;
   if (s.state === "working") return `${name} is working`;
   if (s.state === "stopped") return `${name} stopped`;
+  if (s.state === "merged") return `${name}'s work is merged`;
   return `${name} is waiting for a task`;
 }

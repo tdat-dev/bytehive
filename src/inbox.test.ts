@@ -16,16 +16,17 @@ const state = vi.hoisted(() => ({
   killed: [] as string[],
   renamed: [] as Array<[string, string]>,
   confirm: { ok: true, value: "" },
-}));
-vi.mock("./diffview", () => ({
-  createDiffView: () => ({
-    mount: (body: HTMLElement) => { body.innerHTML = '<div class="dv-root"></div>'; },
-    setContext: (ctx: { dir: string | null }) => { state.reviewed.push(ctx.dir); },
-    show: () => {},
-  }),
+  sent: [] as Array<[string, string]>,
+  lands: [] as Array<{ wt: string; dryRun: boolean; title: string | null }>,
+  land: { dry: null as unknown, real: null as unknown },
+  discarded: [] as string[],
+  merged: [] as Array<[string, string, string]>,
+  diff: "",
 }));
 vi.mock("./tasks", () => ({
   allTasks: () => state.tasks,
+  taskOf: (id: string) => state.tasks.find((t) => t.paneId === id),
+  markMerged: (id: string, base: string, branch: string) => { state.merged.push([id, base, branch]); },
   onTasksChange: (cb: () => void) => { state.listeners.push(cb); return () => {}; },
   answerOption: async (id: string, o: { key: string }) => { state.answered.push([id, o.key]); },
   answerText: async (id: string, t: string) => { state.texts.push([id, t]); },
@@ -41,7 +42,19 @@ vi.mock("./panelayout", () => ({
 }));
 vi.mock("./agentbridge", () => ({ revealPane: () => true }));
 vi.mock("./zoom", () => ({ paneFont: (_ws: unknown, bump = 0) => 13 + bump }));
-vi.mock("./ipc", () => ({ resizePty: async () => {}, killPty: async (id: string) => { state.killed.push(id); } }));
+vi.mock("./ipc", () => ({
+  resizePty: async () => {},
+  killPty: async (id: string) => { state.killed.push(id); },
+  sendMessage: async (id: string, text: string) => { state.sent.push([id, text]); },
+  reviewBranchDiff: async (wt: string) => { state.reviewed.push(wt); return state.diff; },
+  repoDiff: async (dir: string) => { state.reviewed.push(dir); return state.diff; },
+  reposUnder: async (dir: string) => [{ path: dir, name: "maestro" }],
+  reviewLand: async (wt: string, o: { dryRun?: boolean; title?: string | null }) => {
+    state.lands.push({ wt, dryRun: !!o.dryRun, title: o.title ?? null });
+    return o.dryRun ? state.land.dry : state.land.real;
+  },
+  reviewDiscardBranch: async (wt: string) => { state.discarded.push(wt); },
+}));
 vi.mock("./confirmmodal", () => ({ confirmModal: async () => ({ ok: state.confirm.ok, dontAsk: false, value: state.confirm.value }) }));
 vi.mock("./spawnmodal", () => ({ openModal: () => {}, presetAvailable: (p: string) => p === "codex", loadCrew: () => ({ skipPerms: false }), spawnAgents: async () => ["Bob"] }));
 vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } }));
@@ -60,6 +73,12 @@ const RUN_ASK: Ask = {
     { n: 3, label: "No, and tell Claude what to do differently", key: "\x1b", deny: true },
   ],
 };
+const DIFF = [
+  "diff --git a/src/a.ts b/src/a.ts", "--- a/src/a.ts", "+++ b/src/a.ts",
+  "@@ -1,2 +1,2 @@", " keep", "-old", "+new",
+].join("\n");
+const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0)); };
+
 const task = (paneId: string, name: string, state: Task["status"]["state"], over: Partial<Task> = {}): Task => ({
   paneId, wsId: "ws-1", name, project: "maestro", branch: null, title: null, race: null,
   changedFiles: null, added: null, removed: null, since: 0,
@@ -142,6 +161,9 @@ describe("inbox DOM", () => {
 `;
     localStorage.clear();
     state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = [];
+    state.sent = []; state.lands = []; state.discarded = []; state.merged = []; state.killed = [];
+    state.diff = DIFF;
+    state.land = { dry: { kind: "ok", base: "main", branch: "maestro/e", sha: "", removed: false, note: null }, real: { kind: "ok", base: "main", branch: "maestro/e", sha: "abc", removed: true, note: null } };
     panes = ["a", "e"].map((id) => ({
       id, el: document.createElement("div"), color: "#f2b27a", running: false,
       spec: { name: id === "a" ? "Ana" : "Eli", cwd: "D:/maestro", worktree: `D:/wt/${id}`, branch: `maestro/${id}` },
@@ -356,18 +378,134 @@ describe("inbox DOM", () => {
 
   it("offers Review when an agent is done, and sends it back with feedback", async () => {
     state.tasks = [task("e", "Eli", "review", { changedFiles: 3 })];
+    (panes[1] as unknown as { running: boolean }).running = true;
     setInbox(true);
     const chip = document.querySelector('.inbox-ask [data-act="review"]') as HTMLButtonElement;
     expect(chip.textContent).toContain("Eli is ready · 3 files changed");
     chip.click();
+    await flush();
     expect(state.reviewed).toEqual(["D:/wt/e"]);
-    expect(document.querySelector(".inbox-review")!.getAttribute("aria-label")).toBe("Eli's changes");
+    const drawer = document.querySelector(".inbox-review")!;
+    expect(drawer.getAttribute("aria-label")).toBe("Eli's changes");
     expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
-    (document.getElementById("irBack") as HTMLInputElement).value = "add a test for the empty case";
-    document.querySelector(".ir-back")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    await Promise.resolve();
-    expect(state.texts).toEqual([["e", "add a test for the empty case"]]);
+    // the design's panel: what changed on the branch, where it goes, whether it merges
+    expect(drawer.querySelector(".rhead h2")!.textContent).toBe("1 file changed +1−1");
+    expect(drawer.querySelector(".br")!.textContent).toBe("maestro/e → main");
+    expect(drawer.querySelector(".check")!.textContent).toContain("Merges cleanly into main");
+    expect([...drawer.querySelectorAll(".dl .ln")].map((x) => x.textContent)).toEqual(["1", "", "2"]);
+    expect([...drawer.querySelectorAll(".row2 button")].map((b) => b.textContent!.trim())).toEqual(["Merge into main M", "Send back", "Discard branch"]);
+    // Send back with nothing to say asks for a note first
+    (drawer.querySelector('[data-act="back"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.sent).toEqual([]);
+    const note = document.getElementById("irNote") as HTMLTextAreaElement;
+    note.value = "add a test for the empty case";
+    note.dispatchEvent(new Event("input", { bubbles: true }));
+    (drawer.querySelector('[data-act="back"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.sent).toEqual([["e", "add a test for the empty case"]]);
     expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("keeps a note per agent while you look elsewhere", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    const note = document.getElementById("irNote") as HTMLTextAreaElement;
+    note.value = "half a thought";
+    note.dispatchEvent(new Event("input", { bubbles: true }));
+    (document.querySelector('.inbox-review [data-act="close"]') as HTMLButtonElement).click();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect((document.getElementById("irNote") as HTMLTextAreaElement).value).toBe("half a thought");
+  });
+
+  it("merges with M: stops the agent, lands its branch and marks it merged", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1, title: "Fix upload" })];
+    (panes[1] as unknown as { running: boolean }).running = true;
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    const diff = document.querySelector<HTMLElement>(".inbox-review .diff")!;
+    diff.dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true, cancelable: true }));
+    await flush();
+    // a dry run on open, one before stopping the agent, then the real one
+    expect(state.lands.map((l) => l.dryRun)).toEqual([true, true, false]);
+    expect(state.lands[2]).toEqual({ wt: "D:/wt/e", dryRun: false, title: "Fix upload" });
+    expect(state.killed).toEqual(["e"]);
+    expect(state.merged).toEqual([["e", "main", "maestro/e"]]);
+    expect(panes[1].spec.worktree).toBeUndefined();
+    expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("on a conflict merges nothing and Send back types what to resolve", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    (panes[1] as unknown as { running: boolean }).running = true;
+    state.land.dry = { kind: "conflict", base: "main", branch: "maestro/e", files: ["src/a.ts"] };
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    const drawer = document.querySelector(".inbox-review")!;
+    expect(drawer.querySelector(".check")!.textContent).toContain("Conflicts with main in 1 file");
+    expect(drawer.querySelector(".ir-msg")!.textContent).toContain("would conflict in src/a.ts. Nothing was merged.");
+    (drawer.querySelector('[data-act="merge"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.lands.every((l) => l.dryRun)).toBe(true);
+    expect(state.killed).toEqual([]);
+    // one click, no note needed
+    (document.querySelector('.inbox-review [data-act="back"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.sent[0][0]).toBe("e");
+    expect(state.sent[0][1]).toContain("conflicts in:\n- src/a.ts");
+    expect(state.sent[0][1]).toContain("git merge main");
+  });
+
+  it("discards a branch only after you confirm", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    state.confirm = { ok: false, value: "" };
+    (document.querySelector('.inbox-review [data-act="discard"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.discarded).toEqual([]);
+    state.confirm = { ok: true, value: "" };
+    (document.querySelector('.inbox-review [data-act="discard"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.discarded).toEqual(["D:/wt/e"]);
+    expect(panes[1].spec.branch).toBeUndefined();
+    expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("offers no Merge to an agent working in the project folder", async () => {
+    delete (panes[1].spec as { worktree?: string }).worktree;
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    const drawer = document.querySelector(".inbox-review")!;
+    expect(state.reviewed).toEqual(["D:/maestro"]);
+    expect(state.lands).toEqual([]);
+    expect([...drawer.querySelectorAll(".row2 button")].map((b) => b.textContent!.trim())).toEqual(["Send back"]);
+    expect(drawer.querySelector(".ir-msg")!.textContent).toContain("works in the project folder");
+    drawer.querySelector(".diff")!.dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
+    await flush();
+    expect(state.lands).toEqual([]);
+  });
+
+  it("shows merged agents as Merged and clears them", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "merged", { mergedInto: "main" })];
+    let removed = 0;
+    panes[1].el.insertAdjacentHTML("beforeend", "<button data-kill></button>");
+    panes[1].el.querySelector("[data-kill]")!.addEventListener("click", () => removed++);
+    setInbox(true);
+    expect(document.querySelector('.iq-row[data-id="e"] .iq-l')!.textContent).toBe("Merged into main");
+    expect(document.querySelector('.iq-row[data-id="e"]')!.classList.contains("st-merged")).toBe(true);
+    const clear = document.querySelector<HTMLButtonElement>("[data-clear-merged]")!;
+    expect(clear.textContent).toBe("Clear 1 merged");
+    clear.click();
+    expect(removed).toBe(1);
   });
 
   it("lists agents under their project, the project that needs you first", () => {
@@ -444,7 +582,7 @@ describe("inbox DOM", () => {
     expect(qEl.classList.contains("split-pin")).toBe(false);
   });
 
-  it("compares agents racing on one job and opens the one you pick in Review", () => {
+  it("compares agents racing on one job and opens the one you pick in Review", async () => {
     const race = (n: number) => ({ id: "r1", n, of: 2 });
     state.tasks = [
       task("a", "Ana", "review", { title: "Fix upload", race: race(1), changedFiles: 2, added: 10, removed: 1 }),
@@ -457,6 +595,7 @@ describe("inbox DOM", () => {
     expect(cols[0].querySelector(".cmp-n")!.textContent).toBe("2 files changed+10 −1");
     (cols[1].querySelector("[data-review]") as HTMLButtonElement).click();
     expect(document.querySelector(".cmp-back")).toBeNull();
+    await flush();
     expect(state.reviewed).toEqual(["D:/wt/e"]);
   });
 

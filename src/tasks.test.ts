@@ -9,7 +9,7 @@ vi.mock("./ipc", () => ({
 }));
 
 import { workspaces } from "./appstate";
-import { allTasks, answerOption, answerText, countLines, historyOf, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
+import { allTasks, answerOption, answerText, countLines, historyOf, markMerged, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
 import type { Pane, Workspace } from "./panetypes";
 
 const ASK = `
@@ -138,5 +138,19 @@ describe("tasks", () => {
     updateTasks(50_010);
     const t = taskOf("c")!;
     expect([t.title, t.race?.n, t.added, t.removed]).toEqual(["Fix the flaky upload test", 2, 2, 1]);
+  });
+  it("shows a merged agent as merged until it starts again", () => {
+    const p = pane("c", "Cy", { running: false, spawnedAt: 1_000 });
+    workspaces.set("ws-1", workspace([p]));
+    markMerged("c", "main", "cy/x", 2_000);
+    updateTasks(3_000);
+    expect(taskOf("c")!.status.state).toBe("merged");
+    expect(taskOf("c")!.mergedInto).toBe("main");
+    expect(historyOf("c").map((e) => e.text)).toContain("Merged cy/x into main");
+    // started again after the merge: on something new
+    p.running = true; p.spawnedAt = 4_000; p.lastOutputAt = 4_000;
+    updateTasks(4_100);
+    expect(taskOf("c")!.status.state).toBe("working");
+    expect(taskOf("c")!.mergedInto).toBeNull();
   });
 });

@@ -512,6 +512,42 @@ export async function reviewRemoveWorktree(
   await invoke("review_remove_worktree", { repoRoot, worktreePath, branch: branch ?? null });
 }
 
+/** What landing an agent's branch came to. `ok`: merged (or, on a dry run,
+ *  would merge cleanly), with its worktree and branch removed when `removed`.
+ *  `conflict`: these files conflict; nothing was merged. `error`: refused
+ *  or failed, with words fit to show. */
+export type LandResult =
+  | { kind: "ok"; base: string; branch: string; sha: string; removed: boolean; note: string | null }
+  | { kind: "conflict"; base: string; branch: string; files: string[] }
+  | { kind: "error"; message: string };
+
+/** Merge an agent's worktree branch into the project folder's branch in one
+ *  go: commit what is uncommitted (message from `title` unless given), merge,
+ *  then remove the worktree and branch. `dryRun` only checks, touching nothing. */
+export async function reviewLand(
+  worktreePath: string,
+  opts: { message?: string; title?: string | null; dryRun?: boolean } = {},
+): Promise<LandResult> {
+  return invoke<LandResult>("review_land", {
+    worktreePath,
+    message: opts.message ?? null,
+    title: opts.title ?? null,
+    dryRun: opts.dryRun ?? false,
+  });
+}
+
+/** Everything on an agent's worktree branch since it left the base (its
+ *  commits and uncommitted work), as one unified diff. Rejects for a folder
+ *  that is not a worktree of its own. */
+export async function reviewBranchDiff(worktreePath: string): Promise<string> {
+  return invoke<string>("review_branch_diff", { worktreePath });
+}
+
+/** Throw an agent's branch away: its worktree (uncommitted work too) and the branch. */
+export async function reviewDiscardBranch(worktreePath: string): Promise<void> {
+  await invoke("review_discard_branch", { worktreePath });
+}
+
 /** Batch-check whether each program name resolves on PATH (Windows
  *  CreateProcess / PATHEXT semantics). Result is index-aligned with the input.
  *  Used to gray out CLI presets whose binary isn't installed. */

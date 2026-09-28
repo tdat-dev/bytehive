@@ -41,9 +41,9 @@ import type { Pane, Workspace } from "./panetypes";
 
 /* ---------------- pure helpers (tested) ---------------- */
 
-const ORDER: TaskState[] = ["needs", "review", "working", "idle", "stopped"];
+const ORDER: TaskState[] = ["needs", "review", "working", "idle", "stopped", "merged"];
 export const GROUP_LABEL: Record<TaskState, string> = {
-  needs: "Needs you", review: "Ready to review", working: "Working", idle: "Idle", stopped: "Stopped",
+  needs: "Needs you", review: "Ready to review", working: "Working", idle: "Idle", stopped: "Stopped", merged: "Merged",
 };
 
 /** Tasks grouped in queue order; empty groups dropped except "Needs you",
@@ -109,9 +109,10 @@ export function headline(list: Task[]): { lead: string; rest: string } {
     working ? `${working} ${are(working)} working` : "",
   ].filter(Boolean);
   if (!parts.length) {
-    const idle = n("idle"), stopped = n("stopped");
+    const idle = n("idle"), stopped = n("stopped"), merged = n("merged");
     if (idle) parts.push(`${idle} ${are(idle)} waiting for a task`);
     if (stopped) parts.push(`${stopped} ${are(stopped)} stopped`);
+    if (merged) parts.push(`${merged} ${are(merged)} merged`);
   }
   return { lead, rest: parts.length ? ` ${parts.join(", ")}.` : "" };
 }
@@ -130,6 +131,7 @@ export function rowLine(t: Task): string {
     case "review": return `${t.changedFiles ?? 0} file${t.changedFiles === 1 ? "" : "s"} changed`;
     case "working": return "Working";
     case "stopped": return "Stopped";
+    case "merged": return `Merged into ${t.mergedInto ?? "the base branch"}`;
     default: return "Waiting for a task";
   }
 }
@@ -471,6 +473,7 @@ export function agentMenu(t: Task): MenuItem[] {
   const here = stagePane()?.id === pane.id;
   const key = (k: string) => (here ? k : undefined);
   return [
+    ...(t.status.state === "merged" ? [{ label: "Clear from list", run: () => clearMerged([t.paneId]) }] : []),
     { label: "Open", run: onStage },
     { label: "Rename…", run: () => void confirmModal({ title: "Rename agent", message: "What should this agent be called?", okLabel: "Rename", input: { value: pane.spec.name } })
       .then((r) => { if (r.ok) { renamePane(pane, r.value); render(); } }) },
@@ -515,7 +518,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         const said = rowLine(t);
         // The state in words, unless the line already is the state ("Needs you", "Stopped").
         const state = GROUP_LABEL[t.status.state];
-        const line = said === state || t.status.limit ? said : `${state} · ${said}`;
+        const line = said === state || t.status.limit || t.status.state === "merged" ? said : `${state} · ${said}`;
         // what it has used: money when its CLI prices it, else tokens; its context once nearly full
         const use = p ? agentUsage(p) : null;
         const cost = use?.usd ? `<span class="iq-cost" title="${p?.spec.badge === "claude" ? "What its conversation has used so far, at API prices" : "What its conversation has cost so far, as its CLI says"}">${money(use.usd)}</span>`
@@ -531,6 +534,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
       }).join("")}</ul>
     </section>`;
     }).join("") : `<p class="iq-empty">No agents yet.</p>`) +
+    clearMergedHtml(list) +
     `</div>` + planHtml(now);
   // Rebuilding every second would take the keyboard focus (and a click in
   // progress) away from the list; only a real change rebuilds it.
@@ -546,6 +550,20 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
   if (back) queueEl.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
 }
 let queueSig = "";
+
+/** Merged agents are done: one button takes them all off the list. */
+function clearMergedHtml(list: Task[]): string {
+  const n = list.filter((t) => t.status.state === "merged").length;
+  return n ? `<button type="button" class="iq-clear" data-clear-merged>Clear ${n} merged</button>` : "";
+}
+
+/** Take merged agents off the list: their work is in, their worktree gone. */
+function clearMerged(ids?: string[]): void {
+  const done = allTasks().filter((t) => t.status.state === "merged" && (!ids || ids.includes(t.paneId)));
+  for (const t of done) paneOf(t)?.el.querySelector<HTMLElement>("[data-kill]")?.click();
+  if (done.length) topNote(`Cleared ${done.length} merged agent${done.length === 1 ? "" : "s"}`);
+  render();
+}
 
 function renderHead(list: Task[]): void {
   if (!headEl) return;
@@ -905,6 +923,7 @@ export function paletteItems(): PaletteItem[] {
     act(splitOn ? "Back to Focus: one agent, full size" : "Grid: agents side by side", () => setSplit(!splitOn), "Alt+S", splitOn ? undefined : "Each agent on its own card, answering in place"),
     act("Add the current agent to the Grid, or take it out", () => pinCurrent(), "Alt+P"),
     act("Changes of the current agent", () => openReview(), "Alt+R", "Merge them, or send it back with a note"),
+    ...mergeItem(),
     act("History of the current agent", () => openHistory(), "Alt+H", "What it did and what you answered"),
     act("Board", () => openTool("kanban"), "Ctrl+Shift+K", "Cards the agents move as they work"),
     act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E", "Folder tree and editor"),
@@ -919,6 +938,14 @@ export function paletteItems(): PaletteItem[] {
     ...projects,
     ...here,
   ];
+}
+
+/** Ctrl K: merge the agent on the stage, when it is done on a branch of its own. */
+function mergeItem(): PaletteItem[] {
+  const p = stagePane();
+  const t = p && taskOf(p.id);
+  if (!p || !t || t.status.state !== "review" || !p.spec.worktree) return [];
+  return [{ group: "Actions", label: `Merge ${p.spec.name}'s branch`, keys: "M", sub: "From Changes: its worktree is removed after", run: () => { openReview(); void reviewer?.merge(); } }];
 }
 
 /** Ctrl K opens this palette instead of the classic switcher while the new
@@ -1111,6 +1138,7 @@ function mount(): void {
       queueEl?.querySelector<HTMLElement>(`[data-proj="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
       return;
     }
+    if ((e.target as HTMLElement).closest("[data-clear-merged]")) { clearMerged(); return; }
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
     const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
     if (!t || !row) return;
