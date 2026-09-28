@@ -127,6 +127,23 @@ export async function opencodeTranscript(
   return invoke("opencode_transcript", { dir, sinceMs, session, cursor });
 }
 
+/** Whole lines of an append-only file (inside `root`) after byte `offset`, a
+ *  slice at a time; a half-written last line waits for the next read. `offset`
+ *  null reads nothing and puts `next` at the end of the last whole line (skip
+ *  the backlog). `from` is 0 when the file was cut shorter than `offset`. */
+export async function fsReadLinesFrom(
+  root: string,
+  path: string,
+  offset: number | null,
+): Promise<{ text: string; next: number; from: number; size: number }> {
+  return invoke("fs_read_lines_from", { root, path, offset, maxBytes: null });
+}
+
+/** Empty a file that is still exactly `size` bytes (all of it read). Whether it did. */
+export async function fsTruncateIfSize(root: string, path: string, size: number): Promise<boolean> {
+  return invoke<boolean>("fs_truncate_if_size", { root, path, size });
+}
+
 /** Save a file pasted into a chat (base64) under its own name; its path. */
 export async function savePastedFile(data: string, name: string): Promise<string> {
   return invoke<string>("save_pasted_file", { data, name });

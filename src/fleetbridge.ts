@@ -8,7 +8,7 @@
  * The pure helpers (serialize/parse) are DOM- and IPC-free for unit tests; the
  * init function owns the timer and the fs calls. */
 
-import { fsReadFile, fsWriteFile, fsStat, fsCreateDir, fsCreateFile } from "./ipc";
+import { fsWriteFile, fsCreateDir, fsCreateFile, fsReadLinesFrom, fsTruncateIfSize } from "./ipc";
 
 const MAESTRO_DIR = ".maestro";
 const FLEET_REL = ".maestro\\fleet.json";
@@ -126,12 +126,19 @@ export interface FleetBridgeHost {
   spawn(dir: string, req: SpawnLine): void;
 }
 
-// Per-dir count of outbox lines already delivered. First sight of a workspace
-// records the current length so a restart doesn't replay the whole backlog.
+// Per-dir byte offset up to which each file has been read (just past its last
+// whole line). First sight of an existing file skips to its end so a restart
+// doesn't replay the whole backlog; a file that wasn't there yet starts at 0,
+// so the message that creates it is delivered too.
 const consumed = new Map<string, number>();
 const spawnConsumed = new Map<string, number>();
 // Per-dir last fleet.json we wrote, to skip no-op writes (status unchanged).
 const lastFleet = new Map<string, string>();
+
+/** A fully-read outbox bigger than this is emptied (see fs_truncate_if_size). */
+export const COMPACT_BYTES = 1024 * 1024;
+/** Slices read in one tick at most; the rest waits for the next tick. */
+const MAX_SLICES = 8;
 
 async function ensureMaestro(dir: string): Promise<void> {
   try {
@@ -141,17 +148,53 @@ async function ensureMaestro(dir: string): Promise<void> {
   }
 }
 
-/** Start the publish + deliver loop. Returns a stop function. */
+/** One tick: publish every roster, deliver every new message and spawn request. */
+export async function fleetTick(host: FleetBridgeHost): Promise<void> {
+  const jobs: Promise<void>[] = [];
+  const drained = new Set<string>();
+  for (const ws of host.workspaces()) {
+    if (!ws.dir) continue;
+    jobs.push(publishRoster(ws));
+    // Two workspaces on one folder share its files: drain them once.
+    if (drained.has(ws.dir)) continue;
+    drained.add(ws.dir);
+    jobs.push(
+      drainJsonl(ws.dir, OUTBOX_REL, consumed, (line) => {
+        const parsed = parseOutboxLine(line);
+        if (parsed) host.deliver(ws.dir, parsed.from, parsed.to, parsed.message);
+      }),
+    );
+    jobs.push(
+      drainJsonl(ws.dir, SPAWN_REL, spawnConsumed, (line) => {
+        const parsed = parseSpawnLine(line);
+        if (parsed) host.spawn(ws.dir, parsed);
+      }),
+    );
+  }
+  await Promise.all(jobs);
+}
+
+/** Start the publish + deliver loop. Returns a stop function.
+ *
+ *  Each tick is scheduled only after the previous one has finished, so two
+ *  never overlap (an overlap read the same lines twice and delivered twice).
+ *  While the window is hidden it runs half as often: messages between agents
+ *  must keep flowing in the background, just not every 1.5 s. */
 export function initFleetBridge(host: FleetBridgeHost, intervalMs = 1500): () => void {
-  const timer = window.setInterval(() => {
-    for (const ws of host.workspaces()) {
-      if (!ws.dir) continue;
-      void publishRoster(ws);
-      void drainOutbox(ws.dir, host);
-      void drainSpawns(ws.dir, host);
-    }
-  }, intervalMs);
-  return () => window.clearInterval(timer);
+  let stopped = false;
+  let timer = 0;
+  const next = () => {
+    if (stopped) return;
+    timer = window.setTimeout(run, document.hidden ? intervalMs * 2 : intervalMs);
+  };
+  const run = () => {
+    fleetTick(host).catch(() => {}).finally(next);
+  };
+  next();
+  return () => {
+    stopped = true;
+    window.clearTimeout(timer);
+  };
 }
 
 async function publishRoster(ws: BridgeWorkspace): Promise<void> {
@@ -171,44 +214,55 @@ async function publishRoster(ws: BridgeWorkspace): Promise<void> {
   }
 }
 
-async function drainOutbox(dir: string, host: FleetBridgeHost): Promise<void> {
-  let content: string;
+/** Hand each new whole line of an append-only jsonl file to `handle`.
+ *
+ *  Reads from the byte offset the last read stopped at, never the whole file:
+ *  the outbox only grows, and re-reading it all every tick eventually hit the
+ *  2 MB cap of fs_read_file, after which nothing was delivered again. A line
+ *  the MCP server is still writing is left for the next tick. Once everything
+ *  has been read and the file is big, it's emptied so it can't grow forever. */
+export async function drainJsonl(
+  dir: string,
+  rel: string,
+  offsets: Map<string, number>,
+  handle: (line: string) => void,
+): Promise<void> {
+  const at = offsets.get(dir);
+  let chunk: { text: string; next: number; from: number; size: number };
   try {
-    await fsStat(dir, OUTBOX_REL); // cheap existence probe
-    content = (await fsReadFile(dir, OUTBOX_REL)).content;
+    chunk = await fsReadLinesFrom(dir, rel, at ?? null);
   } catch {
-    return; // no outbox yet
-  }
-  const lines = content.split(/\r?\n/).filter((l) => l.trim());
-  const seen = consumed.get(dir);
-  if (seen === undefined) {
-    consumed.set(dir, lines.length); // skip backlog on first sight
+    // Not there yet: whatever appears in it from now on is new.
+    if (at === undefined) offsets.set(dir, 0);
     return;
   }
-  for (let i = seen; i < lines.length; i += 1) {
-    const parsed = parseOutboxLine(lines[i]);
-    if (parsed) host.deliver(dir, parsed.from, parsed.to, parsed.message);
-  }
-  consumed.set(dir, lines.length);
-}
-
-async function drainSpawns(dir: string, host: FleetBridgeHost): Promise<void> {
-  let content: string;
-  try {
-    await fsStat(dir, SPAWN_REL);
-    content = (await fsReadFile(dir, SPAWN_REL)).content;
-  } catch {
-    return; // no spawn requests yet
-  }
-  const lines = content.split(/\r?\n/).filter((l) => l.trim());
-  const seen = spawnConsumed.get(dir);
-  if (seen === undefined) {
-    spawnConsumed.set(dir, lines.length); // skip backlog on first sight
+  if (at === undefined) {
+    offsets.set(dir, chunk.next); // skip backlog on first sight
     return;
   }
-  for (let i = seen; i < lines.length; i += 1) {
-    const parsed = parseSpawnLine(lines[i]);
-    if (parsed) host.spawn(dir, parsed);
+  for (let i = 0; ; i += 1) {
+    // Moved on before handling, so a line that throws is never handed over twice.
+    offsets.set(dir, chunk.next);
+    for (const line of chunk.text.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        handle(line);
+      } catch {
+        /* one bad line never stops the rest */
+      }
+    }
+    if (!chunk.text || chunk.next >= chunk.size || i + 1 >= MAX_SLICES) break;
+    try {
+      chunk = await fsReadLinesFrom(dir, rel, chunk.next);
+    } catch {
+      return;
+    }
   }
-  spawnConsumed.set(dir, lines.length);
+  if (chunk.next === chunk.size && chunk.size > COMPACT_BYTES) {
+    try {
+      if (await fsTruncateIfSize(dir, rel, chunk.size)) offsets.set(dir, 0);
+    } catch {
+      /* try again once more has been read */
+    }
+  }
 }

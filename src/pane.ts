@@ -42,6 +42,7 @@ import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
 import { faceSvg } from "./agentface";
+import { replayEarlyExit, takeEarlyExit } from "./ptyexit";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
@@ -348,6 +349,7 @@ export function createAgent(
         ["MAESTRO_AGENT", spec.name],
         ["MAESTRO_WORKSPACE", cwd ?? ""],
       ];
+      pane.spawning = true;
       pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
         pane.lastOutputAt = Date.now();
         if (pane.attention) clearAttention(pane); // agent is producing output again
@@ -355,18 +357,26 @@ export function createAgent(
         // new window owns it) — never write into a dropped pane.
         if (ws.panes.has(id)) term.write(bytes);
       });
+      pane.spawning = false;
       pane.running = true;
       pane.error = undefined;
       pane.spawnedAt = Date.now();
       pane.lastOutputAt = Date.now();
       setStatus(pane, "running", "run");
       onUpdateCount();
+      // It may already be gone: a CLI that fails at once can exit before
+      // spawnPty returned. Its exit was held; end the pane now.
+      if (replayEarlyExit(id, pane.run)) return;
       // Re-fit once the grid layout has settled; correct the PTY size if it moved.
       requestAnimationFrame(() => {
         const s = term.fit();
         if (s.cols !== cols || s.rows !== rows) void resizePty(id, s.cols, s.rows);
       });
     } catch (e) {
+      if (pane.spawning) {
+        pane.spawning = false;
+        takeEarlyExit(id, undefined); // nothing started: drop anything held
+      }
       pane.error = onErrMsg(e);
       setStatus(pane, "spawn failed", "err");
       term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${pane.error}]\x1b[0m\r\n`));

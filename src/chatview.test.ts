@@ -309,6 +309,42 @@ describe("chat view", () => {
     expect(p.el.querySelector(".cv-out")!.textContent).toBe("ok");
   });
 
+  it("draws a new step without rebuilding what was already there", async () => {
+    io.chunks = [
+      j({ type: "user", origin: { kind: "human" }, message: { content: "fix the redirect" } }) +
+      j({ type: "assistant", message: { content: [{ type: "text", text: "On it." }] } }) +
+      j({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test" } }] } }) +
+      j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } }),
+    ];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "working" });
+    await flush();
+    const bubble = p.el.querySelector(".cv-bubble");
+    const answer = p.el.querySelector(".cv-a");
+    const step = p.el.querySelector(".cv-step");
+    expect(bubble && answer && step).toBeTruthy();
+    // the agent takes another step
+    io.chunks = [j({ type: "assistant", message: { content: [{ type: "tool_use", id: "t2", name: "Bash", input: { command: "npm run build" } }] } })];
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    const steps = p.el.querySelectorAll(".cv-step");
+    expect(steps.length).toBe(2);
+    // the same nodes, not copies drawn again
+    expect(p.el.querySelector(".cv-bubble")).toBe(bubble);
+    expect(p.el.querySelector(".cv-a")).toBe(answer);
+    expect(steps[0]).toBe(step);
+    // and that step finishing redraws that step alone
+    const running = steps[1];
+    io.chunks = [j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t2", content: "built" }] } })];
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    const after = p.el.querySelectorAll(".cv-step");
+    expect(after[0]).toBe(step);
+    expect(after[1]).not.toBe(running);
+    expect(after[1].querySelector(".cv-spin")).toBeNull();
+    expect(p.el.querySelector(".cv-bubble")).toBe(bubble);
+  });
+
   it("sends what you type, stops on Esc or Stop, and gives way to the terminal", async () => {
     const p = pane();
     showChat(p, { name: "Ana", state: "working" });

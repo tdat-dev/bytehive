@@ -6,6 +6,7 @@
 //! when they last changed, not by position, and the cursor is that time.
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use rusqlite::{params, Connection, OpenFlags};
@@ -48,21 +49,43 @@ pub(crate) fn same_dir(a: &str, b: &str) -> bool {
     norm(a) == norm(b)
 }
 
+/// The one read-only connection the chat polls through, kept open between
+/// polls: opening the database again every 800 ms per agent was most of the
+/// cost of a read that usually finds nothing new.
+static CONN: Mutex<Option<(PathBuf, Connection)>> = Mutex::new(None);
+
 fn opencode_transcript_in(db: &Path, dir: &str, since_ms: Option<u64>, session: Option<&str>, cursor: u64) -> TranscriptChunk {
-    // opencode writes the database while it runs: read only, and wait out its locks.
-    let Ok(conn) = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX) else {
-        return TranscriptChunk::default();
-    };
-    let _ = conn.busy_timeout(Duration::from_millis(1500));
-    let id = match session {
-        Some(s) if !s.is_empty() => s.to_string(),
-        _ => match newest_session(&conn, dir, since_ms) {
+    let mut slot = CONN.lock().unwrap_or_else(|e| e.into_inner());
+    if slot.as_ref().map_or(true, |(p, _)| p != db) {
+        // opencode writes the database while it runs: read only, and wait out its locks.
+        let Ok(conn) = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX) else {
+            *slot = None;
+            return TranscriptChunk::default();
+        };
+        let _ = conn.busy_timeout(Duration::from_millis(1500));
+        *slot = Some((db.to_path_buf(), conn));
+    }
+    let Some((_, conn)) = slot.as_ref() else { return TranscriptChunk::default() };
+    // A known session is used as is while it exists; gone, the newest one is looked for.
+    let id = match session.filter(|s| !s.is_empty() && session_exists(conn, s)) {
+        Some(s) => s.to_string(),
+        None => match newest_session(conn, dir, since_ms) {
             Some(s) => s,
             None => return TranscriptChunk::default(),
         },
     };
-    let (text, next) = rows_after(&conn, &id, cursor).unwrap_or_else(|_| (String::new(), cursor));
+    let (text, next) = match rows_after(conn, &id, cursor) {
+        Ok(r) => r,
+        Err(_) => {
+            *slot = None; // open it afresh next time
+            (String::new(), cursor)
+        }
+    };
     TranscriptChunk { path: id, text, next, from: 0 }
+}
+
+fn session_exists(conn: &Connection, id: &str) -> bool {
+    conn.query_row("SELECT 1 FROM session WHERE id = ?1", params![id], |_| Ok(())).is_ok()
 }
 
 /// The newest conversation begun in `dir` (a helper agent's session has a parent: not those).
@@ -151,6 +174,9 @@ mod tests {
         assert_eq!(c.path, "ses_new");
         assert_eq!(opencode_transcript_in(&db, "D:/app", Some(1600), None, 0).path, "");
         assert_eq!(opencode_transcript_in(&db, "D:/nowhere", None, None, 0).path, "");
+        // a known session that is gone falls back to the newest one
+        assert_eq!(opencode_transcript_in(&db, "D:/app", None, Some("ses_gone"), 0).path, "ses_new");
+        assert_eq!(opencode_transcript_in(&db, "D:/app", None, Some("ses_old"), 0).path, "ses_old");
         let _ = std::fs::remove_file(&db);
     }
 

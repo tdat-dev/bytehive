@@ -4,6 +4,7 @@
 // main.ts; reads the fleet via appstate, formats errors via an injected helper.
 
 import { workspaces } from "./appstate";
+import { hiddenGate } from "./hiddengate";
 import { paneStatus } from "./fleet";
 import {
   sendInput,
@@ -101,7 +102,10 @@ async function applyDash(): Promise<void> {
 /** Start the 1s push loop, the inbound key/message relay, and wire the toggles.
  *  Call once at startup. */
 export function initDashboard(): void {
-  window.setInterval(pushDash, 1000);
+  // The phone dashboard is most use while this window is hidden: it keeps
+  // updating then, every 2 s instead of every second.
+  const gate = hiddenGate(2);
+  window.setInterval(() => { if (gate()) pushDash(); }, 1000);
   // A message OR a raw key from the dashboard page → deliver into the pane's PTY.
   // `keys` is a raw escape sequence sent as-is (arrows, Enter, Esc, ^C, Tab) so
   // an interactive menu can be driven; `message` is a hand-off, so it goes

@@ -32,6 +32,22 @@ export function spawnPath(dir: string): string {
   return path.join(dir, ".maestro", "spawn-requests.jsonl");
 }
 
+/** Append one line. The app empties a fully-read outbox now and then, holding
+ *  the file with no sharing for that instant; an append that lands on it gets
+ *  EBUSY/EPERM, so wait a moment and try again rather than lose the message. */
+export function appendLine(p: string, line: string, tries = 20): void {
+  for (let i = 0; ; i += 1) {
+    try {
+      fs.appendFileSync(p, line + "\n", "utf8");
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (i >= tries || (code !== "EBUSY" && code !== "EPERM" && code !== "EACCES")) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); // 10 ms
+    }
+  }
+}
+
 export interface SpawnRequest {
   ts: number;
   from: string;
@@ -56,7 +72,7 @@ export function queueSpawn(
   };
   const p = spawnPath(dir);
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.appendFileSync(p, JSON.stringify(entry) + "\n", "utf8");
+  appendLine(p, JSON.stringify(entry));
   return entry;
 }
 
@@ -126,6 +142,6 @@ export function queueMessage(
   };
   const p = outboxPath(dir);
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.appendFileSync(p, JSON.stringify(entry) + "\n", "utf8");
+  appendLine(p, JSON.stringify(entry));
   return entry;
 }
