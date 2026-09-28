@@ -7,13 +7,19 @@
 //! after releasing it (`take`, `drain`).
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use portable_pty::PtySize;
 
 use crate::core::agent::{Agent, Sink};
 use crate::core::command_spec::CommandSpec;
+
+/// After an agent's process exits, how long its output reader gets to drain the
+/// last bytes (a final error message) before the ConPTY is closed.
+const EXIT_DRAIN: Duration = Duration::from_millis(300);
 
 struct Entry {
     /// Which spawn this is: an id restarted in place gets a new run, so the old
@@ -63,9 +69,12 @@ impl Registry {
         Ok(())
     }
 
-    /// Spawn `id` (run number `run`) into the shared `registry`. The ConPTY
-    /// starts WITHOUT the lock held, so typing into, resizing or watching every
-    /// other agent doesn't stall while this one boots.
+    /// Spawn `id` (run number `run`) into the shared `registry`:
+    /// - the ConPTY starts WITHOUT the lock held, so typing into, resizing or
+    ///   watching every other agent doesn't stall while this one boots;
+    /// - when its process exits, `on_exit` fires and then the agent is taken
+    ///   out of the registry and torn down (ConPTY, job, reader thread,
+    ///   scrollback), unless the id has been re-spawned since.
     pub fn spawn_shared(
         registry: &Arc<Mutex<Registry>>,
         id: String,
@@ -79,7 +88,17 @@ impl Registry {
         if lock(registry).has(&id) {
             return Err(exists()); // before starting a process for nothing
         }
-        let agent = Agent::spawn(spec, size, on_bytes, on_exit)?;
+        let exited = Arc::new(AtomicBool::new(false));
+        let (flag, weak, exit_id) = (exited.clone(), Arc::downgrade(registry), id.clone());
+        let agent = Agent::spawn(spec, size, on_bytes, move |code| {
+            flag.store(true, Ordering::SeqCst);
+            on_exit(code);
+            std::thread::sleep(EXIT_DRAIN);
+            if let Some(reg) = weak.upgrade() {
+                let gone = lock(&reg).take_run(&exit_id, run);
+                drop(gone); // teardown outside the lock
+            }
+        })?;
         let mut reg = lock(registry);
         if reg.has(&id) {
             drop(reg);
@@ -87,6 +106,12 @@ impl Registry {
             return Err(exists());
         }
         reg.agents.insert(id.clone(), Entry { run, agent });
+        // Exited before it was in the map: its own removal may have missed it.
+        if exited.load(Ordering::SeqCst) {
+            let gone = reg.take_run(&id, run);
+            drop(reg);
+            drop(gone);
+        }
         Ok(())
     }
 
@@ -155,7 +180,6 @@ impl Registry {
     }
 
     /// Take `id` out only if it is still run `run`.
-    #[allow(dead_code)]
     fn take_run(&mut self, id: &str, run: u64) -> Option<Agent> {
         if self.agents.get(id)?.run != run {
             return None;
