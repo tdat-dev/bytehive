@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-28
+
+Opening a chat is quiet again.
+
+### Fixed
+
+- **No terminal window when you open a chat.** Maestro asks Claude Code
+  for its commands in the background, and every hook you have set up in
+  Claude Code opened a window of its own while it did. It now asks with
+  hooks off, and the list is ready in about half the time.
+
 ## [0.8.0] - 2026-09-27
 
 Limit Guard: no agent left sitting at its usage limit.
