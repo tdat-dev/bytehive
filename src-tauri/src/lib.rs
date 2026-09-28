@@ -7,6 +7,7 @@ pub mod planusage;
 pub mod agentusage;
 pub mod state;
 pub mod review;
+pub mod tailfile;
 pub mod transcripts;
 pub mod worktree;
 
@@ -101,6 +102,8 @@ pub fn run() {
             commands::claude_transcript,
             transcripts::codex::codex_transcript,
             transcripts::opencode::opencode_transcript,
+            tailfile::fs_read_lines_from,
+            tailfile::fs_truncate_if_size,
             commands::save_pasted_image,
             commands::save_pasted_file,
             commands::run_capture,
