@@ -4,6 +4,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::core::command_spec::CommandSpec;
+use crate::core::registry::{self, Registry};
 use crate::error::{run_blocking, CommandError};
 use crate::state::AppState;
 use portable_pty::PtySize;
@@ -67,11 +68,12 @@ pub async fn pty_spawn(
     let run = NEXT_RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     run_blocking(move || {
-        let mut reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-        reg.spawn(
+        // Not under the registry lock: ConPTY creation is slow, and every other
+        // agent's keystrokes and resizes take that same lock.
+        Registry::spawn_shared(
+            &registry,
             agent_id,
+            run,
             &spec,
             size,
             move |bytes| {
@@ -150,10 +152,8 @@ pub async fn pty_resize(
 pub async fn pty_kill(state: State<'_, AppState>, agent_id: String) -> Result<(), CommandError> {
     let registry = state.registry.clone();
     run_blocking(move || {
-        let mut reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-        reg.kill(&agent_id);
+        let gone = registry::lock(&registry).take(&agent_id);
+        drop(gone); // tear down after releasing the lock
         Ok(())
     })
     .await
@@ -163,10 +163,8 @@ pub async fn pty_kill(state: State<'_, AppState>, agent_id: String) -> Result<()
 pub async fn pty_kill_all(state: State<'_, AppState>) -> Result<(), CommandError> {
     let registry = state.registry.clone();
     run_blocking(move || {
-        let mut reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
-        reg.clear();
+        let gone = registry::lock(&registry).drain();
+        drop(gone); // tear down after releasing the lock
         Ok(())
     })
     .await

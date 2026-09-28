@@ -5,7 +5,8 @@
 use std::time::{Duration, Instant};
 
 use maestro_lib::core::command_spec::CommandSpec;
-use maestro_lib::core::registry::Registry;
+use maestro_lib::core::registry::{self, Registry};
+use std::sync::{Arc, Mutex};
 use portable_pty::PtySize;
 
 fn size() -> PtySize {
@@ -61,4 +62,25 @@ fn many_agents_run_and_each_kills_independently() {
     reg.kill("ghost");
     // Operating on a missing agent errors cleanly.
     assert!(reg.write_input("a", b"x").is_err());
+}
+
+#[test]
+#[serial_test::serial]
+fn shared_spawn_inserts_rejects_duplicates_and_takes_out() {
+    let shared = Arc::new(Mutex::new(Registry::new()));
+    Registry::spawn_shared(&shared, "a".into(), 1, &long_spec(), size(), |_| {}, |_| {})
+        .expect("spawn a");
+    assert!(registry::lock(&shared).has("a"));
+    assert!(
+        Registry::spawn_shared(&shared, "a".into(), 2, &long_spec(), size(), |_| {}, |_| {}).is_err(),
+        "duplicate id must be rejected"
+    );
+    registry::lock(&shared).write_input("a", b"echo routed\r\n").expect("input to a");
+
+    let start = Instant::now();
+    let gone = registry::lock(&shared).take("a");
+    assert!(gone.is_some() && !registry::lock(&shared).has("a"));
+    drop(gone); // teardown outside the lock
+    assert!(registry::lock(&shared).drain().is_empty());
+    assert!(start.elapsed() < Duration::from_secs(10), "teardown must not hang");
 }
