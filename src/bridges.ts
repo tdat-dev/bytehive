@@ -28,6 +28,7 @@ import {
   type FleetPane,
 } from "./agentbridge";
 import { initFleetBridge, deliveryTargets } from "./fleetbridge";
+import { exitVerdict, holdExit, setExitHandler } from "./ptyexit";
 import { spawnForConductor } from "./spawnmodal";
 import { paneStatus } from "./fleet";
 import { showDelegation, showDelegationToast } from "./delegation";
@@ -339,12 +340,15 @@ export function initBridges(): void {
   });
 
   /* pty-exit listener LAST + guarded so it can never block the wiring above. */
-  onExit((id, code, run) => {
+  const paneExited = (id: string, code: number, run: number) => {
     for (const w of workspaces.values()) {
       const p = w.panes.get(id);
       if (p) {
+        const verdict = exitVerdict(p, run);
         // The exit of a run this pane has already replaced (restart in place).
-        if (p.run !== undefined && run !== p.run) break;
+        if (verdict === "stale") break;
+        // Its CLI died before spawnPty even returned: boot plays it back (ptyexit.ts).
+        if (verdict === "early") { holdExit(id, run, code); break; }
         p.running = false;
         p.spawnedAt = null;
         clearAttention(p); // a dead agent isn't waiting on anyone
@@ -354,5 +358,7 @@ export function initBridges(): void {
         break;
       }
     }
-  }).catch((e) => console.warn("pty-exit listener unavailable:", e));
+  };
+  setExitHandler(paneExited);
+  onExit(paneExited).catch((e) => console.warn("pty-exit listener unavailable:", e));
 }
