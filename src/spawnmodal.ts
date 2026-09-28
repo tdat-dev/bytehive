@@ -5,6 +5,7 @@
 
 import { gitRepoRoot, programsOnPath, sendMessage } from "./ipc";
 import { getPref } from "./prefs";
+import { parseAsk } from "./askparse";
 import {
   CLI_PRESETS,
   taskTitle,
@@ -163,10 +164,8 @@ export async function spawnCrew(
   // Other CLIs have no such flag, so prime the director by typing the same
   // instructions once it reaches its prompt.
   if (conductor && !conductorIsClaude) {
-    window.setTimeout(() => {
-      const pane = [...ws.panes.values()].find((x) => x.spec.role === "conductor");
-      if (pane && pane.running) void sendMessage(pane.id, DIRECTOR_LAWS).catch(() => {});
-    }, 3500);
+    const pane = [...ws.panes.values()].find((x) => x.spec.role === "conductor");
+    if (pane) deliverTask(ws, [pane.spec.name], DIRECTOR_LAWS, 3500);
   }
 }
 
@@ -205,16 +204,41 @@ export async function spawnForConductor(
     });
   });
   await runLimited(boots, MAX_CONCURRENT_BOOT);
-  const task = req.task;
-  if (task) {
-    // The CLI needs a few seconds to reach its prompt before it accepts input.
-    window.setTimeout(() => {
-      for (const name of newNames) {
-        const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
-        if (pane && pane.running) void sendMessage(pane.id, task).catch(() => {});
+  if (req.task) deliverTask(ws, newNames, req.task, jobDelayMs());
+}
+
+/** Type the job into each new agent once it is at its prompt. The CLI needs a
+ *  few seconds to get there, and some open on a question first: Claude asks
+ *  whether to trust a folder it hasn't seen, like a new worktree, with "No,
+ *  exit" selected, so the job's Enter would answer it and close the agent.
+ *  While a question is on screen the job waits for you to answer it, then
+ *  gives the CLI the same head start again: answering the trust question
+ *  restarts Claude's session, and a job typed before it is ready is lost. */
+export function deliverTask(ws: Workspace, names: string[], task: string, delayMs: number, everyMs = 1000, giveUpMs = 15 * 60_000): void {
+  const left = new Set(names);
+  const start = Date.now() + delayMs;
+  /** When each agent's question went away, for agents that asked one. */
+  const answered = new Map<string, number | null>();
+  const tick = () => {
+    for (const name of [...left]) {
+      const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
+      if (!pane || !pane.running) { left.delete(name); continue; }
+      if (parseAsk(pane.term.snapshot(ASK_LINES))) {
+        answered.set(name, null);
+        if (Date.now() - start > giveUpMs) left.delete(name); // never answer it for you
+        continue;
       }
-    }, jobDelayMs());
-  }
+      if (answered.has(name)) {
+        const at = answered.get(name) ?? Date.now();
+        answered.set(name, at);
+        if (Date.now() - at < delayMs) continue;
+      }
+      left.delete(name);
+      void sendMessage(pane.id, task).catch(() => {});
+    }
+    if (left.size) window.setTimeout(tick, everyMs);
+  };
+  window.setTimeout(tick, delayMs);
 }
 
 /** Settings → Agents: give every agent its own worktree when the project is a
@@ -225,6 +249,9 @@ export async function prepareIsolation(ws: Workspace): Promise<void> {
   if (!ws.repoRoot) ws.repoRoot = await gitRepoRoot(ws.dir).catch(() => null);
   ws.isolated = !!ws.repoRoot;
 }
+
+/** Screen lines looked at for a question the CLI opened on. */
+const ASK_LINES = 40;
 
 /** Settings → Agents: how long a new CLI gets to reach its prompt. */
 function jobDelayMs(): number {
@@ -289,15 +316,7 @@ export async function spawnAgents(
     });
   });
   await runLimited(boots, MAX_CONCURRENT_BOOT);
-  if (task) {
-    // The CLI needs a few seconds to reach its prompt before it accepts input.
-    window.setTimeout(() => {
-      for (const name of names) {
-        const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
-        if (pane && pane.running) void sendMessage(pane.id, task).catch(() => {});
-      }
-    }, jobDelayMs());
-  }
+  if (task) deliverTask(ws, names, task, jobDelayMs());
   return names;
 }
 
