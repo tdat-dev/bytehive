@@ -3,13 +3,24 @@
 //! PW_RENDERFULLCONTENT is the documented way to capture WebView2 / Chromium
 //! content (a plain GDI BitBlt returns black for GPU-composited surfaces).
 
-use crate::error::CommandError;
+use crate::error::{run_blocking, CommandError};
 
 /// Capture the webview window `label` to `<root>/.maestro/shots/<name>` (PNG).
-/// Returns the path relative to `root`.
-#[cfg(windows)]
+/// Returns the path relative to `root`. Async: PNG-encoding a full window on
+/// the main thread (where sync commands run) froze the UI; PrintWindow from the
+/// blocking thread still works because the main thread is free to answer it.
 #[tauri::command]
-pub fn capture_window(
+pub async fn capture_window(
+    app: tauri::AppHandle,
+    label: String,
+    root: String,
+    name: String,
+) -> Result<String, CommandError> {
+    run_blocking(move || capture_window_impl(app, label, root, name)).await
+}
+
+#[cfg(windows)]
+fn capture_window_impl(
     app: tauri::AppHandle,
     label: String,
     root: String,
@@ -105,8 +116,7 @@ pub fn capture_window(
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
-pub fn capture_window(
+fn capture_window_impl(
     _app: tauri::AppHandle,
     _label: String,
     _root: String,
