@@ -177,20 +177,17 @@ fn snapshot(s: &Sides) -> Result<String, String> {
     if dirty_paths(&s.worktree)?.is_empty() {
         return Ok(head);
     }
-    let index = git(&["rev-parse", "--path-format=absolute", "--git-path", "index"], &s.worktree)?;
-    let tmp = PathBuf::from(format!("{index}.maestro-land"));
-    // Starting from the real index keeps `add` to hashing what changed.
-    if Path::new(&index).is_file() {
-        std::fs::copy(&index, &tmp).map_err(|e| format!("Can't copy the index: {e}"))?;
-    }
-    let tmp_s = tmp.to_string_lossy().into_owned();
+    // Starting from a copy of the real index keeps `add` to hashing what
+    // changed. Its own name per call: the Review panel checks while a merge
+    // runs, and a shared scratch index made one of them fail on its .lock.
+    let scratch = crate::review::ScratchIndex::copy_of(&s.worktree);
+    let tmp_s = scratch.path.to_string_lossy().into_owned();
     let env = [("GIT_INDEX_FILE", tmp_s.as_str())];
     let made = (|| {
         git_env(&["add", "-A", "--", "."], &s.worktree, &env)?;
         let tree = git_env(&["write-tree"], &s.worktree, &env)?;
         git(&["commit-tree", &tree, "-p", &head, "-m", "maestro: merge check"], &s.worktree)
     })();
-    let _ = std::fs::remove_file(&tmp);
     made
 }
 
@@ -460,6 +457,21 @@ mod tests {
 
     fn s(p: &Path) -> String {
         p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn checks_running_at_once_do_not_trip_over_each_other() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_main, wt) = setup(tmp.path());
+        std::fs::write(wt.join("a.txt"), "one
+two
+").unwrap(); // dirty: each check writes a snapshot
+        let w = s(&wt);
+        let runs: Vec<_> = (0..6).map(|_| { let w = w.clone(); std::thread::spawn(move || land_impl(&w, None, None, true)) }).collect();
+        for r in runs {
+            let r = r.join().unwrap();
+            assert!(matches!(r, LandResult::Ok { .. }), "every check should pass, got {r:?}");
+        }
     }
 
     #[test]

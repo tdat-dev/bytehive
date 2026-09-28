@@ -121,13 +121,14 @@ fn repo_diff_impl(repo_root: String) -> Result<String, CommandError> {
     Ok(diff.trim().to_string())
 }
 
-/// A temporary copy of a work tree's index, deleted on drop.
-struct ScratchIndex {
-    path: std::path::PathBuf,
+/// A temporary copy of a work tree's index, deleted on drop. Named per process
+/// and per call, so two checks at once never share one (or its .lock).
+pub(crate) struct ScratchIndex {
+    pub(crate) path: std::path::PathBuf,
 }
 
 impl ScratchIndex {
-    fn copy_of(repo_root: &str) -> Self {
+    pub(crate) fn copy_of(repo_root: &str) -> Self {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!("maestro-index-{}-{n}", std::process::id()));
