@@ -3,6 +3,7 @@ pub mod commands;
 pub mod core;
 pub mod dashboard;
 pub mod error;
+pub mod land;
 pub mod planusage;
 pub mod agentusage;
 pub mod state;
@@ -120,6 +121,8 @@ pub fn run() {
             review::review_merge,
             review::review_discard,
             review::review_remove_worktree,
+            land::review_land,
+            land::review_discard_branch,
             core::fs::fs_read_dir,
             core::fs::fs_read_file,
             core::fs::fs_stat,
