@@ -96,7 +96,13 @@ async function claudeDiscover(program: string, dir: string | null): Promise<CliF
   // event before it carries the full list for this folder (project commands,
   // your skills and plugins included).
   // --no-session-persistence: asking must not leave a session in your /resume list.
-  const run = launchSpec(program, ["-p", "/cost", "--output-format", "stream-json", "--verbose", "--no-session-persistence"]);
+  // disableAllHooks: this run has no console, so every hook that starts a
+  // console program (python via `uv run`, …) pops a terminal window on
+  // Windows; hooks also doubled the time it took (49 s -> 24 s here).
+  const run = launchSpec(program, [
+    "-p", "/cost", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
+    "--settings", JSON.stringify({ disableAllHooks: true }),
+  ]);
   const out = await runCapture(run.program, run.args, dir, 90_000);
   const facts = parseClaudeInit(out);
   if (!facts) throw new Error("Claude Code didn't list its commands");

@@ -612,6 +612,8 @@ describe("chat view", () => {
     await flush();
     // The list is the CLI's own, asked in the agent's folder without a model call.
     expect(io.captured[0].args).toEqual(expect.arrayContaining(["-p", "/cost", "--output-format", "stream-json"]));
+    // Without hooks: a windowless run would pop a console for each of them.
+    expect(io.captured[0].args).toEqual(expect.arrayContaining(["--settings", '{"disableAllHooks":true}']));
     expect(io.captured[0].cwd).toBe("D:/wt/p1");
     const labels = [...document.querySelectorAll(".pal-row, [role=option]")].map((r) => r.textContent ?? "");
     expect(labels.some((l) => l.includes("/codex:rescue"))).toBe(true);
