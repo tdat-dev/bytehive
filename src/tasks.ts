@@ -7,7 +7,7 @@
 // status line for notifications.
 
 import { workspaces } from "./appstate";
-import { gitChangedFiles, repoDiff, sendInput } from "./ipc";
+import { gitChangedFiles, sendInput } from "./ipc";
 import { freeTextKeys, type AskOption } from "./askparse";
 import { deriveTaskState, statusLine, type TaskState, type TaskStatus } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
@@ -48,35 +48,27 @@ const HISTORY_MAX = 200;
 
 const tasks = new Map<string, Task>();
 const history = new Map<string, HistoryEvent[]>();
-const diffs = new Map<string, { n: number | null; add: number | null; del: number | null; at: number; pending: boolean }>();
-
-/** Lines added and removed in a unified diff (file headers don't count). */
-export function countLines(diff: string): { add: number; del: number } {
-  let add = 0, del = 0;
-  for (const l of diff.split("\n")) {
-    if (l.startsWith("+++") || l.startsWith("---")) continue;
-    if (l.startsWith("+")) add++;
-    else if (l.startsWith("-")) del++;
-  }
-  return { add, del };
-}
+const diffs = new Map<string, { n: number | null; add: number | null; del: number | null; at: number; pending: boolean; wasRunning: boolean }>();
 const listeners = new Set<(list: Task[]) => void>();
 
 /** Changed files can only be pinned on one agent when it has its own worktree;
- *  agents sharing a checkout share one diff, so for them it stays unknown. */
+ *  agents sharing a checkout share one diff, so for them it stays unknown.
+ *  A stopped agent's tree doesn't change on its own: it is looked at once
+ *  (first sight, or once more right after it stops), not every tick. */
 function changesFor(pane: Pane, now: number): { n: number | null; add: number | null; del: number | null } {
   const wt = pane.spec.worktree;
   if (!wt) return { n: null, add: null, del: null };
-  const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, at: 0, pending: false };
-  if (!d.pending && now - d.at >= DIFF_EVERY_MS) {
+  const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, at: 0, pending: false, wasRunning: false };
+  const due = pane.running || d.at === 0 || d.wasRunning;
+  if (due && !d.pending && now - d.at >= DIFF_EVERY_MS) {
     d.pending = true;
+    d.wasRunning = pane.running;
     gitChangedFiles(wt)
-      .then(async (files) => {
+      .then((files) => {
         d.n = files.length;
-        // Line counts only matter once there is something to review.
-        if (!files.length) { d.add = d.del = 0; return; }
-        const c = countLines(await repoDiff(wt));
-        d.add = c.add; d.del = c.del;
+        let add = 0, del = 0;
+        for (const f of files) { add += f.added ?? 0; del += f.removed ?? 0; }
+        d.add = add; d.del = del;
       })
       .catch(() => { d.n = d.add = d.del = null; })
       .finally(() => { d.at = Date.now(); d.pending = false; });

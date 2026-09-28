@@ -89,7 +89,7 @@ pub async fn watch_start(
             .map_err(|e| CommandError::Failed(format!("bad root: {e}")))?;
         {
             // Already watching this exact folder — nothing to do.
-            let cur = watch.handle.lock().unwrap();
+            let cur = watch.handle.lock().unwrap_or_else(|p| p.into_inner());
             if cur.as_ref().is_some_and(|h| h.root == root_c) {
                 return Ok(());
             }
@@ -158,7 +158,7 @@ pub async fn watch_start(
             }
         });
 
-        let mut cur = watch.handle.lock().unwrap();
+        let mut cur = watch.handle.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(old) = cur.take() {
             old.stop.store(true, Ordering::Relaxed);
         }
@@ -177,7 +177,7 @@ pub async fn watch_start(
 pub async fn watch_stop(state: State<'_, AppState>) -> Result<(), CommandError> {
     let watch = state.watch.clone();
     run_blocking(move || {
-        if let Some(old) = watch.handle.lock().unwrap().take() {
+        if let Some(old) = watch.handle.lock().unwrap_or_else(|p| p.into_inner()).take() {
             old.stop.store(true, Ordering::Relaxed);
         }
         Ok(())

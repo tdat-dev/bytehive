@@ -5,7 +5,8 @@
 use std::time::{Duration, Instant};
 
 use maestro_lib::core::command_spec::CommandSpec;
-use maestro_lib::core::registry::Registry;
+use maestro_lib::core::registry::{self, Registry};
+use std::sync::{Arc, Mutex};
 use portable_pty::PtySize;
 
 fn size() -> PtySize {
@@ -61,4 +62,91 @@ fn many_agents_run_and_each_kills_independently() {
     reg.kill("ghost");
     // Operating on a missing agent errors cleanly.
     assert!(reg.write_input("a", b"x").is_err());
+}
+
+#[test]
+#[serial_test::serial]
+fn shared_spawn_inserts_rejects_duplicates_and_takes_out() {
+    let shared = Arc::new(Mutex::new(Registry::new()));
+    Registry::spawn_shared(&shared, "a".into(), 1, &long_spec(), size(), |_| {}, |_| {})
+        .expect("spawn a");
+    assert!(registry::lock(&shared).has("a"));
+    assert!(
+        Registry::spawn_shared(&shared, "a".into(), 2, &long_spec(), size(), |_| {}, |_| {}).is_err(),
+        "duplicate id must be rejected"
+    );
+    registry::lock(&shared).write_input("a", b"echo routed\r\n").expect("input to a");
+
+    let start = Instant::now();
+    let gone = registry::lock(&shared).take("a");
+    assert!(gone.is_some() && !registry::lock(&shared).has("a"));
+    drop(gone); // teardown outside the lock
+    assert!(registry::lock(&shared).drain().is_empty());
+    assert!(start.elapsed() < Duration::from_secs(10), "teardown must not hang");
+}
+
+#[test]
+fn a_panic_under_the_lock_does_not_wedge_the_registry() {
+    let shared = Arc::new(Mutex::new(Registry::new()));
+    let s = shared.clone();
+    let _ = std::thread::spawn(move || {
+        let _g = s.lock().unwrap();
+        panic!("boom while holding the registry");
+    })
+    .join();
+    assert!(shared.is_poisoned());
+    assert_eq!(registry::lock(&shared).count(), 0, "still usable after a poisoning panic");
+}
+
+/// Poll `cond` until it holds or the timeout elapses.
+fn wait_for(mut cond: impl FnMut() -> bool, timeout: Duration) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if cond() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
+#[test]
+#[serial_test::serial]
+fn an_agent_whose_process_exits_leaves_the_registry() {
+    let shared = Arc::new(Mutex::new(Registry::new()));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let spec = CommandSpec::new("cmd.exe").arg("/C").arg("echo bye");
+    Registry::spawn_shared(&shared, "a".into(), 1, &spec, size(), |_| {}, move |code| {
+        let _ = tx.send(code);
+    })
+    .expect("spawn a");
+    let _ = registry::lock(&shared).write_input("a", b"\x1b[1;1R"); // answer ConPTY's DSR
+
+    assert_eq!(rx.recv_timeout(Duration::from_secs(10)).expect("exit reported"), 0);
+    assert!(
+        wait_for(|| !registry::lock(&shared).has("a"), Duration::from_secs(10)),
+        "a dead agent must not keep its ConPTY, job and scrollback"
+    );
+    assert!(registry::lock(&shared).attach("a", Box::new(|_| {})).is_err());
+}
+
+#[test]
+#[serial_test::serial]
+fn a_late_exit_of_a_replaced_run_leaves_the_new_run_alone() {
+    let shared = Arc::new(Mutex::new(Registry::new()));
+    let (tx, rx) = std::sync::mpsc::channel();
+    Registry::spawn_shared(&shared, "a".into(), 1, &long_spec(), size(), |_| {}, move |code| {
+        let _ = tx.send(code);
+    })
+    .expect("spawn run 1");
+    // Restart in place: run 1 is taken out, run 2 takes the id, THEN run 1 dies.
+    let old = registry::lock(&shared).take("a").expect("run 1");
+    Registry::spawn_shared(&shared, "a".into(), 2, &long_spec(), size(), |_| {}, |_| {})
+        .expect("spawn run 2");
+    drop(old);
+    rx.recv_timeout(Duration::from_secs(10)).expect("run 1 exit reported");
+    std::thread::sleep(Duration::from_millis(1000)); // past run 1's exit cleanup
+    assert!(registry::lock(&shared).has("a"), "run 2 must survive run 1's exit");
+    let gone = registry::lock(&shared).drain();
+    drop(gone);
 }

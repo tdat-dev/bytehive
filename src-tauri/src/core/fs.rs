@@ -3,7 +3,7 @@ use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
-use crate::error::CommandError;
+use crate::error::{run_blocking, CommandError};
 
 /// Refuse to open files larger than this (binary blobs, build artifacts, etc.).
 pub const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024; // 2 MiB
@@ -61,8 +61,7 @@ pub fn scoped(root: &str, path: &str) -> Result<PathBuf, CommandError> {
 }
 
 /// List one directory level. Directories first, then case-insensitive by name.
-#[tauri::command]
-pub fn fs_read_dir(root: String, path: String) -> Result<Vec<Entry>, CommandError> {
+pub fn fs_read_dir_impl(root: String, path: String) -> Result<Vec<Entry>, CommandError> {
     let dir = scoped(&root, &path)?;
     let mut out = Vec::new();
     for ent in std::fs::read_dir(&dir).map_err(|e| CommandError::Failed(e.to_string()))? {
@@ -85,8 +84,7 @@ pub fn fs_read_dir(root: String, path: String) -> Result<Vec<Entry>, CommandErro
 }
 
 /// Read a UTF-8 (lossy) text file. Refuses oversize or binary files.
-#[tauri::command]
-pub fn fs_read_file(root: String, path: String) -> Result<FileData, CommandError> {
+pub fn fs_read_file_impl(root: String, path: String) -> Result<FileData, CommandError> {
     let file = scoped(&root, &path)?;
     let meta = std::fs::metadata(&file).map_err(|e| CommandError::Failed(e.to_string()))?;
     if meta.len() > MAX_FILE_BYTES {
@@ -103,8 +101,7 @@ pub fn fs_read_file(root: String, path: String) -> Result<FileData, CommandError
 }
 
 /// Cheap modified-time probe for external-change detection.
-#[tauri::command]
-pub fn fs_stat(root: String, path: String) -> Result<Stat, CommandError> {
+pub fn fs_stat_impl(root: String, path: String) -> Result<Stat, CommandError> {
     let file = scoped(&root, &path)?;
     let meta = std::fs::metadata(&file).map_err(|e| CommandError::Failed(e.to_string()))?;
     Ok(Stat {
@@ -115,8 +112,7 @@ pub fn fs_stat(root: String, path: String) -> Result<Stat, CommandError> {
 /// Write a text file. When `expected_mtime` is provided and the on-disk mtime
 /// differs, the write is refused with `Conflict(current_mtime)` so the caller
 /// never silently clobbers an external (agent) edit. Returns the new mtime.
-#[tauri::command]
-pub fn fs_write_file(
+pub fn fs_write_file_impl(
     root: String,
     path: String,
     content: String,
@@ -168,8 +164,7 @@ fn scoped_new(root: &str, path: &str) -> Result<PathBuf, CommandError> {
 }
 
 /// Create a new empty file. Fails if a file already exists at the path.
-#[tauri::command]
-pub fn fs_create_file(root: String, path: String) -> Result<(), CommandError> {
+pub fn fs_create_file_impl(root: String, path: String) -> Result<(), CommandError> {
     let target = scoped_new(&root, &path)?;
     std::fs::OpenOptions::new()
         .write(true)
@@ -180,8 +175,7 @@ pub fn fs_create_file(root: String, path: String) -> Result<(), CommandError> {
 }
 
 /// Create a new directory. Fails if it already exists.
-#[tauri::command]
-pub fn fs_create_dir(root: String, path: String) -> Result<(), CommandError> {
+pub fn fs_create_dir_impl(root: String, path: String) -> Result<(), CommandError> {
     let target = scoped_new(&root, &path)?;
     std::fs::create_dir(&target).map_err(|e| CommandError::Failed(e.to_string()))?;
     Ok(())
@@ -189,8 +183,7 @@ pub fn fs_create_dir(root: String, path: String) -> Result<(), CommandError> {
 
 /// Rename / move within the workspace. `from` must exist; `to`'s parent must
 /// exist and stay inside the root.
-#[tauri::command]
-pub fn fs_rename(root: String, from: String, to: String) -> Result<(), CommandError> {
+pub fn fs_rename_impl(root: String, from: String, to: String) -> Result<(), CommandError> {
     let src = scoped(&root, &from)?;
     let dst = scoped_new(&root, &to)?;
     std::fs::rename(&src, &dst).map_err(|e| CommandError::Failed(e.to_string()))?;
@@ -198,8 +191,7 @@ pub fn fs_rename(root: String, from: String, to: String) -> Result<(), CommandEr
 }
 
 /// Delete a file, or a directory and all its contents.
-#[tauri::command]
-pub fn fs_delete(root: String, path: String) -> Result<(), CommandError> {
+pub fn fs_delete_impl(root: String, path: String) -> Result<(), CommandError> {
     let target = scoped(&root, &path)?;
     let meta = std::fs::symlink_metadata(&target).map_err(|e| CommandError::Failed(e.to_string()))?;
     if meta.is_dir() {
@@ -283,8 +275,7 @@ fn rel_of(root: &Path, p: &Path) -> String {
 
 /// Copy an entry into `to_dir` (`""` = root), auto-renaming on collision.
 /// Returns the new path, relative to the root.
-#[tauri::command]
-pub fn fs_copy(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
+pub fn fs_copy_impl(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
     let src = scoped(&root, &from)?;
     let dir = scoped_dir(&root, &to_dir)?;
     if dir.starts_with(&src) {
@@ -304,8 +295,7 @@ pub fn fs_copy(root: String, from: String, to_dir: String) -> Result<String, Com
 /// Move an entry into `to_dir` (`""` = root), auto-renaming on collision.
 /// Returns the new path, relative to the root. Falls back to copy+delete when
 /// the rename crosses a volume boundary.
-#[tauri::command]
-pub fn fs_move(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
+pub fn fs_move_impl(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
     let src = scoped(&root, &from)?;
     let dir = scoped_dir(&root, &to_dir)?;
     if dir == src || dir.starts_with(&src) {
@@ -338,8 +328,7 @@ pub fn fs_move(root: String, from: String, to_dir: String) -> Result<String, Com
 /// Send entries to the OS trash (Recycle Bin) in one operation, so a bulk delete
 /// stays recoverable. Every path is validated against the root first; if the
 /// platform has no trash, the caller is told and can fall back to `fs_delete`.
-#[tauri::command]
-pub fn fs_trash(root: String, paths: Vec<String>) -> Result<(), CommandError> {
+pub fn fs_trash_impl(root: String, paths: Vec<String>) -> Result<(), CommandError> {
     let mut targets = Vec::with_capacity(paths.len());
     for p in &paths {
         targets.push(scoped(&root, p)?);
@@ -351,8 +340,7 @@ pub fn fs_trash(root: String, paths: Vec<String>) -> Result<(), CommandError> {
 }
 
 /// Open the OS file manager with the entry selected.
-#[tauri::command]
-pub fn fs_reveal(app: tauri::AppHandle, root: String, path: String) -> Result<(), CommandError> {
+pub fn fs_reveal_impl(app: tauri::AppHandle, root: String, path: String) -> Result<(), CommandError> {
     use tauri_plugin_opener::OpenerExt;
     let target = scoped(&root, &path)?;
     app.opener()
@@ -361,8 +349,7 @@ pub fn fs_reveal(app: tauri::AppHandle, root: String, path: String) -> Result<()
 }
 
 /// Open an entry with the OS default application.
-#[tauri::command]
-pub fn fs_open_external(
+pub fn fs_open_external_impl(
     app: tauri::AppHandle,
     root: String,
     path: String,
@@ -412,8 +399,7 @@ fn base64_encode(data: &[u8]) -> String {
 
 /// Read an image file as a `data:<mime>;base64,...` URL for inline preview.
 /// Rejects non-image extensions and oversize files.
-#[tauri::command]
-pub fn fs_read_data_url(root: String, path: String) -> Result<String, CommandError> {
+pub fn fs_read_data_url_impl(root: String, path: String) -> Result<String, CommandError> {
     let file = scoped(&root, &path)?;
     let mime = image_mime(&file).ok_or_else(|| CommandError::Failed("not an image".into()))?;
     let meta = std::fs::metadata(&file).map_err(|e| CommandError::Failed(e.to_string()))?;
@@ -422,6 +408,91 @@ pub fn fs_read_data_url(root: String, path: String) -> Result<String, CommandErr
     }
     let bytes = std::fs::read(&file).map_err(|e| CommandError::Failed(e.to_string()))?;
     Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
+}
+
+// ---- Tauri commands ----
+// Sync Tauri commands run on the MAIN thread: copying or deleting a big folder,
+// trashing, or base64-ing a 25 MB image froze the whole window for as long as
+// it took. Each command runs its `*_impl` on a blocking thread instead; tests
+// call the `*_impl` functions directly. Names and arguments are unchanged.
+
+#[tauri::command]
+pub async fn fs_read_dir(root: String, path: String) -> Result<Vec<Entry>, CommandError> {
+    run_blocking(move || fs_read_dir_impl(root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_read_file(root: String, path: String) -> Result<FileData, CommandError> {
+    run_blocking(move || fs_read_file_impl(root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_stat(root: String, path: String) -> Result<Stat, CommandError> {
+    run_blocking(move || fs_stat_impl(root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_write_file(
+    root: String,
+    path: String,
+    content: String,
+    expected_mtime: Option<i64>,
+) -> Result<WriteResult, CommandError> {
+    run_blocking(move || fs_write_file_impl(root, path, content, expected_mtime)).await
+}
+
+#[tauri::command]
+pub async fn fs_create_file(root: String, path: String) -> Result<(), CommandError> {
+    run_blocking(move || fs_create_file_impl(root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_create_dir(root: String, path: String) -> Result<(), CommandError> {
+    run_blocking(move || fs_create_dir_impl(root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_rename(root: String, from: String, to: String) -> Result<(), CommandError> {
+    run_blocking(move || fs_rename_impl(root, from, to)).await
+}
+
+#[tauri::command]
+pub async fn fs_delete(root: String, path: String) -> Result<(), CommandError> {
+    run_blocking(move || fs_delete_impl(root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_copy(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
+    run_blocking(move || fs_copy_impl(root, from, to_dir)).await
+}
+
+#[tauri::command]
+pub async fn fs_move(root: String, from: String, to_dir: String) -> Result<String, CommandError> {
+    run_blocking(move || fs_move_impl(root, from, to_dir)).await
+}
+
+#[tauri::command]
+pub async fn fs_trash(root: String, paths: Vec<String>) -> Result<(), CommandError> {
+    run_blocking(move || fs_trash_impl(root, paths)).await
+}
+
+#[tauri::command]
+pub async fn fs_reveal(app: tauri::AppHandle, root: String, path: String) -> Result<(), CommandError> {
+    run_blocking(move || fs_reveal_impl(app, root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_open_external(
+    app: tauri::AppHandle,
+    root: String,
+    path: String,
+) -> Result<(), CommandError> {
+    run_blocking(move || fs_open_external_impl(app, root, path)).await
+}
+
+#[tauri::command]
+pub async fn fs_read_data_url(root: String, path: String) -> Result<String, CommandError> {
+    run_blocking(move || fs_read_data_url_impl(root, path)).await
 }
 
 #[cfg(test)]
@@ -455,7 +526,7 @@ mod tests {
         std::fs::write(tmp.path().join("A.txt"), "x").unwrap();
         std::fs::create_dir(tmp.path().join("zdir")).unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        let got = fs_read_dir(root, ".".into()).unwrap();
+        let got = fs_read_dir_impl(root, ".".into()).unwrap();
         let names: Vec<&str> = got.iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, vec!["zdir", "A.txt", "b.txt"]);
         assert!(got[0].is_dir);
@@ -466,9 +537,24 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("a.txt"), "hello").unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        let f = fs_read_file(root, "a.txt".into()).unwrap();
+        let f = fs_read_file_impl(root, "a.txt".into()).unwrap();
         assert_eq!(f.content, "hello");
         assert!(f.mtime > 0);
+    }
+
+    #[test]
+    fn async_commands_do_the_same_work() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("src")).unwrap();
+        std::fs::write(tmp.path().join("src").join("a.txt"), "hello").unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+        use tauri::async_runtime::block_on as rt;
+        let rel = rt(fs_copy(root.clone(), "src".into(), "".into())).unwrap();
+        assert_eq!(rel, "src copy");
+        let f = rt(fs_read_file(root.clone(), "src copy\\a.txt".into())).unwrap();
+        assert_eq!(f.content, "hello");
+        rt(fs_delete(root.clone(), "src copy".into())).unwrap();
+        assert!(rt(fs_read_dir(root, "src copy".into())).is_err(), "deleted");
     }
 
     #[test]
@@ -476,7 +562,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("b.bin"), [0u8, 1, 2, 3]).unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        assert!(fs_read_file(root, "b.bin".into()).is_err());
+        assert!(fs_read_file_impl(root, "b.bin".into()).is_err());
     }
 
     #[test]
@@ -484,7 +570,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("a.txt"), "old").unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        let r = fs_write_file(root.clone(), "a.txt".into(), "new".into(), None).unwrap();
+        let r = fs_write_file_impl(root.clone(), "a.txt".into(), "new".into(), None).unwrap();
         assert!(r.mtime > 0);
         assert_eq!(
             std::fs::read_to_string(tmp.path().join("a.txt")).unwrap(),
@@ -496,14 +582,14 @@ mod tests {
     fn create_rename_delete_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        fs_create_dir(root.clone(), "src".into()).unwrap();
+        fs_create_dir_impl(root.clone(), "src".into()).unwrap();
         assert!(tmp.path().join("src").is_dir());
-        fs_create_file(root.clone(), "src\\a.txt".into()).unwrap();
+        fs_create_file_impl(root.clone(), "src\\a.txt".into()).unwrap();
         assert!(tmp.path().join("src").join("a.txt").is_file());
-        fs_rename(root.clone(), "src\\a.txt".into(), "src\\b.txt".into()).unwrap();
+        fs_rename_impl(root.clone(), "src\\a.txt".into(), "src\\b.txt".into()).unwrap();
         assert!(!tmp.path().join("src").join("a.txt").exists());
         assert!(tmp.path().join("src").join("b.txt").is_file());
-        fs_delete(root.clone(), "src".into()).unwrap();
+        fs_delete_impl(root.clone(), "src".into()).unwrap();
         assert!(!tmp.path().join("src").exists());
     }
 
@@ -511,8 +597,8 @@ mod tests {
     fn create_rejects_bad_name_and_escape() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        assert!(fs_create_file(root.clone(), "..\\evil.txt".into()).is_err());
-        assert!(fs_create_dir(root.clone(), "a\\..\\..\\b".into()).is_err());
+        assert!(fs_create_file_impl(root.clone(), "..\\evil.txt".into()).is_err());
+        assert!(fs_create_dir_impl(root.clone(), "a\\..\\..\\b".into()).is_err());
     }
 
     #[test]
@@ -523,7 +609,7 @@ mod tests {
         std::fs::write(tmp.path().join("src").join("deep").join("a.txt"), "hi").unwrap();
         std::fs::create_dir(tmp.path().join("out")).unwrap();
 
-        let rel = fs_copy(root.clone(), "src".into(), "out".into()).unwrap();
+        let rel = fs_copy_impl(root.clone(), "src".into(), "out".into()).unwrap();
         assert_eq!(rel, "out\\src");
         assert_eq!(
             std::fs::read_to_string(tmp.path().join("out").join("src").join("deep").join("a.txt"))
@@ -531,10 +617,10 @@ mod tests {
             "hi"
         );
         // Copying again next to the original must not overwrite it.
-        let again = fs_copy(root.clone(), "src".into(), "out".into()).unwrap();
+        let again = fs_copy_impl(root.clone(), "src".into(), "out".into()).unwrap();
         assert_eq!(again, "out\\src copy");
         // A folder can never be copied inside itself.
-        assert!(fs_copy(root, "src".into(), "src\\deep".into()).is_err());
+        assert!(fs_copy_impl(root, "src".into(), "src\\deep".into()).is_err());
     }
 
     #[test]
@@ -542,7 +628,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
         std::fs::write(tmp.path().join("a.txt"), "x").unwrap();
-        let rel = fs_copy(root, "a.txt".into(), "".into()).unwrap();
+        let rel = fs_copy_impl(root, "a.txt".into(), "".into()).unwrap();
         assert_eq!(rel, "a copy.txt");
     }
 
@@ -555,7 +641,7 @@ mod tests {
         std::fs::write(tmp.path().join("a").join("f.txt"), "1").unwrap();
         std::fs::write(tmp.path().join("b").join("f.txt"), "2").unwrap();
 
-        let rel = fs_move(root.clone(), "a\\f.txt".into(), "b".into()).unwrap();
+        let rel = fs_move_impl(root.clone(), "a\\f.txt".into(), "b".into()).unwrap();
         assert_eq!(rel, "b\\f copy.txt");
         assert!(!tmp.path().join("a").join("f.txt").exists());
         // The pre-existing file at the destination is untouched.
@@ -564,11 +650,11 @@ mod tests {
             "2"
         );
         // Dropping onto the folder it already lives in is a no-op, not a copy.
-        let same = fs_move(root.clone(), "b\\f.txt".into(), "b".into()).unwrap();
+        let same = fs_move_impl(root.clone(), "b\\f.txt".into(), "b".into()).unwrap();
         assert_eq!(same, "b\\f.txt");
         // A folder can never be moved into its own subtree.
         std::fs::create_dir(tmp.path().join("b").join("deep")).unwrap();
-        assert!(fs_move(root, "b".into(), "b\\deep".into()).is_err());
+        assert!(fs_move_impl(root, "b".into(), "b\\deep".into()).is_err());
     }
 
     #[test]
@@ -580,7 +666,7 @@ mod tests {
         std::fs::write(&outside, "x").unwrap();
         let rel = format!("..\\{}", outside.file_name().unwrap().to_string_lossy());
 
-        assert!(fs_trash(root, vec!["keep.txt".into(), rel]).is_err());
+        assert!(fs_trash_impl(root, vec!["keep.txt".into(), rel]).is_err());
         // Nothing was removed: validation happens up-front, not per item.
         assert!(tmp.path().join("keep.txt").exists());
         assert!(outside.exists());
@@ -605,7 +691,7 @@ mod tests {
         std::fs::write(tmp.path().join("a.txt"), "old").unwrap();
         let root = tmp.path().to_string_lossy().to_string();
         // Pretend we read it at mtime 1 (definitely stale vs. the real file).
-        let err = fs_write_file(root, "a.txt".into(), "new".into(), Some(1)).unwrap_err();
+        let err = fs_write_file_impl(root, "a.txt".into(), "new".into(), Some(1)).unwrap_err();
         match err {
             CommandError::Conflict(_) => {}
             other => panic!("expected Conflict, got {other:?}"),

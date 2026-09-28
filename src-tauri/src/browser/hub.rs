@@ -239,18 +239,18 @@ impl Hub {
     }
 
     pub fn browsers(&self) -> Vec<BrowserInfo> {
-        browsers_of(&self.inner.lock().unwrap())
+        browsers_of(&self.inner.lock().unwrap_or_else(|p| p.into_inner()))
     }
 
     pub fn activity(&self) -> Vec<Activity> {
-        activities(&self.inner.lock().unwrap())
+        activities(&self.inner.lock().unwrap_or_else(|p| p.into_inner()))
     }
 
     /// Stop (or let go on) an agent's browser use. While paused, every browser
     /// call from that agent is refused with a message telling it to wait.
     pub fn set_paused(&self, agent: &str, paused: bool) {
         let list = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
             let e = inner.activity.entry(agent.to_string()).or_insert_with(|| Activity {
                 agent: agent.to_string(), browser: 0, label: String::new(), tool: String::new(), action: String::new(), at: now_ms(), paused,
             });
@@ -261,17 +261,17 @@ impl Hub {
     }
 
     pub fn asks(&self) -> Vec<Ask> {
-        asks(&self.inner.lock().unwrap())
+        asks(&self.inner.lock().unwrap_or_else(|p| p.into_inner()))
     }
 
     pub fn set_ask_risky(&self, on: bool) {
-        self.inner.lock().unwrap().ask_risky = on;
+        self.inner.lock().unwrap_or_else(|p| p.into_inner()).ask_risky = on;
     }
 
     /// The user's answer to a held click: send it on, or tell the agent no.
     pub fn answer(&self, id: u64, ok: bool) {
         let list = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
             let Some(h) = inner.held.remove(&id) else { return };
             let agent_tx = inner.peers.get(&h.agent_conn).map(|p| p.tx.clone());
             let expired = now_ms().saturating_sub(h.at) >= HOLD_MS;
@@ -306,7 +306,7 @@ impl Hub {
     pub fn app_call(&self, agent: &str, tool: &str, args: Value, timeout: Duration) -> Result<Value, String> {
         let (tx, rx) = mpsc::channel();
         let hid = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
             let browsers = browsers_of(&inner);
             let target = inner
                 .activity
@@ -323,7 +323,7 @@ impl Hub {
             hid
         };
         let got = rx.recv_timeout(timeout);
-        self.inner.lock().unwrap().pending.remove(&hid);
+        self.inner.lock().unwrap_or_else(|p| p.into_inner()).pending.remove(&hid);
         match got {
             Ok(v) if v["type"] == "result" => Ok(v["result"].clone()),
             Ok(v) => Err(v["error"].as_str().unwrap_or("The browser did not answer.").to_string()),
@@ -332,7 +332,7 @@ impl Hub {
     }
 
     pub fn add(&self, tx: mpsc::Sender<String>) -> u64 {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
         inner.next += 1;
         let id = inner.next;
         inner.peers.insert(id, Peer { tx, role: Role::Unknown });
@@ -341,7 +341,7 @@ impl Hub {
 
     pub fn remove(&self, id: u64) {
         let (was_browser, orphans) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
             let Some(peer) = inner.peers.remove(&id) else { return };
             let label = match &peer.role {
                 Role::Browser(b) => Some(b.label()),
@@ -390,7 +390,7 @@ impl Hub {
     pub fn on_message(&self, from: u64, text: &str) -> bool {
         let Ok(v) = serde_json::from_str::<Value>(text) else { return true };
         let ty = v["type"].as_str().unwrap_or("");
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
         let Some(peer) = inner.peers.get_mut(&from) else { return false };
         match &mut peer.role {
             Role::Unknown => {
@@ -772,7 +772,7 @@ mod tests {
         let mut hub = Hub::for_test("t", |_, _| "P".into());
         let want = std::sync::Arc::new(Mutex::new("0.1.0".to_string()));
         let w = want.clone();
-        hub.wanted_version = Box::new(move || Some(w.lock().unwrap().clone()));
+        hub.wanted_version = Box::new(move || Some(w.lock().unwrap_or_else(|p| p.into_inner()).clone()));
         let (br, brx) = peer(&hub);
         let (ag, arx) = peer(&hub);
         hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
@@ -780,7 +780,7 @@ mod tests {
         hub.on_message(ag, r#"{"type":"hello","role":"agent","token":"t","agent":"Ana"}"#);
         last(&brx);
         last(&arx);
-        *want.lock().unwrap() = "0.1.1".into(); // the extension on disk was just edited
+        *want.lock().unwrap_or_else(|p| p.into_inner()) = "0.1.1".into(); // the extension on disk was just edited
         hub.on_message(ag, r#"{"type":"call","id":1,"tool":"tabs","args":{}}"#);
         assert_eq!(last(&brx)["tool"], "reload");
         assert!(last(&arx)["error"].as_str().unwrap().contains("Try again"));
@@ -816,7 +816,7 @@ mod tests {
         let fwd = last(&brx);
         hub.on_message(br, &json!({ "type": "result", "id": fwd["id"], "result": { "content": [], "needsConfirm": { "what": "Click \"Mua\"" } } }).to_string());
         let late = hub.asks()[0].id;
-        hub.inner.lock().unwrap().held.get_mut(&late).unwrap().at -= HOLD_MS;
+        hub.inner.lock().unwrap_or_else(|p| p.into_inner()).held.get_mut(&late).unwrap().at -= HOLD_MS;
         assert!(hub.asks().is_empty(), "an expired ask is no longer shown");
         hub.answer(late, true);
         assert_eq!(last(&brx), Value::Null, "a late OK never reaches the page");

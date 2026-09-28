@@ -86,19 +86,19 @@ fn info(inner: &Inner) -> DashboardInfo {
 
 #[tauri::command]
 pub fn dashboard_status(state: State<'_, AppState>) -> DashboardInfo {
-    info(&state.dashboard.inner.lock().unwrap())
+    info(&state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner()))
 }
 
 /// Store the latest fleet snapshot JSON the HTTP server serves at /api/fleet.
 #[tauri::command]
 pub fn dashboard_push(state: State<'_, AppState>, snapshot: String) {
-    let inner = state.dashboard.inner.lock().unwrap();
-    *inner.snapshot.lock().unwrap() = snapshot;
+    let inner = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner());
+    *inner.snapshot.lock().unwrap_or_else(|p| p.into_inner()) = snapshot;
 }
 
 #[tauri::command]
 pub fn dashboard_stop(state: State<'_, AppState>) -> DashboardInfo {
-    let mut inner = state.dashboard.inner.lock().unwrap();
+    let mut inner = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(stop) = inner.stop.take() {
         stop.store(true, Ordering::SeqCst);
     }
@@ -114,10 +114,10 @@ pub async fn dashboard_start(
     lan: bool,
 ) -> Result<DashboardInfo, CommandError> {
     // Grab what the server thread needs WITHOUT holding a lock across an await.
-    let snapshot = state.dashboard.inner.lock().unwrap().snapshot.clone();
+    let snapshot = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner()).snapshot.clone();
     let registry = state.registry.clone();
     // Stop any previous server before rebinding.
-    if let Some(stop) = state.dashboard.inner.lock().unwrap().stop.take() {
+    if let Some(stop) = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner()).stop.take() {
         stop.store(true, Ordering::SeqCst);
     }
 
@@ -144,7 +144,7 @@ pub async fn dashboard_start(
     let stop_ws = stop.clone();
     std::thread::spawn(move || serve_ws(ws_listener, stop_ws, registry_ws));
 
-    let mut inner = state.dashboard.inner.lock().unwrap();
+    let mut inner = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner());
     inner.running = true;
     inner.port = port;
     inner.lan = lan;
@@ -228,7 +228,7 @@ fn handle(
         (Method::Get, "/addon-fit.js") => asset(request, ADDON_FIT_JS, b"application/javascript"),
         (Method::Get, "/xterm.css") => asset(request, XTERM_CSS, b"text/css"),
         (Method::Get, "/api/fleet") => {
-            let body = snapshot.lock().unwrap().clone();
+            let body = snapshot.lock().unwrap_or_else(|p| p.into_inner()).clone();
             let body = if body.is_empty() { "{\"agents\":[]}".to_string() } else { body };
             let _ = request.respond(json_response(body));
         }
@@ -248,7 +248,7 @@ fn handle(
                 v.get("data").and_then(|x| x.as_str()),
             ) {
                 if let Ok(bytes) = STANDARD.decode(data) {
-                    let _ = registry.lock().unwrap().write_input(id, &bytes);
+                    let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).write_input(id, &bytes);
                 }
             }
             let _ = request.respond(json_response("{\"ok\":true}".into()));
@@ -258,7 +258,7 @@ fn handle(
             if let Some(id) = v.get("id").and_then(|x| x.as_str()) {
                 let cols = v.get("cols").and_then(|x| x.as_u64()).unwrap_or(80) as u16;
                 let rows = v.get("rows").and_then(|x| x.as_u64()).unwrap_or(24) as u16;
-                let _ = registry.lock().unwrap().resize(id, cols, rows);
+                let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).resize(id, cols, rows);
             }
             let _ = request.respond(json_response("{\"ok\":true}".into()));
         }
@@ -274,7 +274,7 @@ fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<Str
         Some(i) => i,
         None => return respond_404(request),
     };
-    let rx = match registry.lock().unwrap().tap(&id) {
+    let rx = match registry.lock().unwrap_or_else(|p| p.into_inner()).tap(&id) {
         Ok(r) => r,
         Err(_) => return respond_404(request),
     };
@@ -337,7 +337,7 @@ fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, stop: Arc<AtomicBo
     if agent_id.is_empty() {
         return;
     }
-    let rx = match registry.lock().unwrap().tap(&agent_id) {
+    let rx = match registry.lock().unwrap_or_else(|p| p.into_inner()).tap(&agent_id) {
         Ok(r) => r,
         Err(_) => return,
     };
@@ -362,10 +362,10 @@ fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, stop: Arc<AtomicBo
         // Input: keystrokes from the browser → PTY (in order, no round-trips).
         match ws.read() {
             Ok(tungstenite::Message::Binary(d)) => {
-                let _ = registry.lock().unwrap().write_input(&agent_id, &d);
+                let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).write_input(&agent_id, &d);
             }
             Ok(tungstenite::Message::Text(t)) => {
-                let _ = registry.lock().unwrap().write_input(&agent_id, t.as_bytes());
+                let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).write_input(&agent_id, t.as_bytes());
             }
             Ok(tungstenite::Message::Close(_)) => return,
             Ok(_) => {}

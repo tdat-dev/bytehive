@@ -16,8 +16,23 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
+    Ok(git_env(args, cwd, &[])?.trim().to_string())
+}
+
+/// Env for git calls that only LOOK at a work tree. `status`/`diff` otherwise
+/// take `index.lock` to refresh the index's stat cache, and these run every few
+/// seconds in trees where an agent is running its own git: its `git commit`
+/// then dies with "index.lock exists".
+const READ_ONLY: [(&str, &str); 1] = [("GIT_OPTIONAL_LOCKS", "0")];
+
+/// Run git with extra env vars; stdout untrimmed (porcelain lines can start
+/// with a space that matters).
+fn git_env(args: &[&str], cwd: &str, envs: &[(&str, &str)]) -> Result<String, CommandError> {
     let mut cmd = Command::new("git");
     cmd.args(args).current_dir(cwd);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     let out = cmd
@@ -28,7 +43,7 @@ fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
             String::from_utf8_lossy(&out.stderr).trim().to_string(),
         ));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 #[derive(Serialize)]
@@ -80,61 +95,177 @@ fn git_repos_under_impl(dir: String) -> Vec<RepoRef> {
 }
 
 /// Raw unified diff of a repo's working tree vs HEAD — tracked changes AND
-/// newly created (untracked) files. `git add -N` records intent-to-add so the
-/// diff includes new files as full additions; it does not stage content and is
-/// reversible, and it honors .gitignore. Empty string when there is nothing to show.
+/// newly created (untracked) files, which show as full additions. Honors
+/// .gitignore. Empty string when there is nothing to show. For the diff viewer,
+/// on demand: the task list's line counts come from `git_changed_files`.
 #[tauri::command]
 pub async fn repo_diff(repo_root: String) -> Result<String, CommandError> {
     run_blocking(move || repo_diff_impl(repo_root)).await
 }
 
 fn repo_diff_impl(repo_root: String) -> Result<String, CommandError> {
-    let _ = git(&["add", "-N", "--", "."], &repo_root); // best-effort; surfaces untracked files in the diff
-    let diff = git(
+    // `git diff` only shows a new file in full when the index knows its path.
+    // Marking untracked files intent-to-add (`add -N`) in the REAL index took
+    // index.lock under the agent's feet and left the files marked; do it in a
+    // throwaway copy of the index instead.
+    let scratch = ScratchIndex::copy_of(&repo_root);
+    let index = scratch.path.to_string_lossy().to_string();
+    let with_index = [("GIT_INDEX_FILE", index.as_str()), READ_ONLY[0]];
+    let _ = git_env(&["add", "-N", "--", "."], &repo_root, &with_index[..1]);
+    let diff = git_env(
         &["-c", "core.quotepath=false", "diff", "--no-color", "HEAD"],
         &repo_root,
+        &with_index,
     )
     .unwrap_or_default();
-    Ok(diff)
+    Ok(diff.trim().to_string())
+}
+
+/// A temporary copy of a work tree's index, deleted on drop.
+struct ScratchIndex {
+    path: std::path::PathBuf,
+}
+
+impl ScratchIndex {
+    fn copy_of(repo_root: &str) -> Self {
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("maestro-index-{}-{n}", std::process::id()));
+        if let Ok(rel) = git(&["rev-parse", "--git-path", "index"], repo_root) {
+            // Missing index (a repo with nothing staged yet) → git starts a fresh one.
+            let _ = std::fs::copy(Path::new(repo_root).join(rel), &path);
+        }
+        ScratchIndex { path }
+    }
+}
+
+impl Drop for ScratchIndex {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+        let mut lock = self.path.clone().into_os_string();
+        lock.push(".lock");
+        let _ = std::fs::remove_file(lock);
+    }
 }
 
 #[derive(Serialize)]
 pub struct ChangedFile {
     pub path: String,
     pub status: String,
+    /// Lines added / removed vs HEAD; None when unknown (e.g. no commit yet).
+    /// Binary files count 0.
+    pub added: Option<u64>,
+    pub removed: Option<u64>,
 }
 
 /// Files changed in the working tree vs HEAD (including untracked), as porcelain
-/// status pairs. Used to attach "what changed" evidence to a finished task.
+/// status pairs with their line counts. Used to attach "what changed" evidence
+/// to a finished task and polled for the task list's +/- counts. Read-only: it
+/// never writes the index, so it can run beside an agent's own git.
 #[tauri::command]
 pub async fn git_changed_files(repo_root: String) -> Result<Vec<ChangedFile>, CommandError> {
     run_blocking(move || git_changed_files_impl(repo_root)).await
 }
 
+/// Untracked files counted line by line; past this many they count as unknown.
+const MAX_UNTRACKED_COUNTED: usize = 500;
+/// Only this much of an untracked file is read to count its lines.
+const MAX_COUNT_BYTES: u64 = 1024 * 1024;
+
 fn git_changed_files_impl(repo_root: String) -> Result<Vec<ChangedFile>, CommandError> {
-    let _ = git(&["add", "-N", "--", "."], &repo_root); // surface untracked files
-    let out = git(
-        &["-c", "core.quotepath=false", "status", "--porcelain"],
+    let out = git_env(
+        &["-c", "core.quotepath=false", "status", "--porcelain", "-z", "-uall"],
         &repo_root,
+        &READ_ONLY,
     )
     .unwrap_or_default();
+    let counts = numstat(&repo_root);
     let mut files = Vec::new();
-    for line in out.lines() {
-        if line.len() < 4 {
+    let mut untracked = 0usize;
+    let mut tokens = out.split('\0');
+    while let Some(entry) = tokens.next() {
+        if entry.len() < 4 || !entry.is_char_boundary(3) {
             continue;
         }
-        let status = line[..2].trim().to_string();
-        let mut path = line[3..].trim().to_string();
-        // For renames git prints "old -> new"; keep the new path.
-        if let Some(idx) = path.find(" -> ") {
-            path = path[idx + 4..].to_string();
+        let status = entry[..2].trim().to_string();
+        let path = entry[3..].to_string();
+        // Renames/copies: -z puts the original path in the next field.
+        if status.contains('R') || status.contains('C') {
+            tokens.next();
         }
+        let (added, removed) = if status == "??" {
+            untracked += 1;
+            let n = if untracked <= MAX_UNTRACKED_COUNTED {
+                count_lines(&Path::new(&repo_root).join(&path))
+            } else {
+                None
+            };
+            (n, n.map(|_| 0))
+        } else if let Some(c) = &counts {
+            let (a, d) = c.get(&path).copied().unwrap_or((0, 0));
+            (Some(a), Some(d))
+        } else {
+            (None, None)
+        };
         files.push(ChangedFile {
             path: path.replace('/', "\\"),
             status,
+            added,
+            removed,
         });
     }
     Ok(files)
+}
+
+/// Lines added/removed per tracked path vs HEAD (`git diff --numstat`), keyed
+/// by git's forward-slash path. None when git can't say (e.g. no HEAD yet).
+fn numstat(repo_root: &str) -> Option<std::collections::HashMap<String, (u64, u64)>> {
+    let out = git_env(
+        &["-c", "core.quotepath=false", "diff", "--numstat", "-z", "HEAD"],
+        repo_root,
+        &READ_ONLY,
+    )
+    .ok()?;
+    let mut map = std::collections::HashMap::new();
+    let mut tokens = out.split('\0');
+    while let Some(entry) = tokens.next() {
+        let mut parts = entry.splitn(3, '\t');
+        let (Some(a), Some(d), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        // A rename leaves the path empty and puts "old\0new" in the next fields.
+        let path = if path.is_empty() {
+            tokens.next();
+            match tokens.next() {
+                Some(new) => new,
+                None => continue,
+            }
+        } else {
+            path
+        };
+        // Binary files show "-".
+        let n = |s: &str| s.parse::<u64>().unwrap_or(0);
+        map.insert(path.to_string(), (n(a), n(d)));
+    }
+    Some(map)
+}
+
+/// Lines in a new file, the way `git diff` counts them (a last line without a
+/// newline counts too). Binary → 0. Reads at most MAX_COUNT_BYTES.
+fn count_lines(path: &Path) -> Option<u64> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(MAX_COUNT_BYTES)
+        .read_to_end(&mut buf)
+        .ok()?;
+    if buf.iter().take(8000).any(|&b| b == 0) {
+        return Some(0);
+    }
+    let newlines = buf.iter().filter(|&&b| b == b'\n').count() as u64;
+    let unterminated = buf.last().is_some_and(|&b| b != b'\n');
+    Some(newlines + unterminated as u64)
 }
 
 // ===================== Slice 2: write side (commit / merge / discard) =====================
@@ -391,6 +522,79 @@ mod tests {
         let d = repo_diff_impl(repo.to_string_lossy().to_string()).unwrap();
         assert!(d.contains("new.txt"), "new files must be reviewable: {d}");
         assert!(d.contains("+fresh"), "added content must show: {d}");
+    }
+
+    #[test]
+    fn looking_at_changes_leaves_the_index_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("ro");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let root = repo.to_string_lossy().to_string();
+        std::fs::write(repo.join("new.txt"), "fresh\n").unwrap();
+        let index = repo.join(".git").join("index");
+        let before = std::fs::read(&index).unwrap();
+
+        let files = git_changed_files_impl(root.clone()).unwrap();
+        let d = repo_diff_impl(root.clone()).unwrap();
+        assert!(files.iter().any(|f| f.path == "new.txt"), "untracked file listed");
+        assert!(d.contains("+fresh"), "diff still shows new files: {d}");
+
+        // Nothing marked intent-to-add, index bytes untouched.
+        assert_eq!(git(&["ls-files"], &root).unwrap(), "a.txt");
+        assert_eq!(std::fs::read(&index).unwrap(), before, "index must not be rewritten");
+        assert!(git(&["status", "--porcelain"], &root).unwrap().contains("?? new.txt"));
+    }
+
+    #[test]
+    fn looking_at_changes_works_while_the_agent_holds_index_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("locked");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let root = repo.to_string_lossy().to_string();
+        std::fs::write(repo.join("a.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(repo.join("new.txt"), "fresh\n").unwrap();
+        let lock = repo.join(".git").join("index.lock");
+        std::fs::write(&lock, "").unwrap(); // an agent's `git commit` in flight
+
+        let files = git_changed_files_impl(root.clone()).unwrap();
+        assert_eq!(files.len(), 2, "both changes seen: {:?}", files.iter().map(|f| &f.path).collect::<Vec<_>>());
+        let d = repo_diff_impl(root).unwrap();
+        assert!(d.contains("+two") && d.contains("+fresh"), "diff despite the lock: {d}");
+        assert!(lock.exists(), "the agent's lock is not ours to touch");
+    }
+
+    #[test]
+    fn changed_files_carry_line_counts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("counts");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let root = repo.to_string_lossy().to_string();
+        std::fs::write(repo.join("gone.txt"), "x\ny\n").unwrap();
+        git(&["add", "-A"], &root).unwrap();
+        git(&["commit", "-qm", "two"], &root).unwrap();
+
+        std::fs::write(repo.join("a.txt"), "uno\ntwo\n").unwrap(); // 1 changed + 1 added
+        std::fs::remove_file(repo.join("gone.txt")).unwrap(); // 2 removed
+        std::fs::create_dir(repo.join("sub")).unwrap();
+        std::fs::write(repo.join("sub").join("new.txt"), "1\n2\n3").unwrap(); // 3, last unterminated
+        std::fs::write(repo.join("blob.bin"), [0u8, 1, 2, 0]).unwrap(); // binary
+
+        let files = git_changed_files_impl(root).unwrap();
+        let get = |p: &str| {
+            files
+                .iter()
+                .find(|f| f.path == p)
+                .map(|f| (f.status.as_str(), f.added, f.removed))
+                .unwrap_or_else(|| panic!("{p} missing"))
+        };
+        assert_eq!(get("a.txt"), ("M", Some(2), Some(1)));
+        assert_eq!(get("gone.txt"), ("D", Some(0), Some(2)));
+        assert_eq!(get("sub\\new.txt"), ("??", Some(3), Some(0)));
+        assert_eq!(get("blob.bin"), ("??", Some(0), Some(0)));
+        assert_eq!(files.len(), 4);
     }
 
     // ---- Slice 2: write-side commands ----
