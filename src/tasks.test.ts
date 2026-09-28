@@ -3,13 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sent: Array<[string, string]> = [];
 let changed: Record<string, number> = {};
 vi.mock("./ipc", () => ({
-  gitChangedFiles: vi.fn(async (root: string) => Array.from({ length: changed[root] ?? 0 }, (_, i) => ({ path: `f${i}`, status: "M" }))),
+  gitChangedFiles: vi.fn(async (root: string) => Array.from({ length: changed[root] ?? 0 }, (_, i) => ({ path: `f${i}`, status: "M", added: 2, removed: 1 }))),
   sendInput: vi.fn(async (id: string, data: string) => { sent.push([id, data]); }),
-  repoDiff: vi.fn(async () => "--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n-old\n+new\n+more\n"),
 }));
 
 import { workspaces } from "./appstate";
-import { allTasks, answerOption, answerText, countLines, historyOf, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
+import { gitChangedFiles } from "./ipc";
+import { allTasks, answerOption, answerText, historyOf, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
 import type { Pane, Workspace } from "./panetypes";
 
 const ASK = `
@@ -127,7 +127,6 @@ describe("tasks", () => {
   });
 
   it("counts the lines a branch adds and removes, and carries the job's title", async () => {
-    expect(countLines("--- a/f\n+++ b/f\n@@\n-a\n-b\n+c\n ctx\n")).toEqual({ add: 1, del: 2 });
     const p = pane("c", "Cy", { worktree: "D:\\wt\\cy", lastOutputAt: 0 });
     p.spec.title = "Fix the flaky upload test";
     p.spec.race = { id: "r1", n: 2, of: 3 };
@@ -138,5 +137,25 @@ describe("tasks", () => {
     updateTasks(50_010);
     const t = taskOf("c")!;
     expect([t.title, t.race?.n, t.added, t.removed]).toEqual(["Fix the flaky upload test", 2, 2, 1]);
+  });
+
+  it("stops asking git about an agent once it has stopped", async () => {
+    const ask = vi.mocked(gitChangedFiles);
+    const p = pane("c", "Cy", { worktree: "D:\\wt\\cy", lastOutputAt: 0 });
+    workspaces.set("ws-1", workspace([p]));
+    changed = { "D:\\wt\\cy": 2 };
+    ask.mockClear();
+    const t0 = Date.now(); // the poll clock is the wall clock
+    updateTasks(t0 + 10_000); await flush();
+    expect(ask).toHaveBeenCalledTimes(1);
+    p.running = false;
+    updateTasks(t0 + 20_000); await flush(); // one last look right after it stops
+    updateTasks(t0 + 30_000); await flush();
+    updateTasks(t0 + 40_000); await flush();
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(taskOf("c")?.changedFiles).toBe(2);
+    p.running = true; // restarted: polled again
+    updateTasks(t0 + 50_000); await flush();
+    expect(ask).toHaveBeenCalledTimes(3);
   });
 });

@@ -458,9 +458,10 @@ export async function repoDiff(repoRoot: string): Promise<string> {
   return invoke<string>("repo_diff", { repoRoot });
 }
 
-export interface ChangedFile { path: string; status: string }
+/** `added`/`removed`: lines vs HEAD, null when git can't tell (binary = 0). */
+export interface ChangedFile { path: string; status: string; added: number | null; removed: number | null }
 
-/** Files changed vs HEAD (incl. untracked), as {path, status} pairs. */
+/** Files changed vs HEAD (incl. untracked), with their line counts. Read-only. */
 export async function gitChangedFiles(repoRoot: string): Promise<ChangedFile[]> {
   return invoke<ChangedFile[]>("git_changed_files", { repoRoot });
 }
