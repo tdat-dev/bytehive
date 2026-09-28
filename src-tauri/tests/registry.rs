@@ -85,6 +85,19 @@ fn shared_spawn_inserts_rejects_duplicates_and_takes_out() {
     assert!(start.elapsed() < Duration::from_secs(10), "teardown must not hang");
 }
 
+#[test]
+fn a_panic_under_the_lock_does_not_wedge_the_registry() {
+    let shared = Arc::new(Mutex::new(Registry::new()));
+    let s = shared.clone();
+    let _ = std::thread::spawn(move || {
+        let _g = s.lock().unwrap();
+        panic!("boom while holding the registry");
+    })
+    .join();
+    assert!(shared.is_poisoned());
+    assert_eq!(registry::lock(&shared).count(), 0, "still usable after a poisoning panic");
+}
+
 /// Poll `cond` until it holds or the timeout elapses.
 fn wait_for(mut cond: impl FnMut() -> bool, timeout: Duration) -> bool {
     let start = Instant::now();

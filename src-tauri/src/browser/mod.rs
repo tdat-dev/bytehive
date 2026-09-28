@@ -55,7 +55,7 @@ pub fn start(app: &AppHandle, state: &BrowserState) {
             hub::HubEvent::Blocker(b) => app2.emit("browser-blocker", b),
         };
     }), wanted) {
-        Ok(h) => *state.hub.lock().unwrap() = Some(h),
+        Ok(h) => *state.hub.lock().unwrap_or_else(|p| p.into_inner()) = Some(h),
         Err(e) => eprintln!("browser hub: {e}"),
     }
     std::thread::spawn(|| {
@@ -184,7 +184,7 @@ fn register_host() -> Result<(), String> {
 
 #[tauri::command]
 pub fn browser_status(state: State<'_, BrowserState>) -> BrowserStatus {
-    let hub = state.hub.lock().unwrap().clone();
+    let hub = state.hub.lock().unwrap_or_else(|p| p.into_inner()).clone();
     BrowserStatus {
         running: hub.is_some(),
         port: hub.as_ref().map(|h| h.port).unwrap_or(0),
@@ -220,12 +220,12 @@ pub async fn browser_open_profile(browser: String, dir: String) -> Result<(), St
 }
 
 fn hub_of(state: &State<'_, BrowserState>) -> Result<Arc<hub::Hub>, String> {
-    state.hub.lock().unwrap().clone().ok_or_else(|| "The browser hub isn't running.".to_string())
+    state.hub.lock().unwrap_or_else(|p| p.into_inner()).clone().ok_or_else(|| "The browser hub isn't running.".to_string())
 }
 
 #[tauri::command]
 pub fn browser_activity(state: State<'_, BrowserState>) -> Vec<hub::Activity> {
-    state.hub.lock().unwrap().as_ref().map(|h| h.activity()).unwrap_or_default()
+    state.hub.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|h| h.activity()).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -246,7 +246,7 @@ pub async fn browser_peek(state: State<'_, BrowserState>, agent: String, max_w: 
 
 #[tauri::command]
 pub fn browser_asks(state: State<'_, BrowserState>) -> Vec<hub::Ask> {
-    state.hub.lock().unwrap().as_ref().map(|h| h.asks()).unwrap_or_default()
+    state.hub.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|h| h.asks()).unwrap_or_default()
 }
 
 /// The user's answer to a click Maestro held (sending, posting, paying…).

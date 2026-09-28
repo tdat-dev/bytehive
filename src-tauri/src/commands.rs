@@ -100,9 +100,7 @@ pub async fn pty_attach(
 ) -> Result<(), CommandError> {
     let registry = state.registry.clone();
     run_blocking(move || {
-        let reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        let reg = registry::lock(&registry);
         reg.attach(
             &agent_id,
             Box::new(move |bytes| {
@@ -122,9 +120,7 @@ pub async fn pty_input(
 ) -> Result<(), CommandError> {
     let registry = state.registry.clone();
     run_blocking(move || {
-        let mut reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        let mut reg = registry::lock(&registry);
         reg.write_input(&agent_id, data.as_bytes())
             .map_err(CommandError::from)
     })
@@ -140,9 +136,7 @@ pub async fn pty_resize(
 ) -> Result<(), CommandError> {
     let registry = state.registry.clone();
     run_blocking(move || {
-        let reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        let reg = registry::lock(&registry);
         reg.resize(&agent_id, cols, rows).map_err(CommandError::from)
     })
     .await
@@ -185,9 +179,7 @@ pub async fn record_start(
             std::fs::create_dir_all(parent)
                 .map_err(|e| CommandError::Failed(format!("cannot create recordings dir: {e}")))?;
         }
-        let reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        let reg = registry::lock(&registry);
         reg.record_start(&agent_id, &path)
             .map_err(CommandError::from)
     })
@@ -199,9 +191,7 @@ pub async fn record_start(
 pub async fn record_stop(state: State<'_, AppState>, agent_id: String) -> Result<(), CommandError> {
     let registry = state.registry.clone();
     run_blocking(move || {
-        let reg = registry
-            .lock()
-            .map_err(|_| CommandError::Failed("state poisoned".into()))?;
+        let reg = registry::lock(&registry);
         reg.record_stop(&agent_id);
         Ok(())
     })
