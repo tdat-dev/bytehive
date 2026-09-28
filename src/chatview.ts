@@ -14,6 +14,7 @@ import { openPalette, type PaletteItem } from "./inboxpalette";
 import { CONTEXT_HIGH, cliFacts, contextFill, profileOf, type CliChoice, type CliFacts } from "./cliprofile";
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
+import { drawBlocks, type Block } from "./keyeddom";
 import { agentCost, forgetCost } from "./agentcost";
 import { money } from "./pricing";
 import { activityOnScreen, promptShown, stepDoing } from "./working";
@@ -384,22 +385,23 @@ function itemHtml(it: ChatItem, open: Set<string>): string {
 
 /** The conversation by turns: each of your messages, what followed, and for a
  *  finished turn a footer (how long it worked, when, Copy). */
-function threadHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>, working: boolean, live: LiveOption[] = [], stopped = false): string {
+function threadBlocks(items: ChatItem[], open: Set<string>, expanded: Set<string>, working: boolean, live: LiveOption[] = [], stopped = false): Block[] {
   const turns = turnsOf(items);
-  return turns.map((t, k) => {
+  return turns.flatMap((t, k) => {
     const said = t.items.some((i) => i.kind === "text");
     const done = !(working && k === turns.length - 1);
     const lastAt = t.items[t.items.length - 1]?.at ?? 0;
     const foot = said && done
       ? `<div class="cv-tf">${t.took ? `<span>Worked for ${took(t.took)}</span>` : ""}${lastAt ? `<time>${when(lastAt)}</time>` : ""}<button type="button" class="cv-copy" data-copy="${t.items[0].id}" aria-label="Copy this answer">Copy</button></div>`
       : "";
-    return runsHtml(t.items, open, expanded, live, stopped) + foot;
-  }).join("");
+    return [...runsBlocks(t.items, open, expanded, live, stopped), { key: `tf:${t.items[0].id}`, html: foot }];
+  });
 }
 
-/** Steps between two messages sit together; a long run folds its start. */
-function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>, live: LiveOption[] = [], stopped = false): string {
-  let html = "";
+/** Steps between two messages sit together; a long run folds its start. Each
+ *  message and step is its own block, so a new step redraws nothing before it. */
+function runsBlocks(items: ChatItem[], open: Set<string>, expanded: Set<string>, live: LiveOption[] = [], stopped = false): Block[] {
+  const out: Block[] = [];
   let run: StepItem[] = [];
   const flush = () => {
     if (!run.length) return;
@@ -410,18 +412,22 @@ function runsHtml(items: ChatItem[], open: Set<string>, expanded: Set<string>, l
     const toggle = !long ? ""
       : fold ? `<button type="button" class="cv-more" data-expand="${key}" aria-expanded="false">${run.length - 3} earlier steps</button>`
       : `<button type="button" class="cv-more" data-fold="${key}" aria-expanded="true">Fold ${run.length - 3} earlier steps</button>`;
-    html += `<div class="cv-steps">${toggle}${shown.map((s) => stepHtml(s, open.has(s.id) || (s.tool === "TodoWrite" && !open.has(`!${s.id}`)))).join("")}</div>`;
+    out.push({
+      key: `steps:${key}`,
+      html: `<div class="cv-steps"></div>`,
+      kids: [{ key: "more", html: toggle }, ...shown.map((s) => ({ key: s.id, html: stepHtml(s, open.has(s.id) || (s.tool === "TodoWrite" && !open.has(`!${s.id}`))) }))],
+    });
     run = [];
   };
   for (const it of items) {
     // A question to you is part of the conversation, never folded away with the steps.
-    if (it.kind === "step" && it.questions?.length) { flush(); html += askHtml(it, live, stopped); continue; }
+    if (it.kind === "step" && it.questions?.length) { flush(); out.push({ key: it.id, html: askHtml(it, live, stopped) }); continue; }
     if (it.kind === "step") { run.push(it); continue; }
     flush();
-    html += itemHtml(it, open);
+    out.push({ key: it.id, html: itemHtml(it, open) });
   }
   flush();
-  return html;
+  return out;
 }
 
 /** An option of the question on the agent's screen right now, and the number that picks it. */
@@ -766,9 +772,13 @@ function draw(v: View, force = false): void {
       const back = focusKey(thread);
       const start = Math.max(0, items.length - v.window);
       // Nothing of a conversation still loading: half of it would jump as the rest comes in.
-      thread.innerHTML = !v.loaded ? emptyHtml(v) : skippedHtml(v) + (start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "") +
-        (items.length || v.sending.length ? threadHtml(items.slice(start), v.open, v.expanded, v.state.state === "working", v.state.answers, v.state.state === "stopped") : emptyHtml(v)) +
-        v.sending.map((s) => `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">${esc(s.note ?? "Sending…")}</span></div>`).join("");
+      // Drawn by keyed blocks: what didn't change keeps its nodes (keyeddom.ts).
+      drawBlocks(thread, !v.loaded ? [{ key: "empty", html: emptyHtml(v) }] : [
+        { key: "skipped", html: skippedHtml(v) },
+        { key: "earlier", html: start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "" },
+        ...(items.length || v.sending.length ? threadBlocks(items.slice(start), v.open, v.expanded, v.state.state === "working", v.state.answers, v.state.state === "stopped") : [{ key: "empty", html: emptyHtml(v) }]),
+        ...v.sending.map((s, k) => ({ key: `sending:${k}`, html: `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">${esc(s.note ?? "Sending…")}</span></div>` })),
+      ]);
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
       // Reading further up: new messages don't pull you down, they say they came.
       else if (v.loaded && items.length > v.seenItems) v.unseen = true;
