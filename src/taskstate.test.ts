@@ -16,6 +16,14 @@ describe("deriveTaskState", () => {
     expect(deriveTaskState(facts({ running: false, screen: ASKING }), NOW).state).toBe("stopped");
   });
 
+  it("merged once its branch went into the base and it has not started again", () => {
+    expect(deriveTaskState(facts({ running: false, merged: true, changedFiles: null }), NOW).state).toBe("merged");
+    // started again: it is working on something new
+    expect(deriveTaskState(facts({ merged: true, lastOutputAt: NOW }), NOW).state).toBe("working");
+    expect(STATE_RANK.stopped).toBeLessThan(STATE_RANK.merged);
+    expect(statusLine("Ivy", { state: "merged", ask: null })).toBe("Ivy's work is merged");
+  });
+
   it("needs you when a prompt is on screen, even right after output", () => {
     const s = deriveTaskState(facts({ screen: ASKING, lastOutputAt: NOW - 100 }), NOW);
     expect(s.state).toBe("needs");

@@ -463,20 +463,106 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .ir-close { height: 28px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--ib-ink-2); font-size: 12.5px; }
 .ir-close:hover { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
 .ir-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ir-back { display: flex; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid var(--ib-line); }
-.ir-back input {
-  flex: 1; min-width: 0; height: 36px;
-  border: 0; border-radius: 10px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
-  background: rgba(0, 0, 0, 0.3);
-  color: var(--ib-ink);
-  padding: 0 12px;
-  font: 13px var(--sans);
+/* the drawer's inside is the design's review panel: head, files, one file's
+   diff, and the three ways to end the job at the foot */
+.inbox-review .rhead { padding: 18px 18px 12px; }
+.inbox-review .rhead .ir-close { float: right; margin: -4px 0 0 8px; }
+.inbox-review .lbl { margin: 0 0 4px; font-size: 12px; color: var(--ib-ink-3); }
+.inbox-review .rhead h2 { margin: 0 0 4px; font: 500 16px/1.3 var(--sans); letter-spacing: -0.01em; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.inbox-review .br { margin: 0; font: 12px var(--mono); color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inbox-review .num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; }
+.inbox-review .num.a, .inbox-review .file .a, .inbox-review .check .a { color: var(--ib-work); }
+.inbox-review .num.d, .inbox-review .file .d, .inbox-review .check .d { color: var(--ib-del); }
+.inbox-review .checks { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.inbox-review .check { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); color: var(--ib-ink-2); display: inline-flex; gap: 6px; align-items: center; }
+.inbox-review .fbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 18px; font-size: 12px; color: var(--ib-ink-3); }
+.inbox-review .progress { height: 3px; width: 90px; border-radius: 2px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.inbox-review .progress i { display: block; height: 100%; background: var(--ib-review); }
+.inbox-review .files { flex: none; max-height: 34%; overflow: auto; padding: 0 10px 8px; }
+.inbox-review .file { display: flex; gap: 8px; align-items: center; padding: 0 8px 0 0; border-radius: 10px; }
+.inbox-review .file:hover { background: rgba(255, 255, 255, 0.03); }
+.inbox-review .file.cur { background: var(--ib-raise); }
+.inbox-review .pick { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 10px; font: 12.5px var(--mono); color: var(--ib-ink-2); text-align: left; }
+.inbox-review .file.cur .pick { color: var(--ib-ink); }
+.inbox-review .file .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-review .file.seen .p { color: var(--ib-ink-3); text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.25); }
+.inbox-review .file label { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ib-ink-3); cursor: pointer; white-space: nowrap; }
+.inbox-review .file input { accent-color: var(--ib-review); margin: 0; }
+.inbox-review .diff { flex: 1; min-height: 0; overflow: auto; padding: 6px 0; font: 12.5px/1.65 var(--mono); border-top: 1px solid var(--ib-line); }
+.inbox-review .hunk { padding: 5px 18px; color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inbox-review .dl { display: grid; grid-template-columns: 44px 1fr; padding-right: 18px; white-space: pre; }
+/* a line number is the button that comments on its line; a + shows on hover */
+.inbox-review .dl .ln {
+  position: relative; display: block; width: 100%; height: 100%; padding: 0 10px 0 0; border: 0; border-radius: 0;
+  background: none; color: var(--ib-ink-3); font: inherit; text-align: right; cursor: pointer;
+  user-select: none; font-variant-numeric: tabular-nums;
 }
-.ir-back input::placeholder { color: var(--ib-ink-3); }
-.ir-back input:focus-visible, .ir-close:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.ir-back button { height: 36px; padding: 0 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); font-weight: 600; }
-.ir-back button:hover { background: rgba(255, 255, 255, 0.18); }
+.inbox-review .dl .ln::before { content: "+"; position: absolute; left: 7px; font-weight: 600; color: var(--ib-review); opacity: 0; }
+.inbox-review .dl:hover .ln { color: var(--ib-ink); }
+.inbox-review .dl:hover .ln::before, .inbox-review .dl .ln:focus-visible::before { opacity: 1; }
+.inbox-review .dl .ln:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.inbox-review .dl.cm .ln { color: var(--ib-review); background: oklch(0.79 0.09 250 / 0.14); }
+/* a comment sits under its line, in the reading font, and waits for Send back */
+.inbox-review .rc-box, .inbox-review .rc-note {
+  margin: 6px 18px 8px 44px; padding: 10px 12px; border-radius: 12px;
+  background: var(--ib-raise); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  font: 13px/1.5 var(--sans); white-space: normal;
+}
+.inbox-review .rc-box .note { min-height: 64px; }
+.inbox-review .rc-where { display: block; margin: 0 0 6px; font: 12px var(--mono); color: var(--ib-ink-3); }
+.inbox-review .rc-text { margin: 0; color: var(--ib-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.inbox-review .rc-acts { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.inbox-review .rc-hint { margin-right: auto; font-size: 12px; color: var(--ib-ink-3); }
+.inbox-review .rc-n {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  font: 600 11px var(--mono); color: var(--ib-ink); background: rgba(255, 255, 255, 0.14);
+}
+.inbox-review .hbtn { height: 30px; padding: 0 12px; border: 0; border-radius: 999px; font: 12.5px var(--sans); color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.05); white-space: nowrap; }
+.inbox-review .hbtn:hover { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
+.inbox-review .dl .c { color: var(--ib-ink-2); }
+.inbox-review .dl.add { background: oklch(0.8 0.13 155 / 0.1); }
+.inbox-review .dl.add .c { color: oklch(0.9 0.06 155); }
+.inbox-review .dl.del { background: oklch(0.72 0.15 25 / 0.1); }
+.inbox-review .dl.del .c { color: oklch(0.88 0.05 25); }
+.inbox-review .ir-more { margin: 10px 18px; }
+.inbox-review .rfoot { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 12px 18px 18px; border-top: 1px solid var(--ib-line); }
+.inbox-review .row2 { display: flex; gap: 8px; flex-wrap: wrap; }
+.inbox-review .note {
+  width: 100%; min-height: 60px; resize: vertical;
+  padding: 10px 12px; border: 0; border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ib-ink); font: 13px/1.45 var(--sans);
+}
+.inbox-review .note::placeholder { color: var(--ib-ink-3); }
+.inbox-review .btn {
+  height: 36px; padding: 0 14px; border: 0; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  font: 600 13px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.07);
+}
+.inbox-review .btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.inbox-review .btn.primary { background: #fff; color: #000; }
+.inbox-review .btn.primary:hover:not(:disabled) { background: #e9e9ec; }
+.inbox-review .btn.danger { color: var(--ib-del); }
+.inbox-review .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.inbox-review kbd { font: 500 11px/1 var(--mono); color: var(--ib-ink-3); border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 5px; padding: 2px 5px; background: rgba(255, 255, 255, 0.03); }
+.inbox-review .btn.primary kbd { background: transparent; color: #555; border-color: rgba(0, 0, 0, 0.2); }
+.inbox-review .ir-msg { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ib-ink-3); }
+.inbox-review .ir-msg.err, .inbox-review .ir-msg.warn { color: var(--ib-needs); }
+.inbox-review .ir-msg.busy { color: var(--ib-ink-2); }
+.inbox-review .rempty { padding: 26px 18px; font-size: 13px; line-height: 1.5; color: var(--ib-ink-3); }
+.inbox-review .rempty strong { display: block; margin-bottom: 4px; font-weight: 500; color: var(--ib-ink-2); }
+.inbox-review .rempty .btn { margin-top: 14px; }
+.inbox-review button:focus-visible, .inbox-review .note:focus-visible, .inbox-review input:focus-visible, .inbox-review .diff:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.inbox-review .diff:focus-visible { outline-offset: -2px; }
+.inbox-review ::selection { background: oklch(0.79 0.09 250 / 0.35); }
+
+/* merged: done, so it steps back in the list; one button clears them */
+.iq-row.st-merged .iq-t, .iq-row.st-merged .iq-s { opacity: 0.6; }
+.iq-row.st-merged .iq-mk::after { transform: scale(0.55); }
+.iq-clear { display: block; margin: 8px 10px 4px; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.05); }
+.iq-clear:hover { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
+.iq-clear:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 @media (max-width: 1000px) {
   .inbox-review { width: auto; left: 16px; }
