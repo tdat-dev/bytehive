@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conflictText, diffTotals, numberHunk, sendBackText } from "./reviewtext";
+import { clearComments, commentWhere, commentsOf, conflictText, diffTotals, dropComment, numberHunk, putComment, sendBackText, type LineComment } from "./reviewtext";
 
 describe("send back", () => {
   const conflict = { base: "main", branch: "maestro/eli-1a2b3c", files: ["src/a.ts", "src/b.ts"] };
@@ -37,5 +37,52 @@ describe("diff line numbers", () => {
   it("counts a new file from line 1 and totals a diff", () => {
     expect(numberHunk("@@ -0,0 +1 @@", [{ kind: "add", text: "x" }])[0].new).toBe(1);
     expect(diffTotals([{ path: "a", additions: 3, deletions: 1, hunks: [] }, { path: "b", additions: 2, deletions: 0, hunks: [] }])).toEqual({ add: 5, del: 1 });
+  });
+});
+
+describe("comments on the diff", () => {
+  const c = (over: Partial<LineComment>): LineComment => ({ id: "x", path: "src/a.ts", side: "new", start: 12, end: 12, code: ["const x = 1;"], text: "Name it", ...over });
+
+  it("says where a comment is", () => {
+    expect(commentWhere(c({}))).toBe("src/a.ts:12");
+    expect(commentWhere(c({ start: 12, end: 14 }))).toBe("src/a.ts:12-14");
+    expect(commentWhere(c({ side: "old", start: 7, end: 7 }))).toBe("src/a.ts:7 (removed)");
+  });
+
+  it("types every comment in one message: where, the quoted code, the comment, then what to do", () => {
+    const t = sendBackText({
+      note: "Also run the linter.",
+      comments: [
+        c({ path: "src/b.ts", start: 3, end: 4, code: ["if (a)", "  go();"], text: "Guard b too" }),
+        c({ text: "Rename x to count" }),
+        c({ text: "   " }), // an empty one is not sent
+      ],
+    });
+    expect(t).toBe([
+      "Review comments on your changes:",
+      "",
+      "src/a.ts:12\n> const x = 1;\nRename x to count",
+      "",
+      "src/b.ts:3-4\n> if (a)\n>   go();\nGuard b too",
+      "",
+      "Also run the linter.",
+      "",
+      "Address each comment, then tell me when it is done.",
+    ].join("\n"));
+    expect(t).not.toContain("\u2014");
+  });
+
+  it("keeps drafts per agent until they are cleared", () => {
+    const a = putComment("ana", { path: "a.ts", side: "new", start: 1, end: 1, code: ["x"], text: "one" });
+    putComment("ana", { path: "a.ts", side: "new", start: 2, end: 2, code: ["y"], text: "two" });
+    putComment("bo", { path: "b.ts", side: "old", start: 5, end: 5, code: ["z"], text: "why?" });
+    putComment("ana", { ...a, text: "one, edited" });
+    expect(commentsOf("ana").map((x) => x.text)).toEqual(["one, edited", "two"]);
+    dropComment("ana", a.id);
+    expect(commentsOf("ana").map((x) => x.text)).toEqual(["two"]);
+    clearComments("ana");
+    expect(commentsOf("ana")).toEqual([]);
+    expect(commentsOf("bo")).toHaveLength(1);
+    clearComments("bo");
   });
 });

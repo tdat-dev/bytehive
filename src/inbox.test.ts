@@ -494,6 +494,66 @@ describe("inbox DOM", () => {
     expect(state.lands).toEqual([]);
   });
 
+  it("comments on diff lines, keeps them per agent, and sends them all back in one message", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    (panes[1] as unknown as { running: boolean }).running = true;
+    setInbox(true);
+    const openR = async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true })); await flush(); };
+    await openR();
+    const q = <T extends HTMLElement>(sel: string) => document.querySelector<T>(`.inbox-review ${sel}`)!;
+    const lns = () => [...document.querySelectorAll<HTMLButtonElement>(".inbox-review .ln")];
+    // one line number in the Tab order; the arrows walk the rest
+    expect(lns().map((b) => b.tabIndex)).toEqual([0, -1, -1]);
+    expect(lns()[1].getAttribute("aria-label")).toBe("Comment on removed line 2");
+    lns()[0].focus();
+    lns()[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    expect(document.activeElement).toBe(lns()[1]);
+    // click the number of "+new": a box opens under it, with the keyboard in it
+    lns()[2].click();
+    const box = q<HTMLTextAreaElement>("#rcText");
+    expect(document.activeElement).toBe(box);
+    expect(q(".rc-box .rc-where").textContent).toBe("Comment on src/a.ts:2");
+    // Esc puts the box away, not the drawer
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(document.querySelector(".rc-box")).toBeNull();
+    expect(document.querySelector(".inbox-review")).not.toBeNull();
+    lns()[2].click();
+    q<HTMLTextAreaElement>("#rcText").value = "Call it fresh";
+    q<HTMLTextAreaElement>("#rcText").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(q(".rc-note .rc-text").textContent).toBe("Call it fresh");
+    expect(q(".dl.cm .ln").textContent).toBe("2");
+    expect(q('[data-act="back"]').textContent!.replace(/\s+/g, " ").trim()).toBe("Send back 1");
+    expect(q('[data-act="back"]').getAttribute("aria-label")).toBe("Send back with 1 comment");
+    // Shift-click a run of lines: the context line and the new one
+    lns()[0].click();
+    q('[data-act="rc-cancel"]').click();
+    lns()[2].dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    expect(q(".rc-box .rc-where").textContent).toBe("Comment on src/a.ts:1-2");
+    q<HTMLTextAreaElement>("#rcText").value = "Merge these two";
+    q('[data-act="rc-save"]').click();
+    // edit one, remove none
+    (document.querySelectorAll<HTMLButtonElement>('.inbox-review [data-act="rc-edit"]')[0]).click();
+    q<HTMLTextAreaElement>("#rcText").value = "Call it fresh, please";
+    q('[data-act="rc-save"]').click();
+    // switching screens keeps them
+    q('[data-act="close"]').click();
+    await openR();
+    expect([...document.querySelectorAll(".inbox-review .rc-note .rc-text")].map((x) => x.textContent)).toEqual(["Call it fresh, please", "Merge these two"]);
+    // a comment can go
+    const del = document.querySelectorAll<HTMLButtonElement>('.inbox-review [data-act="rc-del"]');
+    expect(del[1].getAttribute("aria-label")).toBe("Remove comment on src/a.ts:1-2");
+    del[1].click();
+    expect(document.querySelectorAll(".inbox-review .rc-note")).toHaveLength(1);
+    q('[data-act="back"]').click();
+    await flush();
+    expect(state.sent).toHaveLength(1);
+    expect(state.sent[0][1]).toBe("Review comments on your changes:\n\nsrc/a.ts:2\n> new\nCall it fresh, please\n\nAddress this comment, then tell me when it is done.");
+    // sent: the drafts are gone
+    await openR();
+    expect(document.querySelectorAll(".inbox-review .rc-note")).toHaveLength(0);
+    expect(q('[data-act="back"]').textContent!.trim()).toBe("Send back");
+  });
+
   it("shows merged agents as Merged and clears them", () => {
     state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "merged", { mergedInto: "main" })];
     let removed = 0;

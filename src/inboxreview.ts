@@ -4,6 +4,8 @@
 // Send back types your note (and, after a conflict, what to resolve) into the
 // agent; Discard branch throws the branch away. Agents that work in the project
 // folder itself have no branch of their own: they get the diff and Send back.
+// A line number in the diff takes a comment (Shift for a run of lines); the
+// comments wait per agent until Send back types them all in one message.
 
 import { parseDiff, type DiffFile } from "./diff";
 import { focusAgent } from "./chatview";
@@ -12,7 +14,7 @@ import { topNote } from "./hint";
 import { killPty, repoDiff, reposUnder, reviewBranchDiff, reviewDiscardBranch, reviewLand, sendMessage, type LandResult } from "./ipc";
 import { markMerged, taskOf } from "./tasks";
 import { promptShown } from "./working";
-import { diffTotals, numberHunk, sendBackText, type Conflict } from "./reviewtext";
+import { clearComments, commentWhere, commentsOf, diffTotals, dropComment, numberHunk, putComment, sendBackText, type Conflict, type LineComment } from "./reviewtext";
 import type { Pane } from "./panetypes";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -31,6 +33,16 @@ export function reviewDir(pane: Pane): string | null {
  *  you ticked as viewed, so switching agents or screens loses neither. */
 const notes = new Map<string, string>();
 const viewed = new Map<string, Set<string>>();
+
+/** The comment being written: the lines it is about, and its text so far.
+ *  `id` when it edits a saved one. */
+interface Editing {
+  id?: string;
+  side: "new" | "old";
+  start: number;
+  end: number;
+  text: string;
+}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -73,6 +85,12 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
   let conflict: Conflict | null = null;
   let busy = false;
   let msg: { text: string; kind: "" | "err" | "busy" } = { text: "", kind: "" };
+  /** The lines of the file on screen, by the index their number button carries. */
+  let rows: Array<{ side: "new" | "old"; num: number; text: string }> = [];
+  let editing: Editing | null = null;
+  /** Where a Shift-click run of lines starts, and the one line number in the Tab order. */
+  let anchor: number | null = null;
+  let lnFocus = 0;
 
   function close(): void {
     el?.remove();
@@ -91,6 +109,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     files = null; loadError = ""; fileIdx = 0; showAll = false;
     own = !!pane.spec.worktree; base = ""; branch = pane.spec.branch ?? "";
     check = null; conflict = null; busy = false; msg = { text: "", kind: "" };
+    rows = []; editing = null; anchor = null; lnFocus = 0;
     el = document.createElement("aside");
     el.className = "inbox-review";
     el.setAttribute("role", "dialog");
@@ -168,9 +187,31 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
         <label><input type="checkbox" data-v="${i}"${seen.has(f.path) ? " checked" : ""}> Viewed</label></div>`).join("")}</div>`;
   }
 
-  function diffHtml(): string {
+  /** A saved comment under its last line: where, what you said, Edit and Remove. */
+  function noteHtml(c: LineComment): string {
+    const where = esc(commentWhere(c));
+    return `<div class="rc-note" data-cid="${esc(c.id)}">
+      <p class="rc-where">${where}</p>
+      <p class="rc-text">${esc(c.text)}</p>
+      <div class="rc-acts"><button type="button" class="hbtn" data-act="rc-edit" data-cid="${esc(c.id)}" aria-label="Edit comment on ${where}">Edit</button><button type="button" class="hbtn" data-act="rc-del" data-cid="${esc(c.id)}" aria-label="Remove comment on ${where}">Remove</button></div>
+    </div>`;
+  }
+
+  /** The box you write a comment in, under the line (or last line of the run) it is about. */
+  function boxHtml(path: string, e: Editing): string {
+    const where = esc(commentWhere({ path, side: e.side, start: e.start, end: e.end }));
+    return `<div class="rc-box">
+      <label class="rc-where" for="rcText">Comment on ${where}</label>
+      <textarea id="rcText" class="note" placeholder="What should change here?">${esc(e.text)}</textarea>
+      <div class="rc-acts"><span class="rc-hint"><kbd>Ctrl Enter</kbd> saves, <kbd>Esc</kbd> cancels</span><button type="button" class="hbtn" data-act="rc-cancel">Cancel</button><button type="button" class="btn primary" data-act="rc-save">${e.id ? "Save" : "Comment"}</button></div>
+    </div>`;
+  }
+
+  function diffHtml(pane: Pane): string {
     const f = files![fileIdx];
+    rows = [];
     if (!f) return "";
+    const mine = commentsOf(pane.id).filter((c) => c.path === f.path);
     let html = "";
     let drawn = 0;
     if (f.binary) html = `<p class="rempty">Binary file, not shown.</p>`;
@@ -179,13 +220,21 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       html += `<div class="hunk">${esc(h.header)}</div>`;
       for (const l of numberHunk(h.header, h.lines)) {
         if (!showAll && drawn++ >= MAX_LINES) break;
+        // A removed line is commented by its old number, every other by its new one.
+        const side = l.kind === "del" ? "old" : "new";
+        const num = (side === "old" ? l.old : l.new) ?? 0;
+        const k = rows.push({ side, num, text: l.text }) - 1;
+        const on = mine.filter((c) => c.side === side && num >= c.start && num <= c.end);
         const sign = l.kind === "add" ? "+" : l.kind === "del" ? "-" : " ";
-        html += `<div class="dl${l.kind === "ctx" ? "" : ` ${l.kind}`}"><span class="ln">${l.new ?? ""}</span><span class="c">${esc(sign + l.text)}</span></div>`;
+        const label = `${on.length ? "Commented. Add another comment" : "Comment"} on ${side === "old" ? `removed line ${num}` : `line ${num}`}`;
+        html += `<div class="dl${l.kind === "ctx" ? "" : ` ${l.kind}`}${on.length ? " cm" : ""}"><button type="button" class="ln" data-ln="${k}" tabindex="${k === lnFocus ? 0 : -1}" aria-label="${label}">${l.new ?? ""}</button><span class="c">${esc(sign + l.text)}</span></div>`;
+        for (const c of mine) if (c.side === side && c.end === num) html += editing?.id === c.id ? boxHtml(f.path, editing) : noteHtml(c);
+        if (editing && !editing.id && editing.side === side && editing.end === num) html += boxHtml(f.path, editing);
       }
     }
     const total = f.hunks.reduce((k, h) => k + h.lines.length, 0);
     if (!showAll && total > MAX_LINES) html += `<button type="button" class="hbtn ir-more" data-act="all">Show all ${total} lines</button>`;
-    return `<div class="diff" tabindex="0" aria-label="Diff of ${esc(f.path)}">${html}</div>`;
+    return `<div class="diff" aria-label="Diff of ${esc(f.path)}. Arrow keys move between lines; Enter comments on one, Shift+Enter on a run of lines.">${html}</div>`;
   }
 
   function footHtml(pane: Pane): string {
@@ -201,11 +250,13 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       line = `<p class="ir-msg" role="status">${name} works in the project folder, not on a branch of its own, so there is nothing to merge.</p>`;
     }
     const off = busy ? " disabled" : "";
+    const n = commentsOf(pane.id).length;
+    const back = `<button type="button" class="btn" data-act="back"${off}${n ? ` aria-label="Send back with ${n} comment${n === 1 ? "" : "s"}"` : ""}>Send back${n ? ` <span class="rc-n" aria-hidden="true">${n}</span>` : ""}</button>`;
     const acts = own
       ? `<button type="button" class="btn primary" data-act="merge"${off}>Merge into ${into} <kbd>M</kbd></button>
-         <button type="button" class="btn" data-act="back"${off}>Send back</button>
+         ${back}
          <button type="button" class="btn danger" data-act="discard"${off}>Discard branch</button>`
-      : `<button type="button" class="btn" data-act="back"${off}>Send back</button>`;
+      : back;
     return `<div class="rfoot">${line}
       <label class="ia-sr" for="irNote">Note for ${name}</label>
       <textarea class="note" id="irNote" placeholder="What should ${name} change? Needed only for Send back.">${esc(note)}</textarea>
@@ -218,7 +269,10 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     if (!el || !pane) return;
     // Keep the keyboard where it was across a redraw.
     const at = document.activeElement as HTMLElement | null;
-    const back = at && el.contains(at) ? (at.dataset.act ? `[data-act="${at.dataset.act}"]` : at.dataset.i ? `[data-i="${at.dataset.i}"]` : at.dataset.v ? `[data-v="${at.dataset.v}"]` : at.id ? `#${at.id}` : at.classList.contains("diff") ? ".diff" : null) : null;
+    const back = at && el.contains(at) ? (at.dataset.act ? `[data-act="${at.dataset.act}"]` : at.dataset.i ? `[data-i="${at.dataset.i}"]` : at.dataset.v ? `[data-v="${at.dataset.v}"]` : at.dataset.ln ? `[data-ln="${at.dataset.ln}"]` : at.id ? `#${at.id}` : at.classList.contains("diff") ? ".diff" : null) : null;
+    const scrolls = [...el.querySelectorAll<HTMLElement>(".diff, .files")].map((x) => x.scrollTop);
+    const sameFile = el.dataset.file === String(fileIdx);
+    el.dataset.file = String(fileIdx);
     const t = taskOf(pane.id);
     let body: string;
     if (t?.status.state === "merged") {
@@ -231,9 +285,10 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       body = `<div class="rempty"><strong>${working ? "Still working" : "Nothing to review"}</strong>${esc(loadError || (working ? `The diff lands here when ${pane.spec.name} stops.` : own ? "No changes on this branch." : "No uncommitted changes in this folder."))}</div>` +
         (conflict ? footHtml(pane) : "");
     } else {
-      body = filesHtml(pane) + diffHtml() + footHtml(pane);
+      body = filesHtml(pane) + diffHtml(pane) + footHtml(pane);
     }
     el.innerHTML = headHtml(pane) + body;
+    if (sameFile) el.querySelectorAll<HTMLElement>(".diff, .files").forEach((x, i) => { x.scrollTop = scrolls[i] ?? 0; });
     if (back) el.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
   }
 
@@ -274,6 +329,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     markMerged(pane.id, r.base, r.branch);
     if (r.removed) { delete pane.spec.worktree; delete pane.spec.branch; }
     notes.delete(pane.id);
+    clearComments(pane.id);
     viewed.delete(pane.id);
     busy = false;
     if (pane === current) close();
@@ -284,8 +340,11 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
   async function sendBack(): Promise<void> {
     const pane = current;
     if (!pane || !el || busy) return;
+    // A comment still open in its box goes too, as you'd expect.
+    if (editing && el.querySelector<HTMLTextAreaElement>("#rcText")?.value.trim()) saveComment(false);
     const box = el.querySelector<HTMLTextAreaElement>("#irNote");
-    const text = sendBackText({ note: box?.value ?? notes.get(pane.id), conflict });
+    const comments = commentsOf(pane.id);
+    const text = sendBackText({ note: box?.value ?? notes.get(pane.id), conflict, comments });
     if (!text) {
       if (box) { box.placeholder = "Write what should change first, then press Send back."; box.focus(); }
       return;
@@ -297,6 +356,8 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     }
     await sendMessage(pane.id, text);
     notes.delete(pane.id);
+    // Only what was sent: a comment written while it went stays.
+    for (const c of comments) dropComment(pane.id, c.id);
     viewed.delete(pane.id);
     busy = false;
     if (pane === current) close();
@@ -332,6 +393,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     delete pane.spec.worktree;
     delete pane.spec.branch;
     notes.delete(pane.id);
+    clearComments(pane.id);
     viewed.delete(pane.id);
     busy = false;
     if (pane === current) close();
@@ -340,10 +402,81 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     topNote(`Discarded <b>${esc(br)}</b>. ${esc(pane.spec.name)} is free.`);
   }
 
+  /* ---------------- comments ---------------- */
+
+  function focusLine(k: number): void {
+    const b = el?.querySelector<HTMLElement>(`[data-ln="${k}"]`);
+    if (!b) return;
+    el?.querySelectorAll<HTMLElement>(".ln[tabindex='0']").forEach((x) => x.setAttribute("tabindex", "-1"));
+    b.setAttribute("tabindex", "0");
+    lnFocus = k;
+    b.focus({ preventScroll: false });
+  }
+
+  /** The row index of a line, so the keyboard can go back to it. */
+  function rowOf(side: "new" | "old", num: number): number {
+    return Math.max(0, rows.findIndex((r) => r.side === side && r.num === num));
+  }
+
+  /** Open the box under line `k`; with Shift, for the run from the last line you picked. */
+  function startComment(k: number, extend: boolean): void {
+    const row = rows[k];
+    if (!row) return;
+    const from = extend && anchor !== null && rows[anchor]?.side === row.side ? rows[anchor].num : row.num;
+    editing = { side: row.side, start: Math.min(from, row.num), end: Math.max(from, row.num), text: "" };
+    if (!extend) anchor = k;
+    lnFocus = k;
+    render();
+    el?.querySelector<HTMLTextAreaElement>("#rcText")?.focus();
+  }
+
+  function saveComment(refocus = true): void {
+    const pane = current;
+    const f = files?.[fileIdx];
+    const box = el?.querySelector<HTMLTextAreaElement>("#rcText");
+    if (!pane || !f || !editing || !box) return;
+    const e = editing;
+    const text = box.value.trim();
+    editing = null;
+    if (!text) {
+      if (e.id) dropComment(pane.id, e.id); // emptied: it goes
+    } else {
+      const was = e.id ? commentsOf(pane.id).find((c) => c.id === e.id) : undefined;
+      const code = was?.code ?? rows.filter((r) => r.side === e.side && r.num >= e.start && r.num <= e.end).map((r) => r.text);
+      putComment(pane.id, { id: e.id, path: f.path, side: e.side, start: e.start, end: e.end, code, text });
+    }
+    render();
+    if (refocus) focusLine(rowOf(e.side, e.end));
+  }
+
+  function cancelComment(): void {
+    const e = editing;
+    editing = null;
+    render();
+    if (e) focusLine(rowOf(e.side, e.end));
+  }
+
   function onClick(e: MouseEvent): void {
     const t = e.target as HTMLElement;
     const pick = t.closest<HTMLElement>(".pick");
-    if (pick) { fileIdx = Number(pick.dataset.i); showAll = false; render(); return; }
+    if (pick) { fileIdx = Number(pick.dataset.i); showAll = false; editing = null; anchor = null; lnFocus = 0; render(); return; }
+    const ln = t.closest<HTMLElement>(".ln[data-ln]");
+    if (ln) { startComment(Number(ln.dataset.ln), e.shiftKey); return; }
+    const cid = t.closest<HTMLElement>("[data-cid]")?.dataset.cid;
+    switch (t.closest<HTMLElement>("[data-act]")?.dataset.act) {
+      case "rc-save": saveComment(); return;
+      case "rc-cancel": cancelComment(); return;
+      case "rc-edit": {
+        const c = current && commentsOf(current.id).find((x) => x.id === cid);
+        if (c) { editing = { id: c.id, side: c.side, start: c.start, end: c.end, text: c.text }; render(); el?.querySelector<HTMLTextAreaElement>("#rcText")?.focus(); }
+        return;
+      }
+      case "rc-del": {
+        const c = current && commentsOf(current.id).find((x) => x.id === cid);
+        if (current && c) { dropComment(current.id, c.id); render(); focusLine(rowOf(c.side, c.end)); }
+        return;
+      }
+    }
     switch (t.closest<HTMLElement>("[data-act]")?.dataset.act) {
       case "close": close(); break;
       case "merge": void merge(); break;
@@ -370,7 +503,23 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
   }
 
   function onKey(e: KeyboardEvent): void {
+    const target = e.target as HTMLElement;
+    if (target.id === "rcText") {
+      // Esc puts the comment away, not the whole drawer; Ctrl+Enter keeps it.
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancelComment(); return; }
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); saveComment(); return; }
+      return;
+    }
     if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+    // Up and down walk the line numbers, so the Tab order holds one of them, not hundreds.
+    const ln = target.closest<HTMLElement>(".ln[data-ln]");
+    if (ln && ["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+      e.preventDefault();
+      const k = Number(ln.dataset.ln);
+      const next = e.key === "Home" ? 0 : e.key === "End" ? rows.length - 1 : k + (e.key === "ArrowDown" ? 1 : -1);
+      if (next >= 0 && next < rows.length) focusLine(next);
+      return;
+    }
     const typing = (e.target as HTMLElement).closest("input, textarea, select, [contenteditable]");
     // M merges, as the button says; not while you type.
     if (!typing && !e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "m" && own && files?.length) {
