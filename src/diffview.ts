@@ -10,6 +10,7 @@ import {
   reviewRepoInfo,
   reviewCommit,
   reviewMerge,
+  gitChangedFiles,
   reviewDiscard,
   confirmDialog,
   type RepoRef,
@@ -200,6 +201,13 @@ export function createDiffView() {
 
   async function onMerge() {
     if (busy || !selected || !info?.isWorktree || !info.branch) return;
+    // A merge takes the branch's commits only: changes the agent left
+    // uncommitted would stay behind while this says "Merged."
+    const left = await gitChangedFiles(selected).catch(() => []);
+    if (left.length) {
+      setStatus(`Commit or discard the ${left.length} uncommitted change${left.length === 1 ? "" : "s"} first: a merge only takes what is committed.`, "err");
+      return;
+    }
     const ok = await confirmDialog(
       `Merge "${info.branch}" into the repo's current branch?`,
       "Merge to main",

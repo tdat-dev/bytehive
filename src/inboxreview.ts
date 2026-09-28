@@ -320,7 +320,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     say(`Merging into ${dry.base}…`, "busy");
     const wasRunning = pane.running;
     if (wasRunning) await killPty(pane.id).catch(() => {});
-    const r = await reviewLand(wt, { title }).catch((e) => ({ kind: "error", message: String(e) }) as LandResult);
+    const r = await reviewLand(wt, { title, expectBase: dry.base }).catch((e) => ({ kind: "error", message: String(e) }) as LandResult);
     if (r.kind !== "ok") {
       if (wasRunning) void pane.restart?.();
       if (pane === current) fail(r);

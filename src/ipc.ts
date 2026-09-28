@@ -544,13 +544,14 @@ export type LandResult =
  *  then remove the worktree and branch. `dryRun` only checks, touching nothing. */
 export async function reviewLand(
   worktreePath: string,
-  opts: { message?: string; title?: string | null; dryRun?: boolean } = {},
+  opts: { message?: string; title?: string | null; dryRun?: boolean; expectBase?: string } = {},
 ): Promise<LandResult> {
   return invoke<LandResult>("review_land", {
     worktreePath,
     message: opts.message ?? null,
     title: opts.title ?? null,
     dryRun: opts.dryRun ?? false,
+    expectBase: opts.expectBase ?? null,
   });
 }
 

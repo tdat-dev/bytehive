@@ -304,8 +304,25 @@ pub async fn review_land(
     message: Option<String>,
     title: Option<String>,
     dry_run: Option<bool>,
+    expect_base: Option<String>,
 ) -> Result<LandResult, CommandError> {
-    run_blocking(move || Ok(land_impl(&worktree_path, message.as_deref(), title.as_deref(), dry_run.unwrap_or(false)))).await
+    run_blocking(move || Ok(land_expecting(&worktree_path, message.as_deref(), title.as_deref(), dry_run.unwrap_or(false), expect_base.as_deref()))).await
+}
+
+/// land_impl, refusing when the project folder is no longer on expect_base:
+/// the branch a dry run showed you. Someone may have switched branches there in
+/// between, and the merge must not quietly go somewhere else.
+fn land_expecting(worktree: &str, message: Option<&str>, title: Option<&str>, dry_run: bool, expect_base: Option<&str>) -> LandResult {
+    if let Some(want) = expect_base.filter(|b| !b.is_empty()) {
+        match sides(worktree) {
+            Ok(s) if s.base != want => {
+                return err(format!("The project folder switched from {want} to {} since the check. Look again, then merge.", s.base));
+            }
+            Err(e) => return err(e),
+            Ok(_) => {}
+        }
+    }
+    land_impl(worktree, message, title, dry_run)
 }
 
 fn land_impl(worktree: &str, message: Option<&str>, title: Option<&str>, dry_run: bool) -> LandResult {
@@ -443,6 +460,23 @@ mod tests {
 
     fn s(p: &Path) -> String {
         p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_base_that_changed_since_the_check_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        std::fs::write(wt.join("a.txt"), "one
+two
+").unwrap();
+        let LandResult::Ok { base, .. } = land_impl(&s(&wt), None, None, true) else { panic!("dry run should be clean") };
+        g(&["checkout", "-q", "-b", "other"], &main); // someone switched branches
+        let r = land_expecting(&s(&wt), None, None, false, Some(&base));
+        let LandResult::Error { message } = r else { panic!("expected a refusal, got {r:?}") };
+        assert!(message.contains("switched"), "{message}");
+        assert!(wt.exists(), "nothing landed, the worktree stays");
+        assert_eq!(std::fs::read_to_string(main.join("a.txt")).unwrap(), "one
+");
     }
 
     #[test]
