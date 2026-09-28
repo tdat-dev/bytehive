@@ -119,6 +119,9 @@ export function createFleet() {
   }
 
   function tick(): void {
+    // Panel and badge only: nothing to redraw while the window is hidden (the
+    // first tick after it's back catches up).
+    if (document.hidden) return;
     if (root && !root.closest("[hidden]")) render();
     refreshBadge();
   }

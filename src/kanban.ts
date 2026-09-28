@@ -39,6 +39,7 @@ import {
   captureWebPage,
   notify,
 } from "./ipc";
+import { hiddenGate } from "./hiddengate";
 import {
   openFileInPanel,
   openDiff,
@@ -1308,8 +1309,12 @@ export function createKanban() {
       }
 
       // Auto-watch plan.json + done.json so agent writes land on the board.
+      // One timer for the app's life (set once). Hidden, it runs every 7 s:
+      // the conductor must keep dispatching in the background, just less eagerly.
+      const gate = hiddenGate(2);
       if (watchTimer === null)
         watchTimer = window.setInterval(() => {
+          if (!gate()) return;
           void pollPlan();
           void pollDone();
           void pollBoardJson();

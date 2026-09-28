@@ -15,6 +15,7 @@ import { CONTEXT_HIGH, cliFacts, contextFill, profileOf, type CliChoice, type Cl
 import { STARTERS } from "./starters";
 import { sourceOf } from "./chatsource";
 import { drawBlocks, type Block } from "./keyeddom";
+import { hiddenGate } from "./hiddengate";
 import { agentCost, forgetCost } from "./agentcost";
 import { money } from "./pricing";
 import { activityOnScreen, promptShown, stepDoing } from "./working";
@@ -1781,7 +1782,9 @@ export function showChat(pane: Pane, state: ChatState, focus = false): void {
   pane.el.classList.add("chat-on");
   v.shownAt = Date.now();
   if (v.timer === null) {
-    v.timer = window.setInterval(() => void poll(pane, v), POLL_MS);
+    // Nobody reads the chat while the window is hidden: poll every third tick then.
+    const gate = hiddenGate(3);
+    v.timer = window.setInterval(() => { if (gate()) void poll(pane, v); }, POLL_MS);
     void poll(pane, v).then(() => draw(v, true));
   }
   draw(v);

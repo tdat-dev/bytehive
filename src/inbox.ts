@@ -38,6 +38,7 @@ import { allTasks, answerOption, answerText, onTasksChange, taskOf, type Task } 
 import type { AskOption } from "./askparse";
 import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
+import { hiddenGate } from "./hiddengate";
 
 /* ---------------- pure helpers (tested) ---------------- */
 
@@ -1152,7 +1153,10 @@ function mount(): void {
   onAgentCost(render);
   startPlanMeter(render);
   startLimitGuard();
-  timer = window.setInterval(render, 1000);
+  // Hidden, the inbox redraws every 5 s (it also trims hidden terminals'
+  // history); what changes an agent's state still redraws it at once.
+  const gate = hiddenGate(5);
+  timer = window.setInterval(() => { if (gate()) render(); }, 1000);
   window.setTimeout(() => showTip("welcome"), 2600);
   render();
 }

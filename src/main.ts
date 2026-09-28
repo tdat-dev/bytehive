@@ -1,6 +1,7 @@
 // Styles are loaded via a render-blocking <link> in index.html (not imported
 // here) so the first paint is fully styled — see the note in index.html.
 import { resizePty, killAll, setTrayTooltip } from "./ipc";
+import { hiddenGate } from "./hiddengate";
 import { CLI_PRESETS } from "./crew";
 import { type Pane, type Workspace } from "./panetypes";
 import { installModalTrap } from "./confirmmodal";
@@ -411,14 +412,19 @@ document.addEventListener("keydown", (e) => {
 
 /* ---------------- clock ---------------- */
 const clk = document.getElementById("clock");
+// Hidden, the "needs you" check still runs (its OS notification is the point
+// then), every 2 s; the clock and the pane pills wait until the window is back.
+const tickGate = hiddenGate(2);
 function tick() {
+  if (!tickGate()) return;
+  const now = Date.now();
+  updateTasks(now); // derived task state first, so attention notifications can say what the agent wants
+  updateAttention(now);
+  if (document.hidden) return;
   const d = new Date();
   const p = (n: number) => (n < 10 ? "0" : "") + n;
   if (clk) clk.textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   // Live uptime + active/idle activity on every running pane, across all workspaces.
-  const now = Date.now();
-  updateTasks(now); // derived task state first, so attention notifications can say what the agent wants
-  updateAttention(now);
   for (const w of workspaces.values())
     for (const pane of w.panes.values()) {
       if (pane.running && pane.spawnedAt != null) {
