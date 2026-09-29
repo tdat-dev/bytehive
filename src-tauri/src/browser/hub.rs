@@ -197,6 +197,33 @@ pub fn hub_file() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".maestro").join("browser-hub.json"))
 }
 
+/// Write this hub's port and token where the extension's host and the agents look.
+fn publish(port: u16, token: &str) {
+    if let Some(f) = hub_file() {
+        if let Some(dir) = f.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&f, json!({ "port": port, "token": token, "pid": std::process::id() }).to_string());
+    }
+}
+
+/// Whether the hub on port own should write the hub file, given what it says now: it
+/// is missing or unreadable, or it names another hub that no longer answers.
+/// Another hub that answers keeps it: that Maestro was opened last.
+fn should_claim(raw: Option<&str>, own: u16, answers: impl Fn(u16) -> bool) -> bool {
+    let named = raw.and_then(|r| serde_json::from_str::<Value>(r).ok()).and_then(|v| v["port"].as_u64()).and_then(|p| u16::try_from(p).ok());
+    match named {
+        None => true,
+        Some(p) if p == own => false,
+        Some(p) => !answers(p),
+    }
+}
+
+/// Something listens on this local port.
+fn answers(port: u16) -> bool {
+    std::net::TcpStream::connect_timeout(&(Ipv4Addr::LOCALHOST, port).into(), Duration::from_millis(500)).is_ok()
+}
+
 fn reply(id: &Value, text: String) -> String {
     json!({ "type": "result", "id": id, "result": { "content": [{ "type": "text", "text": text }] } }).to_string()
 }
@@ -222,12 +249,19 @@ impl Hub {
         let mut hub = Hub::new(random_token(), port, on_change);
         hub.wanted_version = wanted_version;
         let hub = Arc::new(hub);
-        if let Some(f) = hub_file() {
-            if let Some(dir) = f.parent() {
-                let _ = std::fs::create_dir_all(dir);
+        publish(port, &hub.token);
+        // Every Maestro writes the one hub file, the last one opened wins, and
+        // one that closes leaves its port there with nobody behind it: the
+        // extension and every agent then find no browser. Look again now and
+        // then, and take the file back when it names a hub that left.
+        let token = hub.token.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(5));
+            let raw = hub_file().and_then(|f| std::fs::read_to_string(f).ok());
+            if should_claim(raw.as_deref(), port, answers) {
+                publish(port, &token);
             }
-            let _ = std::fs::write(&f, json!({ "port": port, "token": hub.token, "pid": std::process::id() }).to_string());
-        }
+        });
         let h = hub.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
@@ -648,6 +682,21 @@ fn serve(hub: Arc<Hub>, stream: TcpStream) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hub_file_naming_a_hub_that_left_is_taken_back() {
+        let own = 6967;
+        let alive = |p: u16| p == 4000;
+        // missing or unreadable: publish
+        assert!(should_claim(None, own, alive));
+        assert!(should_claim(Some("not json"), own, alive));
+        // already ours: leave it
+        assert!(!should_claim(Some(r#"{"port":6967,"token":"t"}"#), own, alive));
+        // another Maestro that still answers (the one opened last): leave it
+        assert!(!should_claim(Some(r#"{"port":4000,"token":"t"}"#), own, alive));
+        // one that closed and left its file behind: take it back
+        assert!(should_claim(Some(r#"{"port":3710,"token":"t"}"#), own, alive));
+    }
 
     fn peer(hub: &Hub) -> (u64, mpsc::Receiver<String>) {
         let (tx, rx) = mpsc::channel();
