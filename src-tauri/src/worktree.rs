@@ -140,12 +140,17 @@ fn worktree_leave_impl(path: &str, session: Option<&str>) -> Result<Option<Strin
     if !git(&["status", "--porcelain"], path)?.is_empty() {
         return Ok(None);
     }
-    // The main checkout: the parent of the shared .git folder.
+    // Only a linked worktree has a git dir of its own, apart from the shared
+    // one. Ask git rather than compare path strings: a short 8.3 name or
+    // another case of the same folder made the project folder itself look
+    // like a worktree to remove.
     let common = git(&["rev-parse", "--path-format=absolute", "--git-common-dir"], path)?;
-    let Some(main) = Path::new(&common).parent().map(|p| p.to_string_lossy().into_owned()) else { return Ok(None) };
-    if Path::new(&main) == Path::new(path) {
-        return Ok(None); // not a linked worktree
+    let own_dir = git(&["rev-parse", "--path-format=absolute", "--git-dir"], path)?;
+    if own_dir == common {
+        return Ok(None); // the project folder, not a linked worktree
     }
+    // The main checkout: the parent of the shared .git folder.
+    let Some(main) = Path::new(&common).parent().map(|p| p.to_string_lossy().into_owned()) else { return Ok(None) };
     let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"], path)?;
     if branch == "HEAD" {
         return Ok(None); // detached: nothing to compare against
@@ -417,7 +422,11 @@ mod tests {
         git(&["add", "-A"], &ahead).unwrap();
         git(&["commit", "-qm", "work"], &ahead).unwrap();
         assert_eq!(worktree_leave_impl(&ahead, None).unwrap(), None);
-        // the project folder itself is not a worktree to leave
+        // the project folder itself is not a worktree to leave, however its
+        // path is spelled (a short 8.3 name, another case): git answers, not
+        // a comparison of path strings
         assert_eq!(worktree_leave_impl(&root, None).unwrap(), None);
+        assert_eq!(worktree_leave_impl(&root.to_uppercase(), None).unwrap(), None);
+        assert!(Path::new(&root).join(".git").is_dir());
     }
 }
