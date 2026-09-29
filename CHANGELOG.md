@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-29
+
+### Fixed
+
+- **An agent leaving its worktree never touches the project folder.** When the
+  folder's path was written another way (a short name, another case), Maestro
+  could take the project folder itself for the worktree to remove. Git refused,
+  but the agent was left with an error.
+
 ## [0.9.0] - 2026-09-29
 
 Merge in one click, comment on the diff, and a smoother app.
