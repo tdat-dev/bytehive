@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-09-29
+
+Updates come from a new place.
+
+### Changed
+
+- **Maestro now updates from github.com/tdat-dev/maestro-releases.** Earlier
+  versions look for updates somewhere they can no longer reach, so install this
+  one by hand, once, from that page. After that Maestro updates itself again.
+
 ## [0.9.3] - 2026-09-29
 
 ### Fixed
