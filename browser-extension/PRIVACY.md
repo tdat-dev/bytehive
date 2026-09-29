@@ -50,4 +50,4 @@ no screenshots.
 
 ## Contact
 
-Questions: open an issue at https://github.com/tdat-dev/maestro/issues.
+Questions: open an issue at https://github.com/tdat-dev/maestro-releases/issues.

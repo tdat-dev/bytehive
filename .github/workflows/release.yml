@@ -49,16 +49,38 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # This repository is private, so its releases can't be downloaded by the
+      # people who installed Maestro. Installers and the updater's latest.json
+      # go to the public tdat-dev/maestro-releases instead (releases only, no
+      # code), which is what tauri.conf.json's updater endpoint reads.
+      - name: Release notes from CHANGELOG
+        id: notes
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md)
+          {
+            echo "body<<MAESTRO_NOTES_EOF"
+            echo "${notes:-Maestro $GITHUB_REF_NAME}"
+            echo "MAESTRO_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A fine-grained token with Contents: read and write on
+          # tdat-dev/maestro-releases; GITHUB_TOKEN can't write to another repo.
+          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          owner: tdat-dev
+          repo: maestro-releases
+          # the tag is made there, on its own branch: this repo's commits aren't in it
+          commitish: main
           tagName: ${{ github.ref_name }}
           releaseName: "Maestro ${{ github.ref_name }}"
-          releaseBody: "See [CHANGELOG.md](https://github.com/tdat-dev/maestro/blob/master/CHANGELOG.md) for details."
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

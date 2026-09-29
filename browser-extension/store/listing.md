@@ -48,7 +48,7 @@ Collected and used only on the user's computer, passed to the Maestro app and th
 
 Certify: not sold, not used for unrelated purposes, not used for creditworthiness.
 
-Privacy policy: https://github.com/tdat-dev/maestro/blob/master/browser-extension/PRIVACY.md
+Privacy policy: https://github.com/tdat-dev/maestro-releases/blob/main/PRIVACY.md
 
 ## Screenshots (1280x800)
 

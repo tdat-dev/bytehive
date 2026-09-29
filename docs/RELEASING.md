@@ -1,11 +1,16 @@
 # Releasing Maestro (auto-update)
 
 Maestro ships with the Tauri updater. An installed app checks
-`https://github.com/tdat-dev/maestro/releases/latest/download/latest.json` on
+`https://github.com/tdat-dev/maestro-releases/releases/latest/download/latest.json` on
 launch and, if a newer **signed** build exists, prompts the user to install it.
 
-> Change the endpoint in `src-tauri/tauri.conf.json` → `plugins.updater.endpoints`
-> if your GitHub owner/repo is not `tdat-dev/maestro`.
+The source repo `tdat-dev/maestro` is **private** (since 2026-09-29). Its releases
+can't be downloaded without a login, so installers and `latest.json` are published
+to the **public** `tdat-dev/maestro-releases` (releases, README and the extension's
+PRIVACY.md only, no code). The Release workflow builds here and publishes there with
+the `RELEASES_TOKEN` secret: a fine-grained token with Contents: read and write on
+`tdat-dev/maestro-releases` only. When it expires, releases fail at "Build and publish
+release"; make a new one and run `gh secret set RELEASES_TOKEN`.
 
 ## One-time setup
 
@@ -17,9 +22,8 @@ launch and, if a newer **signed** build exists, prompts the user to install it.
    git remote add origin https://github.com/tdat-dev/maestro.git
    git push -u origin master
    ```
-   The repo (or at least its **Releases**) must be **public** — the updater
-   fetches the manifest and installer assets without auth. A private repo will
-   make auto-update fail for end users.
+   The updater fetches the manifest and installers without auth, so they are
+   published to the public `tdat-dev/maestro-releases` (see above), not here.
 3. **Install the updater-enabled build once.** The very first `0.1.0` you
    installed had no updater inside it, so it cannot self-update. Install the new
    signed `…-setup.exe` (below) once, manually. From then on updates are automatic.
