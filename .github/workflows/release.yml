@@ -77,7 +77,7 @@ jobs:
           owner: tdat-dev
           repo: maestro-releases
           # the tag is made there, on its own branch: this repo's commits aren't in it
-          commitish: main
+          releaseCommitish: main
           tagName: ${{ github.ref_name }}
           releaseName: "Maestro ${{ github.ref_name }}"
           releaseBody: ${{ steps.notes.outputs.body }}
