@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-29
+
+### Fixed
+
+- **Each agent uses the browser of the Maestro that started it.** Before, agents
+  went to whichever Maestro was opened last, so with a second Maestro open they
+  found no browser.
+- **A test build of Maestro leaves your browser alone.** It no longer takes over
+  the browser connection of the Maestro you use (set MAESTRO_DEV_BROWSER=1 when
+  you do want it to).
+
 ## [0.9.2] - 2026-09-29
 
 ### Fixed
