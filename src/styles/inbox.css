@@ -547,6 +547,10 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   .inbox-review .checks { margin-top: 8px; }
   .inbox-review .rfoot { gap: 8px; padding: 10px 16px 12px; }
   .inbox-review .btn { height: 32px; }
+  /* room for a two-line message (a conflict, say) without losing the buttons */
+  .inbox-review .files { min-height: 36px; }
+  .inbox-review .diff { min-height: 60px; }
+  .inbox-review .ir-msg { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 }
 .inbox-review .btn {
   height: 36px; padding: 0 14px; border: 0; border-radius: 999px;
