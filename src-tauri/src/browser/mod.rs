@@ -58,6 +58,15 @@ pub fn start(app: &AppHandle, state: &BrowserState) {
         Ok(h) => *state.hub.lock().unwrap_or_else(|p| p.into_inner()) = Some(h),
         Err(e) => eprintln!("browser hub: {e}"),
     }
+    // Agents started from here reach this Maestro's hub, not whichever
+    // Maestro was opened last (maestro-mcp reads MAESTRO_HUB_FILE).
+    if let Some(f) = hub::own_hub_file() {
+        std::env::set_var("MAESTRO_HUB_FILE", f);
+    }
+    // Only the Maestro the browser talks to points the browsers at its host.
+    if !hub::owns_browser() {
+        return;
+    }
     std::thread::spawn(|| {
         if let Err(e) = register_host() {
             eprintln!("browser host registration: {e}");

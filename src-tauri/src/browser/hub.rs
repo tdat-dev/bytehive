@@ -192,14 +192,33 @@ pub fn random_token() -> String {
     s
 }
 
+/// The hub file of the installed Maestro: the extension's host always reads
+/// this one, whichever build it was copied from.
 pub fn hub_file() -> Option<PathBuf> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
     Some(PathBuf::from(home).join(".maestro").join("browser-hub.json"))
 }
 
+/// Whether this Maestro is the one the browser talks to. A test build (tauri
+/// dev) is not, unless MAESTRO_DEV_BROWSER=1 says so: run beside the installed
+/// app it took over the hub file and the browser host, and left both pointing
+/// at nothing when it closed.
+pub fn owns_browser() -> bool {
+    !cfg!(debug_assertions) || std::env::var("MAESTRO_DEV_BROWSER").map(|v| v == "1").unwrap_or(false)
+}
+
+/// Where this Maestro publishes its hub: the installed one's file, or a test
+/// build's own. Its agents are told which (MAESTRO_HUB_FILE).
+pub fn own_hub_file() -> Option<PathBuf> {
+    if owns_browser() {
+        return hub_file();
+    }
+    hub_file().map(|f| f.with_file_name("browser-hub.dev.json"))
+}
+
 /// Write this hub's port and token where the extension's host and the agents look.
 fn publish(port: u16, token: &str) {
-    if let Some(f) = hub_file() {
+    if let Some(f) = own_hub_file() {
         if let Some(dir) = f.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
@@ -257,7 +276,7 @@ impl Hub {
         let token = hub.token.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(5));
-            let raw = hub_file().and_then(|f| std::fs::read_to_string(f).ok());
+            let raw = own_hub_file().and_then(|f| std::fs::read_to_string(f).ok());
             if should_claim(raw.as_deref(), port, answers) {
                 publish(port, &token);
             }
@@ -682,6 +701,20 @@ fn serve(hub: Arc<Hub>, stream: TcpStream) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_test_build_keeps_off_the_installed_maestros_hub_file() {
+        // debug_assertions: this is a test build
+        std::env::remove_var("MAESTRO_DEV_BROWSER");
+        assert!(!owns_browser());
+        assert!(own_hub_file().unwrap().ends_with("browser-hub.dev.json"));
+        assert!(hub_file().unwrap().ends_with("browser-hub.json"), "the host always reads the installed one");
+        // asked for on purpose: it takes the browser like the installed app
+        std::env::set_var("MAESTRO_DEV_BROWSER", "1");
+        assert!(owns_browser());
+        assert_eq!(own_hub_file(), hub_file());
+        std::env::remove_var("MAESTRO_DEV_BROWSER");
+    }
 
     #[test]
     fn a_hub_file_naming_a_hub_that_left_is_taken_back() {

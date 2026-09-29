@@ -14,8 +14,11 @@ import { z } from "zod";
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 type ToolResult = { content: Content[]; isError?: boolean; gif?: string };
 
+/** The hub of the Maestro that started this agent (it sets MAESTRO_HUB_FILE),
+ *  else the installed Maestro's. Guessing "the last Maestro opened" sent agents
+ *  to a test build's hub, and to a dead port once it closed. */
 export function hubFile(): string {
-  return path.join(os.homedir(), ".maestro", "browser-hub.json");
+  return process.env.MAESTRO_HUB_FILE || path.join(os.homedir(), ".maestro", "browser-hub.json");
 }
 
 const CALL_TIMEOUT_MS = 90_000;
