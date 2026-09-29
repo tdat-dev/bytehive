@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-29
+
+Merge in one click, comment on the diff, and a smoother app.
+
+### Added
+
+- **Merge in one click.** In Changes, Merge into main (or press M) commits what
+  the agent left, merges its branch and removes its worktree. When the merge
+  would conflict, nothing is merged and the files are named; Send back asks the
+  agent to merge main in and resolve them. Discard branch drops the work after
+  asking. Merged agents show as Merged in the list, with a button to clear them.
+- **Comments on the diff.** Click a line number in Changes (Shift-click for a
+  range) to leave a comment. Send back types them all to the agent in one
+  message, each with its file, line and code.
+
+### Fixed
+
+- **A new agent in a new worktree no longer closes itself.** Its job was typed
+  while Claude asked whether to trust the folder, with "No, exit" selected. The
+  job now waits for your answer.
+- **An agent's own git commits no longer fail with "index.lock exists".**
+  Maestro looks at what changed without touching the agent's git index.
+- **Messages between agents keep arriving.** They stopped for good once the
+  message file passed 2 MB, and a message could arrive twice or cut in half.
+- **An agent that fails at start shows as stopped** instead of running forever.
+- **The send button stays in the message box** when the chat is narrow, and
+  Changes keeps its buttons in view on a small window.
+
+### Changed
+
+- **Smoother with many agents.** Starting one agent no longer makes typing lag
+  in the others; copying or deleting a big folder no longer freezes the window;
+  a long chat redraws only what changed; Codex and opencode chats stop searching
+  for their file every second; a stopped agent frees its terminal and memory; and
+  the app does less while its window is hidden.
+
 ## [0.8.1] - 2026-09-28
 
 Opening a chat is quiet again.
