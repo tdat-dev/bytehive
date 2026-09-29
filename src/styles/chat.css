@@ -18,7 +18,7 @@
 /* the find bar searches the terminal, which the chat hides */
 .pane.chat-on .pane-find { display: none; }
 
-.cv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; container: cvm / inline-size; }
 /* the conversation scrolls under the header: a soft edge, not a cut */
 .cv-scroll {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
@@ -245,7 +245,7 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 }
 .cv-compose textarea::placeholder { color: var(--ib-ink-3); }
 /* @: the files of the agent's folder, just above the composer */
-.cv-compose { position: relative; }
+.cv-compose { position: relative; container: cvc / inline-size; }
 .cv-mention {
   position: absolute; left: 6px; right: 6px; bottom: calc(100% + 8px); z-index: 7;
   max-height: min(340px, 50vh); overflow-y: auto; scrollbar-width: thin; padding: 6px;
@@ -284,12 +284,12 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-att:hover .cv-att-x, .cv-att-x:focus-visible { opacity: 1; }
 .cv-att-x:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 @media (hover: none) { .cv-att-x { opacity: 1; } }
-.cv-bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px 12px; }
+.cv-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px 8px 12px; }
 .cv-sp { flex: 1; }
 
 /* composer tools: model, commands, context; all 28px */
 .cv-chip {
-  display: inline-flex; align-items: center; gap: 5px; max-width: 200px; height: 28px; padding: 0 11px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; max-width: 200px; height: 28px; padding: 0 11px; border-radius: 999px;
   font-size: 12.5px; color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.06); white-space: nowrap;
 }
 .cv-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -310,10 +310,28 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-stop { display: none; height: 28px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
 .cv.working .cv-stop { display: inline-flex; align-items: center; }
 .cv-stop:hover { background: rgba(255, 255, 255, 0.14); }
+/* the round send button, Stop, + and the context reading keep their size: the
+   chips give way instead, so nothing is squeezed out of the box */
+.cv-send, .cv-stop, .cv-attach, .cv-ctx { flex: none; }
 .cv-send { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #000; }
 .cv-send:hover { background: #e9e9ec; }
 .cv-send svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .cv-stop:focus-visible, .cv-send:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* a narrow composer (side panel open beside a short stage): Effort, Permissions
+   and Commands keep their icon and chevron, their words go to screen readers
+   only, and the model name gets less room */
+@container cvc (max-width: 560px) {
+  .cv-bar { gap: 6px; }
+  .cv-set .cv-chip-t, .cv-cmds-w {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .cv-set, .cv-cmds { padding: 0 9px; }
+  .cv-model { max-width: 120px; }
+}
+@container cvc (max-width: 380px) {
+  .cv-ctx { display: none; }
+}
 
 /* while the answer card is up, it is the way to reply: the composer steps
    aside and the end of the conversation stays above the card */
@@ -400,6 +418,19 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-ptoggle:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.1); }
 .cv-ptoggle[aria-pressed="true"] { color: var(--ib-ink-2); }
 .cv-ptoggle:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+/* once the conversation fills the column, keep its right edge clear of the
+   panel button, which sits over the first lines */
+@container cvm (max-width: 840px) {
+  .cv-thread { padding-right: 56px; }
+}
+/* a narrow column: the stopped line is Stopped, Resume and New conversation on
+   one row; the hint below them would push the conversation out of view */
+@container cvm (max-width: 560px) {
+  .cv-shint { display: none; }
+  .cv.stopped .cv-stopped { flex-wrap: nowrap; }
+  .cv-sl { flex: 1; }
+  .cv-restart, .cv-new { flex: none; }
+}
 
 /* tabs */
 .cp-tabs {
