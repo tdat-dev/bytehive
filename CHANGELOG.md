@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-09-29
+
+### Fixed
+
+- **Agents can use the browser again after a second Maestro closes.** With two
+  Maestro windows open (or a test build), closing one left agents pointed at it,
+  so every browser tool said Maestro wasn't open until you restarted Maestro.
+  The one still open now takes the browser back within a few seconds.
+
 ## [0.9.1] - 2026-09-29
 
 ### Fixed
