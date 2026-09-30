@@ -397,6 +397,7 @@ export function createChat(): Chat {
   const noteTask = taskLedger(meta);
   const counted = new Set<string>(); // message ids whose usage is already summed
   const queuedIds = new Set<string>(); // messages already shown from the queue
+  let lastBang = ""; // the last ! command you ran, for the output that follows it
   let lastRun = ""; // which run of the CLI wrote the last line
   let n = 0;
   const id = () => `c${n++}`;
@@ -454,6 +455,24 @@ export function createChat(): Chat {
       meta.model = switched[1].replace(/\s*\(default\)\s*$/i, "").trim();
       meta.window = /\b1M context\b/i.test(meta.model) ? 1_000_000 : 200_000;
       items.push({ kind: "note", id: id(), text: `Switched to ${meta.model}`, at });
+      return;
+    }
+    // A ! command you ran yourself (bash mode): the CLI records what you typed
+    // and what it printed as tagged text, which read as raw tags in a bubble.
+    // Show it as the terminal does: your "!command", then a step with its output.
+    const bashIn = /^\s*<bash-input>([\s\S]*?)<\/bash-input>\s*$/.exec(raw);
+    if (bashIn) {
+      lastBang = bashIn[1].trim();
+      meta.turn++;
+      items.push({ kind: "user", id: id(), text: `!${lastBang}`, images: 0, at });
+      return;
+    }
+    const bashOut = /<bash-stdout>([\s\S]*?)<\/bash-stdout>/.exec(raw);
+    const bashErr = /<bash-stderr>([\s\S]*?)<\/bash-stderr>/.exec(raw);
+    if (bashOut || bashErr) {
+      const err = (bashErr?.[1] ?? "").trim();
+      const out = [(bashOut?.[1] ?? "").trim(), err].filter(Boolean).join("\n");
+      items.push({ kind: "step", id: id(), tool: "Bash", verb: "Ran", target: lastBang, full: lastBang, code: true, output: trimOutput(out), error: !!err, done: true, at });
       return;
     }
     const cmd = /<command-name>([^<]*)<\/command-name>(?:[\s\S]*?<command-args>([^<]*)<\/command-args>)?/.exec(raw);

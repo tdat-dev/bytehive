@@ -107,6 +107,20 @@ describe("typeInto", () => {
     expect(sent.filter((s) => s === "\r")).toHaveLength(3); // first Enter + two retries
   });
 
+  it("keeps pressing Enter while a starting CLI holds the text, until it takes", async () => {
+    // Claude Code runs its hooks for ~20 s after starting: the job typed into a
+    // new agent sits in its box and every Enter in that time is ignored.
+    const sent: string[] = [];
+    let clock = 0;
+    const ok = await typeInto(async (d) => void sent.push(d), "list the files in this folder", true, {
+      sleep: async (ms) => { clock += ms; },
+      screen: () => (clock < 20_000 ? screenWith("list the files in this folder") : screenWith("")),
+    });
+    expect(ok).toBe(true);
+    expect(clock).toBeGreaterThanOrEqual(20_000);
+    expect(sent.filter((s) => s === "\r").length).toBeGreaterThan(4);
+  });
+
   it("verifies nothing when the caller cannot show the screen", async () => {
     const sent: string[] = [];
     const ok = await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, {

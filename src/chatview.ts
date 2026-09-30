@@ -22,6 +22,7 @@ import { activityOnScreen, promptShown, stepDoing } from "./working";
 import { applyMention, mentionAt, mentionMatches, withFolders, type MentionHit } from "./mention";
 import { claudeSessions, claudeSessionsEverywhere, fsReadDataUrl, fsReadFile, pickFiles, savePastedFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
+import { stillHolding } from "./typing";
 import type { Pane } from "./panetypes";
 
 /** "3m ago", "2h ago", "Sep 20". */
@@ -534,7 +535,7 @@ interface View {
   /** Runs after the thread is drawn again (find marks its matches anew). */
   afterDraw?: () => void;
   /** What you sent that the conversation doesn't show yet. */
-  sending: Array<{ text: string; at: number; note?: string }>;
+  sending: Array<{ text: string; at: number; note?: string; failed?: boolean }>;
   /** Put files in its message (a drop from outside the app lands here). */
   addFiles?: (paths: string[]) => void;
   /** Its folder's files for @, asked now and then. */
@@ -759,8 +760,22 @@ function nowDoing(v: View): { what: string; detail: string } {
 const SENDING_MS = 90_000;
 function settleSending(v: View): void {
   if (!v.sending.length) return;
-  const said = new Set(v.chat.items.filter((i) => i.kind === "user").slice(-30).map((i) => ("text" in i ? i.text.trim() : "")));
-  v.sending = v.sending.filter((s) => !said.has(s.text.trim()) && Date.now() - s.at < SENDING_MS);
+  // Only what the conversation got since the first of these was sent, counted:
+  // two "yes" you sent need two "yes" in it, and an older "yes" doesn't count.
+  const from = Math.min(...v.sending.map((s) => s.at)) - 5_000;
+  const said = new Map<string, number>();
+  for (const i of v.chat.items) {
+    if (i.kind !== "user" || (i.at && i.at < from)) continue;
+    const t = i.text.trim();
+    said.set(t, (said.get(t) ?? 0) + 1);
+  }
+  v.sending = v.sending.filter((s) => {
+    const t = s.text.trim();
+    const n = said.get(t) ?? 0;
+    if (n > 0) { said.set(t, n - 1); return false; }
+    // One that didn't go stays until you act on it; the rest give up after a while.
+    return s.failed || Date.now() - s.at < SENDING_MS;
+  });
 }
 
 function draw(v: View, force = false): void {
@@ -786,7 +801,7 @@ function draw(v: View, force = false): void {
         { key: "skipped", html: skippedHtml(v) },
         { key: "earlier", html: start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "" },
         ...(items.length || v.sending.length ? threadBlocks(items.slice(start), v.open, v.expanded, v.state.state === "working", v.state.answers, v.state.state === "stopped") : [{ key: "empty", html: emptyHtml(v) }]),
-        ...v.sending.map((s, k) => ({ key: `sending:${k}`, html: `<div class="cv-u sending"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">${esc(s.note ?? "Sending…")}</span></div>` })),
+        ...v.sending.map((s, k) => ({ key: `sending:${k}`, html: `<div class="cv-u sending${s.failed ? " failed" : ""}"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">${esc(s.note ?? "Sending…")}${s.failed ? ` <button type="button" class="cv-resend" data-resend="${k}">Press Enter again</button>` : ""}</span></div>` })),
       ]);
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
       // Reading further up: new messages don't pull you down, they say they came.
@@ -1362,17 +1377,27 @@ function mount(pane: Pane): View {
     input.value = "";
     grow();
     const deliver = async () => {
-      if (!pics.length) { void sendMessage(pane.id, text); return; }
-      const paths = (await Promise.all(pics.map((a) => a.path))).filter((p): p is string => !!p);
-      pics.forEach((a) => URL.revokeObjectURL(a.url));
-      // Each picture goes in as its own path, the way a dropped file does, so
-      // the CLI attaches it; the words follow and send it all.
-      paths.forEach((p, k) => {
-        const last = k === paths.length - 1 && !text;
-        void sendMessage(pane.id, p, last);
-        if (!last) void sendMessage(pane.id, " ", false);
-      });
-      if (text) void sendMessage(pane.id, text);
+      let ok = true;
+      if (!pics.length) ok = await sendMessage(pane.id, text);
+      else {
+        const paths = (await Promise.all(pics.map((a) => a.path))).filter((p): p is string => !!p);
+        pics.forEach((a) => URL.revokeObjectURL(a.url));
+        // Each picture goes in as its own path, the way a dropped file does, so
+        // the CLI attaches it; the words follow and send it all.
+        paths.forEach((p, k) => {
+          const last = k === paths.length - 1 && !text;
+          void sendMessage(pane.id, p, last);
+          if (!last) void sendMessage(pane.id, " ", false);
+        });
+        if (text) ok = await sendMessage(pane.id, text);
+      }
+      // Still in the CLI's own box after every Enter: say so, instead of
+      // "Sending…" until it quietly gives up.
+      if (!ok && entry && v.sending.includes(entry)) {
+        entry.failed = true;
+        entry.note = "Still in its box, not sent.";
+        draw(v, true);
+      }
     };
     const entry = noteSent(text);
     if (pane.running) { void deliver(); return; }
@@ -1615,6 +1640,24 @@ function mount(pane: Pane): View {
     // An option of the question it is waiting on: the same as picking it in its terminal.
     const answer = t.closest<HTMLElement>("[data-answer]");
     if (answer) { v.state.onAnswer?.(Number(answer.dataset.answer)); return; }
+    // A message still sitting in the CLI's box: press Enter there, then look again.
+    const resend = t.closest<HTMLElement>("[data-resend]");
+    if (resend) {
+      const s = v.sending[Number(resend.dataset.resend)];
+      if (!s) return;
+      s.failed = false;
+      s.note = undefined;
+      s.at = Date.now();
+      draw(v, true);
+      void sendInput(pane.id, "\r").then(() => new Promise((r) => setTimeout(r, 1500))).then(() => {
+        if (v.sending.includes(s) && stillHolding(s.text, screenOf(pane))) {
+          s.failed = true;
+          s.note = "Still in its box, not sent.";
+          draw(v, true);
+        }
+      });
+      return;
+    }
     // A message you sent: back in the box to change and send again, or copied.
     const again = t.closest<HTMLElement>("[data-edit-msg], [data-copy-msg]");
     if (again) {

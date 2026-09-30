@@ -47,8 +47,12 @@ export const TYPE_GAP_MS = 12;
 export const SUBMIT_DELAY_MS = 220;
 
 /** How many extra Enters to try when the first one didn't take, and how long to
- *  wait before each check. Growing, because a busy TUI redraws late. */
-export const RETRY_WAITS_MS = [400, 700, 1000];
+ *  wait before each check. Growing, because a busy TUI redraws late. They reach
+ *  past 30 s: a CLI that is still starting (Claude Code running its hooks) takes
+ *  the text into its box but ignores Enter until it is ready, and a job handed
+ *  to a new agent then sat there unsent. Pressing again is only ever done while
+ *  our own text is still in the box, so waiting longer can't send anything else. */
+export const RETRY_WAITS_MS = [400, 700, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 8000];
 
 /** DECSET 2004 wrappers. A terminal puts these around real pasted text so the
  *  program knows where the block starts and ends instead of inferring it from

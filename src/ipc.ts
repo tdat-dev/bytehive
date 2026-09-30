@@ -74,20 +74,21 @@ export function setPaneBracketedPasteReader(fn: (agentId: string) => boolean): v
  *  then check the composer and press Enter again if the message is still
  *  sitting in it. Use this instead of `sendInput(id, text + "\r")` — see
  *  typing.ts for what a single write does to Claude Code's composer. */
-export function sendMessage(agentId: string, text: string, submit = true): Promise<void> {
+export function sendMessage(agentId: string, text: string, submit = true): Promise<boolean> {
   const read = paneScreen;
   const pasteMode = paneBracketedPaste;
+  let sent = false; // stays false when typing throws (the pane went away)
+  // Resolves to false when the message is still in the CLI's box after every
+  // retry: the chat says so instead of showing "Sending…" until it gives up.
   return serialize(agentId, async () => {
-    const sent = await typeInto((data) => sendInput(agentId, data), text, submit, {
+    sent = await typeInto((data) => sendInput(agentId, data), text, submit, {
       screen: read ? () => read(agentId) : undefined,
       bracketedPaste: pasteMode ? pasteMode(agentId) : false,
     });
     if (!sent) {
-      console.warn(
-        `[maestro] message to ${agentId} is still in the composer after retrying Enter — ${text.length} chars`,
-      );
+      console.warn(`[maestro] message to ${agentId} is still in the composer after retrying Enter: ${text.length} chars`);
     }
-  });
+  }).then(() => sent);
 }
 
 /** New complete lines of a Claude Code transcript from `offset`: the agent's

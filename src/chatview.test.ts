@@ -21,6 +21,7 @@ const io = vi.hoisted(() => ({
   picked: [] as string[],
   openedFiles: [] as string[],
   usage: [] as unknown[],
+  sendOk: true,
 }));
 vi.mock("./agentbridge", () => ({ openFileInPanel: (p: string) => { io.openedFiles.push(p); } }));
 vi.mock("./confirmmodal", () => ({
@@ -35,7 +36,7 @@ vi.mock("./ipc", () => ({
     const from = offset === 0 && tail && io.skipFirst ? io.skipFirst : offset;
     return { path: "C:/t.jsonl", text, next: from + text.length, from };
   },
-  sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
+  sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return io.sendOk; },
   sendInput: async (id: string, data: string) => { io.keys.push([id, data]); },
   claudeSessions: async () => io.sessions,
   claudeSessionUsage: async () => io.usage,
@@ -89,7 +90,7 @@ describe("withCommand", () => {
 });
 
 describe("chat view", () => {
-  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; });
+  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; io.sendOk = true; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; localStorage.clear(); });
 
   it("shows a long conversation once it has all of it, at the bottom, not slice by slice", async () => {
@@ -220,8 +221,9 @@ describe("chat view", () => {
     key("ArrowDown");
     key("ArrowDown");
     expect(input.value).toBe("");
-    // once the conversation has it, it is no longer "sending"
-    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "fix the build" } })];
+    // once the conversation has it, it is no longer "sending" (the CLI writes it
+    // with the time it got it, after you sent it)
+    io.chunks = [JSON.stringify({ timestamp: new Date().toISOString(), type: "user", origin: { kind: "human" }, message: { content: "fix the build" } }) + "\n"];
     await new Promise((r) => setTimeout(r, 900));
     await flush();
     expect(p.el.querySelector(".cv-u.sending")).toBeNull();
@@ -501,6 +503,42 @@ describe("chat view", () => {
     expect(input.value).toBe("make the header sticky");
     expect(document.activeElement).toBe(input);
     expect(io.sent).toEqual([]);
+  });
+
+  it("says so when a message never left the CLI's box, and Press Enter again tries once more", async () => {
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    io.sendOk = false; // every Enter was ignored
+    const input = p.el.querySelector("textarea")!;
+    input.value = "list the files";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await flush();
+    const bubble = p.el.querySelector(".cv-u.sending")!;
+    expect(bubble.classList.contains("failed")).toBe(true);
+    expect(bubble.textContent).toContain("not sent");
+    (bubble.querySelector("[data-resend]") as HTMLButtonElement).click();
+    await flush();
+    expect(io.keys).toContainEqual(["p1", "\r"]);
+    expect(p.el.querySelector(".cv-u.sending")!.classList.contains("failed")).toBe(false);
+  });
+
+  it("counts what arrived: a second identical message still shows as sending until it arrives too", async () => {
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    for (let k = 0; k < 2; k++) {
+      input.value = "yes";
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    }
+    await flush();
+    expect(p.el.querySelectorAll(".cv-u.sending").length).toBe(2);
+    // only one reached the conversation
+    io.chunks = [JSON.stringify({ timestamp: new Date().toISOString(), type: "user", origin: { kind: "human" }, message: { content: "yes" } }) + "\n"];
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(p.el.querySelectorAll(".cv-u.sending").length).toBe(1);
   });
 
   it("keeps what you were writing when you edit an earlier message: Down brings it back", async () => {

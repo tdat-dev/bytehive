@@ -9,6 +9,24 @@ const result = (tool_use_id: string, content: unknown, extra?: object, is_error 
   line({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id, content, is_error }] }, ...(extra ? { toolUseResult: extra } : {}) });
 
 describe("chat model", () => {
+  it("shows a ! command you ran as your message and a step with its output, not raw tags", () => {
+    const chat = createChat();
+    chat.feed([
+      human("<bash-input>echo maestro-bang-test</bash-input>"),
+      human("<bash-stdout>maestro-bang-test</bash-stdout><bash-stderr></bash-stderr>"),
+      human("<bash-input>ls nope</bash-input>"),
+      human("<bash-stdout></bash-stdout><bash-stderr>ls: nope: No such file</bash-stderr>"),
+      "",
+    ].join("\n"));
+    expect(chat.items.map((i) => i.kind)).toEqual(["user", "step", "user", "step"]);
+    const [said, ran, said2, failed] = chat.items;
+    expect(said.kind === "user" && said.text).toBe("!echo maestro-bang-test");
+    expect(ran.kind === "step" && [ran.verb, ran.target, ran.output, ran.error, ran.done]).toEqual(["Ran", "echo maestro-bang-test", "maestro-bang-test", false, true]);
+    expect(said2.kind === "user" && said2.text).toBe("!ls nope");
+    expect(failed.kind === "step" && [failed.target, failed.output, failed.error]).toEqual(["ls nope", "ls: nope: No such file", true]);
+    expect(JSON.stringify(chat.items)).not.toMatch(/<bash-/);
+  });
+
   it("reads a turn: what you asked, the steps with their results, the reply", () => {
     const chat = createChat();
     chat.feed([
