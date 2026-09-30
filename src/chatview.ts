@@ -197,7 +197,9 @@ function markdown(id: string, text: string): string {
   if (html === undefined) {
     if (mdCache.size > 4000) mdCache.clear();
     const t = document.createElement("template");
-    t.innerHTML = DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: false }) as string);
+    // breaks: a line the agent ends is a line in the chat, as in the terminal
+    // (one number per line was drawn as "1 2 3 … 40").
+    t.innerHTML = DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }) as string);
     // Links say where they go; a click opens them in the browser (see mount),
     // never in the app's own window.
     for (const a of t.content.querySelectorAll("a[href]")) { a.setAttribute("rel", "noopener noreferrer"); a.setAttribute("title", a.getAttribute("href")!); }
@@ -536,6 +538,8 @@ interface View {
   afterDraw?: () => void;
   /** What you sent that the conversation doesn't show yet. */
   sending: Array<{ text: string; at: number; note?: string; failed?: boolean }>;
+  /** Reads of the conversation that failed in a row. */
+  misses?: number;
   /** Put files in its message (a drop from outside the app lands here). */
   addFiles?: (paths: string[]) => void;
   /** Its folder's files for @, asked now and then. */
@@ -710,8 +714,10 @@ function emptyHtml(v: View): string {
   const st = v.state.state;
   const box = (title: string, line: string, starters = false) => `<div class="cv-empty">${title ? `<b>${title}</b>` : ""}<span>${line}</span>${starters
     ? `<div class="cv-starters">${STARTERS.map((s) => `<button type="button" data-starter="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>` : ""}</div>`;
-  if (!v.loaded) return box("", `Loading the conversation…`);
+  // Why it failed comes first: an agent that died before writing anything has
+  // no conversation to load, and "Loading…" would hide the reason for good.
   if (v.state.problem) return box(`${name} couldn't start`, esc(v.state.problem));
+  if (!v.loaded) return box("", `Loading the conversation…`);
   if (st === "stopped") return box(name, "Write below to start it again, or start a new conversation.");
   if (st === "needs") return box(`${name} is waiting on you`, "Answer below to let it carry on.");
   if (st === "working") return box(`${name} is starting…`, "Its first steps show up here as it takes them.");
@@ -1043,8 +1049,15 @@ async function poll(pane: Pane, v: View): Promise<void> {
       if (first) await new Promise((res) => setTimeout(res, 0)); // let the window breathe between slices
     }
     if (caughtUp || !first) v.loaded = true;
+    v.misses = 0;
     if (first && v.loaded && views.get(pane.id) === v) { draw(v, true); return; }
-  } catch { /* the next tick tries again */ } finally {
+  } catch {
+    // The next tick tries again; but a conversation that can't be read at all
+    // (its file gone, the CLI died before writing one) stops saying "Loading…"
+    // after a few tries and shows the agent's own state instead.
+    v.misses = (v.misses ?? 0) + 1;
+    if (v.misses >= 3) v.loaded = true;
+  } finally {
     v.busy = false;
   }
   if (views.get(pane.id) === v) draw(v);

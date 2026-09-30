@@ -22,6 +22,7 @@ const io = vi.hoisted(() => ({
   openedFiles: [] as string[],
   usage: [] as unknown[],
   sendOk: true,
+  readFails: false,
 }));
 vi.mock("./agentbridge", () => ({ openFileInPanel: (p: string) => { io.openedFiles.push(p); } }));
 vi.mock("./confirmmodal", () => ({
@@ -30,6 +31,7 @@ vi.mock("./confirmmodal", () => ({
 vi.mock("./ipc", () => ({
   claudeTranscript: async (dir: string, sessionId: string | null, _since: number | null, offset: number, tail?: number) => {
     io.asked.push({ dir, sessionId, offset, tail: tail ?? null });
+    if (io.readFails) throw new Error("no such file");
     if (io.hold) await io.hold;
     const text = io.chunks.shift() ?? "";
     // a long conversation: a first read asked for its end starts further in
@@ -90,7 +92,7 @@ describe("withCommand", () => {
 });
 
 describe("chat view", () => {
-  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; io.sendOk = true; });
+  beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; io.sendOk = true; io.readFails = false; });
   afterEach(() => { dropChat("p1"); document.body.innerHTML = ""; localStorage.clear(); });
 
   it("shows a long conversation once it has all of it, at the bottom, not slice by slice", async () => {
@@ -539,6 +541,35 @@ describe("chat view", () => {
     await new Promise((r) => setTimeout(r, 900));
     await flush();
     expect(p.el.querySelectorAll(".cv-u.sending").length).toBe(1);
+  });
+
+  it("shows why an agent couldn't start instead of loading forever", async () => {
+    io.readFails = true; // it died before writing a conversation
+    const p = pane();
+    showChat(p, { name: "Ana", state: "stopped", problem: "claude: command not found" });
+    await flush();
+    expect(p.el.querySelector(".cv-empty")!.textContent).toContain("claude: command not found");
+  });
+
+  it("stops saying Loading when the conversation can't be read at all", async () => {
+    io.readFails = true;
+    const p = pane();
+    showChat(p, { name: "Ana", state: "stopped" });
+    await flush();
+    expect(p.el.querySelector(".cv-empty")!.textContent).toContain("Loading");
+    await new Promise((r) => setTimeout(r, 2700)); // three failed reads
+    await flush();
+    expect(p.el.querySelector(".cv-empty")!.textContent).not.toContain("Loading");
+    expect(p.el.querySelector(".cv-empty")!.textContent).toContain("start it again");
+  });
+
+  it("keeps the agent's line breaks, as the terminal does", async () => {
+    io.chunks = [j({ type: "assistant", message: { content: [{ type: "text", text: "1\n2\n3\nDone." }] } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const reply = [...p.el.querySelectorAll(".cv-md, .cv-text, .cv-a")].find((e) => e.textContent?.includes("Done."))!;
+    expect(reply.querySelectorAll("br").length).toBe(3);
   });
 
   it("keeps what you were writing when you edit an earlier message: Down brings it back", async () => {
