@@ -55,7 +55,7 @@ vi.mock("./ipc", () => ({
   },
 }));
 
-import { ago, chatCommand, chatSupported, dropChat, dropFilesToAgent, fileMention, fileRef, grownSize, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
+import { ago, chatCommand, withCommand, chatSupported, dropChat, dropFilesToAgent, fileMention, fileRef, grownSize, hideChat, modelAlias, modelName, showChat, took, tokens, whereIn } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const T = "2026-09-24T10:00:00.000Z";
@@ -74,6 +74,19 @@ function pane(badge = "claude"): Pane {
 }
 
 const flush = async () => { for (let k = 0; k < 6; k++) await new Promise((r) => setTimeout(r, 0)); };
+
+describe("withCommand", () => {
+  it("puts the command first and keeps what you wrote as its words", () => {
+    expect(withCommand("", "compact")).toBe("/compact ");
+    expect(withCommand("  ", "compact")).toBe("/compact ");
+    expect(withCommand("keep the tests", "compact")).toBe("/compact keep the tests");
+    // a command already there is swapped, not stacked
+    expect(withCommand("/review focus on auth", "compact")).toBe("/compact focus on auth");
+    expect(withCommand("/review", "compact")).toBe("/compact ");
+    // a path is not a command
+    expect(withCommand("/src/app.ts is slow", "compact")).toBe("/compact /src/app.ts is slow");
+  });
+});
 
 describe("chat view", () => {
   beforeEach(() => { io.chunks = []; io.asked = []; io.sent = []; io.keys = []; io.sessions = []; io.opened = []; io.saved = []; io.confirms = []; io.confirmOk = true; io.screen = ""; });
@@ -490,6 +503,20 @@ describe("chat view", () => {
     expect(io.sent).toEqual([]);
   });
 
+  it("keeps what you were writing when you edit an earlier message: Down brings it back", async () => {
+    io.chunks = [j({ type: "user", origin: { kind: "human" }, message: { content: "make the header sticky" } })];
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    input.value = "half a thought";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    (p.el.querySelector("[data-edit-msg]") as HTMLButtonElement).click();
+    expect(input.value).toBe("make the header sticky");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    expect(input.value).toBe("half a thought");
+  });
+
   it("offers Resume when the agent is stopped, and keeps the composer", async () => {
     const p = pane();
     let restarted = 0;
@@ -655,7 +682,22 @@ describe("chat view", () => {
     expect(labels.some((l) => l.includes("/codex:rescue"))).toBe(true);
     const compact = [...document.querySelectorAll<HTMLElement>(".pal-row, [role=option]")].find((r) => r.textContent!.includes("/compact"))!;
     compact.click();
-    expect(p.el.querySelector("textarea")!.value).toBe("/compact ");
+    // what was in the box stays, after the command, as its words
+    expect(p.el.querySelector("textarea")!.value).toBe(`/compact ${first.dataset.starter}`);
+  });
+
+  it("picking a command keeps what you were writing", async () => {
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    const input = p.el.querySelector("textarea")!;
+    input.value = "please keep the README wording short";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    (p.el.querySelector("[data-cmds]") as HTMLButtonElement).click();
+    await flush();
+    [...document.querySelectorAll<HTMLElement>(".pal-row, [role=option]")].find((r) => r.textContent!.includes("/compact"))!.click();
+    expect(input.value).toBe("/compact please keep the README wording short");
+    expect(input.selectionStart).toBe(input.value.length);
   });
 it("answers /resume itself: its conversations to pick from, the pick resumed here", async () => {
     io.sessions = [

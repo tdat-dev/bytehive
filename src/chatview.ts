@@ -309,6 +309,14 @@ const mediaOf = (path: string) => {
   return ext === "jpg" ? "image/jpeg" : `image/${ext}`;
 };
 
+/** A command picked from "/ Commands" goes first, like typing it in the CLI;
+ *  what you had written stays after it as the command's words. A command
+ *  already at the start is swapped, not stacked. */
+export function withCommand(draft: string, name: string): string {
+  const rest = draft.replace(/^\/[^\s/]+(?=\s|$)/, "").trim();
+  return rest ? `/${name} ${rest}` : `/${name} `;
+}
+
 /** How a file goes into a message: @path, relative inside the agent's folder, quoted when it has spaces. */
 export function fileMention(path: string, dir?: string | null): string {
   const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -1472,7 +1480,13 @@ function mount(pane: Pane): View {
     const mine = (["resume", "clear"] as const).filter((n) => !listed.has(n)).map((n) => ({ name: n, kind: "command" as const }));
     const items: PaletteItem[] = [...mine, ...commands].map((c) => ({
       group: group[c.kind], label: `/${c.name}`,
-      run: () => { input.value = `/${c.name} `; grow(); input.focus(); },
+      run: () => {
+        input.value = withCommand(input.value, c.name);
+        grow();
+        saveDraft(input.value);
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      },
     }));
     if (failed) {
       items.push({
@@ -1561,7 +1575,9 @@ function mount(pane: Pane): View {
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeMention(); return; }
     }
     if (e.key === "/" && !input.value && cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)) { e.preventDefault(); void pickCommand(); return; }
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+    // 229: the Enter that picks a word in an IME (Vietnamese, Japanese…) can
+    // arrive with isComposing already false; it must not send the message.
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); send(); }
   });
   el.querySelector("form")!.addEventListener("submit", (e) => { e.preventDefault(); send(); });
   const stop = () => { void sendInput(pane.id, "\x1b"); input.focus(); };
@@ -1609,10 +1625,14 @@ function mount(pane: Pane): View {
         void navigator.clipboard?.writeText(text).then(() => { again.textContent = "Copied"; window.setTimeout(() => { again.textContent = "Copy"; }, 1400); }).catch(() => {});
         return;
       }
+      // Like stepping back to it with Up: what you were writing is kept, and
+      // Down brings it back.
+      const k = sentBefore().indexOf(text);
+      if (hist.k === -1) hist.draft = input.value;
+      hist.k = k;
       input.value = text;
       grow();
       saveDraft(text);
-      hist.k = -1;
       input.focus();
       input.setSelectionRange(text.length, text.length);
       return;
@@ -1637,7 +1657,16 @@ function mount(pane: Pane): View {
       return;
     }
     const starter = t.closest<HTMLElement>("[data-starter]");
-    if (starter) { input.value = starter.dataset.starter ?? ""; grow(); input.focus(); return; }
+    if (starter) {
+      // Never over what you already wrote: the starter goes on a line of its own.
+      const s = starter.dataset.starter ?? "";
+      input.value = input.value.trim() ? `${input.value.trimEnd()}\n${s}` : s;
+      grow();
+      saveDraft(input.value);
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      return;
+    }
     const cmds = t.closest<HTMLButtonElement>("[data-cmds]");
     if (cmds) { void pickCommand(); return; }
     const setBtn = t.closest<HTMLElement>("[data-setting]");
