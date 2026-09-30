@@ -111,7 +111,10 @@ export function headline(list: Task[]): { lead: string; rest: string } {
   ].filter(Boolean);
   if (!parts.length) {
     const idle = n("idle"), stopped = n("stopped"), merged = n("merged");
-    if (idle) parts.push(`${idle} ${are(idle)} waiting for a task`);
+    // Idle after working is done; idle before its first job is waiting for one.
+    const done = list.filter((t) => t.status.state === "idle" && t.worked).length;
+    if (done) parts.push(`${done} ${are(done)} done`);
+    if (idle - done) parts.push(`${idle - done} ${are(idle - done)} waiting for a task`);
     if (stopped) parts.push(`${stopped} ${are(stopped)} stopped`);
     if (merged) parts.push(`${merged} ${are(merged)} merged`);
   }
@@ -133,7 +136,7 @@ export function rowLine(t: Task): string {
     case "working": return "Working";
     case "stopped": return "Stopped";
     case "merged": return `Merged into ${t.mergedInto ?? "the base branch"}`;
-    default: return "Waiting for a task";
+    default: return t.worked ? "Done" : "Waiting for a task";
   }
 }
 

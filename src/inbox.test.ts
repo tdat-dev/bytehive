@@ -116,6 +116,7 @@ describe("inbox helpers", () => {
     // only what is so: no "0 are ..." clauses; with nothing going on, who is idle or stopped
     expect(headline([task("e", "Eli", "working")]).rest).toBe(" 1 is working.");
     expect(headline([task("a", "Ana", "stopped"), task("b", "Bo", "stopped"), task("h", "Hal", "idle")]).rest).toBe(" 1 is waiting for a task, 2 are stopped.");
+    expect(headline([task("h", "Hal", "idle", { worked: true }), task("i", "Ivy", "idle")]).rest).toBe(" 1 is done, 1 is waiting for a task.");
   });
 
   it("says what each agent wants on its row", () => {
@@ -123,6 +124,8 @@ describe("inbox helpers", () => {
     expect(rowLine(task("c", "Cy", "review", { changedFiles: 3 }))).toBe("3 files changed");
     expect(rowLine(task("c", "Cy", "review", { changedFiles: 1 }))).toBe("1 file changed");
     expect(rowLine(task("h", "Hal", "idle"))).toBe("Waiting for a task");
+    // idle after it worked on something is done, not still waiting for a first task
+    expect(rowLine(task("h", "Hal", "idle", { worked: true }))).toBe("Done");
     expect(ago(90_000)).toBe("2m");
   });
 

@@ -6,6 +6,7 @@
 import { gitRepoRoot, programsOnPath, sendMessage } from "./ipc";
 import { getPref } from "./prefs";
 import { parseAsk } from "./askparse";
+import { revealPane } from "./agentbridge";
 import {
   CLI_PRESETS,
   taskTitle,
@@ -316,6 +317,9 @@ export async function spawnAgents(
     });
   });
   await runLimited(boots, MAX_CONCURRENT_BOOT);
+  // The agent you just started is the one on screen, not the one you were on.
+  const first = [...ws.panes.values()].find((x) => x.spec.name === names[0]);
+  if (first) revealPane(ws.id, first.id);
   if (task) deliverTask(ws, names, task, jobDelayMs());
   return names;
 }

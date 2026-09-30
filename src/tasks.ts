@@ -32,6 +32,9 @@ export interface Task {
   mergedInto?: string | null;
   /** ms the current state began, for "waiting 4m" and queue order. */
   since: number;
+  /** It has worked on something since Maestro started: idle then means done,
+   *  not still waiting for its first task. */
+  worked?: boolean;
 }
 
 /** Screen rows read per pane: enough for a boxed prompt with its context. */
@@ -129,6 +132,7 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
     removed: changes.del,
     mergedInto: done?.base ?? null,
     since: prev && prev.status.state === status.state ? prev.since : now,
+    worked: !!prev?.worked || status.state === "working" || (history.get(pane.id) ?? []).some((e) => e.kind === "working"),
   };
 }
 
