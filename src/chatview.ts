@@ -1500,6 +1500,35 @@ function mount(pane: Pane): View {
     const btn = el.querySelector<HTMLButtonElement>("[data-cmds]");
     const asked = cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd);
     if (!asked) return;
+    const group = { command: "Commands", skill: "Skills", plugin: "Plugins" } as const;
+    const itemsOf = (commands: CliFacts["commands"], failed: boolean): PaletteItem[] => {
+      const listed = new Set(commands.map((c) => c.name));
+      const mine = (["resume", "clear"] as const).filter((n) => !listed.has(n)).map((n) => ({ name: n, kind: "command" as const }));
+      const items: PaletteItem[] = [...mine, ...commands].map((c) => ({
+        group: group[c.kind], label: `/${c.name}`,
+        run: () => {
+          input.value = withCommand(input.value, c.name);
+          grow();
+          saveDraft(input.value);
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        },
+      }));
+      if (failed) {
+        items.push({
+          group: "The CLI's own list", label: "Show all of its commands in the terminal",
+          sub: `${pane.spec.name}'s CLI didn't answer in time`,
+          run: () => { v.state.onTerminal?.(); void sendInput(pane.id, "/"); },
+        });
+      }
+      return items;
+    };
+    const hintOf = (n: number, failed: boolean) => (failed ? "Commands: type to search" : `${n} commands from ${pane.spec.name}'s CLI: type to search`);
+    if (v.facts) { openPalette(itemsOf(v.facts.commands, false), { placeholder: hintOf(v.facts.commands.length, false) }); return; }
+    // Not asked yet: the list opens now, with what the chat knows, and fills in
+    // when the CLI answers (it can take a while as a second copy starts). It
+    // used to open only then, over whatever you had moved on to.
+    const update = openPalette([...itemsOf([], false), { group: "Commands", label: `Asking ${pane.spec.name}'s CLI for its commands…`, run: () => {} }], { placeholder: "Commands: type to search" });
     btn?.setAttribute("aria-busy", "true");
     btn?.classList.add("busy");
     let commands: CliFacts["commands"] = [];
@@ -1513,27 +1542,7 @@ function mount(pane: Pane): View {
       btn?.removeAttribute("aria-busy");
       btn?.classList.remove("busy");
     }
-    const group = { command: "Commands", skill: "Skills", plugin: "Plugins" } as const;
-    const listed = new Set(commands.map((c) => c.name));
-    const mine = (["resume", "clear"] as const).filter((n) => !listed.has(n)).map((n) => ({ name: n, kind: "command" as const }));
-    const items: PaletteItem[] = [...mine, ...commands].map((c) => ({
-      group: group[c.kind], label: `/${c.name}`,
-      run: () => {
-        input.value = withCommand(input.value, c.name);
-        grow();
-        saveDraft(input.value);
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      },
-    }));
-    if (failed) {
-      items.push({
-        group: "The CLI's own list", label: "Show all of its commands in the terminal",
-        sub: `${pane.spec.name}'s CLI didn't answer in time`,
-        run: () => { v.state.onTerminal?.(); void sendInput(pane.id, "/"); },
-      });
-    }
-    openPalette(items, { placeholder: failed ? "Commands: type to search" : `${commands.length} commands from ${pane.spec.name}'s CLI: type to search` });
+    update(itemsOf(commands, failed), { placeholder: hintOf(commands.length, failed) });
   };
   // Warm the list up, so the first / opens at once. Asking starts a second
   // copy of the CLI, so it waits until this one has finished starting.

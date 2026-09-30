@@ -755,6 +755,22 @@ describe("chat view", () => {
     expect(p.el.querySelector("textarea")!.value).toBe(`/compact ${first.dataset.starter}`);
   });
 
+  it("opens the commands at once and fills them in when the CLI answers", async () => {
+    const p = pane();
+    p.spawnedAt = Date.now(); // just started: the list isn't warmed up yet
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    (p.el.querySelector("[data-cmds]") as HTMLButtonElement).click();
+    // at once, before the CLI has said anything: not 15 s later over something else
+    const rows = () => [...document.querySelectorAll(".pal-it")].map((r) => r.textContent ?? "");
+    expect(document.querySelector(".pal-back")).not.toBeNull();
+    expect(rows().some((r) => r.includes("Asking"))).toBe(true);
+    expect(rows().some((r) => r.includes("/resume"))).toBe(true);
+    await flush();
+    expect(rows().some((r) => r.includes("/codex:rescue"))).toBe(true);
+    expect(rows().some((r) => r.includes("Asking"))).toBe(false);
+  });
+
   it("picking a command keeps what you were writing", async () => {
     const p = pane();
     showChat(p, { name: "Ana", state: "idle" });

@@ -42,7 +42,11 @@ export function closePalette(): void {
   returnTo = null;
 }
 
-export function openPalette(items: PaletteItem[], opts: { placeholder?: string } = {}): void {
+/** Swaps the items of the palette that is still open, keeping what you typed
+ *  (a list that arrives late); does nothing once it has closed. */
+export type PaletteUpdate = (items: PaletteItem[], opts?: { placeholder?: string }) => void;
+
+export function openPalette(items: PaletteItem[], opts: { placeholder?: string } = {}): PaletteUpdate {
   const hint = (opts.placeholder ?? "Jump to an agent or run a command").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
   closePalette();
   returnTo = document.activeElement as HTMLElement | null;
@@ -113,4 +117,11 @@ export function openPalette(items: PaletteItem[], opts: { placeholder?: string }
   el.addEventListener("mousedown", (e) => { if (e.target === el) closePalette(); });
   draw();
   input.focus();
+  const mine = el;
+  return (next, o = {}) => {
+    if (el !== mine) return;
+    items = next;
+    if (o.placeholder) input.placeholder = o.placeholder;
+    draw();
+  };
 }
