@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-09-30
+
+A smoother chat.
+
+### Fixed
+
+- **Picking a command keeps what you were writing.** "/ Commands" replaced your
+  draft; the command now goes first and your words stay after it, as in the
+  terminal. Edit and the starter jobs no longer wipe a draft either: after Edit,
+  Down brings it back.
+- **"/ Commands" opens at once.** It used to open 10 to 20 seconds late, over
+  whatever you were doing; now it opens on the click and fills in.
+- **A new agent gets its job.** The job typed into a new agent sometimes sat
+  unsent in its box while Claude was still starting. Maestro now keeps pressing
+  Enter until it takes.
+- **A message that didn't go says so,** with "Press Enter again", instead of
+  "Sending…" until it quietly disappeared.
+- **Line breaks in replies stay,** so a list of lines no longer runs together.
+- **"!" commands read as in the terminal:** your command, then what it printed,
+  not raw tags.
+- **The agent you start is the one you see,** and one that finished says "Done"
+  instead of "Waiting for a task".
+- **An agent that fails to start says why** instead of "Loading the
+  conversation…" for good.
+- **Typing Vietnamese:** the Enter that picks a word no longer sends the message.
+
 ## [0.9.4] - 2026-09-29
 
 Updates come from a new place.
