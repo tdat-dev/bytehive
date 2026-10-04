@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-04
+
+Know when agents finish, and lock the dashboard.
+
+### Added
+
+- **Maestro tells you when an agent finishes:** done, ready to review, or
+  stopped with an error. Several at once come as one notification, and
+  clicking it opens that agent. Short runs and the agent you are looking at
+  don't notify. Turn it off in Settings, Inbox.
+- **The phone dashboard shows who is done** and can notify you there too.
+- **A password for the dashboard.** Set it in Settings, Remote; other devices
+  then sign in first. Without one, the dashboard stays on this computer.
+- **Replies show as soon as the terminal has them,** without waiting for the
+  conversation file. (Claude Code itself shows a reply only once it has
+  written it, so the chat now keeps pace with the terminal.)
+
 ### Security
 
 - **Only the dashboard's own page gets in.** Another website can no longer
