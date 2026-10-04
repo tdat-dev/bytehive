@@ -13,7 +13,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -95,6 +95,16 @@ pub struct DashAuth {
     /// Password checks running now, and the most ever at once.
     checks: AtomicUsize,
     peak: AtomicUsize,
+    /// Bumped whenever the password is set, changed or removed: a stream
+    /// opened before that ends with it.
+    generation: AtomicU64,
+}
+
+/// What an open stream (terminal socket, SSE) was let in with, so it can
+/// check, while it runs, that it still would be.
+pub struct Pass {
+    cookie: Option<String>,
+    generation: u64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -189,6 +199,7 @@ impl DashAuth {
         self.save(Some(&hash))?;
         *lock(&self.hash) = Some(hash);
         lock(&self.sessions).clear();
+        self.generation.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -197,6 +208,7 @@ impl DashAuth {
         self.save(None)?;
         *lock(&self.hash) = None;
         lock(&self.sessions).clear();
+        self.generation.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -288,6 +300,20 @@ impl DashAuth {
             return true;
         }
         cookie_header.and_then(token_in).is_some_and(|t| self.session_ok(t, now))
+    }
+
+    /// Like `allows`, for a request that opens a stream: the pass it gets
+    /// lets the stream check later that it still may run.
+    pub fn pass(&self, cookie_header: Option<&str>, now: Instant) -> Option<Pass> {
+        // read before the check: a password changed in between shows up later
+        let generation = self.generation.load(Ordering::SeqCst);
+        self.allows(cookie_header, now).then(|| Pass { cookie: cookie_header.map(str::to_string), generation })
+    }
+
+    /// May a stream opened with `pass` keep running? Not after its session
+    /// signed out or expired, or the password was set, changed or removed.
+    pub fn still(&self, pass: &Pass, now: Instant) -> bool {
+        self.generation.load(Ordering::SeqCst) == pass.generation && self.allows(pass.cookie.as_deref(), now)
     }
 }
 
@@ -442,6 +468,34 @@ mod tests {
         a.set_password("battery staple").unwrap();
         assert!(!a.session_ok(&t2, now));
         assert_eq!(a.login(IP, "correct horse", now), Login::Wrong);
+    }
+
+    #[test]
+    fn a_pass_ends_with_its_session_or_its_password() {
+        let a = with_password("correct horse");
+        let now = Instant::now();
+        let Login::Ok(t) = a.login(IP, "correct horse", now) else { panic!() };
+        let cookie = format!("{COOKIE}={t}");
+        assert!(a.pass(None, now).is_none());
+        let p = a.pass(Some(&cookie), now).unwrap();
+        assert!(a.still(&p, now));
+        assert!(!a.still(&p, now + SESSION_TTL), "expired");
+        a.logout(&t);
+        assert!(!a.still(&p, now), "signed out");
+
+        let Login::Ok(t) = a.login(IP, "correct horse", now) else { panic!() };
+        let p = a.pass(Some(&format!("{COOKIE}={t}")), now).unwrap();
+        a.set_password("battery staple").unwrap();
+        assert!(!a.still(&p, now), "a new password");
+
+        // with no password everyone may open one, until a password is set
+        let open = DashAuth::default();
+        let p = open.pass(None, now).unwrap();
+        assert!(open.still(&p, now));
+        open.set_password("correct horse").unwrap();
+        assert!(!open.still(&p, now));
+        open.clear_password().unwrap();
+        assert!(!open.still(&p, now), "removed: opened under another password");
     }
 
     #[test]

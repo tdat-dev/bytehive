@@ -19,7 +19,7 @@
 use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -401,7 +401,8 @@ fn handle(mut request: Request, ctx: Ctx) {
         let _ = request.respond(json_response(body).with_status_code(code));
         return;
     }
-    let signed_in = ctx.auth.allows(cookie_of(&request).as_deref(), Instant::now());
+    let pass = ctx.auth.pass(cookie_of(&request).as_deref(), Instant::now());
+    let signed_in = pass.is_some();
 
     match (method, path.as_str()) {
         // Without a session the page is the sign-in form.
@@ -437,7 +438,13 @@ fn handle(mut request: Request, ctx: Ctx) {
             let _ = request.respond(json_response("{\"ok\":true}".into()));
         }
         // Full web terminal: SSE output stream + raw input + resize.
-        (Method::Get, "/term") => sse_terminal(request, ctx.registry, query_id(&url)),
+        (Method::Get, "/term") => match pass {
+            Some(pass) => {
+                let watch = Watch::new(ctx.auth.clone(), pass, ctx.stop.clone());
+                sse_terminal(request, ctx.registry, query_id(&url), watch)
+            }
+            None => respond_401(request),
+        },
         (Method::Post, "/term/input") => {
             let v = read_body(&mut request);
             if let (Some(id), Some(data)) = (
@@ -466,7 +473,7 @@ fn handle(mut request: Request, ctx: Ctx) {
 /// Stream an agent's live output to the browser as Server-Sent Events. Each PTY
 /// chunk is base64-encoded into one `data:` frame; xterm.js decodes and writes
 /// it. Blocks in its own thread until the agent exits or the client disconnects.
-fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<String>) {
+fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<String>, watch: Watch) {
     let id = match id {
         Some(i) => i,
         None => return respond_404(request),
@@ -479,7 +486,7 @@ fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<Str
         header(b"Content-Type", b"text/event-stream"),
         header(b"Cache-Control", b"no-cache"),
     ];
-    let reader = SseReader { rx, pending: Vec::new(), pos: 0 };
+    let reader = SseReader { rx, pending: Vec::new(), pos: 0, watch };
     // data_length None → chunked transfer, streamed as the reader yields.
     let resp = Response::new(StatusCode(200), headers, reader, None, None);
     let _ = request.respond(resp);
@@ -523,6 +530,7 @@ fn ws_conn(stream: TcpStream, ctx: Ctx) {
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let mut agent_id = String::new();
+    let mut pass = None;
     let ws = tungstenite::accept_hdr(
         stream,
         |req: &tungstenite::handshake::server::Request,
@@ -542,7 +550,8 @@ fn ws_conn(stream: TcpStream, ctx: Ctx) {
                 return refuse(tungstenite::http::StatusCode::FORBIDDEN, "foreign origin");
             }
             // The browser sends the page's cookie along (cookies ignore the port).
-            if !auth.allows(get("Cookie"), Instant::now()) {
+            pass = auth.pass(get("Cookie"), Instant::now());
+            if pass.is_none() {
                 return refuse(tungstenite::http::StatusCode::UNAUTHORIZED, "sign in");
             }
             agent_id = ws_query_id(&req.uri().to_string());
@@ -553,17 +562,22 @@ fn ws_conn(stream: TcpStream, ctx: Ctx) {
         Ok(w) => w,
         Err(_) => return,
     };
+    let Some(pass) = pass else { return };
     if agent_id.is_empty() {
         return;
     }
+    let mut watch = Watch::new(auth, pass, stop);
     let rx = match registry.lock().unwrap_or_else(|p| p.into_inner()).tap(&agent_id) {
         Ok(r) => r,
         Err(_) => return,
     };
     let _ = ws.get_mut().set_nonblocking(true);
     loop {
-        if stop.load(Ordering::SeqCst) {
-            break;
+        // Signed out, a new or removed password, or the server stopping: hang up.
+        if !watch.alive() {
+            let _ = ws.close(None);
+            let _ = ws.flush();
+            return;
         }
         // Output: forward every available PTY chunk to the browser.
         loop {
@@ -595,17 +609,54 @@ fn ws_conn(stream: TcpStream, ctx: Ctx) {
     }
 }
 
+/// How often an open stream checks its session is still good.
+const RECHECK: Duration = Duration::from_millis(250);
+
+/// Keeps an open stream honest: it ends within RECHECK of its session ending
+/// (sign-out, expiry, a new or removed password) or of the server stopping,
+/// instead of running on for the life of the agent.
+struct Watch {
+    auth: Arc<DashAuth>,
+    pass: dashauth::Pass,
+    stop: Arc<AtomicBool>,
+    next: Instant,
+}
+
+impl Watch {
+    fn new(auth: Arc<DashAuth>, pass: dashauth::Pass, stop: Arc<AtomicBool>) -> Self {
+        Watch { auth, pass, stop, next: Instant::now() + RECHECK }
+    }
+
+    fn alive(&mut self) -> bool {
+        if self.stop.load(Ordering::SeqCst) {
+            return false;
+        }
+        let now = Instant::now();
+        if now < self.next {
+            return true;
+        }
+        self.next = now + RECHECK;
+        self.auth.still(&self.pass, now)
+    }
+}
+
 /// A blocking `Read` that turns an agent's output channel into an SSE byte
-/// stream. Reads block on the channel; a closed channel (agent gone) ends it.
+/// stream. Reads wait on the channel; a closed channel (agent gone) or an
+/// ended session ends it.
 struct SseReader {
     rx: Receiver<Vec<u8>>,
     pending: Vec<u8>,
     pos: usize,
+    watch: Watch,
 }
 impl Read for SseReader {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-        if self.pos >= self.pending.len() {
-            match self.rx.recv() {
+        while self.pos >= self.pending.len() {
+            if !self.watch.alive() {
+                return Ok(0); // signed out: EOF ends the stream
+            }
+            match self.rx.recv_timeout(RECHECK) {
+                Err(RecvTimeoutError::Timeout) => continue,
                 Ok(chunk) => {
                     // tiny_http wraps the socket in a 1024-byte BufWriter and only
                     // flushes when it fills or the response ends — but an SSE stream
@@ -654,6 +705,21 @@ mod tests {
     }
 
     fn start(auth: Arc<DashAuth>) -> TestServer {
+        start_with(auth, Arc::new(Mutex::new(Registry::default())))
+    }
+
+    /// A registry with one real agent "a" that prints a line every second.
+    fn one_agent() -> Arc<Mutex<Registry>> {
+        let spec = crate::core::command_spec::CommandSpec::new("cmd.exe")
+            .arg("/C")
+            .arg("echo hi & ping -n 30 127.0.0.1");
+        let size = portable_pty::PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
+        let mut reg = Registry::default();
+        reg.spawn("a".into(), &spec, size, |_| {}, |_| {}).expect("spawn agent");
+        Arc::new(Mutex::new(reg))
+    }
+
+    fn start_with(auth: Arc<DashAuth>, registry: Arc<Mutex<Registry>>) -> TestServer {
         let server = Server::http("127.0.0.1:0").unwrap();
         let port = server.server_addr().to_ip().unwrap().port();
         let ws_listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -663,7 +729,7 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let ctx = Ctx {
             snapshot: Arc::new(Mutex::new("{\"agents\":[{\"id\":\"a\",\"name\":\"Ana\"}]}".into())),
-            registry: Arc::new(Mutex::new(Registry::default())),
+            registry,
             auth,
             send: Arc::new(move |b| sink.lock().unwrap().push(b)),
             guard: Guard { port, ws_port, lan_ip: None },
@@ -841,6 +907,119 @@ mod tests {
         // a plain form post, the kind any page can send, is turned away
         let form = code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-d", "password=x", &login]));
         assert_eq!(form, "415");
+    }
+
+    fn session(auth: &DashAuth) -> String {
+        let Login::Ok(token) = auth.login(IpAddr::V4(Ipv4Addr::LOCALHOST), "correct horse", Instant::now()) else {
+            panic!("sign in")
+        };
+        token
+    }
+
+    /// An open terminal socket, read with a short timeout. Returns how long
+    /// after `end()` the server closed it (panics if it stays open 5 s).
+    fn socket_closes_after(srv: &TestServer, token: &str, end: impl FnOnce()) -> Duration {
+        let url = format!("ws://127.0.0.1:{}/term?id=a", srv.ws_port);
+        let mut req = url.as_str().into_client_request().unwrap();
+        req.headers_mut().insert("Cookie", format!("maestro_dash={token}").parse().unwrap());
+        let (mut ws, _) = tungstenite::connect(req).expect("a signed-in browser gets its terminal");
+        if let tungstenite::stream::MaybeTlsStream::Plain(s) = ws.get_mut() {
+            s.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
+        }
+        let timed_out = |e: &tungstenite::Error| {
+            matches!(e, tungstenite::Error::Io(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut))
+        };
+        // live first: the agent's output arrives
+        let t = Instant::now();
+        loop {
+            match ws.read() {
+                Ok(tungstenite::Message::Binary(_)) => break,
+                Ok(_) => {}
+                Err(e) if timed_out(&e) => {}
+                Err(e) => panic!("closed before the session ended: {e}"),
+            }
+            assert!(t.elapsed() < Duration::from_secs(10), "no output from the agent");
+        }
+        end();
+        let t = Instant::now();
+        loop {
+            match ws.read() {
+                Ok(_) => {}
+                Err(e) if timed_out(&e) => {}
+                Err(_) => return t.elapsed(),
+            }
+            assert!(t.elapsed() < Duration::from_secs(5), "the terminal stayed open");
+        }
+    }
+
+    /// An open /term SSE stream. Returns how long after `end()` it ended.
+    fn stream_ends_after(srv: &TestServer, token: &str, end: impl FnOnce()) -> Duration {
+        let mut s = TcpStream::connect(("127.0.0.1", srv.port)).unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
+        let req = format!(
+            "GET /term?id=a HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nX-Maestro: 1\r\nCookie: maestro_dash={token}\r\n\r\n",
+            srv.port
+        );
+        s.write_all(req.as_bytes()).unwrap();
+        // tiny_http holds a chunked body until 8 KB pile up, so the stream's
+        // bytes may only show up when it ends: give the server time to open it
+        let mut seen = Vec::new();
+        let mut buf = [0u8; 4096];
+        let t = Instant::now();
+        while t.elapsed() < Duration::from_millis(1500) {
+            match s.read(&mut buf) {
+                Ok(0) => panic!("ended before the session did: {}", String::from_utf8_lossy(&seen)),
+                Ok(n) => seen.extend_from_slice(&buf[..n]),
+                Err(_) => {}
+            }
+        }
+        end();
+        let t = Instant::now();
+        loop {
+            match s.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => seen.extend_from_slice(&buf[..n]),
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(_) => break,
+            }
+            assert!(t.elapsed() < Duration::from_secs(5), "the stream stayed open");
+        }
+        let took = t.elapsed();
+        let seen = String::from_utf8_lossy(&seen);
+        assert!(seen.starts_with("HTTP/1.1 200"), "it was open: {seen}");
+        assert!(seen.contains("data: "), "with the agent's output");
+        took
+    }
+
+    #[test]
+    fn signing_out_closes_an_open_terminal() {
+        let auth = locked("correct horse");
+        let reg = one_agent();
+        let srv = start_with(auth.clone(), reg.clone());
+        let token = session(&auth);
+        let took = socket_closes_after(&srv, &token, || auth.logout(&token));
+        assert!(took < Duration::from_millis(1500), "closed after {took:?}");
+        let token = session(&auth);
+        let took = stream_ends_after(&srv, &token, || auth.logout(&token));
+        assert!(took < Duration::from_millis(1500), "ended after {took:?}");
+        reg.lock().unwrap().clear();
+    }
+
+    #[test]
+    fn a_new_or_removed_password_closes_open_terminals() {
+        let auth = locked("correct horse");
+        let reg = one_agent();
+        let srv = start_with(auth.clone(), reg.clone());
+        let token = session(&auth);
+        let took = stream_ends_after(&srv, &token, || auth.set_password("battery staple").unwrap());
+        assert!(took < Duration::from_millis(1500), "ended after {took:?}");
+        auth.set_password("correct horse").unwrap();
+        let token = session(&auth);
+        // with no password the dashboard is localhost-only and open, but a
+        // terminal opened behind the old password still closes
+        let took = socket_closes_after(&srv, &token, || auth.clear_password().unwrap());
+        assert!(took < Duration::from_millis(1500), "closed after {took:?}");
+        reg.lock().unwrap().clear();
     }
 
     /// Every fetch the embedded pages make carries what the server now wants.
