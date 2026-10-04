@@ -145,6 +145,41 @@ pub fn verify_password(hash: &str, password: &str) -> bool {
     }
 }
 
+/// Replace `path` with `body` all at once: write a temp file next to it, flush
+/// it to disk, then rename it over. A crash or a reader mid-way sees the old
+/// file or the new one, never a truncated one.
+fn write_whole(path: &std::path::Path, body: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    let written = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(body)?;
+        f.sync_all()
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    // Windows refuses the rename for a moment while something (a virus
+    // scanner) has the old file open without sharing: try a few times.
+    let mut tries = 0;
+    loop {
+        match std::fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && tries < 10 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(e);
+            }
+        }
+    }
+}
+
 /// How long an address with `fails` wrong guesses must wait between tries.
 fn wait_for(fails: u32) -> Duration {
     if fails < FREE_TRIES {
@@ -220,7 +255,7 @@ impl DashAuth {
                     std::fs::create_dir_all(dir).map_err(|e| format!("could not save the password: {e}"))?;
                 }
                 let body = serde_json::to_string(&Stored { hash: h.to_string() }).map_err(|e| e.to_string())?;
-                std::fs::write(&path, body).map_err(|e| format!("could not save the password: {e}"))
+                write_whole(&path, body.as_bytes()).map_err(|e| format!("could not save the password: {e}"))
             }
             None => match std::fs::remove_file(&path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("could not remove the password: {e}")),
@@ -552,6 +587,40 @@ mod tests {
         assert!(matches!(b.login(IP, "correct horse", Instant::now()), Login::Ok(_)));
         b.clear_password().unwrap();
         assert!(!dir.path().join(FILE).exists());
+    }
+
+    /// The hash file is replaced whole (temp file + rename): a reader, or a
+    /// crash, never meets a half-written or empty file.
+    #[test]
+    fn the_hash_file_is_never_seen_half_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = Arc::new(DashAuth::default());
+        a.load_from(dir.path().to_path_buf());
+        let hash = hash_password("correct horse").unwrap();
+        a.save(Some(&hash)).unwrap();
+        let path = dir.path().join(FILE);
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader = {
+            let (path, done) = (path.clone(), done.clone());
+            std::thread::spawn(move || {
+                let mut bad = 0;
+                while !done.load(Ordering::SeqCst) {
+                    if let Ok(s) = std::fs::read_to_string(&path) {
+                        if serde_json::from_str::<Stored>(&s).is_err() {
+                            bad += 1;
+                        }
+                    }
+                }
+                bad
+            })
+        };
+        for _ in 0..300 {
+            a.save(Some(&hash)).unwrap();
+        }
+        done.store(true, Ordering::SeqCst);
+        assert_eq!(reader.join().unwrap(), 0, "a reader saw a half-written file");
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from(FILE)], "no temp file left behind");
     }
 
     #[test]
