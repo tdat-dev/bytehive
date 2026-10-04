@@ -9,11 +9,17 @@
 //! LAN (0.0.0.0) is opt-in since the send endpoint can drive an agent, and
 //! needs a password (dashauth.rs): with one set, every route that shows or
 //! drives an agent wants a signed-in session.
+//!
+//! Only the dashboard's own page gets in (`Guard`): the Host must be one of
+//! this server's names (no DNS rebinding), an Origin must be the page's own
+//! (no other site or other port on this computer), a POST must be JSON and an
+//! API call must carry `X-Maestro: 1`, neither of which another site can send
+//! without a CORS preflight that nothing here answers.
 
 use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -42,6 +48,72 @@ struct Ctx {
     auth: Arc<DashAuth>,
     /// Hands a POST /api/send body to the frontend.
     send: Arc<dyn Fn(String) + Send + Sync>,
+    /// Which hosts and origins are this server's own.
+    guard: Guard,
+    /// Set when the server is stopping: nothing is served after it.
+    stop: Arc<AtomicBool>,
+}
+
+/// The names this server answers to. Anything else is another site: a DNS
+/// rebinding page (Host: evil.com) or a page on another port of this computer
+/// (Origin: http://127.0.0.1:3000) that the browser would happily send our
+/// cookie from.
+#[derive(Clone)]
+struct Guard {
+    /// The page's port: Host of a page request, and the port in every Origin.
+    port: u16,
+    /// The terminal WebSocket's port (port + 1): Host of a socket handshake.
+    ws_port: u16,
+    /// The LAN address shown in Settings, when other devices are let in.
+    lan_ip: Option<Ipv4Addr>,
+}
+
+impl Guard {
+    fn names(&self) -> Vec<String> {
+        let mut out = vec!["127.0.0.1".to_string(), "localhost".to_string()];
+        if let Some(ip) = self.lan_ip {
+            out.push(ip.to_string());
+        }
+        out
+    }
+
+    /// Is `host` (a Host header) one of ours on `port`?
+    fn host_ok(&self, host: Option<&str>, port: u16) -> bool {
+        let Some(host) = host.map(|h| h.trim().to_ascii_lowercase()) else { return false };
+        self.names().iter().any(|n| host == format!("{n}:{port}") || (port == 80 && host == *n))
+    }
+
+    /// No Origin (not a browser, or a same-origin GET), or the page's own.
+    fn origin_ok(&self, origin: Option<&str>) -> bool {
+        let Some(origin) = origin.map(|o| o.trim().to_ascii_lowercase()) else { return true };
+        let Some(host) = origin.strip_prefix("http://") else { return false };
+        self.host_ok(Some(host), self.port)
+    }
+
+    /// Why an HTTP request is turned away before any route sees it.
+    fn refuse(&self, method: &Method, path: &str, get: impl Fn(&str) -> Option<String>) -> Option<(u16, &'static str)> {
+        if !self.host_ok(get("Host").as_deref(), self.port) {
+            return Some((403, "unknown host"));
+        }
+        if !self.origin_ok(get("Origin").as_deref()) {
+            return Some((403, "foreign origin"));
+        }
+        // JSON only: a cross-site form or no-cors fetch can't send it without
+        // a preflight, and nothing here answers one.
+        if *method == Method::Post {
+            let ct = get("Content-Type").unwrap_or_default();
+            let mime = ct.split(';').next().unwrap_or("").trim();
+            if !mime.eq_ignore_ascii_case("application/json") {
+                return Some((415, "send JSON"));
+            }
+        }
+        // The page's own calls carry X-Maestro; another site's can't without a preflight.
+        let api = path.starts_with("/api/") || path == "/term" || path.starts_with("/term/");
+        if api && get("X-Maestro").as_deref().map(str::trim) != Some("1") {
+            return Some((403, "not from the dashboard"));
+        }
+        None
+    }
 }
 
 #[derive(Default)]
@@ -80,14 +152,14 @@ fn local_ip() -> Option<Ipv4Addr> {
     }
 }
 
-fn urls_for(port: u16, lan: bool) -> Vec<String> {
+/// The URLs to show, and the LAN address (when let in) the server answers to.
+fn urls_for(port: u16, lan: bool) -> (Vec<String>, Option<Ipv4Addr>) {
     let mut out = vec![format!("http://127.0.0.1:{port}")];
-    if lan {
-        if let Some(ip) = local_ip() {
-            out.push(format!("http://{ip}:{port}"));
-        }
+    let ip = if lan { local_ip() } else { None };
+    if let Some(ip) = ip {
+        out.push(format!("http://{ip}:{port}"));
     }
-    out
+    (out, ip)
 }
 
 fn info(inner: &Inner) -> DashboardInfo {
@@ -145,15 +217,20 @@ pub async fn dashboard_password_set(state: State<'_, AppState>, password: String
 /// a password the dashboard is for this computer only.
 #[tauri::command]
 pub fn dashboard_password_clear(state: State<'_, AppState>) -> Result<DashboardInfo, CommandError> {
-    state.dashboard.auth.clear_password().map_err(CommandError::Failed)?;
+    clear_password(&state.dashboard).map_err(CommandError::Failed)
+}
+
+/// Stop a server other devices can reach FIRST, then drop the password: the
+/// other way round left 0.0.0.0 open with no password until the server
+/// noticed the stop. (Once stopping, a server serves nothing: see `handle`.)
+fn clear_password(dash: &Dashboard) -> Result<DashboardInfo, String> {
     let lan_on = {
-        let inner = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner());
+        let inner = dash.inner.lock().unwrap_or_else(|p| p.into_inner());
         inner.running && inner.lan
     };
-    if lan_on {
-        return Ok(stop_server(&state.dashboard));
-    }
-    Ok(info(&state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner())))
+    let stopped = lan_on.then(|| stop_server(dash));
+    dash.auth.clear_password()?;
+    Ok(stopped.unwrap_or_else(|| info(&dash.inner.lock().unwrap_or_else(|p| p.into_inner()))))
 }
 
 #[tauri::command]
@@ -177,7 +254,7 @@ pub async fn dashboard_start(
     // Binding to 0.0.0.0 (LAN) and probing the local IP can block; do it OFF the
     // main/UI thread so toggling LAN never freezes the app. The full web
     // terminal uses a WebSocket on port+1 (own the TcpStream → set TCP_NODELAY).
-    let (server, ws_listener, urls) = run_blocking(move || {
+    let (server, ws_listener, (urls, lan_ip)) = run_blocking(move || {
         let server = Server::http((bind, port)).map_err(|e| {
             CommandError::Failed(format!("dashboard: cannot bind port {port}: {e}"))
         })?;
@@ -198,6 +275,8 @@ pub async fn dashboard_start(
         send: Arc::new(move |body| {
             let _ = send_app.emit("dashboard-send", body);
         }),
+        guard: Guard { port, ws_port: port + 1, lan_ip },
+        stop: stop.clone(),
     };
     let ctx_ws = ctx.clone();
     std::thread::spawn(move || serve(server, ctx, stop_thread));
@@ -243,13 +322,18 @@ fn read_body(request: &mut Request) -> serde_json::Value {
     serde_json::from_str(&body).unwrap_or(serde_json::Value::Null)
 }
 
-/// The request's `Cookie:` header, if any.
-fn cookie_of(request: &Request) -> Option<String> {
+/// The value of the request's `name` header, if any.
+fn header_of(request: &Request, name: &str) -> Option<String> {
     request
         .headers()
         .iter()
-        .find(|h| h.field.equiv("Cookie"))
+        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
         .map(|h| h.value.as_str().to_string())
+}
+
+/// The request's `Cookie:` header, if any.
+fn cookie_of(request: &Request) -> Option<String> {
+    header_of(request, "Cookie")
 }
 
 fn respond_401(request: Request) {
@@ -283,6 +367,10 @@ fn login(mut request: Request, auth: &DashAuth) {
             std::thread::sleep(dashauth::FAIL_DELAY);
             let _ = request.respond(json_response("{\"error\":\"wrong\"}".into()).with_status_code(401));
         }
+        Login::Busy => {
+            let body = "{\"error\":\"busy\",\"message\":\"Too many attempts, try again in a moment\"}";
+            let _ = request.respond(json_response(body.into()).with_status_code(429));
+        }
         Login::Wait(d) => {
             std::thread::sleep(dashauth::FAIL_DELAY);
             let body = format!("{{\"error\":\"wait\",\"seconds\":{}}}", d.as_secs().max(1));
@@ -313,7 +401,19 @@ fn handle(mut request: Request, ctx: Ctx) {
     let url = request.url().to_string();
     let method = request.method().clone();
     let path = url.split('?').next().unwrap_or("").to_string();
-    let signed_in = ctx.auth.allows(cookie_of(&request).as_deref(), Instant::now());
+    if let Some((code, why)) = ctx.guard.refuse(&method, &path, |name| header_of(&request, name)) {
+        let body = format!("{{\"error\":\"{why}\"}}");
+        let _ = request.respond(json_response(body).with_status_code(code));
+        return;
+    }
+    let pass = ctx.auth.pass(cookie_of(&request).as_deref(), Instant::now());
+    let signed_in = pass.is_some();
+    // A stopping server serves nothing. Checked AFTER the session: a password
+    // is only removed after the stop, so a request that saw it gone sees this.
+    if ctx.stop.load(Ordering::SeqCst) {
+        let _ = request.respond(json_response("{\"error\":\"stopped\"}".into()).with_status_code(503));
+        return;
+    }
 
     match (method, path.as_str()) {
         // Without a session the page is the sign-in form.
@@ -349,7 +449,13 @@ fn handle(mut request: Request, ctx: Ctx) {
             let _ = request.respond(json_response("{\"ok\":true}".into()));
         }
         // Full web terminal: SSE output stream + raw input + resize.
-        (Method::Get, "/term") => sse_terminal(request, ctx.registry, query_id(&url)),
+        (Method::Get, "/term") => match pass {
+            Some(pass) => {
+                let watch = Watch::new(ctx.auth.clone(), pass, ctx.stop.clone());
+                sse_terminal(request, ctx.registry, query_id(&url), watch)
+            }
+            None => respond_401(request),
+        },
         (Method::Post, "/term/input") => {
             let v = read_body(&mut request);
             if let (Some(id), Some(data)) = (
@@ -378,7 +484,7 @@ fn handle(mut request: Request, ctx: Ctx) {
 /// Stream an agent's live output to the browser as Server-Sent Events. Each PTY
 /// chunk is base64-encoded into one `data:` frame; xterm.js decodes and writes
 /// it. Blocks in its own thread until the agent exits or the client disconnects.
-fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<String>) {
+fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<String>, watch: Watch) {
     let id = match id {
         Some(i) => i,
         None => return respond_404(request),
@@ -391,7 +497,7 @@ fn sse_terminal(request: Request, registry: Arc<Mutex<Registry>>, id: Option<Str
         header(b"Content-Type", b"text/event-stream"),
         header(b"Cache-Control", b"no-cache"),
     ];
-    let reader = SseReader { rx, pending: Vec::new(), pos: 0 };
+    let reader = SseReader { rx, pending: Vec::new(), pos: 0, watch };
     // data_length None → chunked transfer, streamed as the reader yields.
     let resp = Response::new(StatusCode(200), headers, reader, None, None);
     let _ = request.respond(resp);
@@ -409,9 +515,8 @@ fn serve_ws(listener: TcpListener, stop: Arc<AtomicBool>, ctx: Ctx) {
         }
         match listener.accept() {
             Ok((stream, _)) => {
-                let (registry, auth) = (ctx.registry.clone(), ctx.auth.clone());
-                let stop = stop.clone();
-                std::thread::spawn(move || ws_conn(stream, registry, auth, stop));
+                let ctx = ctx.clone();
+                std::thread::spawn(move || ws_conn(stream, ctx));
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(50));
@@ -428,23 +533,41 @@ fn ws_query_id(uri: &str) -> String {
         .to_string()
 }
 
-fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, auth: Arc<DashAuth>, stop: Arc<AtomicBool>) {
+fn ws_conn(stream: TcpStream, ctx: Ctx) {
+    let Ctx { registry, auth, stop, guard, .. } = ctx;
     let _ = stream.set_nodelay(true); // the whole point — no Nagle coalescing
     // A socket accepted from the non-blocking listener is non-blocking too on
     // Windows; the handshake needs to wait for the request.
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let mut agent_id = String::new();
+    let mut pass = None;
     let ws = tungstenite::accept_hdr(
         stream,
         |req: &tungstenite::handshake::server::Request,
          resp: tungstenite::handshake::server::Response| {
+            let refuse = |code: tungstenite::http::StatusCode, why: &str| {
+                let mut no = tungstenite::handshake::server::ErrorResponse::new(Some(why.into()));
+                *no.status_mut() = code;
+                Err(no)
+            };
+            let get = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
+            // Same rules as a page request: our own host (this port), and an
+            // Origin that is the dashboard page itself (a browser always sends one).
+            if !guard.host_ok(get("Host"), guard.ws_port) {
+                return refuse(tungstenite::http::StatusCode::FORBIDDEN, "unknown host");
+            }
+            if !guard.origin_ok(get("Origin")) {
+                return refuse(tungstenite::http::StatusCode::FORBIDDEN, "foreign origin");
+            }
             // The browser sends the page's cookie along (cookies ignore the port).
-            let cookie = req.headers().get("Cookie").and_then(|v| v.to_str().ok());
-            if !auth.allows(cookie, Instant::now()) {
-                let mut no = tungstenite::handshake::server::ErrorResponse::new(Some("sign in".into()));
-                *no.status_mut() = tungstenite::http::StatusCode::UNAUTHORIZED;
-                return Err(no);
+            pass = auth.pass(get("Cookie"), Instant::now());
+            if pass.is_none() {
+                return refuse(tungstenite::http::StatusCode::UNAUTHORIZED, "sign in");
+            }
+            // after the session check, as in `handle`
+            if stop.load(Ordering::SeqCst) {
+                return refuse(tungstenite::http::StatusCode::SERVICE_UNAVAILABLE, "stopped");
             }
             agent_id = ws_query_id(&req.uri().to_string());
             Ok(resp)
@@ -454,17 +577,22 @@ fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, auth: Arc<DashAuth
         Ok(w) => w,
         Err(_) => return,
     };
+    let Some(pass) = pass else { return };
     if agent_id.is_empty() {
         return;
     }
+    let mut watch = Watch::new(auth, pass, stop);
     let rx = match registry.lock().unwrap_or_else(|p| p.into_inner()).tap(&agent_id) {
         Ok(r) => r,
         Err(_) => return,
     };
     let _ = ws.get_mut().set_nonblocking(true);
     loop {
-        if stop.load(Ordering::SeqCst) {
-            break;
+        // Signed out, a new or removed password, or the server stopping: hang up.
+        if !watch.alive() {
+            let _ = ws.close(None);
+            let _ = ws.flush();
+            return;
         }
         // Output: forward every available PTY chunk to the browser.
         loop {
@@ -496,17 +624,54 @@ fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, auth: Arc<DashAuth
     }
 }
 
+/// How often an open stream checks its session is still good.
+const RECHECK: Duration = Duration::from_millis(250);
+
+/// Keeps an open stream honest: it ends within RECHECK of its session ending
+/// (sign-out, expiry, a new or removed password) or of the server stopping,
+/// instead of running on for the life of the agent.
+struct Watch {
+    auth: Arc<DashAuth>,
+    pass: dashauth::Pass,
+    stop: Arc<AtomicBool>,
+    next: Instant,
+}
+
+impl Watch {
+    fn new(auth: Arc<DashAuth>, pass: dashauth::Pass, stop: Arc<AtomicBool>) -> Self {
+        Watch { auth, pass, stop, next: Instant::now() + RECHECK }
+    }
+
+    fn alive(&mut self) -> bool {
+        if self.stop.load(Ordering::SeqCst) {
+            return false;
+        }
+        let now = Instant::now();
+        if now < self.next {
+            return true;
+        }
+        self.next = now + RECHECK;
+        self.auth.still(&self.pass, now)
+    }
+}
+
 /// A blocking `Read` that turns an agent's output channel into an SSE byte
-/// stream. Reads block on the channel; a closed channel (agent gone) ends it.
+/// stream. Reads wait on the channel; a closed channel (agent gone) or an
+/// ended session ends it.
 struct SseReader {
     rx: Receiver<Vec<u8>>,
     pending: Vec<u8>,
     pos: usize,
+    watch: Watch,
 }
 impl Read for SseReader {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-        if self.pos >= self.pending.len() {
-            match self.rx.recv() {
+        while self.pos >= self.pending.len() {
+            if !self.watch.alive() {
+                return Ok(0); // signed out: EOF ends the stream
+            }
+            match self.rx.recv_timeout(RECHECK) {
+                Err(RecvTimeoutError::Timeout) => continue,
                 Ok(chunk) => {
                     // tiny_http wraps the socket in a 1024-byte BufWriter and only
                     // flushes when it fills or the response ends — but an SSE stream
@@ -555,19 +720,36 @@ mod tests {
     }
 
     fn start(auth: Arc<DashAuth>) -> TestServer {
+        start_with(auth, Arc::new(Mutex::new(Registry::default())))
+    }
+
+    /// A registry with one real agent "a" that prints a line every second.
+    fn one_agent() -> Arc<Mutex<Registry>> {
+        let spec = crate::core::command_spec::CommandSpec::new("cmd.exe")
+            .arg("/C")
+            .arg("echo hi & ping -n 30 127.0.0.1");
+        let size = portable_pty::PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
+        let mut reg = Registry::default();
+        reg.spawn("a".into(), &spec, size, |_| {}, |_| {}).expect("spawn agent");
+        Arc::new(Mutex::new(reg))
+    }
+
+    fn start_with(auth: Arc<DashAuth>, registry: Arc<Mutex<Registry>>) -> TestServer {
         let server = Server::http("127.0.0.1:0").unwrap();
         let port = server.server_addr().to_ip().unwrap().port();
         let ws_listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let ws_port = ws_listener.local_addr().unwrap().port();
         let sent = Arc::new(Mutex::new(Vec::new()));
         let sink = sent.clone();
+        let stop = Arc::new(AtomicBool::new(false));
         let ctx = Ctx {
             snapshot: Arc::new(Mutex::new("{\"agents\":[{\"id\":\"a\",\"name\":\"Ana\"}]}".into())),
-            registry: Arc::new(Mutex::new(Registry::default())),
+            registry,
             auth,
             send: Arc::new(move |b| sink.lock().unwrap().push(b)),
+            guard: Guard { port, ws_port, lan_ip: None },
+            stop: stop.clone(),
         };
-        let stop = Arc::new(AtomicBool::new(false));
         let (ctx_ws, stop_http, stop_ws) = (ctx.clone(), stop.clone(), stop.clone());
         std::thread::spawn(move || serve(server, ctx, stop_http));
         std::thread::spawn(move || serve_ws(ws_listener, stop_ws, ctx_ws));
@@ -580,19 +762,17 @@ mod tests {
         body: String,
     }
 
-    /// One plain HTTP/1.1 request, the way curl would send it.
-    fn http(port: u16, method: &str, path: &str, cookie: Option<&str>, body: &str) -> Reply {
+    /// One plain HTTP/1.1 request with exactly these headers (plus
+    /// `Host: 127.0.0.1:{port}` unless one is given).
+    fn raw(port: u16, method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Reply {
         let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
         s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-        let mut req = format!(
-            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nContent-Length: {}\r\n",
-            body.len()
-        );
-        if let Some(c) = cookie {
-            req.push_str(&format!("Cookie: {c}\r\n"));
+        let mut req = format!("{method} {path} HTTP/1.1\r\nConnection: close\r\nContent-Length: {}\r\n", body.len());
+        if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("Host")) {
+            req.push_str(&format!("Host: 127.0.0.1:{port}\r\n"));
         }
-        if !body.is_empty() {
-            req.push_str("Content-Type: application/json\r\n");
+        for (k, v) in headers {
+            req.push_str(&format!("{k}: {v}\r\n"));
         }
         req.push_str("\r\n");
         req.push_str(body);
@@ -602,6 +782,19 @@ mod tests {
         let (head, body) = out.split_once("\r\n\r\n").unwrap_or((out.as_str(), ""));
         let status = head.split(' ').nth(1).unwrap().parse().unwrap();
         Reply { status, head: head.to_string(), body: body.to_string() }
+    }
+
+    /// A request the way the dashboard page sends it: its own host, the
+    /// X-Maestro header, JSON on a POST.
+    fn http(port: u16, method: &str, path: &str, cookie: Option<&str>, body: &str) -> Reply {
+        let mut h = vec![("X-Maestro", "1")];
+        if method == "POST" {
+            h.push(("Content-Type", "application/json"));
+        }
+        if let Some(c) = cookie {
+            h.push(("Cookie", c));
+        }
+        raw(port, method, path, &h, body)
     }
 
     /// The session cookie (name=value) a reply sets.
@@ -655,6 +848,33 @@ mod tests {
         assert_eq!(http(srv.port, "POST", "/api/login", None, "not json").status, 401);
     }
 
+    /// A burst of logins at once is not a way around the backoff: most are
+    /// told to wait (429) and only the free tries get checked.
+    #[test]
+    fn a_login_burst_gets_429s() {
+        let auth = locked("correct horse");
+        let srv = start(auth.clone());
+        let port = srv.port;
+        let gate = Arc::new(std::sync::Barrier::new(12));
+        let codes: Vec<u16> = (0..12)
+            .map(|_| {
+                let gate = gate.clone();
+                std::thread::spawn(move || {
+                    gate.wait();
+                    http(port, "POST", "/api/login", None, r#"{"password":"nope"}"#).status
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect();
+        let checked = codes.iter().filter(|c| **c == 401).count();
+        assert!(checked <= 3, "{checked} guesses checked: {codes:?}");
+        assert_eq!(codes.iter().filter(|c| **c == 429).count(), 12 - checked, "{codes:?}");
+        assert!(auth.peak_checks() <= 2);
+        assert!(LOGIN_PAGE.contains("Too many attempts, try again in a moment."), "the page says so");
+    }
+
     #[test]
     fn signing_in_opens_everything_until_signing_out() {
         let srv = start(locked("correct horse"));
@@ -692,12 +912,191 @@ mod tests {
         let base = format!("http://127.0.0.1:{}", srv.port);
         let code = |out: std::io::Result<std::process::Output>| String::from_utf8(out.unwrap().stdout).unwrap();
         let fleet = format!("{base}/api/fleet");
-        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", &fleet])), "401");
+        let mx = "X-Maestro: 1";
+        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-H", mx, &fleet])), "401");
         let login = format!("{base}/api/login");
         let ok = code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-c", jar, "-H", "Content-Type: application/json",
-            "-d", r#"{"password":"correct horse"}"#, &login]));
+            "-H", mx, "-d", r#"{"password":"correct horse"}"#, &login]));
         assert_eq!(ok, "200");
-        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-b", jar, &fleet])), "200");
+        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-b", jar, "-H", mx, &fleet])), "200");
+        // a plain form post, the kind any page can send, is turned away
+        let form = code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-d", "password=x", &login]));
+        assert_eq!(form, "415");
+    }
+
+    fn session(auth: &DashAuth) -> String {
+        let Login::Ok(token) = auth.login(IpAddr::V4(Ipv4Addr::LOCALHOST), "correct horse", Instant::now()) else {
+            panic!("sign in")
+        };
+        token
+    }
+
+    /// An open terminal socket, read with a short timeout. Returns how long
+    /// after `end()` the server closed it (panics if it stays open 5 s).
+    fn socket_closes_after(srv: &TestServer, token: &str, end: impl FnOnce()) -> Duration {
+        let url = format!("ws://127.0.0.1:{}/term?id=a", srv.ws_port);
+        let mut req = url.as_str().into_client_request().unwrap();
+        req.headers_mut().insert("Cookie", format!("maestro_dash={token}").parse().unwrap());
+        let (mut ws, _) = tungstenite::connect(req).expect("a signed-in browser gets its terminal");
+        if let tungstenite::stream::MaybeTlsStream::Plain(s) = ws.get_mut() {
+            s.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
+        }
+        let timed_out = |e: &tungstenite::Error| {
+            matches!(e, tungstenite::Error::Io(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut))
+        };
+        // live first: the agent's output arrives
+        let t = Instant::now();
+        loop {
+            match ws.read() {
+                Ok(tungstenite::Message::Binary(_)) => break,
+                Ok(_) => {}
+                Err(e) if timed_out(&e) => {}
+                Err(e) => panic!("closed before the session ended: {e}"),
+            }
+            assert!(t.elapsed() < Duration::from_secs(10), "no output from the agent");
+        }
+        end();
+        let t = Instant::now();
+        loop {
+            match ws.read() {
+                Ok(_) => {}
+                Err(e) if timed_out(&e) => {}
+                Err(_) => return t.elapsed(),
+            }
+            assert!(t.elapsed() < Duration::from_secs(5), "the terminal stayed open");
+        }
+    }
+
+    /// An open /term SSE stream. Returns how long after `end()` it ended.
+    fn stream_ends_after(srv: &TestServer, token: &str, end: impl FnOnce()) -> Duration {
+        let mut s = TcpStream::connect(("127.0.0.1", srv.port)).unwrap();
+        s.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
+        let req = format!(
+            "GET /term?id=a HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nX-Maestro: 1\r\nCookie: maestro_dash={token}\r\n\r\n",
+            srv.port
+        );
+        s.write_all(req.as_bytes()).unwrap();
+        // tiny_http holds a chunked body until 8 KB pile up, so the stream's
+        // bytes may only show up when it ends: give the server time to open it
+        let mut seen = Vec::new();
+        let mut buf = [0u8; 4096];
+        let t = Instant::now();
+        while t.elapsed() < Duration::from_millis(1500) {
+            match s.read(&mut buf) {
+                Ok(0) => panic!("ended before the session did: {}", String::from_utf8_lossy(&seen)),
+                Ok(n) => seen.extend_from_slice(&buf[..n]),
+                Err(_) => {}
+            }
+        }
+        end();
+        let t = Instant::now();
+        loop {
+            match s.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => seen.extend_from_slice(&buf[..n]),
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(_) => break,
+            }
+            assert!(t.elapsed() < Duration::from_secs(5), "the stream stayed open");
+        }
+        let took = t.elapsed();
+        let seen = String::from_utf8_lossy(&seen);
+        assert!(seen.starts_with("HTTP/1.1 200"), "it was open: {seen}");
+        assert!(seen.contains("data: "), "with the agent's output");
+        took
+    }
+
+    #[test]
+    fn signing_out_closes_an_open_terminal() {
+        let auth = locked("correct horse");
+        let reg = one_agent();
+        let srv = start_with(auth.clone(), reg.clone());
+        let token = session(&auth);
+        let took = socket_closes_after(&srv, &token, || auth.logout(&token));
+        assert!(took < Duration::from_millis(1500), "closed after {took:?}");
+        let token = session(&auth);
+        let took = stream_ends_after(&srv, &token, || auth.logout(&token));
+        assert!(took < Duration::from_millis(1500), "ended after {took:?}");
+        reg.lock().unwrap().clear();
+    }
+
+    #[test]
+    fn a_new_or_removed_password_closes_open_terminals() {
+        let auth = locked("correct horse");
+        let reg = one_agent();
+        let srv = start_with(auth.clone(), reg.clone());
+        let token = session(&auth);
+        let took = stream_ends_after(&srv, &token, || auth.set_password("battery staple").unwrap());
+        assert!(took < Duration::from_millis(1500), "ended after {took:?}");
+        auth.set_password("correct horse").unwrap();
+        let token = session(&auth);
+        // with no password the dashboard is localhost-only and open, but a
+        // terminal opened behind the old password still closes
+        let took = socket_closes_after(&srv, &token, || auth.clear_password().unwrap());
+        assert!(took < Duration::from_millis(1500), "closed after {took:?}");
+        reg.lock().unwrap().clear();
+    }
+
+    /// The status of one request, or None when nothing answered (closed).
+    fn try_status(port: u16) -> Option<u16> {
+        let mut s = TcpStream::connect(("127.0.0.1", port)).ok()?;
+        s.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+        let req = format!("GET /api/fleet HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nX-Maestro: 1\r\n\r\n");
+        s.write_all(req.as_bytes()).ok()?;
+        let mut out = String::new();
+        s.read_to_string(&mut out).ok()?;
+        out.split(' ').nth(1)?.parse().ok()
+    }
+
+    /// Removing the password stops a server other devices can reach BEFORE
+    /// the password goes: never a moment of no password on 0.0.0.0.
+    #[test]
+    fn removing_the_password_stops_the_lan_server_first() {
+        let auth = locked("correct horse");
+        let srv = start(auth.clone());
+        // the server as Settings left it: running, other devices let in
+        let dash = Dashboard {
+            inner: Mutex::new(Inner { running: true, port: srv.port, lan: true, stop: Some(srv.stop.clone()), ..Default::default() }),
+            auth: auth.clone(),
+        };
+        assert_eq!(try_status(srv.port), Some(401));
+        let info = clear_password(&dash).unwrap();
+        assert!(!info.running && !auth.has_password());
+        // whatever still reaches the old server finds it closing, never open
+        for _ in 0..5 {
+            let got = try_status(srv.port);
+            assert_ne!(got, Some(200), "the fleet was open with no password");
+        }
+    }
+
+    /// Every fetch the embedded pages make carries what the server now wants.
+    #[test]
+    fn the_pages_send_json_and_the_maestro_header() {
+        assert!(PAGE.contains(r#"const API = { "Content-Type": "application/json", "X-Maestro": "1" };"#));
+        for (name, page) in [("dashboard", PAGE), ("login", LOGIN_PAGE)] {
+            let calls: Vec<&str> = page.split("fetch(").skip(1).collect();
+            assert!(!calls.is_empty(), "{name}");
+            for call in calls {
+                let call = &call[..call.find(';').unwrap_or(call.len())];
+                assert!(call.contains("headers: API") || call.contains(r#""X-Maestro": "1""#), "{name}: fetch({call}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_guard_knows_its_own_names() {
+        let g = Guard { port: 8477, ws_port: 8478, lan_ip: Some(Ipv4Addr::new(192, 168, 1, 7)) };
+        assert!(g.host_ok(Some("192.168.1.7:8477"), 8477));
+        assert!(g.host_ok(Some("192.168.1.7:8478"), 8478));
+        assert!(!g.host_ok(Some("192.168.1.7:8478"), 8477));
+        assert!(!g.host_ok(Some("192.168.1.8:8477"), 8477));
+        assert!(!g.host_ok(None, 8477));
+        assert!(g.origin_ok(None));
+        assert!(g.origin_ok(Some("http://192.168.1.7:8477")));
+        assert!(!g.origin_ok(Some("http://192.168.1.7:8478")), "the socket port is not a page");
+        assert!(!g.origin_ok(Some("http://192.168.1.7:8477/x")));
+        let local = Guard { lan_ip: None, ..g };
+        assert!(!local.host_ok(Some("192.168.1.7:8477"), 8477), "the LAN address only when let in");
     }
 
     #[test]
@@ -713,5 +1112,132 @@ mod tests {
         let mut req = url.as_str().into_client_request().unwrap();
         req.headers_mut().insert("Cookie", format!("maestro_dash={token}").parse().unwrap());
         assert!(tungstenite::connect(req).is_ok(), "a signed-in browser gets its terminal");
+    }
+
+    /// DNS rebinding: a page on evil.com that re-points its name at 127.0.0.1
+    /// reaches the server with `Host: evil.com:port`. No password is the worst case.
+    #[test]
+    fn a_rebound_host_is_refused() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let p = srv.port;
+        let bad = [
+            "evil.com".to_string(),
+            format!("evil.com:{p}"),
+            format!("localhost.evil.com:{p}"),
+            format!("192.168.1.50:{p}"),
+            "127.0.0.1:1".to_string(),
+            format!("127.0.0.1:{p}.evil.com"),
+        ];
+        for host in &bad {
+            let r = raw(p, "GET", "/api/fleet", &[("Host", host), ("X-Maestro", "1")], "");
+            assert_eq!(r.status, 403, "Host {host}");
+            assert!(!r.body.contains("Ana"), "Host {host} read the fleet");
+            let r = raw(p, "GET", "/", &[("Host", host)], "");
+            assert_eq!(r.status, 403, "page for Host {host}");
+            let r = raw(
+                p,
+                "POST",
+                "/api/send",
+                &[("Host", host), ("X-Maestro", "1"), ("Content-Type", "application/json")],
+                r#"{"paneId":"a","message":"rm -rf"}"#,
+            );
+            assert_eq!(r.status, 403, "send for Host {host}");
+        }
+        assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
+        // the names this computer really uses still work
+        for host in [format!("127.0.0.1:{p}"), format!("localhost:{p}"), format!("LocalHost:{p}")] {
+            let r = raw(p, "GET", "/api/fleet", &[("Host", &host), ("X-Maestro", "1")], "");
+            assert_eq!(r.status, 200, "Host {host}");
+        }
+    }
+
+    #[test]
+    fn a_foreign_origin_is_refused() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let p = srv.port;
+        let foreign = [
+            "http://evil.com".to_string(),
+            "http://127.0.0.1:3000".to_string(),
+            format!("https://127.0.0.1:{p}"),
+            format!("http://evil.com:{p}"),
+            "null".to_string(),
+        ];
+        for origin in &foreign {
+            let h = [("Origin", origin.as_str()), ("X-Maestro", "1"), ("Content-Type", "application/json")];
+            assert_eq!(raw(p, "POST", "/api/send", &h, r#"{"paneId":"a","message":"x"}"#).status, 403, "{origin}");
+            assert_eq!(raw(p, "POST", "/term/input", &h, r#"{"id":"a","data":"eA=="}"#).status, 403, "{origin}");
+            assert_eq!(raw(p, "GET", "/api/fleet", &h[..2], "").status, 403, "{origin}");
+            assert_eq!(raw(p, "GET", "/term?id=a", &h[..2], "").status, 403, "{origin}");
+        }
+        assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
+        for origin in [format!("http://127.0.0.1:{p}"), format!("http://localhost:{p}")] {
+            let h = [("Origin", origin.as_str()), ("X-Maestro", "1"), ("Content-Type", "application/json")];
+            assert_eq!(raw(p, "POST", "/api/send", &h, r#"{"paneId":"a","message":"hi"}"#).status, 200, "{origin}");
+        }
+        assert_eq!(srv.sent.lock().unwrap().len(), 2);
+    }
+
+    /// Without JSON and the X-Maestro header a request is not the page's own:
+    /// a browser can't send either cross-site without a preflight nobody answers.
+    #[test]
+    fn api_calls_need_json_and_the_maestro_header() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let p = srv.port;
+        let body = r#"{"paneId":"a","message":"x"}"#;
+        for ct in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"] {
+            let r = raw(p, "POST", "/api/send", &[("X-Maestro", "1"), ("Content-Type", ct)], body);
+            assert_eq!(r.status, 415, "{ct}");
+        }
+        assert_eq!(raw(p, "POST", "/api/send", &[("X-Maestro", "1")], body).status, 415, "no content type");
+        assert_eq!(raw(p, "POST", "/api/send", &[("Content-Type", "application/json")], body).status, 403);
+        assert_eq!(raw(p, "POST", "/term/input", &[("Content-Type", "application/json")], "{}").status, 403);
+        assert_eq!(raw(p, "POST", "/term/resize", &[("Content-Type", "application/json")], "{}").status, 403);
+        assert_eq!(raw(p, "POST", "/api/logout", &[("Content-Type", "application/json")], "").status, 403);
+        assert_eq!(raw(p, "GET", "/api/fleet", &[], "").status, 403);
+        assert_eq!(raw(p, "GET", "/term?id=a", &[], "").status, 403);
+        assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
+        // charset is fine; the page and its scripts load without the header
+        let h = [("X-Maestro", "1"), ("Content-Type", "application/json; charset=utf-8")];
+        assert_eq!(raw(p, "POST", "/api/send", &h, body).status, 200);
+        assert_eq!(raw(p, "GET", "/", &[], "").status, 200);
+        assert_eq!(raw(p, "GET", "/xterm.js", &[], "").status, 200);
+    }
+
+    /// Another site can't burn this address's tries with no-cors text/plain
+    /// POSTs to /api/login, locking the owner out or timing guesses.
+    #[test]
+    fn a_cross_site_login_cannot_lock_the_owner_out() {
+        let srv = start(locked("correct horse"));
+        let p = srv.port;
+        for _ in 0..6 {
+            let h = [("Origin", "http://evil.com"), ("Content-Type", "text/plain;charset=UTF-8")];
+            assert_eq!(raw(p, "POST", "/api/login", &h, r#"{"password":"guess"}"#).status, 403);
+            let h = [("Content-Type", "text/plain;charset=UTF-8")];
+            assert_ne!(raw(p, "POST", "/api/login", &h, r#"{"password":"guess"}"#).status, 401);
+        }
+        let r = http(p, "POST", "/api/login", None, r#"{"password":"correct horse"}"#);
+        assert_eq!(r.status, 200, "the owner signs in at the first try");
+    }
+
+    #[test]
+    fn the_terminal_socket_checks_host_and_origin() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let url = format!("ws://127.0.0.1:{}/term?id=a", srv.ws_port);
+        let status = |req: tungstenite::handshake::client::Request| match tungstenite::connect(req) {
+            Err(tungstenite::Error::Http(resp)) => resp.status().as_u16(),
+            Ok(_) => 101,
+            Err(e) => panic!("{e}"),
+        };
+        let mut req = url.as_str().into_client_request().unwrap();
+        req.headers_mut().insert("Host", format!("evil.com:{}", srv.ws_port).parse().unwrap());
+        assert_eq!(status(req), 403, "a rebound host");
+        for origin in ["http://evil.com", "http://127.0.0.1:3000", "null"] {
+            let mut req = url.as_str().into_client_request().unwrap();
+            req.headers_mut().insert("Origin", origin.parse().unwrap());
+            assert_eq!(status(req), 403, "{origin}");
+        }
+        let mut req = url.as_str().into_client_request().unwrap();
+        req.headers_mut().insert("Origin", format!("http://127.0.0.1:{}", srv.port).parse().unwrap());
+        assert_eq!(status(req), 101, "the dashboard page's own origin");
     }
 }
