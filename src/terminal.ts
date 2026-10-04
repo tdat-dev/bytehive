@@ -48,6 +48,9 @@ export interface TerminalHandle {
    *  de-duplicated by the emulator — not the raw byte stream). For the remote
    *  dashboard's read-only view. */
   snapshot(lines?: number): string;
+  /** Plain text of the rows on screen now, without history: a TUI's live
+   *  frame (history can hold stale copies of it from earlier redraws). */
+  screen?(): string;
   /** Whether the program in this PTY has turned on bracketed paste (DECSET
    *  2004). When it has, a long hand-off can be delivered the way a real paste
    *  is — as one block it assembles itself instead of a burst it has to guess
@@ -352,6 +355,23 @@ export function mountTerminal(
   // `look.stripPlate` itself so toggling can't strand a carried sequence.
   const bgFilter = createBgFilter(() => look.stripPlate);
 
+  const snapshot = (lines = 40): string => {
+    try {
+      const buf = term.buffer.active;
+      const end = buf.length; // includes scrollback
+      const start = Math.max(0, end - lines);
+      const rows: string[] = [];
+      for (let i = start; i < end; i += 1) {
+        rows.push(buf.getLine(i)?.translateToString(true) ?? "");
+      }
+      // Drop trailing blank rows so idle prompts don't pad the view.
+      while (rows.length && rows[rows.length - 1].trim() === "") rows.pop();
+      return rows.join("\n");
+    } catch {
+      return ""; // terminal disposed (e.g. after a tab detach)
+    }
+  };
+
   return {
     write: (data) => term.write(bgFilter(data)),
     fit: () => {
@@ -414,21 +434,8 @@ export function mountTerminal(
         return false; // older emulator build — treat as off and type plainly
       }
     },
-    snapshot: (lines = 40) => {
-      try {
-        const buf = term.buffer.active;
-        const end = buf.length; // includes scrollback
-        const start = Math.max(0, end - lines);
-        const rows: string[] = [];
-        for (let i = start; i < end; i += 1) {
-          rows.push(buf.getLine(i)?.translateToString(true) ?? "");
-        }
-        // Drop trailing blank rows so idle prompts don't pad the view.
-        while (rows.length && rows[rows.length - 1].trim() === "") rows.pop();
-        return rows.join("\n");
-      } catch {
-        return ""; // terminal disposed (e.g. after a tab detach)
-      }
-    },
+    snapshot,
+    // The buffer's last `rows` lines are the screen (the rest is history).
+    screen: () => snapshot(term.rows),
   };
 }
