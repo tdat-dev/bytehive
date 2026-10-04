@@ -17,6 +17,8 @@ export interface Prefs {
   directorFirst: boolean;
   /** Windows notification when an agent starts waiting on you. */
   notifyNeeds: boolean;
+  /** Windows notification when an agent finishes (done, ready to review, or crashed). */
+  notifyDone: boolean;
   /** When an agent needs you and the one on screen is not busy, show it. */
   jumpToNeeds: boolean;
   /** Show the answer box over the terminal (off: a small chip you open when ready). */
@@ -49,6 +51,7 @@ export const DEFAULTS: Prefs = {
   worktree: false,
   directorFirst: false,
   notifyNeeds: true,
+  notifyDone: true,
   jumpToNeeds: false,
   askCard: true,
   splitMax: 6,

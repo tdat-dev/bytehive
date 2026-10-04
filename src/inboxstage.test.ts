@@ -18,6 +18,7 @@ vi.mock("./ipc", () => ({ resizePty: async () => {}, killPty: async () => {}, cl
 vi.mock("./spawnmodal", () => ({ openModal: () => {} }));
 vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
+vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
 import { setInbox } from "./inbox";

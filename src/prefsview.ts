@@ -14,6 +14,7 @@ const TOGGLES: Toggle[] = [
   { id: "prefWorktree", key: "worktree" },
   { id: "prefDirector", key: "directorFirst" },
   { id: "prefNotify", key: "notifyNeeds" },
+  { id: "prefNotifyDone", key: "notifyDone" },
   { id: "prefJump", key: "jumpToNeeds" },
   { id: "prefAskCard", key: "askCard" },
   { id: "prefReviewOnDone", key: "reviewOnDone" },

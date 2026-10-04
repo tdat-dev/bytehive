@@ -36,6 +36,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-notification = "2"
+# the plugin's own toasts can't tell a click; these can (toast.rs)
+tauri-winrt-notification = "0.7"
 tauri-plugin-opener = "2"
 portable-pty = "0.9.0"
 windows = { version = "0.62", features = [

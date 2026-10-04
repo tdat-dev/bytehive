@@ -6,6 +6,9 @@
 import { workspaces } from "./appstate";
 import { hiddenGate } from "./hiddengate";
 import { paneStatus } from "./fleet";
+import { taskOf } from "./tasks";
+import { lastFinish } from "./finishwatch";
+import { finishedLabel } from "./finishnote";
 import {
   sendInput,
   sendMessage,
@@ -41,6 +44,7 @@ function fleetSnapshotJson(): string {
   const output: Record<string, string> = {};
   for (const ws of workspaces.values())
     for (const p of ws.panes.values()) {
+      const t = taskOf(p.id);
       agents.push({
         id: p.id,
         name: p.spec.name,
@@ -54,6 +58,11 @@ function fleetSnapshotJson(): string {
           now,
         ),
         uptime: p.spawnedAt && p.running ? fmtUptimeShort(now - p.spawnedAt) : "",
+        // through with its work: "done" or "review" (Ready to review), and how many files
+        finished: t ? finishedLabel(t.status.state, !!t.worked, !!t.status.limit) : null,
+        files: t?.changedFiles ?? null,
+        // the run that just ended, so the page can tell you once (a browser notification)
+        finish: lastFinish(p.id),
       });
       const screen = p.term.snapshot(DASH_OUTPUT_ROWS);
       if (screen.trim()) output[p.id] = screen;

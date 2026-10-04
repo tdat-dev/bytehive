@@ -9,6 +9,7 @@ pub mod agentusage;
 pub mod state;
 pub mod review;
 pub mod tailfile;
+pub mod toast;
 pub mod transcripts;
 pub mod worktree;
 
@@ -91,6 +92,7 @@ pub fn run() {
             commands::pty_kill_all,
             commands::set_tray_visible,
             commands::set_tray_tooltip,
+            toast::notify_open,
             commands::programs_on_path,
             commands::record_start,
             commands::record_stop,

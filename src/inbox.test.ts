@@ -59,6 +59,7 @@ vi.mock("./confirmmodal", () => ({ confirmModal: async () => ({ ok: state.confir
 vi.mock("./spawnmodal", () => ({ openModal: () => {}, presetAvailable: (p: string) => p === "codex", loadCrew: () => ({ skipPerms: false }), spawnAgents: async () => ["Bob"] }));
 vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
+vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
 import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";

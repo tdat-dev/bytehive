@@ -15,7 +15,7 @@ import {
   openExternal,
   worktreeAdd,
   worktreeLeave,
-  notify,
+  notifyAgent,
   recordStart,
   recordStop,
 } from "./ipc";
@@ -360,6 +360,7 @@ export function createAgent(
       pane.spawning = false;
       pane.running = true;
       pane.error = undefined;
+      pane.exitCode = undefined;
       pane.spawnedAt = Date.now();
       pane.lastOutputAt = Date.now();
       setStatus(pane, "running", "run");
@@ -594,7 +595,7 @@ function setAttention(pane: Pane, ws: Workspace) {
     pane.attentionNotified = true;
     // Say what it wants when the screen shows it ("Ana wants to run npm test").
     const line = taskOf(pane.id)?.status.state === "needs" ? taskLine(pane.id) : null;
-    void notify(line ?? `${pane.spec.name} needs you`, ws.name).catch(() => {});
+    void notifyAgent(line ?? `${pane.spec.name} needs you`, ws.name, pane.id).catch(() => {});
   }
 }
 
