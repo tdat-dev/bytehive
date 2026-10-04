@@ -42,7 +42,7 @@
     e.preventDefault();
     go.disabled = true; msg.textContent = "";
     try {
-      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-Maestro": "1" },
         body: JSON.stringify({ password: pw.value }) });
       if (r.ok) { location.replace("/"); return; }
       const o = await r.json().catch(() => ({}));

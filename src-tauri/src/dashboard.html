@@ -123,10 +123,13 @@
 <script>
   const enc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
   let openId = null;
+  // Every call to the app says it comes from this page (the server refuses
+  // API calls without X-Maestro, which another site can't send).
+  const API = { "Content-Type": "application/json", "X-Maestro": "1" };
 
   async function post(paneId, payload) {
     try {
-      await fetch("/api/send", { method: "POST", headers: { "Content-Type": "application/json" },
+      await fetch("/api/send", { method: "POST", headers: API,
         body: JSON.stringify({ paneId, ...payload }) });
       // Refresh a few times so the key's effect shows fast (the app pushes
       // fresh output ~150ms + ~450ms after delivery).
@@ -149,7 +152,7 @@
   const signout = document.getElementById("signout");
   signout.hidden = !document.body.hasAttribute("data-auth");
   signout.addEventListener("click", async () => {
-    try { await fetch("/api/logout", { method: "POST" }); } catch (e) {}
+    try { await fetch("/api/logout", { method: "POST", headers: API }); } catch (e) {}
     location.reload();
   });
 
@@ -280,7 +283,7 @@
   async function tick() {
     if (term) return; // don't poll the roster while a full terminal is open
     try {
-      const r = await fetch("/api/fleet");
+      const r = await fetch("/api/fleet", { headers: API });
       // signed out (expired, or the password changed): the page becomes the sign-in form
       if (r.status === 401) { location.reload(); return; }
       render(await r.json());
@@ -352,7 +355,7 @@
 
   function sendResize() {
     if (!term || !termId) return;
-    fetch("/term/resize", { method: "POST", headers: { "Content-Type": "application/json" },
+    fetch("/term/resize", { method: "POST", headers: API,
       body: JSON.stringify({ id: termId, cols: term.cols, rows: term.rows }) }).catch(() => {});
   }
   function refit() {

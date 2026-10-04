@@ -9,6 +9,12 @@
 //! LAN (0.0.0.0) is opt-in since the send endpoint can drive an agent, and
 //! needs a password (dashauth.rs): with one set, every route that shows or
 //! drives an agent wants a signed-in session.
+//!
+//! Only the dashboard's own page gets in (`Guard`): the Host must be one of
+//! this server's names (no DNS rebinding), an Origin must be the page's own
+//! (no other site or other port on this computer), a POST must be JSON and an
+//! API call must carry `X-Maestro: 1`, neither of which another site can send
+//! without a CORS preflight that nothing here answers.
 
 use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream, UdpSocket};
@@ -42,6 +48,72 @@ struct Ctx {
     auth: Arc<DashAuth>,
     /// Hands a POST /api/send body to the frontend.
     send: Arc<dyn Fn(String) + Send + Sync>,
+    /// Which hosts and origins are this server's own.
+    guard: Guard,
+    /// Set when the server is stopping: nothing is served after it.
+    stop: Arc<AtomicBool>,
+}
+
+/// The names this server answers to. Anything else is another site: a DNS
+/// rebinding page (Host: evil.com) or a page on another port of this computer
+/// (Origin: http://127.0.0.1:3000) that the browser would happily send our
+/// cookie from.
+#[derive(Clone)]
+struct Guard {
+    /// The page's port: Host of a page request, and the port in every Origin.
+    port: u16,
+    /// The terminal WebSocket's port (port + 1): Host of a socket handshake.
+    ws_port: u16,
+    /// The LAN address shown in Settings, when other devices are let in.
+    lan_ip: Option<Ipv4Addr>,
+}
+
+impl Guard {
+    fn names(&self) -> Vec<String> {
+        let mut out = vec!["127.0.0.1".to_string(), "localhost".to_string()];
+        if let Some(ip) = self.lan_ip {
+            out.push(ip.to_string());
+        }
+        out
+    }
+
+    /// Is `host` (a Host header) one of ours on `port`?
+    fn host_ok(&self, host: Option<&str>, port: u16) -> bool {
+        let Some(host) = host.map(|h| h.trim().to_ascii_lowercase()) else { return false };
+        self.names().iter().any(|n| host == format!("{n}:{port}") || (port == 80 && host == *n))
+    }
+
+    /// No Origin (not a browser, or a same-origin GET), or the page's own.
+    fn origin_ok(&self, origin: Option<&str>) -> bool {
+        let Some(origin) = origin.map(|o| o.trim().to_ascii_lowercase()) else { return true };
+        let Some(host) = origin.strip_prefix("http://") else { return false };
+        self.host_ok(Some(host), self.port)
+    }
+
+    /// Why an HTTP request is turned away before any route sees it.
+    fn refuse(&self, method: &Method, path: &str, get: impl Fn(&str) -> Option<String>) -> Option<(u16, &'static str)> {
+        if !self.host_ok(get("Host").as_deref(), self.port) {
+            return Some((403, "unknown host"));
+        }
+        if !self.origin_ok(get("Origin").as_deref()) {
+            return Some((403, "foreign origin"));
+        }
+        // JSON only: a cross-site form or no-cors fetch can't send it without
+        // a preflight, and nothing here answers one.
+        if *method == Method::Post {
+            let ct = get("Content-Type").unwrap_or_default();
+            let mime = ct.split(';').next().unwrap_or("").trim();
+            if !mime.eq_ignore_ascii_case("application/json") {
+                return Some((415, "send JSON"));
+            }
+        }
+        // The page's own calls carry X-Maestro; another site's can't without a preflight.
+        let api = path.starts_with("/api/") || path == "/term" || path.starts_with("/term/");
+        if api && get("X-Maestro").as_deref().map(str::trim) != Some("1") {
+            return Some((403, "not from the dashboard"));
+        }
+        None
+    }
 }
 
 #[derive(Default)]
@@ -80,14 +152,14 @@ fn local_ip() -> Option<Ipv4Addr> {
     }
 }
 
-fn urls_for(port: u16, lan: bool) -> Vec<String> {
+/// The URLs to show, and the LAN address (when let in) the server answers to.
+fn urls_for(port: u16, lan: bool) -> (Vec<String>, Option<Ipv4Addr>) {
     let mut out = vec![format!("http://127.0.0.1:{port}")];
-    if lan {
-        if let Some(ip) = local_ip() {
-            out.push(format!("http://{ip}:{port}"));
-        }
+    let ip = if lan { local_ip() } else { None };
+    if let Some(ip) = ip {
+        out.push(format!("http://{ip}:{port}"));
     }
-    out
+    (out, ip)
 }
 
 fn info(inner: &Inner) -> DashboardInfo {
@@ -177,7 +249,7 @@ pub async fn dashboard_start(
     // Binding to 0.0.0.0 (LAN) and probing the local IP can block; do it OFF the
     // main/UI thread so toggling LAN never freezes the app. The full web
     // terminal uses a WebSocket on port+1 (own the TcpStream → set TCP_NODELAY).
-    let (server, ws_listener, urls) = run_blocking(move || {
+    let (server, ws_listener, (urls, lan_ip)) = run_blocking(move || {
         let server = Server::http((bind, port)).map_err(|e| {
             CommandError::Failed(format!("dashboard: cannot bind port {port}: {e}"))
         })?;
@@ -198,6 +270,8 @@ pub async fn dashboard_start(
         send: Arc::new(move |body| {
             let _ = send_app.emit("dashboard-send", body);
         }),
+        guard: Guard { port, ws_port: port + 1, lan_ip },
+        stop: stop.clone(),
     };
     let ctx_ws = ctx.clone();
     std::thread::spawn(move || serve(server, ctx, stop_thread));
@@ -243,13 +317,18 @@ fn read_body(request: &mut Request) -> serde_json::Value {
     serde_json::from_str(&body).unwrap_or(serde_json::Value::Null)
 }
 
-/// The request's `Cookie:` header, if any.
-fn cookie_of(request: &Request) -> Option<String> {
+/// The value of the request's `name` header, if any.
+fn header_of(request: &Request, name: &str) -> Option<String> {
     request
         .headers()
         .iter()
-        .find(|h| h.field.equiv("Cookie"))
+        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
         .map(|h| h.value.as_str().to_string())
+}
+
+/// The request's `Cookie:` header, if any.
+fn cookie_of(request: &Request) -> Option<String> {
+    header_of(request, "Cookie")
 }
 
 fn respond_401(request: Request) {
@@ -313,6 +392,11 @@ fn handle(mut request: Request, ctx: Ctx) {
     let url = request.url().to_string();
     let method = request.method().clone();
     let path = url.split('?').next().unwrap_or("").to_string();
+    if let Some((code, why)) = ctx.guard.refuse(&method, &path, |name| header_of(&request, name)) {
+        let body = format!("{{\"error\":\"{why}\"}}");
+        let _ = request.respond(json_response(body).with_status_code(code));
+        return;
+    }
     let signed_in = ctx.auth.allows(cookie_of(&request).as_deref(), Instant::now());
 
     match (method, path.as_str()) {
@@ -409,9 +493,8 @@ fn serve_ws(listener: TcpListener, stop: Arc<AtomicBool>, ctx: Ctx) {
         }
         match listener.accept() {
             Ok((stream, _)) => {
-                let (registry, auth) = (ctx.registry.clone(), ctx.auth.clone());
-                let stop = stop.clone();
-                std::thread::spawn(move || ws_conn(stream, registry, auth, stop));
+                let ctx = ctx.clone();
+                std::thread::spawn(move || ws_conn(stream, ctx));
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(50));
@@ -428,7 +511,8 @@ fn ws_query_id(uri: &str) -> String {
         .to_string()
 }
 
-fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, auth: Arc<DashAuth>, stop: Arc<AtomicBool>) {
+fn ws_conn(stream: TcpStream, ctx: Ctx) {
+    let Ctx { registry, auth, stop, guard, .. } = ctx;
     let _ = stream.set_nodelay(true); // the whole point — no Nagle coalescing
     // A socket accepted from the non-blocking listener is non-blocking too on
     // Windows; the handshake needs to wait for the request.
@@ -439,12 +523,23 @@ fn ws_conn(stream: TcpStream, registry: Arc<Mutex<Registry>>, auth: Arc<DashAuth
         stream,
         |req: &tungstenite::handshake::server::Request,
          resp: tungstenite::handshake::server::Response| {
+            let refuse = |code: tungstenite::http::StatusCode, why: &str| {
+                let mut no = tungstenite::handshake::server::ErrorResponse::new(Some(why.into()));
+                *no.status_mut() = code;
+                Err(no)
+            };
+            let get = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
+            // Same rules as a page request: our own host (this port), and an
+            // Origin that is the dashboard page itself (a browser always sends one).
+            if !guard.host_ok(get("Host"), guard.ws_port) {
+                return refuse(tungstenite::http::StatusCode::FORBIDDEN, "unknown host");
+            }
+            if !guard.origin_ok(get("Origin")) {
+                return refuse(tungstenite::http::StatusCode::FORBIDDEN, "foreign origin");
+            }
             // The browser sends the page's cookie along (cookies ignore the port).
-            let cookie = req.headers().get("Cookie").and_then(|v| v.to_str().ok());
-            if !auth.allows(cookie, Instant::now()) {
-                let mut no = tungstenite::handshake::server::ErrorResponse::new(Some("sign in".into()));
-                *no.status_mut() = tungstenite::http::StatusCode::UNAUTHORIZED;
-                return Err(no);
+            if !auth.allows(get("Cookie"), Instant::now()) {
+                return refuse(tungstenite::http::StatusCode::UNAUTHORIZED, "sign in");
             }
             agent_id = ws_query_id(&req.uri().to_string());
             Ok(resp)
@@ -561,13 +656,15 @@ mod tests {
         let ws_port = ws_listener.local_addr().unwrap().port();
         let sent = Arc::new(Mutex::new(Vec::new()));
         let sink = sent.clone();
+        let stop = Arc::new(AtomicBool::new(false));
         let ctx = Ctx {
             snapshot: Arc::new(Mutex::new("{\"agents\":[{\"id\":\"a\",\"name\":\"Ana\"}]}".into())),
             registry: Arc::new(Mutex::new(Registry::default())),
             auth,
             send: Arc::new(move |b| sink.lock().unwrap().push(b)),
+            guard: Guard { port, ws_port, lan_ip: None },
+            stop: stop.clone(),
         };
-        let stop = Arc::new(AtomicBool::new(false));
         let (ctx_ws, stop_http, stop_ws) = (ctx.clone(), stop.clone(), stop.clone());
         std::thread::spawn(move || serve(server, ctx, stop_http));
         std::thread::spawn(move || serve_ws(ws_listener, stop_ws, ctx_ws));
@@ -580,19 +677,17 @@ mod tests {
         body: String,
     }
 
-    /// One plain HTTP/1.1 request, the way curl would send it.
-    fn http(port: u16, method: &str, path: &str, cookie: Option<&str>, body: &str) -> Reply {
+    /// One plain HTTP/1.1 request with exactly these headers (plus
+    /// `Host: 127.0.0.1:{port}` unless one is given).
+    fn raw(port: u16, method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> Reply {
         let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
         s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
-        let mut req = format!(
-            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nContent-Length: {}\r\n",
-            body.len()
-        );
-        if let Some(c) = cookie {
-            req.push_str(&format!("Cookie: {c}\r\n"));
+        let mut req = format!("{method} {path} HTTP/1.1\r\nConnection: close\r\nContent-Length: {}\r\n", body.len());
+        if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("Host")) {
+            req.push_str(&format!("Host: 127.0.0.1:{port}\r\n"));
         }
-        if !body.is_empty() {
-            req.push_str("Content-Type: application/json\r\n");
+        for (k, v) in headers {
+            req.push_str(&format!("{k}: {v}\r\n"));
         }
         req.push_str("\r\n");
         req.push_str(body);
@@ -602,6 +697,19 @@ mod tests {
         let (head, body) = out.split_once("\r\n\r\n").unwrap_or((out.as_str(), ""));
         let status = head.split(' ').nth(1).unwrap().parse().unwrap();
         Reply { status, head: head.to_string(), body: body.to_string() }
+    }
+
+    /// A request the way the dashboard page sends it: its own host, the
+    /// X-Maestro header, JSON on a POST.
+    fn http(port: u16, method: &str, path: &str, cookie: Option<&str>, body: &str) -> Reply {
+        let mut h = vec![("X-Maestro", "1")];
+        if method == "POST" {
+            h.push(("Content-Type", "application/json"));
+        }
+        if let Some(c) = cookie {
+            h.push(("Cookie", c));
+        }
+        raw(port, method, path, &h, body)
     }
 
     /// The session cookie (name=value) a reply sets.
@@ -692,12 +800,46 @@ mod tests {
         let base = format!("http://127.0.0.1:{}", srv.port);
         let code = |out: std::io::Result<std::process::Output>| String::from_utf8(out.unwrap().stdout).unwrap();
         let fleet = format!("{base}/api/fleet");
-        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", &fleet])), "401");
+        let mx = "X-Maestro: 1";
+        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-H", mx, &fleet])), "401");
         let login = format!("{base}/api/login");
         let ok = code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-c", jar, "-H", "Content-Type: application/json",
-            "-d", r#"{"password":"correct horse"}"#, &login]));
+            "-H", mx, "-d", r#"{"password":"correct horse"}"#, &login]));
         assert_eq!(ok, "200");
-        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-b", jar, &fleet])), "200");
+        assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-b", jar, "-H", mx, &fleet])), "200");
+        // a plain form post, the kind any page can send, is turned away
+        let form = code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-d", "password=x", &login]));
+        assert_eq!(form, "415");
+    }
+
+    /// Every fetch the embedded pages make carries what the server now wants.
+    #[test]
+    fn the_pages_send_json_and_the_maestro_header() {
+        assert!(PAGE.contains(r#"const API = { "Content-Type": "application/json", "X-Maestro": "1" };"#));
+        for (name, page) in [("dashboard", PAGE), ("login", LOGIN_PAGE)] {
+            let calls: Vec<&str> = page.split("fetch(").skip(1).collect();
+            assert!(!calls.is_empty(), "{name}");
+            for call in calls {
+                let call = &call[..call.find(';').unwrap_or(call.len())];
+                assert!(call.contains("headers: API") || call.contains(r#""X-Maestro": "1""#), "{name}: fetch({call}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_guard_knows_its_own_names() {
+        let g = Guard { port: 8477, ws_port: 8478, lan_ip: Some(Ipv4Addr::new(192, 168, 1, 7)) };
+        assert!(g.host_ok(Some("192.168.1.7:8477"), 8477));
+        assert!(g.host_ok(Some("192.168.1.7:8478"), 8478));
+        assert!(!g.host_ok(Some("192.168.1.7:8478"), 8477));
+        assert!(!g.host_ok(Some("192.168.1.8:8477"), 8477));
+        assert!(!g.host_ok(None, 8477));
+        assert!(g.origin_ok(None));
+        assert!(g.origin_ok(Some("http://192.168.1.7:8477")));
+        assert!(!g.origin_ok(Some("http://192.168.1.7:8478")), "the socket port is not a page");
+        assert!(!g.origin_ok(Some("http://192.168.1.7:8477/x")));
+        let local = Guard { lan_ip: None, ..g };
+        assert!(!local.host_ok(Some("192.168.1.7:8477"), 8477), "the LAN address only when let in");
     }
 
     #[test]
@@ -713,5 +855,132 @@ mod tests {
         let mut req = url.as_str().into_client_request().unwrap();
         req.headers_mut().insert("Cookie", format!("maestro_dash={token}").parse().unwrap());
         assert!(tungstenite::connect(req).is_ok(), "a signed-in browser gets its terminal");
+    }
+
+    /// DNS rebinding: a page on evil.com that re-points its name at 127.0.0.1
+    /// reaches the server with `Host: evil.com:port`. No password is the worst case.
+    #[test]
+    fn a_rebound_host_is_refused() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let p = srv.port;
+        let bad = [
+            "evil.com".to_string(),
+            format!("evil.com:{p}"),
+            format!("localhost.evil.com:{p}"),
+            format!("192.168.1.50:{p}"),
+            "127.0.0.1:1".to_string(),
+            format!("127.0.0.1:{p}.evil.com"),
+        ];
+        for host in &bad {
+            let r = raw(p, "GET", "/api/fleet", &[("Host", host), ("X-Maestro", "1")], "");
+            assert_eq!(r.status, 403, "Host {host}");
+            assert!(!r.body.contains("Ana"), "Host {host} read the fleet");
+            let r = raw(p, "GET", "/", &[("Host", host)], "");
+            assert_eq!(r.status, 403, "page for Host {host}");
+            let r = raw(
+                p,
+                "POST",
+                "/api/send",
+                &[("Host", host), ("X-Maestro", "1"), ("Content-Type", "application/json")],
+                r#"{"paneId":"a","message":"rm -rf"}"#,
+            );
+            assert_eq!(r.status, 403, "send for Host {host}");
+        }
+        assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
+        // the names this computer really uses still work
+        for host in [format!("127.0.0.1:{p}"), format!("localhost:{p}"), format!("LocalHost:{p}")] {
+            let r = raw(p, "GET", "/api/fleet", &[("Host", &host), ("X-Maestro", "1")], "");
+            assert_eq!(r.status, 200, "Host {host}");
+        }
+    }
+
+    #[test]
+    fn a_foreign_origin_is_refused() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let p = srv.port;
+        let foreign = [
+            "http://evil.com".to_string(),
+            "http://127.0.0.1:3000".to_string(),
+            format!("https://127.0.0.1:{p}"),
+            format!("http://evil.com:{p}"),
+            "null".to_string(),
+        ];
+        for origin in &foreign {
+            let h = [("Origin", origin.as_str()), ("X-Maestro", "1"), ("Content-Type", "application/json")];
+            assert_eq!(raw(p, "POST", "/api/send", &h, r#"{"paneId":"a","message":"x"}"#).status, 403, "{origin}");
+            assert_eq!(raw(p, "POST", "/term/input", &h, r#"{"id":"a","data":"eA=="}"#).status, 403, "{origin}");
+            assert_eq!(raw(p, "GET", "/api/fleet", &h[..2], "").status, 403, "{origin}");
+            assert_eq!(raw(p, "GET", "/term?id=a", &h[..2], "").status, 403, "{origin}");
+        }
+        assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
+        for origin in [format!("http://127.0.0.1:{p}"), format!("http://localhost:{p}")] {
+            let h = [("Origin", origin.as_str()), ("X-Maestro", "1"), ("Content-Type", "application/json")];
+            assert_eq!(raw(p, "POST", "/api/send", &h, r#"{"paneId":"a","message":"hi"}"#).status, 200, "{origin}");
+        }
+        assert_eq!(srv.sent.lock().unwrap().len(), 2);
+    }
+
+    /// Without JSON and the X-Maestro header a request is not the page's own:
+    /// a browser can't send either cross-site without a preflight nobody answers.
+    #[test]
+    fn api_calls_need_json_and_the_maestro_header() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let p = srv.port;
+        let body = r#"{"paneId":"a","message":"x"}"#;
+        for ct in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"] {
+            let r = raw(p, "POST", "/api/send", &[("X-Maestro", "1"), ("Content-Type", ct)], body);
+            assert_eq!(r.status, 415, "{ct}");
+        }
+        assert_eq!(raw(p, "POST", "/api/send", &[("X-Maestro", "1")], body).status, 415, "no content type");
+        assert_eq!(raw(p, "POST", "/api/send", &[("Content-Type", "application/json")], body).status, 403);
+        assert_eq!(raw(p, "POST", "/term/input", &[("Content-Type", "application/json")], "{}").status, 403);
+        assert_eq!(raw(p, "POST", "/term/resize", &[("Content-Type", "application/json")], "{}").status, 403);
+        assert_eq!(raw(p, "POST", "/api/logout", &[("Content-Type", "application/json")], "").status, 403);
+        assert_eq!(raw(p, "GET", "/api/fleet", &[], "").status, 403);
+        assert_eq!(raw(p, "GET", "/term?id=a", &[], "").status, 403);
+        assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
+        // charset is fine; the page and its scripts load without the header
+        let h = [("X-Maestro", "1"), ("Content-Type", "application/json; charset=utf-8")];
+        assert_eq!(raw(p, "POST", "/api/send", &h, body).status, 200);
+        assert_eq!(raw(p, "GET", "/", &[], "").status, 200);
+        assert_eq!(raw(p, "GET", "/xterm.js", &[], "").status, 200);
+    }
+
+    /// Another site can't burn this address's tries with no-cors text/plain
+    /// POSTs to /api/login, locking the owner out or timing guesses.
+    #[test]
+    fn a_cross_site_login_cannot_lock_the_owner_out() {
+        let srv = start(locked("correct horse"));
+        let p = srv.port;
+        for _ in 0..6 {
+            let h = [("Origin", "http://evil.com"), ("Content-Type", "text/plain;charset=UTF-8")];
+            assert_eq!(raw(p, "POST", "/api/login", &h, r#"{"password":"guess"}"#).status, 403);
+            let h = [("Content-Type", "text/plain;charset=UTF-8")];
+            assert_ne!(raw(p, "POST", "/api/login", &h, r#"{"password":"guess"}"#).status, 401);
+        }
+        let r = http(p, "POST", "/api/login", None, r#"{"password":"correct horse"}"#);
+        assert_eq!(r.status, 200, "the owner signs in at the first try");
+    }
+
+    #[test]
+    fn the_terminal_socket_checks_host_and_origin() {
+        let srv = start(Arc::new(DashAuth::default()));
+        let url = format!("ws://127.0.0.1:{}/term?id=a", srv.ws_port);
+        let status = |req: tungstenite::handshake::client::Request| match tungstenite::connect(req) {
+            Err(tungstenite::Error::Http(resp)) => resp.status().as_u16(),
+            Ok(_) => 101,
+            Err(e) => panic!("{e}"),
+        };
+        let mut req = url.as_str().into_client_request().unwrap();
+        req.headers_mut().insert("Host", format!("evil.com:{}", srv.ws_port).parse().unwrap());
+        assert_eq!(status(req), 403, "a rebound host");
+        for origin in ["http://evil.com", "http://127.0.0.1:3000", "null"] {
+            let mut req = url.as_str().into_client_request().unwrap();
+            req.headers_mut().insert("Origin", origin.parse().unwrap());
+            assert_eq!(status(req), 403, "{origin}");
+        }
+        let mut req = url.as_str().into_client_request().unwrap();
+        req.headers_mut().insert("Origin", format!("http://127.0.0.1:{}", srv.port).parse().unwrap());
+        assert_eq!(status(req), 101, "the dashboard page's own origin");
     }
 }
