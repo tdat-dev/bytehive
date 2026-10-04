@@ -75,12 +75,16 @@ impl Registry {
     /// - when its process exits, `on_exit` fires and then the agent is taken
     ///   out of the registry and torn down (ConPTY, job, reader thread,
     ///   scrollback), unless the id has been re-spawned since.
+    /// - `pipe`: on plain pipes instead of a ConPTY (an agent that talks in
+    ///   JSON lines; `size` is then unused).
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_shared(
         registry: &Arc<Mutex<Registry>>,
         id: String,
         run: u64,
         spec: &CommandSpec,
         size: PtySize,
+        pipe: bool,
         on_bytes: impl FnMut(&[u8]) + Send + 'static,
         on_exit: impl FnOnce(u32) + Send + 'static,
     ) -> Result<()> {
@@ -90,7 +94,7 @@ impl Registry {
         }
         let exited = Arc::new(AtomicBool::new(false));
         let (flag, weak, exit_id) = (exited.clone(), Arc::downgrade(registry), id.clone());
-        let agent = Agent::spawn(spec, size, on_bytes, move |code| {
+        let exit = move |code| {
             flag.store(true, Ordering::SeqCst);
             on_exit(code);
             std::thread::sleep(EXIT_DRAIN);
@@ -98,7 +102,16 @@ impl Registry {
                 let gone = lock(&reg).take_run(&exit_id, run);
                 drop(gone); // teardown outside the lock
             }
-        })?;
+        };
+        #[cfg(windows)]
+        let agent = if pipe { Agent::spawn_pipe(spec, on_bytes, exit)? } else { Agent::spawn(spec, size, on_bytes, exit)? };
+        #[cfg(not(windows))]
+        let agent = {
+            if pipe {
+                return Err(anyhow!("pipe agents are Windows-only for now"));
+            }
+            Agent::spawn(spec, size, on_bytes, exit)?
+        };
         let mut reg = lock(registry);
         if reg.has(&id) {
             drop(reg);

@@ -68,11 +68,11 @@ fn many_agents_run_and_each_kills_independently() {
 #[serial_test::serial]
 fn shared_spawn_inserts_rejects_duplicates_and_takes_out() {
     let shared = Arc::new(Mutex::new(Registry::new()));
-    Registry::spawn_shared(&shared, "a".into(), 1, &long_spec(), size(), |_| {}, |_| {})
+    Registry::spawn_shared(&shared, "a".into(), 1, &long_spec(), size(), false, |_| {}, |_| {})
         .expect("spawn a");
     assert!(registry::lock(&shared).has("a"));
     assert!(
-        Registry::spawn_shared(&shared, "a".into(), 2, &long_spec(), size(), |_| {}, |_| {}).is_err(),
+        Registry::spawn_shared(&shared, "a".into(), 2, &long_spec(), size(), false, |_| {}, |_| {}).is_err(),
         "duplicate id must be rejected"
     );
     registry::lock(&shared).write_input("a", b"echo routed\r\n").expect("input to a");
@@ -116,7 +116,7 @@ fn an_agent_whose_process_exits_leaves_the_registry() {
     let shared = Arc::new(Mutex::new(Registry::new()));
     let (tx, rx) = std::sync::mpsc::channel();
     let spec = CommandSpec::new("cmd.exe").arg("/C").arg("echo bye");
-    Registry::spawn_shared(&shared, "a".into(), 1, &spec, size(), |_| {}, move |code| {
+    Registry::spawn_shared(&shared, "a".into(), 1, &spec, size(), false, |_| {}, move |code| {
         let _ = tx.send(code);
     })
     .expect("spawn a");
@@ -135,13 +135,13 @@ fn an_agent_whose_process_exits_leaves_the_registry() {
 fn a_late_exit_of_a_replaced_run_leaves_the_new_run_alone() {
     let shared = Arc::new(Mutex::new(Registry::new()));
     let (tx, rx) = std::sync::mpsc::channel();
-    Registry::spawn_shared(&shared, "a".into(), 1, &long_spec(), size(), |_| {}, move |code| {
+    Registry::spawn_shared(&shared, "a".into(), 1, &long_spec(), size(), false, |_| {}, move |code| {
         let _ = tx.send(code);
     })
     .expect("spawn run 1");
     // Restart in place: run 1 is taken out, run 2 takes the id, THEN run 1 dies.
     let old = registry::lock(&shared).take("a").expect("run 1");
-    Registry::spawn_shared(&shared, "a".into(), 2, &long_spec(), size(), |_| {}, |_| {})
+    Registry::spawn_shared(&shared, "a".into(), 2, &long_spec(), size(), false, |_| {}, |_| {})
         .expect("spawn run 2");
     drop(old);
     rx.recv_timeout(Duration::from_secs(10)).expect("run 1 exit reported");
@@ -149,4 +149,44 @@ fn a_late_exit_of_a_replaced_run_leaves_the_new_run_alone() {
     assert!(registry::lock(&shared).has("a"), "run 2 must survive run 1's exit");
     let gone = registry::lock(&shared).drain();
     drop(gone);
+}
+
+/// A pipe agent (JSON lines, no terminal) goes through the same registry:
+/// input reaches it, its output comes back as whole lines, its stderr as a
+/// line of JSON, and taking it out ends it.
+#[cfg(windows)]
+#[test]
+fn a_pipe_agent_talks_in_lines_and_dies_with_its_entry() {
+    use std::sync::mpsc;
+    let shared = Arc::new(Mutex::new(Registry::new()));
+    let (out_tx, out_rx) = mpsc::channel::<Vec<u8>>();
+    let (exit_tx, exit_rx) = mpsc::channel::<u32>();
+    // cmd runs the lines it reads as they come (findstr would hold its output
+    // until its input closes); findstr asked to read a missing file says so on
+    // stderr.
+    let (out2, exit2) = (out_tx.clone(), exit_tx.clone());
+    let spec = CommandSpec::new("cmd").arg("/q");
+    Registry::spawn_shared(&shared, "p".into(), 1, &spec, size(), true, move |b| { let _ = out_tx.send(b.to_vec()); }, move |c| {
+        let _ = exit_tx.send(c);
+    })
+    .expect("spawn pipe agent");
+    let missing = CommandSpec::new("findstr").arg("x").arg("no-such-file.txt");
+    Registry::spawn_shared(&shared, "q".into(), 1, &missing, size(), true, move |b| { let _ = out2.send(b.to_vec()); }, move |c| {
+        let _ = exit2.send(c);
+    })
+    .expect("spawn failing pipe agent");
+    exit_rx.recv_timeout(Duration::from_secs(10)).expect("the failing one exits");
+    registry::lock(&shared).write_input("p", b"echo hello there\r\n").expect("input");
+    let mut seen = String::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !(seen.contains("hello there") && seen.contains("maestro_stderr")) && Instant::now() < deadline {
+        if let Ok(b) = out_rx.recv_timeout(Duration::from_millis(200)) {
+            seen.push_str(&String::from_utf8_lossy(&b));
+        }
+    }
+    assert!(seen.contains("hello there"), "stdout line came back: {seen:?}");
+    assert!(seen.contains("\"type\":\"maestro_stderr\""), "stderr came as a JSON line: {seen:?}");
+    let gone = registry::lock(&shared).take("p");
+    drop(gone);
+    exit_rx.recv_timeout(Duration::from_secs(10)).expect("exit reported after take");
 }

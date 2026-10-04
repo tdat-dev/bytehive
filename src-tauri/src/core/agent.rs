@@ -1,5 +1,6 @@
-//! One running agent: a ConPTY child assigned to a kill-on-close Job, with a
-//! reader thread streaming output and a wait thread reporting exit.
+//! One running agent: a ConPTY child (or, for agents that talk in JSON lines,
+//! a child on plain pipes) assigned to a kill-on-close Job, with a reader
+//! thread streaming output and a wait thread reporting exit.
 //!
 //! Field DECLARATION order IS the teardown order on drop, and it is non-blocking:
 //!   1. job     -> CloseHandle => KILL_ON_JOB_CLOSE terminates the whole tree;
@@ -23,7 +24,16 @@ use portable_pty::PtySize;
 use crate::core::command_spec::CommandSpec;
 #[cfg(windows)]
 use crate::core::job::Job;
+#[cfg(windows)]
+use crate::core::pipe_session::{self, PipeSession};
 use crate::core::pty_session::PtySession;
+
+/// How the agent is reached: a terminal, or pipes carrying JSON lines.
+enum Session {
+    Pty(PtySession),
+    #[cfg(windows)]
+    Pipe(PipeSession),
+}
 
 /// Where PTY output goes (e.g. a window's IPC channel). Swappable via `attach`.
 pub type Sink = Box<dyn FnMut(&[u8]) + Send>;
@@ -82,7 +92,7 @@ pub struct Agent {
     #[cfg(windows)]
     #[allow(dead_code)]
     job: Job,
-    session: PtySession,
+    session: Session,
     output: Arc<Mutex<Output>>,
     #[allow(dead_code)]
     reader_thread: JoinHandle<()>,
@@ -124,7 +134,44 @@ impl Agent {
         Ok(Agent {
             #[cfg(windows)]
             job,
-            session,
+            session: Session::Pty(session),
+            output,
+            reader_thread,
+            wait_thread,
+        })
+    }
+
+    /// Spawn an agent on pipes instead of a terminal: its stdout goes out in
+    /// whole lines only, and each line it writes to stderr goes out as one line
+    /// of its own, `{"type":"maestro_stderr","text":...}`, so the two never cut
+    /// into each other's JSON.
+    #[cfg(windows)]
+    pub fn spawn_pipe(
+        spec: &CommandSpec,
+        on_bytes: impl FnMut(&[u8]) + Send + 'static,
+        on_exit: impl FnOnce(u32) + Send + 'static,
+    ) -> Result<Self> {
+        let (session, stdout, stderr, mut child) = pipe_session::spawn(spec)?;
+        // In the job before it runs a single instruction, children included.
+        let job = Job::new_kill_on_close()?;
+        job.assign_raw(child.raw_handle())?;
+        child.resume();
+
+        let output = Arc::new(Mutex::new(Output {
+            buf: VecDeque::new(),
+            sink: Box::new(on_bytes),
+            taps: Vec::new(),
+            rec: None,
+        }));
+        let reader_thread = spawn_line_reader(Box::new(stdout), output.clone(), false);
+        // Detached: it ends with the process, and the reader above is the one
+        // the teardown waits on.
+        spawn_line_reader(Box::new(stderr), output.clone(), true);
+        let wait_thread = thread::spawn(move || on_exit(child.wait()));
+
+        Ok(Agent {
+            job,
+            session: Session::Pipe(session),
             output,
             reader_thread,
             wait_thread,
@@ -200,12 +247,94 @@ impl Agent {
     }
 
     pub fn write_input(&mut self, bytes: &[u8]) -> Result<()> {
-        self.session.write_input(bytes)
+        match &mut self.session {
+            Session::Pty(s) => s.write_input(bytes),
+            #[cfg(windows)]
+            Session::Pipe(s) => s.write_input(bytes),
+        }
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {
-        self.session.resize(cols, rows)
+        match &self.session {
+            Session::Pty(s) => s.resize(cols, rows),
+            // no screen to size
+            #[cfg(windows)]
+            Session::Pipe(_) => Ok(()),
+        }
     }
+}
+
+/// Hand one chunk of output to the window, the live taps, the recording, and
+/// the scrollback a newly attached window replays.
+fn emit(output: &Arc<Mutex<Output>>, bytes: &[u8]) {
+    let mut o = output.lock().unwrap_or_else(|p| p.into_inner());
+    o.buf.extend(bytes);
+    let over = o.buf.len().saturating_sub(SCROLLBACK_CAP);
+    if over > 0 {
+        o.buf.drain(..over);
+    }
+    (o.sink)(bytes);
+    // Mirror to live taps (remote terminals); drop closed ones.
+    if !o.taps.is_empty() {
+        let chunk = bytes.to_vec();
+        o.taps.retain(|t| t.send(chunk.clone()).is_ok());
+    }
+    // Append to the session recording, if one is running.
+    if let Some(rec) = o.rec.as_mut() {
+        rec_frame(rec, bytes);
+    }
+}
+
+/// Wrap one stderr line as a JSON line of its own.
+fn stderr_line(line: &[u8]) -> Vec<u8> {
+    let text = String::from_utf8_lossy(line);
+    let mut out = serde_json::json!({ "type": "maestro_stderr", "text": text.trim_end_matches('\r') }).to_string().into_bytes();
+    out.push(b'\n');
+    out
+}
+
+/// Whole lines out of `pending`: everything up to its last newline (or all of
+/// it at the end), as is or each wrapped as a stderr line.
+fn take_lines(pending: &mut Vec<u8>, all: bool, wrap: bool) -> Vec<u8> {
+    let cut = if all { pending.len() } else { pending.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1) };
+    let lines: Vec<u8> = pending.drain(..cut).collect();
+    if !wrap {
+        return lines;
+    }
+    lines
+        .split(|&b| b == b'\n')
+        .filter(|l| !l.iter().all(|b| b.is_ascii_whitespace()))
+        .flat_map(stderr_line)
+        .collect()
+}
+
+/// Read until EOF and pass on whole lines only (a JSON line cut between two
+/// reads would be two broken ones); `wrap` turns each into a stderr line.
+fn spawn_line_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>, wrap: bool) -> JoinHandle<()> {
+    thread::spawn(move || {
+        let mut buf = [0u8; 16384];
+        let mut pending: Vec<u8> = Vec::new();
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    pending.extend_from_slice(&buf[..n]);
+                    let out = take_lines(&mut pending, false, wrap);
+                    if !out.is_empty() {
+                        emit(&output, &out);
+                    }
+                }
+            }
+        }
+        // what was left without a newline at the end
+        if !pending.is_empty() && !wrap {
+            pending.push(b'\n');
+        }
+        let out = take_lines(&mut pending, true, wrap);
+        if !out.is_empty() {
+            emit(&output, &out);
+        }
+    })
 }
 
 fn spawn_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>) -> JoinHandle<()> {
@@ -214,24 +343,7 @@ fn spawn_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>) ->
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => {
-                    let mut o = output.lock().unwrap_or_else(|p| p.into_inner());
-                    o.buf.extend(&buf[..n]);
-                    let over = o.buf.len().saturating_sub(SCROLLBACK_CAP);
-                    if over > 0 {
-                        o.buf.drain(..over);
-                    }
-                    (o.sink)(&buf[..n]);
-                    // Mirror to live taps (remote terminals); drop closed ones.
-                    if !o.taps.is_empty() {
-                        let chunk = buf[..n].to_vec();
-                        o.taps.retain(|t| t.send(chunk.clone()).is_ok());
-                    }
-                    // Append to the session recording, if one is running.
-                    if let Some(rec) = o.rec.as_mut() {
-                        rec_frame(rec, &buf[..n]);
-                    }
-                }
+                Ok(n) => emit(&output, &buf[..n]),
                 Err(_) => break,
             }
         }
@@ -247,4 +359,26 @@ fn spawn_waiter(
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
         on_exit(code);
     })
+}
+
+#[cfg(test)]
+mod line_tests {
+    use super::take_lines;
+
+    #[test]
+    fn only_whole_lines_leave_and_the_rest_waits() {
+        let mut p = b"{\"a\":1}\n{\"b\"".to_vec();
+        assert_eq!(take_lines(&mut p, false, false), b"{\"a\":1}\n".to_vec());
+        assert_eq!(p, b"{\"b\"".to_vec());
+        p.extend_from_slice(b":2}\n");
+        assert_eq!(take_lines(&mut p, false, false), b"{\"b\":2}\n".to_vec());
+        assert!(p.is_empty());
+    }
+
+    #[test]
+    fn stderr_lines_become_json_lines() {
+        let mut p = b"Error: \"bad\"\r\n\n".to_vec();
+        let out = String::from_utf8(take_lines(&mut p, false, true)).unwrap();
+        assert_eq!(out, "{\"text\":\"Error: \\\"bad\\\"\",\"type\":\"maestro_stderr\"}\n");
+    }
 }

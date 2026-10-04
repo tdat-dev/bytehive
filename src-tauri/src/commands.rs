@@ -36,6 +36,9 @@ pub async fn pty_spawn(
     env: Option<Vec<(String, String)>>,
     cols: u16,
     rows: u16,
+    // On plain pipes instead of a terminal: for an agent that talks in JSON
+    // lines (Claude Code's stream-json). Its output arrives as whole lines.
+    pipe: Option<bool>,
     // Raw-bytes channel: PTY output is streamed as binary (ArrayBuffer on the JS
     // side). Sending `Vec<u8>` directly would serialize every byte as a JSON
     // number — pathologically slow under a chatty agent's output and the cause
@@ -76,6 +79,7 @@ pub async fn pty_spawn(
             run,
             &spec,
             size,
+            pipe.unwrap_or(false),
             move |bytes| {
                 let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
             },

@@ -17,7 +17,7 @@ use crate::core::command_spec::CommandSpec;
 /// restores the "launched from a plain terminal" baseline; when Maestro is
 /// started normally none of them are set and removing them is a no-op. These are
 /// identity, not user config, so unsetting them never discards a real setting.
-const INHERITED_SESSION_MARKERS: [&str; 4] = [
+pub(crate) const INHERITED_SESSION_MARKERS: [&str; 4] = [
     "CLAUDE_CODE_CHILD_SESSION",
     "CLAUDE_CODE_SESSION_ID",
     "CLAUDE_CODE_ENTRYPOINT",
