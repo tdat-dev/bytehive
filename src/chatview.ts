@@ -257,7 +257,7 @@ function urlOf(img: ChatImage): string {
   return u;
 }
 /** Let go of the pictures of a conversation the view no longer shows. */
-function forgetImages(items: ChatItem[]): void {
+export function forgetImages(items: ChatItem[]): void {
   for (const it of items) {
     const pics = it.kind === "step" ? it.images : it.kind === "user" ? it.pics : undefined;
     for (const p of pics ?? []) {
@@ -414,6 +414,12 @@ function threadBlocks(items: ChatItem[], open: Set<string>, expanded: Set<string
       : "";
     return [...runsBlocks(t.items, open, expanded, live, stopped), { key: `tf:${t.items[0].id}`, html: foot }];
   });
+}
+
+/** A conversation read back, not live (Sessions): drawn as the chat draws
+ *  it, after `before` (notes, "Show earlier"), with nothing waiting on you. */
+export function drawTranscript(host: HTMLElement, before: Block[], items: ChatItem[], open: Set<string>, expanded: Set<string>): void {
+  drawBlocks(host, [...before, ...threadBlocks(items, open, expanded, false, [], true)]);
 }
 
 /** Steps between two messages sit together; a long run folds its start. Each

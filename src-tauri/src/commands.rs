@@ -676,6 +676,72 @@ fn claude_sessions_everywhere_impl(limit: usize) -> Vec<SessionInfo> {
     out
 }
 
+/// Every conversation run in `root` or a folder inside it, or in one of its
+/// agents' worktrees (kept outside the repo, see worktree.rs), newest first,
+/// for reading them back.
+#[tauri::command]
+pub async fn claude_sessions_in(root: String, limit: usize) -> Result<Vec<SessionInfo>, CommandError> {
+    run_blocking(move || {
+        let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Ok(Vec::new()) };
+        // The worktrees' folder is named after a hash of the repo path as it was
+        // written then (git says D:/x, Windows D:\x): look under both.
+        let mut roots = vec![root.clone()];
+        for form in [root.replace('/', "\\"), root.replace('\\', "/")] {
+            let w = crate::worktree::worktrees_of(&form).to_string_lossy().into_owned();
+            if !roots.contains(&w) {
+                roots.push(w);
+            }
+        }
+        let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
+        Ok(sessions_under(&Path::new(&home).join(".claude").join("projects"), &roots, limit.clamp(1, 500)))
+    })
+    .await
+}
+
+/// Whether a session that ran in `cwd` belongs to the project at `root`.
+fn path_under(cwd: &str, root: &str) -> bool {
+    let norm = |p: &str| {
+        let p = p.replace('/', "\\");
+        let p = p.trim_end_matches('\\');
+        if cfg!(windows) { p.to_lowercase() } else { p.to_string() }
+    };
+    let (c, r) = (norm(cwd), norm(root));
+    !r.is_empty() && (c == r || c.starts_with(&format!("{r}\\")))
+}
+
+fn sessions_under(projects: &Path, roots: &[&str], limit: usize) -> Vec<SessionInfo> {
+    // Claude names a folder's transcripts after the folder with every other
+    // character a dash, so a folder inside a root is named after it too. That
+    // picks the candidates; the folder each session says it ran in decides.
+    let slugs: Vec<String> = roots
+        .iter()
+        .map(|r| claude_project_slug(r.trim_end_matches(['\\', '/'])).to_ascii_lowercase())
+        .filter(|s| !s.trim_matches('-').is_empty())
+        .collect();
+    let Ok(dirs) = std::fs::read_dir(projects) else { return Vec::new() };
+    let mut files: Vec<(std::path::PathBuf, u64)> = dirs
+        .flatten()
+        .filter(|d| {
+            let name = d.file_name().to_string_lossy().to_ascii_lowercase();
+            d.path().is_dir() && slugs.iter().any(|s| name == *s || name.starts_with(&format!("{s}-")))
+        })
+        .flat_map(|d| session_files(&d.path()))
+        .collect();
+    files.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut out = Vec::new();
+    for (path, ms) in files {
+        if out.len() >= limit {
+            break;
+        }
+        if let Some(s) = session_info(&path, ms) {
+            if roots.iter().any(|r| path_under(&s.cwd, r)) {
+                out.push(s);
+            }
+        }
+    }
+    out
+}
+
 /// The session transcripts in one project folder, with when each last changed.
 fn session_files(proj: &Path) -> Vec<(std::path::PathBuf, u64)> {
     let Ok(entries) = std::fs::read_dir(proj) else { return Vec::new() };
@@ -1079,5 +1145,34 @@ mod session_tests {
         assert!(session_info(&empty, 1).is_none());
         assert_eq!(session_files(&dir).len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_projects_sessions_include_its_worktrees_but_not_a_lookalike() {
+        let projects = std::env::temp_dir().join(format!("maestro-sessions-under-{}", std::process::id()));
+        let write = |folder: &str, id: &str, cwd: &str| {
+            let d = projects.join(folder);
+            std::fs::create_dir_all(&d).unwrap();
+            let cwd = cwd.replace('\\', r"\\");
+            std::fs::write(d.join(format!("{id}.jsonl")), format!(r#"{{"type":"user","cwd":"{cwd}","origin":{{"kind":"human"}},"message":{{"content":"hi"}}}}"#)).unwrap();
+        };
+        write("D--app", "11111111-0000-0000-0000-000000000001", r"D:\app");
+        write("D--app--claude-worktrees-x", "11111111-0000-0000-0000-000000000002", r"D:\app\.claude\worktrees\x");
+        write("D--app-two", "11111111-0000-0000-0000-000000000003", r"D:\app-two");
+        write("D---maestro-worktrees-app-abc123-maestro-bob-1-xyz", "11111111-0000-0000-0000-000000000004", r"D:\.maestro-worktrees\app-abc123\maestro-bob-1-xyz");
+        let roots = [r"D:\app\", r"D:\.maestro-worktrees\app-abc123"];
+        let ids: std::collections::BTreeSet<String> = sessions_under(&projects, &roots, 50).into_iter().map(|s| s.id).collect();
+        assert_eq!(ids.len(), 3);
+        assert!(!ids.contains("11111111-0000-0000-0000-000000000003"));
+        assert_eq!(sessions_under(&projects, &[r"D:\app"], 1).len(), 1);
+        let _ = std::fs::remove_dir_all(&projects);
+    }
+
+    #[test]
+    fn a_folder_is_under_itself_and_its_children_only() {
+        assert!(path_under(r"D:\app", r"D:\app\"));
+        assert!(path_under("D:/app/.claude/worktrees/x", r"D:\app"));
+        assert!(!path_under(r"D:\app-two", r"D:\app"));
+        assert!(!path_under(r"D:\app", ""));
     }
 }

@@ -18,6 +18,7 @@ import { openSettings } from "./settingsmodal";
 import { openNewAgent } from "./inboxnew";
 import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inboxpalette";
 import { createHistoryDrawer } from "./inboxhistory";
+import { createSessionsView } from "./sessionsview";
 import { mountStart, renderStart, unmountStart } from "./inboxstart";
 import { getPref } from "./prefs";
 import { activateWorkspace, removeWorkspace, renameWorkspace } from "./workspace";
@@ -231,6 +232,7 @@ const miniAnswered = new Map<string, string>();
 let splitBtn: HTMLButtonElement | null = null;
 let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
 let historian: ReturnType<typeof createHistoryDrawer> | null = null;
+const sessions = createSessionsView();
 let dockEl: HTMLElement | null = null;
 /** Agents switched to Terminal on the stage; the rest show as a chat. */
 const termMode = new Set<string>();
@@ -832,6 +834,7 @@ function onKey(e: KeyboardEvent): void {
   if (k === "p") { e.preventDefault(); pinCurrent(); return; }
   if (k === "r") { e.preventDefault(); if (reviewer?.paneId) reviewer.close(); else openReview(); return; }
   if (k === "h") { e.preventDefault(); if (historian?.paneId) historian.close(); else openHistory(); return; }
+  if (k === "o") { e.preventDefault(); openSessions(); return; }
   // Alt+A: answer in your own words, from wherever the keyboard is.
   if (k === "a") { const f = askEl?.querySelector<HTMLInputElement>("#iaFree"); if (f) { e.preventDefault(); f.focus(); } return; }
   if (/^[1-9]$/.test(e.key)) {
@@ -846,6 +849,13 @@ function openReview(): void {
   if (historian?.paneId) historian.close();
   reviewer.open(pane);
   render();
+}
+
+/** Earlier Claude conversations of the project on screen (its agents' worktrees
+ *  too), to read back; every folder's when no project is open. */
+function openSessions(): void {
+  const ws = activeWs;
+  sessions.open(ws ? ws.repoRoot ?? ws.dir : null, ws?.name);
 }
 
 function openHistory(): void {
@@ -930,6 +940,7 @@ export function paletteItems(): PaletteItem[] {
     act("Changes of the current agent", () => openReview(), "Alt+R", "Merge them, or send it back with a note"),
     ...mergeItem(),
     act("History of the current agent", () => openHistory(), "Alt+H", "What it did and what you answered"),
+    act("Sessions", () => openSessions(), "Alt+O", "Read back earlier Claude conversations"),
     act("Board", () => openTool("kanban"), "Ctrl+Shift+K", "Cards the agents move as they work"),
     act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E", "Folder tree and editor"),
     act("Settings", () => openSettings(), "Ctrl+,"),
@@ -1093,6 +1104,8 @@ function mount(): void {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl+K</kbd></button>
     <button class="id-new" data-dock="new" title="New agent (Ctrl+Shift+T)">New agent</button>
+    <button class="id-gear" data-dock="sessions" aria-label="Sessions" title="Sessions: read back earlier conversations (Alt+O)">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button>
     <button class="id-gear id-help" data-dock="help" aria-label="What Maestro can do" title="What Maestro can do (?)">?</button>
     <button class="id-gear" data-dock="settings" aria-label="Settings" title="Settings (Ctrl+,)">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
@@ -1107,6 +1120,7 @@ function mount(): void {
       case "new": openNewAgent(); break;
       case "settings": openSettings(); break;
       case "help": openHelpPage(); break;
+      case "sessions": openSessions(); break;
     }
   });
   document.getElementById("workspaces")?.addEventListener("click", onStageButton);

@@ -81,6 +81,14 @@ pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
     p
 }
 
+/// The folder that holds every worktree of a repo (the parent of
+/// `worktree_path_for`'s), where its agents' sessions ran.
+pub fn worktrees_of(repo_root: &str) -> PathBuf {
+    let mut p = worktree_path_for(repo_root, "x");
+    p.pop();
+    p
+}
+
 /// Drop a `.cargo/config.toml` in the worktree-parent folder so all worktrees of
 /// this repo share the main repo's `src-tauri/target` instead of each building its
 /// own. Cargo finds it by searching parent dirs up from `<worktree>/src-tauri`.

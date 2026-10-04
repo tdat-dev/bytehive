@@ -184,6 +184,11 @@ export async function claudeSessionsEverywhere(limit = 60): Promise<ClaudeSessio
   return invoke<ClaudeSession[]>("claude_sessions_everywhere", { limit });
 }
 
+/** Every conversation run in `root` or a folder inside it (agents' worktrees), newest first. */
+export async function claudeSessionsIn(root: string, limit = 300): Promise<ClaudeSession[]> {
+  return invoke<ClaudeSession[]>("claude_sessions_in", { root, limit });
+}
+
 /** Run a program to completion in `cwd` (no window) and get its stdout. For
  *  asking an agent CLI about itself; killed after `timeoutMs`. */
 export async function runCapture(program: string, args: string[], cwd: string | null, timeoutMs = 60_000): Promise<string> {

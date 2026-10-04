@@ -27,6 +27,7 @@ export const HELP: HelpSection[] = [
     { keys: [["Alt", "P"]], what: "Add the agent on screen to the Grid, or take it out." },
     { keys: [["Alt", "R"]], what: "What the agent changed, file by file. Merge it, or send it back with a note." },
     { keys: [["Alt", "H"]], what: "What the agent did, and what you answered, by day." },
+    { keys: [["Alt", "O"]], what: "Sessions: read back every earlier Claude conversation of the project, its agents' worktrees included. Only to read, nothing resumes." },
   ] },
   { title: "Chat", rows: [
     { keys: [["/"]], what: "In an empty message: the agent's own commands, to search and pick. /resume and /clear switch conversations." },
