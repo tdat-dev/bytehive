@@ -217,15 +217,20 @@ pub async fn dashboard_password_set(state: State<'_, AppState>, password: String
 /// a password the dashboard is for this computer only.
 #[tauri::command]
 pub fn dashboard_password_clear(state: State<'_, AppState>) -> Result<DashboardInfo, CommandError> {
-    state.dashboard.auth.clear_password().map_err(CommandError::Failed)?;
+    clear_password(&state.dashboard).map_err(CommandError::Failed)
+}
+
+/// Stop a server other devices can reach FIRST, then drop the password: the
+/// other way round left 0.0.0.0 open with no password until the server
+/// noticed the stop. (Once stopping, a server serves nothing: see `handle`.)
+fn clear_password(dash: &Dashboard) -> Result<DashboardInfo, String> {
     let lan_on = {
-        let inner = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner());
+        let inner = dash.inner.lock().unwrap_or_else(|p| p.into_inner());
         inner.running && inner.lan
     };
-    if lan_on {
-        return Ok(stop_server(&state.dashboard));
-    }
-    Ok(info(&state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner())))
+    let stopped = lan_on.then(|| stop_server(dash));
+    dash.auth.clear_password()?;
+    Ok(stopped.unwrap_or_else(|| info(&dash.inner.lock().unwrap_or_else(|p| p.into_inner()))))
 }
 
 #[tauri::command]
@@ -403,6 +408,12 @@ fn handle(mut request: Request, ctx: Ctx) {
     }
     let pass = ctx.auth.pass(cookie_of(&request).as_deref(), Instant::now());
     let signed_in = pass.is_some();
+    // A stopping server serves nothing. Checked AFTER the session: a password
+    // is only removed after the stop, so a request that saw it gone sees this.
+    if ctx.stop.load(Ordering::SeqCst) {
+        let _ = request.respond(json_response("{\"error\":\"stopped\"}".into()).with_status_code(503));
+        return;
+    }
 
     match (method, path.as_str()) {
         // Without a session the page is the sign-in form.
@@ -553,6 +564,10 @@ fn ws_conn(stream: TcpStream, ctx: Ctx) {
             pass = auth.pass(get("Cookie"), Instant::now());
             if pass.is_none() {
                 return refuse(tungstenite::http::StatusCode::UNAUTHORIZED, "sign in");
+            }
+            // after the session check, as in `handle`
+            if stop.load(Ordering::SeqCst) {
+                return refuse(tungstenite::http::StatusCode::SERVICE_UNAVAILABLE, "stopped");
             }
             agent_id = ws_query_id(&req.uri().to_string());
             Ok(resp)
@@ -1020,6 +1035,38 @@ mod tests {
         let took = socket_closes_after(&srv, &token, || auth.clear_password().unwrap());
         assert!(took < Duration::from_millis(1500), "closed after {took:?}");
         reg.lock().unwrap().clear();
+    }
+
+    /// The status of one request, or None when nothing answered (closed).
+    fn try_status(port: u16) -> Option<u16> {
+        let mut s = TcpStream::connect(("127.0.0.1", port)).ok()?;
+        s.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+        let req = format!("GET /api/fleet HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nX-Maestro: 1\r\n\r\n");
+        s.write_all(req.as_bytes()).ok()?;
+        let mut out = String::new();
+        s.read_to_string(&mut out).ok()?;
+        out.split(' ').nth(1)?.parse().ok()
+    }
+
+    /// Removing the password stops a server other devices can reach BEFORE
+    /// the password goes: never a moment of no password on 0.0.0.0.
+    #[test]
+    fn removing_the_password_stops_the_lan_server_first() {
+        let auth = locked("correct horse");
+        let srv = start(auth.clone());
+        // the server as Settings left it: running, other devices let in
+        let dash = Dashboard {
+            inner: Mutex::new(Inner { running: true, port: srv.port, lan: true, stop: Some(srv.stop.clone()), ..Default::default() }),
+            auth: auth.clone(),
+        };
+        assert_eq!(try_status(srv.port), Some(401));
+        let info = clear_password(&dash).unwrap();
+        assert!(!info.running && !auth.has_password());
+        // whatever still reaches the old server finds it closing, never open
+        for _ in 0..5 {
+            let got = try_status(srv.port);
+            assert_ne!(got, Some(200), "the fleet was open with no password");
+        }
     }
 
     /// Every fetch the embedded pages make carries what the server now wants.
