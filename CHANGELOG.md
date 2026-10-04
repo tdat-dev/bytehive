@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-10-04
+
+Talk to Claude directly (new, opt-in).
+
+### Added
+
+- **Talk to Claude directly.** Turn it on in Settings, Inbox. Claude agents then
+  take messages straight instead of having them typed into their terminal:
+  - nothing gets stuck in the CLI's box, and messages sent while it works wait
+    their turn;
+  - the reply shows as it is written;
+  - permissions and questions come as buttons, answered exactly (Allow, Always
+    allow here, Deny or your own words; each option of a question);
+  - Stop stops it without losing the conversation;
+  - the / list opens at once with every command and skill it has, and models
+    and permission modes switch without its terminal.
+
+  Its Terminal tab shows a log of the exchange. It applies to an agent the next
+  time it starts; off, everything works as before.
+
+### Fixed
+
+- **Hooks never open windows** for an agent talked to directly: it runs with a
+  hidden console of its own, so the console programs it starts share it.
+- **The phone's remote terminal** shows such an agent as readable text, and
+  stray keys typed there can't break it.
+
 ## [0.9.7] - 2026-10-04
 
 Read back earlier sessions.
