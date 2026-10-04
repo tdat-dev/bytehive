@@ -16,8 +16,13 @@ import {
   dashboardStop,
   dashboardStatus,
   dashboardPush,
+  dashboardPasswordStatus,
+  dashboardPasswordSet,
+  dashboardPasswordClear,
   onDashboardSend,
 } from "./ipc";
+import { confirmModal } from "./confirmmodal";
+import { passwordNotes, passwordProblem } from "./dashpw";
 
 // The remote page reads each agent's on-screen text from its xterm buffer; the
 // emulator has already collapsed in-place repaints to the current screen.
@@ -83,15 +88,97 @@ function paintDash(info: { running: boolean; lan: boolean; urls: string[] }): vo
   dashboardOn = info.running;
   if (dashToggle) dashToggle.checked = info.running;
   if (dashLan) dashLan.checked = info.lan;
+  paintPassword();
   if (dashUrl)
     dashUrl.textContent = info.running
       ? "Open on any device on your network: " + (info.urls.join("  ·  ") || `http://127.0.0.1:${DASH_PORT}`)
       : "Off — turn on to view the fleet from your phone.";
 }
 
+/* ---- the dashboard's password (Settings > Remote) ---- */
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
+let hasPassword = false;
+
+/** Show whether a password is set; other devices wait for one. */
+function paintPassword(): void {
+  const notes = passwordNotes(hasPassword);
+  const note = $("setDashPwNote");
+  if (note) note.textContent = notes.pw;
+  const lanNote = $("setDashLanNote");
+  if (lanNote) lanNote.textContent = notes.lan;
+  const set = $("setDashPwSet");
+  if (set) set.textContent = hasPassword ? "Change" : "Set password";
+  const clear = $("setDashPwClear");
+  if (clear) clear.hidden = !hasPassword;
+  if (dashLan) dashLan.disabled = !hasPassword && !dashLan.checked;
+}
+
+function showPasswordForm(open: boolean): void {
+  const form = $<HTMLFormElement>("setDashPwForm");
+  if (!form) return;
+  form.hidden = !open;
+  for (const id of ["setDashPw1", "setDashPw2"]) { const i = $<HTMLInputElement>(id); if (i) i.value = ""; }
+  const err = $("setDashPwErr");
+  if (err) err.textContent = "";
+  const title = $("setDashPwTitle");
+  if (title) title.textContent = hasPassword ? "Change the password" : "Set a password";
+  if (open) $<HTMLInputElement>("setDashPw1")?.focus();
+}
+
+async function savePassword(): Promise<void> {
+  const a = $<HTMLInputElement>("setDashPw1")?.value ?? "";
+  const b = $<HTMLInputElement>("setDashPw2")?.value ?? "";
+  const err = $("setDashPwErr");
+  const problem = passwordProblem(a, b);
+  if (problem) { if (err) err.textContent = problem; return; }
+  const save = $<HTMLButtonElement>("setDashPwSave");
+  if (save) save.disabled = true;
+  try {
+    const changed = hasPassword;
+    await dashboardPasswordSet(a);
+    hasPassword = true;
+    showPasswordForm(false);
+    paintPassword();
+    // a new password signs every device out
+    const note = $("setDashPwNote");
+    if (note && changed) note.textContent = "Changed. Devices that were signed in have to sign in again.";
+  } catch (e) {
+    if (err) err.textContent = `Couldn't save it: ${onErrMsg(e)}`;
+  } finally {
+    if (save) save.disabled = false;
+  }
+}
+
+async function removePassword(): Promise<void> {
+  const lanOn = dashboardOn && (dashLan?.checked ?? false);
+  const r = await confirmModal({
+    title: "Remove the dashboard password?",
+    message: lanOn
+      ? "Other devices can't connect without one, so the dashboard goes back to this computer only."
+      : "The dashboard on this computer opens without signing in. Other devices can't connect until you set one again.",
+    okLabel: "Remove",
+    danger: true,
+  });
+  if (!r.ok) return;
+  try {
+    const info = await dashboardPasswordClear();
+    hasPassword = false;
+    if (dashLan) dashLan.checked = false;
+    paintPassword();
+    // it was shared on the network: bring it back here, for this computer
+    if (lanOn && dashToggle?.checked && !info.running) await applyDash();
+    else paintDash(info);
+  } catch (e) {
+    const note = $("setDashPwNote");
+    if (note) note.textContent = `Couldn't remove it: ${onErrMsg(e)}`;
+  }
+}
+
 async function refreshDash(): Promise<void> {
   try {
     paintDash(await dashboardStatus());
+    hasPassword = await dashboardPasswordStatus();
+    paintPassword();
   } catch {
     /* backend not ready */
   }
@@ -145,7 +232,12 @@ export function initDashboard(): void {
   });
   dashToggle?.addEventListener("change", () => void applyDash());
   dashLan?.addEventListener("change", () => {
+    paintPassword(); // turned off without a password: it can't come back on
     if (dashToggle?.checked) void applyDash(); // re-bind on the new interface
   });
+  $("setDashPwSet")?.addEventListener("click", () => showPasswordForm(true));
+  $("setDashPwCancel")?.addEventListener("click", () => showPasswordForm(false));
+  $("setDashPwForm")?.addEventListener("submit", (e) => { e.preventDefault(); void savePassword(); });
+  $("setDashPwClear")?.addEventListener("click", () => void removePassword());
   void refreshDash();
 }

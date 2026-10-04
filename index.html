@@ -230,7 +230,18 @@
         <section class="sec" data-sec="fleet">
           <h3>Remote</h3>
           <label class="toggle"><input type="checkbox" id="setDashOn"><span class="tg"></span><span class="sr-txt"><b>Remote fleet dashboard</b><span id="setDashUrl">View &amp; drive the fleet from your phone's browser.</span></span></label>
-          <label class="toggle"><input type="checkbox" id="setDashLan"><span class="tg"></span><span class="sr-txt"><b>Allow other devices (LAN)</b><span>Reachable from devices on the same Wi-Fi. Only enable on a network you trust.</span></span></label>
+          <div class="srow">
+            <div class="sr-txt"><b>Password</b><span id="setDashPwNote">None yet. Other devices need one before they can connect.</span></div>
+            <button type="button" class="sbtn" id="setDashPwSet">Set password</button>
+            <button type="button" class="sbtn" id="setDashPwClear" hidden>Remove</button>
+          </div>
+          <form class="srow col dash-pw" id="setDashPwForm" hidden>
+            <div class="sr-txt"><b id="setDashPwTitle">Set a password</b><span>Anyone opening the dashboard signs in with it, this computer included. At least 6 characters.</span></div>
+            <input class="input" type="password" id="setDashPw1" autocomplete="new-password" placeholder="Password" aria-label="Password">
+            <input class="input" type="password" id="setDashPw2" autocomplete="new-password" placeholder="Same password again" aria-label="Same password again">
+            <div class="dash-pw-foot"><span class="dash-pw-err" id="setDashPwErr" role="alert"></span><button type="button" class="sbtn" id="setDashPwCancel">Cancel</button><button type="submit" class="sbtn" id="setDashPwSave">Save password</button></div>
+          </form>
+          <label class="toggle"><input type="checkbox" id="setDashLan"><span class="tg"></span><span class="sr-txt"><b>Allow other devices (LAN)</b><span id="setDashLanNote">Reachable from devices on the same Wi-Fi, after signing in. Only turn on for a network you trust.</span></span></label>
         </section>
         <section class="sec" data-sec="sessions">
           <h3>Sessions</h3>

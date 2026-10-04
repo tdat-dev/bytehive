@@ -323,6 +323,18 @@ export async function dashboardStop(): Promise<DashboardInfo> {
 export async function dashboardPush(snapshot: string): Promise<void> {
   await invoke("dashboard_push", { snapshot });
 }
+/** Is a dashboard password set? */
+export async function dashboardPasswordStatus(): Promise<boolean> {
+  return invoke<boolean>("dashboard_password_status");
+}
+/** Set or change the dashboard password (only its hash is kept). */
+export async function dashboardPasswordSet(password: string): Promise<void> {
+  await invoke("dashboard_password_set", { password });
+}
+/** Remove the dashboard password; a server open to other devices stops with it. */
+export async function dashboardPasswordClear(): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_password_clear");
+}
 /** Fire `cb` with the raw JSON body when the dashboard POSTs a send request. */
 export async function onDashboardSend(cb: (body: string) => void): Promise<UnlistenFn> {
   return listen<string>("dashboard-send", (e) => cb(e.payload));

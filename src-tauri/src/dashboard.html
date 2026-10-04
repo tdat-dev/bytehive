@@ -37,7 +37,10 @@
   .row.fin-review .st{background:var(--rev);color:#082f49}
   .bell{margin-left:auto;background:var(--s2);border:1px solid var(--line2);color:var(--text);
     border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600}
-  .bell[hidden]{display:none}
+  .bell[hidden],.out-btn[hidden]{display:none}
+  .out-btn{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:8px;
+    padding:6px 11px;font-size:12px;font-weight:600}
+  .bell[hidden] + .out-btn{margin-left:auto}
   .out{display:none;grid-column:1/-1;margin-top:8px;max-height:44vh;overflow:auto;
     background:var(--s0);border:1px solid var(--line);border-radius:8px;padding:10px 11px;
     font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;line-height:1.45;
@@ -104,7 +107,7 @@
 <link rel="stylesheet" href="/xterm.css">
 </head>
 <body>
-<header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div><button class="bell" id="bell" hidden>Notify me</button></header>
+<header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div><button class="bell" id="bell" hidden>Notify me</button><button class="out-btn" id="signout" hidden>Sign out</button></header>
 <div class="list" id="list"></div>
 <div id="term">
   <div class="term-head">
@@ -141,6 +144,14 @@
     ["[A", "↑"], ["[B", "↓"], ["\r", "⏎ Enter"],
     ["", "Esc"], ["\t", "Tab"], ["", "^C"],
   ];
+
+  // Behind a password (the server marks the page), offer a way out.
+  const signout = document.getElementById("signout");
+  signout.hidden = !document.body.hasAttribute("data-auth");
+  signout.addEventListener("click", async () => {
+    try { await fetch("/api/logout", { method: "POST" }); } catch (e) {}
+    location.reload();
+  });
 
   // A finished agent reads "Done" or "Ready to review", not "idle" or a stale "needs".
   function stLabel(a) {
@@ -270,6 +281,8 @@
     if (term) return; // don't poll the roster while a full terminal is open
     try {
       const r = await fetch("/api/fleet");
+      // signed out (expired, or the password changed): the page becomes the sign-in form
+      if (r.status === 401) { location.reload(); return; }
       render(await r.json());
       document.getElementById("foot").textContent = "live · updated " + new Date().toLocaleTimeString();
       document.getElementById("foot").classList.remove("off");
