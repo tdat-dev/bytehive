@@ -29,6 +29,7 @@ import {
 } from "./agentbridge";
 import { initFleetBridge, deliveryTargets } from "./fleetbridge";
 import { exitVerdict, holdExit, setExitHandler } from "./ptyexit";
+import { closeStream, routeStreamInput } from "./streamagent";
 import { spawnForConductor } from "./spawnmodal";
 import { paneStatus } from "./fleet";
 import { showDelegation, showDelegationToast } from "./delegation";
@@ -339,6 +340,9 @@ export function initBridges(): void {
     if (target) dropPathsIntoPane(target, e.paths);
   });
 
+  // Messages and keys for agents talked to directly go to them as JSON.
+  routeStreamInput();
+
   /* pty-exit listener LAST + guarded so it can never block the wiring above. */
   const paneExited = (id: string, code: number, run: number) => {
     for (const w of workspaces.values()) {
@@ -352,6 +356,7 @@ export function initBridges(): void {
         p.running = false;
         p.spawnedAt = null;
         p.exitCode = code;
+        closeStream(id, code);
         clearAttention(p); // a dead agent isn't waiting on anyone
         if (p.recording) void stopRecording(p); // flush + close the recording
         setStatus(p, `exited (${code})`, "");

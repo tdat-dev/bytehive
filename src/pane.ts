@@ -43,6 +43,7 @@ import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
 import { faceSvg } from "./agentface";
 import { replayEarlyExit, takeEarlyExit } from "./ptyexit";
+import { STREAM_ARGS, dropStream, feedStream, openStream } from "./streamagent";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
@@ -337,12 +338,16 @@ export function createAgent(
       // restart would append the flag again and again.
       const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
       const own = spec.badge === "claude" ? await claudeSessionArgs(spec, cwd) : [];
-      if (own.length) saveSession(); // the chat view finds this run's transcript after a restart too
+      // A Claude agent Maestro talks to directly: JSON lines on pipes, no terminal.
+      const stream = spec.badge === "claude" && getPref("directChat");
+      if (stream) spec.stream = true; else delete spec.stream;
+      if (own.length || stream) saveSession(); // the chat view finds this run's transcript after a restart too
       const args =
-        spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws] : spec.args;
+        spec.badge === "claude" ? [...(stream ? STREAM_ARGS : []), ...spec.args, ...own, "--append-system-prompt", laws] : spec.args;
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
-      // can actually launch them — see launchSpec.
-      const launch = launchSpec(spec.program, args);
+      // can actually launch them — see launchSpec. On pipes the backend finds
+      // the program itself (an npm shim's own .exe, past cmd.exe).
+      const launch = stream ? { program: spec.program, args } : launchSpec(spec.program, args);
       // Identity for the child process: maestro-mcp uses MAESTRO_AGENT to
       // stamp who moved/finished a board card (see mcp/src/server.ts).
       const envPairs: Array<[string, string]> = [
@@ -350,13 +355,17 @@ export function createAgent(
         ["MAESTRO_WORKSPACE", cwd ?? ""],
       ];
       pane.spawning = true;
+      if (stream) openStream(id, { sessionId: spec.sessionId ?? null, log: (text) => { if (ws.panes.has(id)) term.write(enc.encode(text)); } });
+      else dropStream(id);
       pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
         pane.lastOutputAt = Date.now();
         if (pane.attention) clearAttention(pane); // agent is producing output again
+        // Its lines are events (the log is written from them), not a screen.
+        if (stream) { feedStream(id, bytes); return; }
         // After a tab detach this xterm is disposed but the PTY lives on (the
         // new window owns it) — never write into a dropped pane.
         if (ws.panes.has(id)) term.write(bytes);
-      });
+      }, stream);
       pane.spawning = false;
       pane.running = true;
       pane.error = undefined;

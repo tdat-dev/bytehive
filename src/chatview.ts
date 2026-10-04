@@ -25,6 +25,7 @@ import { confirmModal } from "./confirmmodal";
 import { stillHolding } from "./typing";
 import { landedIn, liveReplyOf, type LiveReply } from "./livereply";
 import type { Pane } from "./panetypes";
+import { onStreamChange, sendToStream, setStreamModel, setStreamPermissionMode, streamFacts } from "./streamagent";
 
 /** "3m ago", "2h ago", "Sep 20". */
 export function ago(at: number, now = Date.now()): string {
@@ -772,8 +773,9 @@ function nowDoing(v: View): { what: string; detail: string } {
   }
   const sentAt = v.sending[v.sending.length - 1]?.at ?? 0;
   const since = Math.max(turnAt, sentAt);
-  const screen = v.pane.running ? activityOnScreen(screenOf(v.pane)) : null;
-  const what = running ? stepDoing(running) : screen?.verb || "Thinking…";
+  const sf = streamFacts(v.pane.id);
+  const screen = v.pane.running && !sf ? activityOnScreen(screenOf(v.pane)) : null;
+  const what = running ? stepDoing(running) : sf ? (sf.live.trim() ? "Writing…" : "Thinking…") : screen?.verb || "Thinking…";
   const detail = screen?.detail || (since ? took(Date.now() - since) : "");
   return { what, detail };
 }
@@ -812,7 +814,9 @@ function liveScreenOf(pane: Pane): string {
  *  transcript only once it is whole; till then the screen is the only place it is. */
 function liveFor(v: View): LiveReply | null {
   if (v.state.state !== "working" || !v.pane.running || v.pane.spec.badge !== "claude") return null;
-  const live = liveReplyOf(liveScreenOf(v.pane));
+  // Talked to directly, it says the reply as it writes it; else it is read off its screen.
+  const sf = streamFacts(v.pane.id);
+  const live = sf ? (sf.live.trim() ? { text: sf.live, cut: false } : null) : liveReplyOf(liveScreenOf(v.pane));
   if (!live) return null;
   // What this turn has already said: the reply on screen may be one of those.
   const said: string[] = [];
@@ -980,7 +984,9 @@ function settingNow(v: View, key: SettingKey): CliChoice | null {
   if (!set) return null;
   const pend = v.pending[key];
   let id: string | null = pend && Date.now() - pend.at < PENDING_MS ? pend.id : null;
-  if (!id && set.cycle && v.pane.running) id = set.cycle.shown(screenOf(v.pane));
+  const sf = streamFacts(v.pane.id);
+  if (!id && key === "permission" && sf?.permissionMode) id = sf.permissionMode === "manual" ? "default" : sf.permissionMode;
+  if (!id && set.cycle && v.pane.running && !sf) id = set.cycle.shown(screenOf(v.pane));
   if (!id) {
     const said = v.chat.meta[key];
     id = said ? (set.current ? set.current(said) : said) : null;
@@ -1001,6 +1007,15 @@ async function applySetting(v: View, key: SettingKey, choice: CliChoice): Promis
   const set = profileOf(v.pane.spec.badge)[key];
   const pane = v.pane;
   if (!set) return;
+  // Talked to directly: the mode is set by asking, not by Shift+Tab on its screen.
+  if (key === "permission" && streamFacts(pane.id)) {
+    v.pending[key] = { id: choice.id, at: Date.now() };
+    draw(v, true);
+    const ok = (await setStreamPermissionMode(pane.id, choice.id)) || (choice.id === "default" && (await setStreamPermissionMode(pane.id, "manual")));
+    if (!ok) delete v.pending[key];
+    draw(v, true);
+    return;
+  }
   if (set.command) {
     v.pending[key] = { id: choice.id, at: Date.now() };
     draw(v, true);
@@ -1070,6 +1085,8 @@ async function poll(pane: Pane, v: View): Promise<void> {
     v.sessionsAt = Date.now();
     if (pane.spec.badge === "claude") void claudeSessions(dir0).then((s) => { v.sessions = s; draw(v); }).catch(() => {});
   }
+  const sf = streamFacts(pane.id);
+  if (sf?.facts && v.facts !== sf.facts) v.facts = sf.facts;
   if (v.busy) return;
   v.busy = true;
   try {
@@ -1425,6 +1442,7 @@ function mount(pane: Pane): View {
     const until = Date.now() + WAKE_MS;
     while (Date.now() < until) {
       if (!pane.running) return false;
+      if (streamFacts(pane.id)) return true;
       if (promptShown(screenOf(pane))) { await sleep(600); return true; }
       await sleep(300);
     }
@@ -1449,7 +1467,15 @@ function mount(pane: Pane): View {
     const deliver = async () => {
       let ok = true;
       if (!pics.length) ok = await sendMessage(pane.id, text);
-      else {
+      else if (streamFacts(pane.id)) {
+        const paths = (await Promise.all(pics.map((a) => a.path))).filter((p): p is string => !!p);
+        pics.forEach((a) => URL.revokeObjectURL(a.url));
+        const urls = await Promise.all(paths.map((p) => {
+          const cut = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+          return fsReadDataUrl(p.slice(0, cut), p.slice(cut + 1)).catch(() => "");
+        }));
+        ok = await sendToStream(pane.id, text, urls.filter(Boolean));
+      } else {
         const paths = (await Promise.all(pics.map((a) => a.path))).filter((p): p is string => !!p);
         pics.forEach((a) => URL.revokeObjectURL(a.url));
         // Each picture goes in as its own path, the way a dropped file does, so
@@ -1604,7 +1630,7 @@ function mount(pane: Pane): View {
   // Warm the list up, so the first / opens at once. Asking starts a second
   // copy of the CLI, so it waits until this one has finished starting.
   const warm = window.setTimeout(() => {
-    if (views.get(pane.id) !== v) return;
+    if (views.get(pane.id) !== v || streamFacts(pane.id)) return;
     void cliFacts(pane.spec.badge, pane.spec.program, pane.spec.ranIn ?? pane.spec.cwd)?.then((f) => { v.facts = f; draw(v); }).catch(() => {});
   }, Math.max(0, WARM_AFTER_MS - (Date.now() - (pane.spawnedAt ?? 0))));
   // @: a file or folder of the agent's folder, picked from a list as you type.
@@ -1834,6 +1860,21 @@ function mount(pane: Pane): View {
       const p = profileOf(pane.spec.badge);
       if (!p.modelCommand) return;
       const r = modelBtn.getBoundingClientRect();
+      const sf = streamFacts(pane.id);
+      if (sf) {
+        // Talked to directly: its own list of models, switched by asking.
+        const inUseNow = modelAlias(sf.model ?? v.chat.meta.model);
+        const list = sf.models.length ? sf.models.map((m) => ({ label: m.label, value: m.value, hint: undefined as string | undefined })) : (p.models ?? []);
+        modelBtn.setAttribute("aria-expanded", "true");
+        openMenu(r.left, r.top - 8, list.map((m) => ({
+          label: m.label, hint: m.value === inUseNow ? "In use" : m.hint,
+          run: () => { void setStreamModel(pane.id, m.value).then(() => draw(v, true)); },
+        })), "Model");
+        const offS = () => { modelBtn.setAttribute("aria-expanded", "false"); window.removeEventListener("pointerdown", offS, true); window.removeEventListener("keydown", offS, true); };
+        window.addEventListener("pointerdown", offS, true);
+        window.addEventListener("keydown", offS, true);
+        return;
+      }
       // Only what this conversation itself says is in use; every model stays
       // pickable (choosing the one in use again is harmless).
       const inUse = modelAlias(v.chat.meta.model);
@@ -1917,6 +1958,23 @@ function mount(pane: Pane): View {
 }
 
 /** Show the conversation over this pane's terminal and keep it current. */
+// An agent talked to directly says when its reply grows or its turn ends: the
+// chat draws at the next frame instead of the next poll, and reads the
+// transcript at once when a turn ends, so the finished reply takes the live
+// one's place without a gap.
+const streamDraws = new Set<string>();
+onStreamChange((paneId) => {
+  const v = views.get(paneId);
+  if (!v || streamDraws.has(paneId)) return;
+  streamDraws.add(paneId);
+  requestAnimationFrame(() => {
+    streamDraws.delete(paneId);
+    if (views.get(paneId) !== v) return;
+    draw(v);
+    if (!streamFacts(paneId)?.working) void poll(v.pane, v);
+  });
+});
+
 export function showChat(pane: Pane, state: ChatState, focus = false): void {
   const v = views.get(pane.id) ?? mount(pane);
   const renamed = v.state.name !== state.name;

@@ -33,6 +33,8 @@ export interface Prefs {
   tips: boolean;
   /** Show the agent on screen as a conversation (Claude Code agents). */
   chatView: boolean;
+  /** Talk to Claude agents directly (stream-json) instead of through their terminal. */
+  directChat: boolean;
   /** Tell an agent that stopped at its plan's usage limit to carry on once the limit resets. */
   autoResume: boolean;
   /** Windows notification when a plan passes 90% of a limit, and when an agent runs out. */
@@ -59,6 +61,7 @@ export const DEFAULTS: Prefs = {
   restore: true,
   tips: true,
   chatView: true,
+  directChat: false,
   autoResume: true,
   limitNotify: true,
 };

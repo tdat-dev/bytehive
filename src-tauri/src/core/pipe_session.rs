@@ -157,9 +157,36 @@ pub fn resolve(program: &str, path_var: Option<&OsStr>, pathext: Option<&str>) -
     None
 }
 
+/// The program an npm shim (`claude.cmd`) runs, when it is an .exe next to it:
+/// `"%dp0%\node_modules\...\claude.exe" %*`. Running that directly keeps the
+/// arguments away from cmd.exe, which can't carry every character.
+pub fn unshim(cmd: &Path, text: &str) -> Option<PathBuf> {
+    let dir = cmd.parent()?;
+    for line in text.lines() {
+        let Some(start) = line.find("\"%dp0%") else { continue };
+        let rest = &line[start + 1..];
+        let end = rest.find('"')?;
+        let rel = rest[..end].trim_start_matches("%dp0%").trim_start_matches(['\\', '/']);
+        if !rel.to_ascii_lowercase().ends_with(".exe") || rel.contains('%') {
+            continue;
+        }
+        let exe = dir.join(rel);
+        if exe.is_file() {
+            return Some(exe);
+        }
+    }
+    None
+}
+
 /// The command line to start: an .exe directly, a .cmd/.bat (an npm shim)
-/// through cmd.exe.
+/// through the .exe it wraps, else through cmd.exe.
 fn command_line(exe: &Path, args: &[String]) -> (Option<PathBuf>, String) {
+    let ext = exe.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    if ext == "cmd" || ext == "bat" {
+        if let Some(inner) = std::fs::read_to_string(exe).ok().and_then(|t| unshim(exe, &t)) {
+            return command_line(&inner, args);
+        }
+    }
     let ext = exe.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     let mut line = quote_arg(&exe.to_string_lossy());
     for a in args {
@@ -323,6 +350,20 @@ mod tests {
         let path = std::env::join_paths([dir.clone()]).unwrap();
         assert_eq!(resolve("tool", Some(&path), Some(".EXE;.CMD")), Some(dir.join("tool.cmd")));
         assert_eq!(resolve("nope", Some(&path), Some(".EXE;.CMD")), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_npm_shim_runs_the_exe_it_wraps() {
+        let dir = std::env::temp_dir().join(format!("maestro-unshim-{}", std::process::id()));
+        let bin = dir.join("node_modules").join("pkg").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("tool.exe"), "").unwrap();
+        let shim = dir.join("tool.cmd");
+        let text = "@ECHO off\r\nCALL :find_dp0\r\n\"%dp0%\\node_modules\\pkg\\bin\\tool.exe\"   %*\r\n";
+        assert_eq!(unshim(&shim, text), Some(dir.join(r"node_modules\pkg\bin\tool.exe")));
+        // a node script shim has no .exe to run
+        assert_eq!(unshim(&shim, "\"%_prog%\"  \"%dp0%\\node_modules\\pkg\\cli.js\" %*"), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

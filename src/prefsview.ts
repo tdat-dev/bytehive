@@ -21,6 +21,7 @@ const TOGGLES: Toggle[] = [
   { id: "prefRestore", key: "restore" },
   { id: "prefTips", key: "tips" },
   { id: "prefChat", key: "chatView" },
+  { id: "prefDirectChat", key: "directChat" },
   { id: "prefAutoResume", key: "autoResume" },
   { id: "prefLimitNotify", key: "limitNotify" },
 ];
