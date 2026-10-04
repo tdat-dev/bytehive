@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-10-04
+
+Read back earlier sessions.
+
+### Added
+
+- **Sessions: every earlier Claude conversation of a project, to read back.**
+  Open it from the clock button on the dock, Alt+O or Ctrl K. It lists the
+  project's sessions newest first, its agents' worktrees included (or every
+  folder's), and searches them by title or folder. Pick one and it shows as
+  the chat does: messages, steps, diffs, pictures. It is only for reading,
+  nothing starts or resumes an agent. A long session opens at its end, with
+  a button to read all of it.
+
 ## [0.9.6] - 2026-10-04
 
 Know when agents finish, and lock the dashboard.
