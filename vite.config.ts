@@ -12,6 +12,10 @@ export default defineConfig({
   server: {
     port: 17630,
     strictPort: true,
+    // Agent worktrees live under .claude/worktrees and Rust builds under
+    // src-tauri/target: every file an agent saved there reloaded the dev app,
+    // over and over while one worked beside it.
+    watch: { ignored: ["**/.claude/**", "**/src-tauri/target/**", "**/.maestro/**", "**/logs/**"] },
   },
   // Keep the test config here and nowhere else: a vitest.config.ts would be
   // loaded *instead of* this file, silently dropping the excludes below.
