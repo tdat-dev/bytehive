@@ -6,12 +6,14 @@
 //! or logged. A good login gets a session: a random 32-byte token in an
 //! HttpOnly, SameSite=Strict cookie, held in memory for 12 hours. A wrong one
 //! waits half a second, and an address that keeps guessing waits longer and
-//! longer. With no password set, the dashboard stays on localhost and needs
-//! no login, as before.
+//! longer; every address together gets GLOBAL_FAILS misses a minute, and only
+//! MAX_CHECKS password checks run at once. With no password set, the
+//! dashboard stays on localhost and needs no login, as before.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -29,8 +31,13 @@ const FREE_TRIES: u32 = 3;
 const MAX_WAIT: Duration = Duration::from_secs(5 * 60);
 /// Failures are forgotten after this long without another one.
 const FORGET_AFTER: Duration = Duration::from_secs(15 * 60);
+/// Password checks that may run at once: each argon2 check holds ~19 MiB.
+pub const MAX_CHECKS: usize = 2;
+/// Wrong passwords allowed per GLOBAL_WINDOW across every address together.
+pub const GLOBAL_FAILS: usize = 10;
+pub const GLOBAL_WINDOW: Duration = Duration::from_secs(60);
 /// Shortest password the settings accept.
-pub const MIN_LEN: usize = 6;
+pub const MIN_LEN: usize = 10;
 pub const COOKIE: &str = "maestro_dash";
 const FILE: &str = "dashboard-auth.json";
 
@@ -44,13 +51,50 @@ struct Fails {
     last: Instant,
 }
 
+/// Wrong guesses: per address, and every one in the last GLOBAL_WINDOW.
+#[derive(Default)]
+struct Misses {
+    by_ip: HashMap<IpAddr, Fails>,
+    recent: VecDeque<Instant>,
+}
+
+/// One of the MAX_CHECKS password-check slots, given back on drop.
+struct Slot<'a>(&'a AtomicUsize);
+
+impl<'a> Slot<'a> {
+    fn take(running: &'a AtomicUsize, peak: &AtomicUsize) -> Option<Self> {
+        let mut n = running.load(Ordering::SeqCst);
+        loop {
+            if n >= MAX_CHECKS {
+                return None;
+            }
+            match running.compare_exchange(n, n + 1, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => {
+                    peak.fetch_max(n + 1, Ordering::SeqCst);
+                    return Some(Slot(running));
+                }
+                Err(now) => n = now,
+            }
+        }
+    }
+}
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 #[derive(Default)]
 pub struct DashAuth {
     /// Where the hash is kept; None until startup knows the config dir (and in tests).
     file: Mutex<Option<PathBuf>>,
     hash: Mutex<Option<String>>,
     sessions: Mutex<HashMap<String, Instant>>,
-    fails: Mutex<HashMap<IpAddr, Fails>>,
+    fails: Mutex<Misses>,
+    /// Password checks running now, and the most ever at once.
+    checks: AtomicUsize,
+    peak: AtomicUsize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,6 +104,8 @@ pub enum Login {
     Wrong,
     /// Too many wrong guesses from this address: try again after this long.
     Wait(Duration),
+    /// Too many checks running already: try again in a moment.
+    Busy,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -173,26 +219,45 @@ impl DashAuth {
 
     /// Check a login from `ip`. Doesn't sleep: the caller holds a wrong answer
     /// back by FAIL_DELAY.
+    ///
+    /// Requests arrive in parallel (a thread each), so the attempt is booked
+    /// as a miss BEFORE the slow check and given back if it was right: a burst
+    /// can't all pass the backoff while none has failed yet. At most
+    /// MAX_CHECKS checks run at once, and every address shares GLOBAL_FAILS.
     pub fn login(&self, ip: IpAddr, password: &str, now: Instant) -> Login {
+        let Some(hash) = lock(&self.hash).clone() else { return Login::Wrong };
+        let Some(_slot) = Slot::take(&self.checks, &self.peak) else { return Login::Busy };
         {
-            let mut fails = lock(&self.fails);
-            fails.retain(|_, f| now.saturating_duration_since(f.last) < FORGET_AFTER);
-            if let Some(f) = fails.get(&ip) {
+            let mut g = lock(&self.fails);
+            g.by_ip.retain(|_, f| now.saturating_duration_since(f.last) < FORGET_AFTER);
+            g.recent.retain(|t| now.saturating_duration_since(*t) < GLOBAL_WINDOW);
+            if let Some(f) = g.by_ip.get(&ip) {
                 let ready = f.last + wait_for(f.count);
                 if now < ready {
                     return Login::Wait(ready - now);
                 }
             }
-        }
-        let Some(hash) = lock(&self.hash).clone() else { return Login::Wrong };
-        if !verify_password(&hash, password) {
-            let mut fails = lock(&self.fails);
-            let f = fails.entry(ip).or_insert(Fails { count: 0, last: now });
+            if g.recent.len() >= GLOBAL_FAILS {
+                let ready = g.recent[0] + GLOBAL_WINDOW;
+                return Login::Wait(ready.saturating_duration_since(now).max(Duration::from_secs(1)));
+            }
+            let f = g.by_ip.entry(ip).or_insert(Fails { count: 0, last: now });
             f.count += 1;
             f.last = now;
+            g.recent.push_back(now);
+        }
+        if !verify_password(&hash, password) {
             return Login::Wrong;
         }
-        lock(&self.fails).remove(&ip);
+        {
+            // right after all: a good login forgets this address's misses and
+            // gives back the one it booked
+            let mut g = lock(&self.fails);
+            g.by_ip.remove(&ip);
+            if let Some(i) = g.recent.iter().rposition(|t| *t == now) {
+                g.recent.remove(i);
+            }
+        }
         let token: String = match random_bytes::<32>() {
             Ok(b) => b.iter().map(|x| format!("{x:02x}")).collect(),
             Err(_) => return Login::Wrong,
@@ -201,6 +266,11 @@ impl DashAuth {
         sessions.retain(|_, until| *until > now);
         sessions.insert(token.clone(), now + SESSION_TTL);
         Login::Ok(token)
+    }
+
+    /// The most password checks that ever ran at once.
+    pub fn peak_checks(&self) -> usize {
+        self.peak.load(Ordering::SeqCst)
     }
 
     /// Is this a live session?
@@ -236,6 +306,7 @@ pub fn bind_addr(lan: bool, has_password: bool) -> Result<std::net::Ipv4Addr, St
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
+    use std::sync::Arc;
 
     const IP: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20));
 
@@ -261,7 +332,80 @@ mod tests {
     fn refuses_a_short_password() {
         let a = DashAuth::default();
         assert!(a.set_password("abc").is_err());
+        assert_eq!(a.set_password("ninechars"), Err("Use at least 10 characters.".to_string()));
         assert!(!a.has_password());
+        assert!(a.set_password("tencharsok").is_ok());
+    }
+
+    /// Wrong guesses sent all at once from one address: the attempt is booked
+    /// before the check, so they can't all slip past the backoff.
+    #[test]
+    fn a_burst_from_one_address_gets_only_the_free_tries() {
+        let a = Arc::new(with_password("correct horse"));
+        let gate = Arc::new(std::sync::Barrier::new(8));
+        let results: Vec<Login> = (0..8)
+            .map(|_| {
+                let (a, gate) = (a.clone(), gate.clone());
+                std::thread::spawn(move || {
+                    gate.wait();
+                    a.login(IP, "nope", Instant::now())
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect();
+        let wrong = results.iter().filter(|r| **r == Login::Wrong).count();
+        assert!(wrong <= FREE_TRIES as usize, "{wrong} guesses were checked: {results:?}");
+        assert!(results.iter().all(|r| matches!(r, Login::Wrong | Login::Wait(_) | Login::Busy)));
+    }
+
+    /// Each argon2 check holds ~19 MiB: never more than two run at once, the
+    /// rest are told to come back.
+    #[test]
+    fn no_more_than_two_checks_run_at_once() {
+        let a = Arc::new(with_password("correct horse"));
+        let gate = Arc::new(std::sync::Barrier::new(10));
+        let results: Vec<Login> = (0..10u8)
+            .map(|i| {
+                let (a, gate) = (a.clone(), gate.clone());
+                std::thread::spawn(move || {
+                    gate.wait();
+                    a.login(IpAddr::V4(Ipv4Addr::new(10, 0, 0, i)), "nope", Instant::now())
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect();
+        assert!(a.peak_checks() <= MAX_CHECKS, "{} at once", a.peak_checks());
+        assert!(results.contains(&Login::Busy), "{results:?}");
+        assert!(a.login(IP, "correct horse", Instant::now()) != Login::Busy, "a slot frees up again");
+    }
+
+    /// Many addresses (a LAN full of guessers) share one budget of misses.
+    #[test]
+    fn misses_from_every_address_share_one_budget() {
+        let a = with_password("correct horse");
+        let t0 = Instant::now();
+        for i in 0..GLOBAL_FAILS as u8 {
+            assert_eq!(a.login(IpAddr::V4(Ipv4Addr::new(10, 0, 1, i)), "nope", t0), Login::Wrong);
+        }
+        // the budget is spent: a fresh address waits, even with the right password
+        let fresh = IpAddr::V4(Ipv4Addr::new(10, 0, 2, 1));
+        assert!(matches!(a.login(fresh, "correct horse", t0), Login::Wait(_)));
+        // a minute later it is back
+        assert!(matches!(a.login(fresh, "correct horse", t0 + GLOBAL_WINDOW), Login::Ok(_)));
+    }
+
+    #[test]
+    fn a_good_login_gives_its_try_back() {
+        let a = with_password("correct horse");
+        let t0 = Instant::now();
+        for i in 0..(GLOBAL_FAILS as u8 + 2) {
+            assert!(matches!(a.login(IpAddr::V4(Ipv4Addr::new(10, 0, 3, i)), "correct horse", t0), Login::Ok(_)));
+        }
+        assert_eq!(a.login(IP, "nope", t0), Login::Wrong, "good logins spent nothing");
     }
 
     #[test]

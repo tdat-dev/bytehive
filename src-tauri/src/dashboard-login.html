@@ -46,7 +46,9 @@
         body: JSON.stringify({ password: pw.value }) });
       if (r.ok) { location.replace("/"); return; }
       const o = await r.json().catch(() => ({}));
-      msg.textContent = r.status === 429
+      msg.textContent = o.error === "busy"
+        ? "Too many attempts, try again in a moment."
+        : r.status === 429
         ? "Too many tries. Wait " + (o.seconds || 1) + " s and try again."
         : "That's not the password.";
       pw.select();

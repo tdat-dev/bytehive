@@ -2,7 +2,7 @@
 // password, kept as a hash by the app: dashauth.rs). No DOM: unit-tested.
 
 /** Shortest password the app accepts (dashauth.rs MIN_LEN). */
-export const MIN_PASSWORD = 6;
+export const MIN_PASSWORD = 10;
 
 /** What is wrong with a new password typed twice, or null when it will do. */
 export function passwordProblem(first: string, again: string): string | null {

@@ -362,6 +362,10 @@ fn login(mut request: Request, auth: &DashAuth) {
             std::thread::sleep(dashauth::FAIL_DELAY);
             let _ = request.respond(json_response("{\"error\":\"wrong\"}".into()).with_status_code(401));
         }
+        Login::Busy => {
+            let body = "{\"error\":\"busy\",\"message\":\"Too many attempts, try again in a moment\"}";
+            let _ = request.respond(json_response(body.into()).with_status_code(429));
+        }
         Login::Wait(d) => {
             std::thread::sleep(dashauth::FAIL_DELAY);
             let body = format!("{{\"error\":\"wait\",\"seconds\":{}}}", d.as_secs().max(1));
@@ -761,6 +765,33 @@ mod tests {
         assert!(t.elapsed() >= dashauth::FAIL_DELAY);
         assert!(!r.head.to_ascii_lowercase().contains("set-cookie"));
         assert_eq!(http(srv.port, "POST", "/api/login", None, "not json").status, 401);
+    }
+
+    /// A burst of logins at once is not a way around the backoff: most are
+    /// told to wait (429) and only the free tries get checked.
+    #[test]
+    fn a_login_burst_gets_429s() {
+        let auth = locked("correct horse");
+        let srv = start(auth.clone());
+        let port = srv.port;
+        let gate = Arc::new(std::sync::Barrier::new(12));
+        let codes: Vec<u16> = (0..12)
+            .map(|_| {
+                let gate = gate.clone();
+                std::thread::spawn(move || {
+                    gate.wait();
+                    http(port, "POST", "/api/login", None, r#"{"password":"nope"}"#).status
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect();
+        let checked = codes.iter().filter(|c| **c == 401).count();
+        assert!(checked <= 3, "{checked} guesses checked: {codes:?}");
+        assert_eq!(codes.iter().filter(|c| **c == 429).count(), 12 - checked, "{codes:?}");
+        assert!(auth.peak_checks() <= 2);
+        assert!(LOGIN_PAGE.contains("Too many attempts, try again in a moment."), "the page says so");
     }
 
     #[test]
