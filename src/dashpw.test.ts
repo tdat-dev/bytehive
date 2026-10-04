@@ -18,6 +18,12 @@ describe("dashboard password", () => {
     expect(passwordProblem("ẩẩẩẩẩẩẩẩẩ", "ẩẩẩẩẩẩẩẩẩ")).not.toBeNull();
   });
 
+  it("warns that the password crosses the Wi-Fi unencrypted", () => {
+    const warning = "On your Wi-Fi the password goes unencrypted: use it only on a network you trust.";
+    expect(passwordNotes(true).lan).toContain(warning);
+    expect(passwordNotes(false).lan).toContain(warning);
+  });
+
   it("explains why LAN waits for a password", () => {
     expect(passwordNotes(false).lan).toMatch(/Set a password first/);
     expect(passwordNotes(true).pw).toMatch(/^Set\./);

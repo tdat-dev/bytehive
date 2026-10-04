@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Only the dashboard's own page gets in.** Another website can no longer
+  reach the phone dashboard through your browser (by re-pointing its name at
+  this computer, or from a dev server on another port) to read your agents or
+  type into them.
+- **Guessing the dashboard password is slower,** even with many tries at once,
+  and the password is now at least 10 characters.
+- **Signing out closes open terminals,** as do changing or removing the
+  password.
+- **Removing the password stops the LAN server first,** so it is never open
+  to other devices without one.
+- **A plain warning next to the LAN toggle:** on your Wi-Fi the password goes
+  unencrypted. See [docs/remote-dashboard.md](docs/remote-dashboard.md).
+
 ## [0.9.5] - 2026-09-30
 
 A smoother chat.
