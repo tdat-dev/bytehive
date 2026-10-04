@@ -168,6 +168,16 @@ impl Registry {
             .write_input(bytes)
     }
 
+    /// Keys typed from outside Maestro's own window (the remote terminal). An
+    /// agent on pipes reads JSON lines, which stray keys would break: refused.
+    pub fn write_keys(&mut self, id: &str, bytes: &[u8]) -> Result<()> {
+        let agent = &mut self.agents.get_mut(id).ok_or_else(|| anyhow!("no agent '{id}'"))?.agent;
+        if agent.is_pipe() {
+            return Err(anyhow!("'{id}' takes messages, not keys"));
+        }
+        agent.write_input(bytes)
+    }
+
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<()> {
         self.get(id)?.resize(cols, rows)
     }

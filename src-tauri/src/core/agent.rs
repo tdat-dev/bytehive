@@ -59,6 +59,9 @@ struct Output {
     taps: Vec<Sender<Vec<u8>>>,
     // When Some, every output chunk is also appended to this recording.
     rec: Option<Rec>,
+    // A pipe agent's output is JSON lines: its window reads them as they are,
+    // a remote terminal or a recording gets them as readable text.
+    pipe: bool,
 }
 
 /// Standard base64 (no line breaks). Small dependency-free encoder, matching the
@@ -127,6 +130,7 @@ impl Agent {
             sink: Box::new(on_bytes),
             taps: Vec::new(),
             rec: None,
+            pipe: false,
         }));
         let reader_thread = spawn_reader(reader, output.clone());
         let wait_thread = spawn_waiter(child, on_exit);
@@ -162,6 +166,7 @@ impl Agent {
             sink: Box::new(on_bytes),
             taps: Vec::new(),
             rec: None,
+            pipe: true,
         }));
         let reader_thread = spawn_line_reader(Box::new(stdout), output.clone(), false);
         // Detached: it ends with the process, and the reader above is the one
@@ -204,7 +209,7 @@ impl Agent {
             let mut replay = Vec::with_capacity(a.len() + b.len());
             replay.extend_from_slice(a);
             replay.extend_from_slice(b);
-            let _ = tx.send(replay);
+            let _ = tx.send(if o.pipe { readable(&replay) } else { replay });
         }
         o.taps.push(tx);
         rx
@@ -224,6 +229,7 @@ impl Agent {
             let mut snap = Vec::with_capacity(a.len() + b.len());
             snap.extend_from_slice(a);
             snap.extend_from_slice(b);
+            let snap = if o.pipe { readable(&snap) } else { snap };
             writeln!(w, "{{\"t\":0,\"d\":\"{}\"}}", b64(&snap))?;
         }
         o.rec = Some(Rec { w, start: Instant::now() });
@@ -244,6 +250,15 @@ impl Agent {
             .unwrap_or_else(|p| p.into_inner())
             .rec
             .is_some()
+    }
+
+    /// It talks in JSON lines, not keys.
+    pub fn is_pipe(&self) -> bool {
+        #[cfg(windows)]
+        if let Session::Pipe(_) = self.session {
+            return true;
+        }
+        false
     }
 
     pub fn write_input(&mut self, bytes: &[u8]) -> Result<()> {
@@ -274,15 +289,80 @@ fn emit(output: &Arc<Mutex<Output>>, bytes: &[u8]) {
         o.buf.drain(..over);
     }
     (o.sink)(bytes);
+    if o.taps.is_empty() && o.rec.is_none() {
+        return;
+    }
+    let shown = if o.pipe { readable(bytes) } else { bytes.to_vec() };
+    if shown.is_empty() {
+        return;
+    }
     // Mirror to live taps (remote terminals); drop closed ones.
     if !o.taps.is_empty() {
-        let chunk = bytes.to_vec();
-        o.taps.retain(|t| t.send(chunk.clone()).is_ok());
+        o.taps.retain(|t| t.send(shown.clone()).is_ok());
     }
     // Append to the session recording, if one is running.
     if let Some(rec) = o.rec.as_mut() {
-        rec_frame(rec, bytes);
+        rec_frame(rec, &shown);
     }
+}
+
+/// A pipe agent's JSON lines as a terminal would show the exchange: what you
+/// sent, what it wrote, the tools it called, how each turn ended. Everything
+/// else (pieces of a reply still being written, its own bookkeeping) is left
+/// out; it all arrives again whole.
+pub fn readable(bytes: &[u8]) -> Vec<u8> {
+    use serde_json::Value;
+    let mut out = String::new();
+    let mut put = |color: &str, text: &str| {
+        let text = text.trim_end().replace("\r\n", "\n").replace('\n', "\r\n");
+        if text.is_empty() {
+            return;
+        }
+        if color.is_empty() {
+            out.push_str(&text);
+        } else {
+            out.push_str(&format!("\x1b[{color}m{text}\x1b[0m"));
+        }
+        out.push_str("\r\n");
+    };
+    let text_of = |c: &Value| -> String {
+        match c {
+            Value::String(s) => s.clone(),
+            Value::Array(parts) => parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("\n"),
+            _ => String::new(),
+        }
+    };
+    for line in String::from_utf8_lossy(bytes).lines() {
+        let Ok(v) = serde_json::from_str::<Value>(line) else { continue };
+        let content = v.get("message").and_then(|m| m.get("content"));
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("user") => {
+                // a message you sent, not the results of its tools
+                if v.get("isReplay").is_none() && content.map_or(false, |c| c.is_string() || c.as_array().map_or(false, |a| a.iter().any(|p| p.get("type").and_then(|t| t.as_str()) == Some("text")))) {
+                    put("36", &format!("› {}", text_of(content.unwrap())));
+                }
+            }
+            Some("assistant") => {
+                for b in content.and_then(|c| c.as_array()).into_iter().flatten() {
+                    match b.get("type").and_then(|t| t.as_str()) {
+                        Some("text") => put("", b.get("text").and_then(|t| t.as_str()).unwrap_or("")),
+                        Some("tool_use") => put("90", &format!("● {}", b.get("name").and_then(|n| n.as_str()).unwrap_or("tool"))),
+                        _ => {}
+                    }
+                }
+            }
+            Some("result") => {
+                let failed = v.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                put(if failed { "31" } else { "90" }, if failed { "Stopped." } else { "Done." });
+            }
+            Some("control_request") if v.pointer("/request/subtype").and_then(|s| s.as_str()) == Some("can_use_tool") => {
+                put("33", &format!("? Wants to use {} (answer it in Maestro)", v.pointer("/request/tool_name").and_then(|s| s.as_str()).unwrap_or("a tool")));
+            }
+            Some("maestro_stderr") => put("31", v.get("text").and_then(|t| t.as_str()).unwrap_or("")),
+            _ => {}
+        }
+    }
+    out.into_bytes()
 }
 
 /// Wrap one stderr line as a JSON line of its own.
@@ -363,7 +443,20 @@ fn spawn_waiter(
 
 #[cfg(test)]
 mod line_tests {
-    use super::take_lines;
+    use super::{readable, take_lines};
+
+    #[test]
+    fn a_pipe_agents_lines_read_like_a_terminal() {
+        let lines = concat!(
+            r#"{"type":"user","message":{"role":"user","content":"hi there"}}"#, "\n",
+            r#"{"type":"stream_event","event":{"type":"content_block_delta"}}"#, "\n",
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello\nworld"},{"type":"tool_use","name":"Bash"}]}}"#, "\n",
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#, "\n",
+            r#"{"type":"result","is_error":false}"#, "\n",
+        );
+        let out = String::from_utf8(readable(lines.as_bytes())).unwrap();
+        assert_eq!(out, "\x1b[36m› hi there\x1b[0m\r\nHello\r\nworld\r\n\x1b[90m● Bash\x1b[0m\r\n\x1b[90mDone.\x1b[0m\r\n");
+    }
 
     #[test]
     fn only_whole_lines_leave_and_the_rest_waits() {

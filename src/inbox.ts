@@ -19,6 +19,7 @@ import { openNewAgent } from "./inboxnew";
 import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inboxpalette";
 import { createHistoryDrawer } from "./inboxhistory";
 import { createSessionsView } from "./sessionsview";
+import { isStream } from "./streamagent";
 import { mountStart, renderStart, unmountStart } from "./inboxstart";
 import { getPref } from "./prefs";
 import { activateWorkspace, removeWorkspace, renameWorkspace } from "./workspace";
@@ -600,7 +601,10 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     // Grid is terminals only: no Chat/Terminal choice there, even for a lone agent.
     const mode = pinned ? "split" : splitOn ? "grid" : "stage";
     const chatOk = mode === "stage" && chatSupported(p) && getPref("chatView");
-    const build = `${mode}|${t.name}|${t.race?.of ?? ""}|${chatOk}`;
+    // Talked to directly, it has no terminal to type / or /model into: its
+    // commands and models are in the chat.
+    const term = !isStream(p.id);
+    const build = `${mode}|${t.name}|${t.race?.of ?? ""}|${chatOk}|${term}`;
     if (!acts || acts.dataset.mode !== build) {
       acts?.remove();
       acts = document.createElement("span");
@@ -608,7 +612,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.dataset.mode = build;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
-        : `${chatOk ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
+        : `${chatOk ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}${term ? `<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));

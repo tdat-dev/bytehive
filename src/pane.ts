@@ -43,7 +43,7 @@ import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
 import { faceSvg } from "./agentface";
 import { replayEarlyExit, takeEarlyExit } from "./ptyexit";
-import { STREAM_ARGS, dropStream, feedStream, openStream } from "./streamagent";
+import { STREAM_ARGS, dropStream, feedStream, openStream, startStream } from "./streamagent";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
@@ -366,6 +366,7 @@ export function createAgent(
         // new window owns it) — never write into a dropped pane.
         if (ws.panes.has(id)) term.write(bytes);
       }, stream);
+      if (stream) startStream(id);
       pane.spawning = false;
       pane.running = true;
       pane.error = undefined;

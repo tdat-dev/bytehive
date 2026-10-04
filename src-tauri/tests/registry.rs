@@ -186,6 +186,8 @@ fn a_pipe_agent_talks_in_lines_and_dies_with_its_entry() {
     }
     assert!(seen.contains("hello there"), "stdout line came back: {seen:?}");
     assert!(seen.contains("\"type\":\"maestro_stderr\""), "stderr came as a JSON line: {seen:?}");
+    // keys from the remote terminal would break its JSON: refused
+    assert!(registry::lock(&shared).write_keys("p", b"x\r").is_err());
     let gone = registry::lock(&shared).take("p");
     drop(gone);
     exit_rx.recv_timeout(Duration::from_secs(10)).expect("exit reported after take");

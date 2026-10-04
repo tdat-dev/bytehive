@@ -9,6 +9,7 @@ vi.mock("./ipc", () => ({
 
 import {
   routeStreamInput,
+  startStream,
   answerPending, answerPendingText, askOf, closeStream, dropStream, feedStream, interruptStream, openStream, sendToStream, streamFacts,
 } from "./streamagent";
 import type { InputRoute } from "./ipc";
@@ -30,10 +31,18 @@ describe("streamagent", () => {
     log = [];
     dropStream("a");
     openStream("a", { sessionId: "s1", log: (t) => log.push(t) });
+    startStream("a");
   });
 
-  it("starts by asking the CLI to initialize", () => {
+  it("asks the CLI to initialize once it runs, and keeps its commands and models", async () => {
     expect(sent()[0]).toMatchObject({ type: "control_request", request: { subtype: "initialize" } });
+    feed("a", { type: "control_response", response: { subtype: "success", request_id: sent()[0].request_id, response: {
+      commands: [{ name: "compact", description: "Clear history but keep a summary" }, { name: "impeccable", description: "Design (user)" }, { name: "codex:rescue", description: "x" }],
+      models: [{ value: "opus", displayName: "Opus" }],
+    } } });
+    await Promise.resolve();
+    expect(streamFacts("a")?.facts?.commands).toEqual([{ name: "compact", kind: "command" }, { name: "impeccable", kind: "skill" }, { name: "codex:rescue", kind: "plugin" }]);
+    expect(streamFacts("a")?.models).toEqual([{ value: "opus", label: "Opus" }]);
   });
 
   it("sends a message as one JSON line and works until its result", async () => {

@@ -121,6 +121,14 @@ export function openStream(paneId: string, opts: { sessionId: string | null; log
   };
   streams.set(paneId, s);
   say(s, ANSI.dim, "Maestro talks to Claude directly here: this is a log of the conversation, not its terminal.");
+  changed(s);
+}
+
+/** Its process is running: ask it what it has (commands, models). Not
+ *  before, or the request goes nowhere. */
+export function startStream(paneId: string): void {
+  const s = streams.get(paneId);
+  if (!s) return;
   void control(s, { subtype: "initialize", hooks: null }, 120_000).then((r) => {
     if (!r || streams.get(paneId) !== s) return;
     const commands = Array.isArray(r.commands) ? r.commands : [];
@@ -134,7 +142,6 @@ export function openStream(paneId: string, opts: { sessionId: string | null; log
     s.models = (Array.isArray(r.models) ? r.models : []).map((m) => ({ value: str(obj(m).value), label: str(obj(m).displayName) || str(obj(m).value) })).filter((m) => m.value);
     changed(s);
   });
-  changed(s);
 }
 
 /** The agent's process ended: nothing runs and nothing waits any more. */

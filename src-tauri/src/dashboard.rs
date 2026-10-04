@@ -463,7 +463,7 @@ fn handle(mut request: Request, ctx: Ctx) {
                 v.get("data").and_then(|x| x.as_str()),
             ) {
                 if let Ok(bytes) = STANDARD.decode(data) {
-                    let _ = ctx.registry.lock().unwrap_or_else(|p| p.into_inner()).write_input(id, &bytes);
+                    let _ = ctx.registry.lock().unwrap_or_else(|p| p.into_inner()).write_keys(id, &bytes);
                 }
             }
             let _ = request.respond(json_response("{\"ok\":true}".into()));
@@ -610,10 +610,10 @@ fn ws_conn(stream: TcpStream, ctx: Ctx) {
         // Input: keystrokes from the browser → PTY (in order, no round-trips).
         match ws.read() {
             Ok(tungstenite::Message::Binary(d)) => {
-                let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).write_input(&agent_id, &d);
+                let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).write_keys(&agent_id, &d);
             }
             Ok(tungstenite::Message::Text(t)) => {
-                let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).write_input(&agent_id, t.as_bytes());
+                let _ = registry.lock().unwrap_or_else(|p| p.into_inner()).write_keys(&agent_id, t.as_bytes());
             }
             Ok(tungstenite::Message::Close(_)) => return,
             Ok(_) => {}
