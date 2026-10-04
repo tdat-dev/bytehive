@@ -119,6 +119,9 @@
 .cv-a th { font-weight: 600; background: rgba(255, 255, 255, 0.03); }
 .cv-a hr { border: 0; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 14px 0; }
 .cv-a img { max-width: 100%; height: auto; border-radius: 8px; }
+/* a reply still being written, read off the terminal until the transcript has it */
+.cv-a.cv-aw .cv-aw-note { display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font-size: 11.5px; color: var(--ib-ink-3); }
+.cv-a.cv-aw .cv-aw-cut { margin: 0 0 4px; color: var(--ib-ink-3); line-height: 1; }
 
 /* what it did: a quiet list of steps between the messages */
 .cv-steps { display: flex; flex-direction: column; gap: 1px; margin: -4px 0; }

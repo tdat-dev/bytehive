@@ -23,6 +23,7 @@ import { applyMention, mentionAt, mentionMatches, withFolders, type MentionHit }
 import { claudeSessions, claudeSessionsEverywhere, fsReadDataUrl, fsReadFile, pickFiles, savePastedFile, workspaceFiles, openExternal, savePastedImage, sendInput, sendMessage, type ClaudeSession } from "./ipc";
 import { confirmModal } from "./confirmmodal";
 import { stillHolding } from "./typing";
+import { landedIn, liveReplyOf, type LiveReply } from "./livereply";
 import type { Pane } from "./panetypes";
 
 /** "3m ago", "2h ago", "Sep 20". */
@@ -196,25 +197,30 @@ function markdown(id: string, text: string): string {
   let html = mdCache.get(key);
   if (html === undefined) {
     if (mdCache.size > 4000) mdCache.clear();
-    const t = document.createElement("template");
-    // breaks: a line the agent ends is a line in the chat, as in the terminal
-    // (one number per line was drawn as "1 2 3 … 40").
-    t.innerHTML = DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }) as string);
-    // Links say where they go; a click opens them in the browser (see mount),
-    // never in the app's own window.
-    for (const a of t.content.querySelectorAll("a[href]")) { a.setAttribute("rel", "noopener noreferrer"); a.setAttribute("title", a.getAttribute("href")!); }
-    // A code block copies with one click.
-    for (const pre of t.content.querySelectorAll("pre")) pre.insertAdjacentHTML("beforeend", `<button type="button" class="cv-cc" data-copy-code aria-label="Copy this code">Copy</button>`);
-    // A file named in the answer (`src/app.ts:42`) opens in the code panel.
-    for (const code of t.content.querySelectorAll("code")) {
-      if (code.closest("pre")) continue;
-      const ref = fileRef(code.textContent ?? "");
-      if (ref) { code.classList.add("cv-fref"); code.setAttribute("data-file-ref", ref.path); code.setAttribute("title", `Open ${ref.path}`); code.setAttribute("tabindex", "0"); code.setAttribute("role", "link"); }
-    }
-    html = t.innerHTML;
+    html = renderMarkdown(text);
     mdCache.set(key, html);
   }
   return html;
+}
+
+/** A reply's markdown as the chat draws it: links, Copy on code, files that open. */
+function renderMarkdown(text: string): string {
+  const t = document.createElement("template");
+  // breaks: a line the agent ends is a line in the chat, as in the terminal
+  // (one number per line was drawn as "1 2 3 … 40").
+  t.innerHTML = DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }) as string);
+  // Links say where they go; a click opens them in the browser (see mount),
+  // never in the app's own window.
+  for (const a of t.content.querySelectorAll("a[href]")) { a.setAttribute("rel", "noopener noreferrer"); a.setAttribute("title", a.getAttribute("href")!); }
+  // A code block copies with one click.
+  for (const pre of t.content.querySelectorAll("pre")) pre.insertAdjacentHTML("beforeend", `<button type="button" class="cv-cc" data-copy-code aria-label="Copy this code">Copy</button>`);
+  // A file named in the answer (`src/app.ts:42`) opens in the code panel.
+  for (const code of t.content.querySelectorAll("code")) {
+    if (code.closest("pre")) continue;
+    const ref = fileRef(code.textContent ?? "");
+    if (ref) { code.classList.add("cv-fref"); code.setAttribute("data-file-ref", ref.path); code.setAttribute("title", `Open ${ref.path}`); code.setAttribute("tabindex", "0"); code.setAttribute("role", "link"); }
+  }
+  return t.innerHTML;
 }
 
 /** A file path in an answer's inline code: `src/app.ts`, `D:\x\y.rs:12`, `chatview.ts:40:3`. */
@@ -544,6 +550,10 @@ interface View {
   addFiles?: (paths: string[]) => void;
   /** Its folder's files for @, asked now and then. */
   files?: { at: number; all: MentionHit[] };
+  /** The reply it is writing, read off its terminal until the transcript has it. */
+  live?: LiveReply | null;
+  /** That reply drawn, so a redraw for something else doesn't parse it again. */
+  liveDrawn?: { text: string; html: string };
 }
 
 const views = new Map<string, View>();
@@ -784,11 +794,44 @@ function settleSending(v: View): void {
   });
 }
 
+/** The agent's screen as it is now, for reading the reply it is writing: only
+ *  the rows on show (history may hold stale frames of the same reply). */
+const LIVE_ROWS = 60;
+function liveScreenOf(pane: Pane): string {
+  try { return pane.term.screen?.() ?? pane.term.snapshot(LIVE_ROWS); } catch { return ""; }
+}
+
+/** The reply a working Claude Code agent is writing, as its terminal shows it,
+ *  while its transcript doesn't have it yet. Claude Code writes an answer to the
+ *  transcript only once it is whole; till then the screen is the only place it is. */
+function liveFor(v: View): LiveReply | null {
+  if (v.state.state !== "working" || !v.pane.running || v.pane.spec.badge !== "claude") return null;
+  const live = liveReplyOf(liveScreenOf(v.pane));
+  if (!live) return null;
+  // What this turn has already said: the reply on screen may be one of those.
+  const said: string[] = [];
+  for (let k = v.chat.items.length - 1; k >= 0; k--) {
+    const it = v.chat.items[k];
+    if (it.kind === "user") break;
+    if (it.kind === "text") said.push(it.text);
+  }
+  return landedIn(live.text, said) ? null : live;
+}
+
+/** The reply being written, drawn the way it will be once it lands, with a
+ *  quiet "Writing…" under it; "…" over it when its start is above the screen. */
+function liveHtml(v: View, live: LiveReply): string {
+  if (v.liveDrawn?.text !== live.text) v.liveDrawn = { text: live.text, html: renderMarkdown(live.text) };
+  return `<div class="cv-a cv-aw" aria-busy="true">${live.cut ? `<p class="cv-aw-cut" title="Its start is further up in the terminal">…</p>` : ""}${v.liveDrawn.html}<p class="cv-aw-note"><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>Writing…</p></div>`;
+}
+
 function draw(v: View, force = false): void {
   const items = v.chat.items;
   settleSending(v);
+  // Only while it works: a stop or a finish drops it at once, not at the next read.
+  const live = v.loaded && v.state.state === "working" ? v.live ?? null : null;
   const set = (s: Set<string>) => [...s].sort().join(",");
-  const sig = `${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}|${v.skipped ?? 0}|${v.sending.map((x) => x.note ?? "").join(",")}|${(v.state.answers ?? []).map((a) => `${a.n}${a.label}`).join("/")}`;
+  const sig = `${live ? `${live.cut ? 1 : 0}${live.text}` : ""}|${items.length}|${items.filter((i) => i.kind === "step" && i.done).length}|${v.window}|${set(v.open)}|${set(v.expanded)}|${v.path ? 1 : 0}|${v.loaded}|${v.state.state}|${v.state.problem ?? ""}|${v.state.name}|${v.skipped ?? 0}|${v.sending.map((x) => x.note ?? "").join(",")}|${(v.state.answers ?? []).map((a) => `${a.n}${a.label}`).join("/")}`;
   const scroller = v.el.querySelector<HTMLElement>(".cv-scroll")!;
   const thread = v.el.querySelector<HTMLElement>(".cv-thread")!;
   if (sig !== v.sig || force) {
@@ -806,7 +849,10 @@ function draw(v: View, force = false): void {
       drawBlocks(thread, !v.loaded ? [{ key: "empty", html: emptyHtml(v) }] : [
         { key: "skipped", html: skippedHtml(v) },
         { key: "earlier", html: start > 0 ? `<button type="button" class="cv-earlier" data-earlier>Show ${Math.min(start, WINDOW)} earlier messages</button>` : "" },
-        ...(items.length || v.sending.length ? threadBlocks(items.slice(start), v.open, v.expanded, v.state.state === "working", v.state.answers, v.state.state === "stopped") : [{ key: "empty", html: emptyHtml(v) }]),
+        ...(items.length || v.sending.length || live ? threadBlocks(items.slice(start), v.open, v.expanded, v.state.state === "working", v.state.answers, v.state.state === "stopped") : [{ key: "empty", html: emptyHtml(v) }]),
+        // Its own key: as it grows only this node is drawn again, and it goes
+        // the moment the transcript has the reply, which lands in its place.
+        { key: "live", html: live ? liveHtml(v, live) : "" },
         ...v.sending.map((s, k) => ({ key: `sending:${k}`, html: `<div class="cv-u sending${s.failed ? " failed" : ""}"><div class="cv-bubble">${esc(s.text)}</div><span class="cv-sending">${esc(s.note ?? "Sending…")}${s.failed ? ` <button type="button" class="cv-resend" data-resend="${k}">Press Enter again</button>` : ""}</span></div>` })),
       ]);
       if (nearBottom || force) scroller.scrollTop = scroller.scrollHeight;
@@ -1006,6 +1052,7 @@ function follow(pane: Pane, v: View): boolean {
   v.said = "";
   v.skipped = 0;
   v.whole = false;
+  v.live = null;
   return true;
 }
 
@@ -1050,7 +1097,7 @@ async function poll(pane: Pane, v: View): Promise<void> {
     }
     if (caughtUp || !first) v.loaded = true;
     v.misses = 0;
-    if (first && v.loaded && views.get(pane.id) === v) { draw(v, true); return; }
+    if (first && v.loaded && views.get(pane.id) === v) { v.live = liveFor(v); draw(v, true); return; }
   } catch {
     // The next tick tries again; but a conversation that can't be read at all
     // (its file gone, the CLI died before writing one) stops saying "Loading…"
@@ -1060,7 +1107,11 @@ async function poll(pane: Pane, v: View): Promise<void> {
   } finally {
     v.busy = false;
   }
-  if (views.get(pane.id) === v) draw(v);
+  if (views.get(pane.id) !== v) return;
+  // Read at the poll's pace, and only here: a chat not on show isn't polled,
+  // and an agent not working costs no more than the check.
+  v.live = liveFor(v);
+  draw(v);
 }
 
 /** The work panel's width and whether it shows: one choice for every agent, remembered. */

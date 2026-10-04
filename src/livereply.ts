@@ -132,7 +132,7 @@ export function unwrap(lines: string[], width: number): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-const words = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+const words = (s: string): string[] => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 
 /** The conversation already has this reply: nearly all of its words come, in
  *  order, in one of `texts`. Loose on purpose: the screen shows markdown drawn

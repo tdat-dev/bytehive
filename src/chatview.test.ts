@@ -362,6 +362,74 @@ describe("chat view", () => {
     expect(p.el.querySelector(".cv-bubble")).toBe(bubble);
   });
 
+  // Claude Code's screen while it writes: the reply, its spinner, the composer.
+  const RULE = "─".repeat(80);
+  const writing = (...reply: string[]) => [...reply, "", "✢ Pondering… (3s · ↓ 40 tokens · esc to interrupt)", RULE, "❯", RULE, "  ⏵⏵ auto mode on (shift+tab to cycle)"].join("\n");
+  const turn = () =>
+    j({ type: "user", origin: { kind: "human" }, message: { content: "add mul" } }) +
+    j({ type: "assistant", message: { content: [{ type: "text", text: "On it." }] } }) +
+    j({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test" } }] } }) +
+    j({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] } });
+
+  it("shows the reply it is writing off its screen, then the transcript's in its place", async () => {
+    io.chunks = [turn()];
+    io.screen = writing("● I added mul(a, b) to math.js.");
+    const p = pane();
+    showChat(p, { name: "Ana", state: "working" });
+    await flush();
+    const live = () => p.el.querySelector(".cv-aw");
+    expect(live()!.textContent).toContain("I added mul(a, b) to math.js.");
+    expect(live()!.querySelector(".cv-aw-note")!.textContent).toBe("Writing…");
+    expect(live()!.getAttribute("aria-busy")).toBe("true");
+    // at the end of the thread, after the steps it took
+    expect(p.el.querySelector(".cv-thread")!.lastElementChild).toBe(live());
+    const bubble = p.el.querySelector(".cv-bubble");
+    const answer = p.el.querySelector(".cv-a:not(.cv-aw)");
+    const step = p.el.querySelector(".cv-step");
+    // it grows: only the live block is drawn again
+    io.screen = writing("● I added mul(a, b) to math.js. Now one line to the README.");
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(live()!.textContent).toContain("Now one line to the README.");
+    expect(p.el.querySelector(".cv-bubble")).toBe(bubble);
+    expect(p.el.querySelector(".cv-a:not(.cv-aw)")).toBe(answer);
+    expect(p.el.querySelector(".cv-step")).toBe(step);
+    // the transcript has it (as markdown): the live copy goes, the reply is there once
+    io.chunks = [j({ type: "assistant", message: { content: [{ type: "text", text: "I added `mul(a, b)` to **math.js**. Now one line to the README." }] } })];
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(live()).toBeNull();
+    const answers = [...p.el.querySelectorAll(".cv-a")].map((a) => a.textContent);
+    expect(answers).toHaveLength(2);
+    expect(answers[1]).toContain("Now one line to the README.");
+    expect(p.el.querySelector(".cv-a")).toBe(answer);
+    expect(p.el.querySelector(".cv-bubble")).toBe(bubble);
+  });
+
+  it("never shows a reply off the screen while the agent is idle or stopped", async () => {
+    io.chunks = [turn()];
+    io.screen = writing("● I added mul(a, b) to math.js.");
+    const p = pane();
+    showChat(p, { name: "Ana", state: "idle" });
+    await flush();
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(p.el.querySelector(".cv-aw")).toBeNull();
+    showChat(p, { name: "Ana", state: "working" });
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(p.el.querySelector(".cv-aw")).not.toBeNull();
+    // stopped: gone at once, not at the next read
+    showChat(p, { name: "Ana", state: "stopped" });
+    expect(p.el.querySelector(".cv-aw")).toBeNull();
+    // a finished turn on screen is not a reply being written
+    io.screen = writing("● I added mul(a, b) to math.js.").replace("✢ Pondering… (3s · ↓ 40 tokens · esc to interrupt)", "✻ Baked for 14s · done 1:37 AM");
+    showChat(p, { name: "Ana", state: "working" });
+    await new Promise((r) => setTimeout(r, 900));
+    await flush();
+    expect(p.el.querySelector(".cv-aw")).toBeNull();
+  });
+
   it("sends what you type, stops on Esc or Stop, and gives way to the terminal", async () => {
     const p = pane();
     showChat(p, { name: "Ana", state: "working" });
