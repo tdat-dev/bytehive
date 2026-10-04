@@ -7,7 +7,7 @@
 <style>
   :root{--bg:#090a0c;--s0:#0f1115;--s1:#16181d;--s2:#20232a;--line:#20232a;--line2:#323842;
     --text:#f8fafc;--muted:#94a3b8;--muted2:#64748b;--accent:#c6f135;--ink:#1a2e05;
-    --run:#34d399;--idle:#64748b;--err:#f87171}
+    --run:#34d399;--idle:#64748b;--err:#f87171;--rev:#7dd3fc}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
     padding:16px;max-width:640px;margin:0 auto;-webkit-font-smoothing:antialiased}
@@ -30,6 +30,17 @@
     padding:3px 9px;border-radius:999px;background:var(--s2);color:var(--muted)}
   .st-active .st{background:var(--run);color:#052e16}
   .st-needs .st{background:var(--accent);color:var(--ink)}
+  /* through with its work: plain done, or changes waiting for a look */
+  .row.fin-done .dot{background:var(--run);box-shadow:none}
+  .row.fin-done .st{background:rgba(52,211,153,.14);color:var(--run)}
+  .row.fin-review .dot{background:var(--rev);box-shadow:0 0 0 4px rgba(125,211,252,.16)}
+  .row.fin-review .st{background:var(--rev);color:#082f49}
+  .bell{margin-left:auto;background:var(--s2);border:1px solid var(--line2);color:var(--text);
+    border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600}
+  .bell[hidden],.out-btn[hidden]{display:none}
+  .out-btn{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:8px;
+    padding:6px 11px;font-size:12px;font-weight:600}
+  .bell[hidden] + .out-btn{margin-left:auto}
   .out{display:none;grid-column:1/-1;margin-top:8px;max-height:44vh;overflow:auto;
     background:var(--s0);border:1px solid var(--line);border-radius:8px;padding:10px 11px;
     font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px;line-height:1.45;
@@ -96,7 +107,7 @@
 <link rel="stylesheet" href="/xterm.css">
 </head>
 <body>
-<header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div></header>
+<header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div><button class="bell" id="bell" hidden>Notify me</button><button class="out-btn" id="signout" hidden>Sign out</button></header>
 <div class="list" id="list"></div>
 <div id="term">
   <div class="term-head">
@@ -134,16 +145,78 @@
     ["", "Esc"], ["\t", "Tab"], ["", "^C"],
   ];
 
+  // Behind a password (the server marks the page), offer a way out.
+  const signout = document.getElementById("signout");
+  signout.hidden = !document.body.hasAttribute("data-auth");
+  signout.addEventListener("click", async () => {
+    try { await fetch("/api/logout", { method: "POST" }); } catch (e) {}
+    location.reload();
+  });
+
+  // A finished agent reads "Done" or "Ready to review", not "idle" or a stale "needs".
+  function stLabel(a) {
+    if (a.finished === "review") return "Ready to review";
+    if (a.finished === "done") return "Done";
+    return a.status;
+  }
+
+  /* ---- tell me when an agent finishes ---- */
+  // A browser notification needs permission, asked only from a tap, and a secure
+  // page (localhost); a plain http LAN address can't have one. There the tab's
+  // title counts what finished while you were away, and the phone buzzes.
+  const canNotify = "Notification" in window && window.isSecureContext;
+  const bell = document.getElementById("bell");
+  function paintBell() { bell.hidden = !canNotify || Notification.permission !== "default"; }
+  paintBell();
+  bell.addEventListener("click", () => {
+    Notification.requestPermission().then(paintBell, paintBell);
+  });
+  const seenFinish = new Map(); // agent id -> the finish already told
+  let firstLook = true, missed = 0;
+  const baseTitle = document.title;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { missed = 0; document.title = baseTitle; }
+  });
+  function finishText(a) {
+    const k = a.finish.kind;
+    if (k === "review") return a.name + " is ready to review" + (a.files ? ", " + a.files + (a.files === 1 ? " file" : " files") + " changed" : "");
+    if (k === "crash") return a.name + " stopped with an error";
+    return a.name + " is done";
+  }
+  function tellFinishes(agents) {
+    const fresh = [];
+    for (const a of agents) {
+      if (!a.finish) continue;
+      if (seenFinish.get(a.id) === a.finish.at) continue;
+      seenFinish.set(a.id, a.finish.at);
+      if (!firstLook) fresh.push(a); // what had finished before the page opened is old news
+    }
+    firstLook = false;
+    if (!fresh.length) return;
+    const away = document.visibilityState !== "visible" || !document.hasFocus();
+    if (!away) return;
+    const title = fresh.length === 1 ? finishText(fresh[0]) : fresh.length + " agents finished";
+    const body = fresh.length === 1 ? (fresh[0].wsName || "") : fresh.map(finishText).join("\n");
+    let shown = false;
+    if (canNotify && Notification.permission === "granted") {
+      try { new Notification(title, { body, tag: "maestro-finish" }); shown = true; } catch (e) {}
+    }
+    if (document.visibilityState !== "visible") { missed += fresh.length; document.title = "(" + missed + ") " + baseTitle; }
+    if (!shown && navigator.vibrate) { try { navigator.vibrate(200); } catch (e) {} }
+  }
+
   function render(data) {
     const agents = (data && data.agents) || [];
     allAgents = agents; // cached for the terminal tab bar / grid
     const output = (data && data.output) || {};
     const list = document.getElementById("list");
-    const needs = agents.filter((a) => a.status === "needs").length;
+    tellFinishes(agents);
+    const needs = agents.filter((a) => a.status === "needs" && !a.finished).length;
     const active = agents.filter((a) => a.status === "active").length;
+    const done = agents.filter((a) => a.finished).length;
     document.getElementById("sum").innerHTML = agents.length
       ? `<b>${agents.length}</b> agents` + (needs ? ` · <span class="n">${needs} need you</span>` : "")
-        + (active ? ` · ${active} working` : "")
+        + (active ? ` · ${active} working` : "") + (done ? ` · ${done} done` : "")
       : "";
     if (!agents.length) { list.innerHTML = '<div class="empty">No agents running.</div>'; return; }
     // A 2s poll rebuilds this list; capture any in-progress message + focus so
@@ -155,11 +228,12 @@
       const open = a.id === openId ? " open" : "";
       const tail = output[a.id];
       const body = tail ? enc(tail) : '<span class="empty-out">No recent output.</span>';
-      return `<div class="row st-${enc(a.status)}${open}" data-id="${enc(a.id)}">
+      const fin = a.finished ? " fin-" + enc(a.finished) : "";
+      return `<div class="row st-${enc(a.status)}${fin}${open}" data-id="${enc(a.id)}">
         <span class="dot"></span>
         <span class="name">${enc(a.name)}</span>
-        <span class="meta">${enc(a.wsName || "")}${a.uptime ? " · " + enc(a.uptime) : ""}</span>
-        <span class="st">${enc(a.status)}</span>
+        <span class="meta">${enc(a.wsName || "")}${a.uptime ? " · " + enc(a.uptime) : ""}${a.finished === "review" && a.files ? " · " + a.files + (a.files === 1 ? " file" : " files") + " changed" : ""}</span>
+        <span class="st">${enc(stLabel(a))}</span>
         <pre class="out">${body}</pre>
         <button class="termbtn-full" data-term>⛶ Open full terminal — type directly</button>
         <div class="keys">${KEYS.map((k, i) => `<button data-k="${i}">${enc(k[1])}</button>`).join("")}</div>
@@ -207,6 +281,8 @@
     if (term) return; // don't poll the roster while a full terminal is open
     try {
       const r = await fetch("/api/fleet");
+      // signed out (expired, or the password changed): the page becomes the sign-in form
+      if (r.status === 401) { location.reload(); return; }
       render(await r.json());
       document.getElementById("foot").textContent = "live · updated " + new Date().toLocaleTimeString();
       document.getElementById("foot").classList.remove("off");

@@ -31,6 +31,7 @@ import { faceSvg } from "./agentface";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
 import { handOff, handoffTargets, limitLiftsAt, startLimitGuard, stopLimitGuard } from "./limitguard";
+import { startFinishWatch, stopFinishWatch } from "./finishwatch";
 import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
@@ -1184,6 +1185,11 @@ function mount(): void {
   onAgentCost(render);
   startPlanMeter(render);
   startLimitGuard();
+  // Agents that finish say so; a click on that notification opens the agent.
+  startFinishWatch({
+    screen: () => stagePane()?.id ?? null,
+    open: (id) => { const t = taskOf(id); if (t) openTask(t); },
+  });
   // Hidden, the inbox redraws every 5 s (it also trims hidden terminals'
   // history); what changes an agent's state still redraws it at once.
   const gate = hiddenGate(5);
@@ -1197,6 +1203,7 @@ function unmount(): void {
   unmountStart();
   stopPlanMeter();
   stopLimitGuard();
+  stopFinishWatch();
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();

@@ -186,6 +186,7 @@
         <section class="sec" data-sec="inbox">
           <h3>Inbox</h3>
           <label class="toggle"><input type="checkbox" id="prefNotify"><span class="tg"></span><span class="sr-txt"><b>Notify me when an agent needs me</b><span>A Windows notification that says what it wants (“Ana wants to run npm test”), only while Maestro is in the background.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="prefNotifyDone"><span class="tg"></span><span class="sr-txt"><b>Tell me when an agent finishes</b><span>A Windows notification when an agent is done, has changes to review, or stops with an error. Not for quick replies, and not for the agent you are looking at. Click it to open that agent.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefJump"><span class="tg"></span><span class="sr-txt"><b>Show the agent that needs me</b><span>When an agent starts waiting on you and the one on screen isn't busy, Maestro brings it up. Never while you are typing.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefAskCard"><span class="tg"></span><span class="sr-txt"><b>Answer card when an agent asks</b><span>The question and its answers float over the agent on screen. Off keeps it as a small chip until you open it.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefReviewOnDone"><span class="tg"></span><span class="sr-txt"><b>Open Changes when an agent finishes</b><span>When the agent on screen stops with changes on its branch, its diff opens on its own.</span></span></label>
@@ -229,7 +230,18 @@
         <section class="sec" data-sec="fleet">
           <h3>Remote</h3>
           <label class="toggle"><input type="checkbox" id="setDashOn"><span class="tg"></span><span class="sr-txt"><b>Remote fleet dashboard</b><span id="setDashUrl">View &amp; drive the fleet from your phone's browser.</span></span></label>
-          <label class="toggle"><input type="checkbox" id="setDashLan"><span class="tg"></span><span class="sr-txt"><b>Allow other devices (LAN)</b><span>Reachable from devices on the same Wi-Fi. Only enable on a network you trust.</span></span></label>
+          <div class="srow">
+            <div class="sr-txt"><b>Password</b><span id="setDashPwNote">None yet. Other devices need one before they can connect.</span></div>
+            <button type="button" class="sbtn" id="setDashPwSet">Set password</button>
+            <button type="button" class="sbtn" id="setDashPwClear" hidden>Remove</button>
+          </div>
+          <form class="srow col dash-pw" id="setDashPwForm" hidden>
+            <div class="sr-txt"><b id="setDashPwTitle">Set a password</b><span>Anyone opening the dashboard signs in with it, this computer included. At least 6 characters.</span></div>
+            <input class="input" type="password" id="setDashPw1" autocomplete="new-password" placeholder="Password" aria-label="Password">
+            <input class="input" type="password" id="setDashPw2" autocomplete="new-password" placeholder="Same password again" aria-label="Same password again">
+            <div class="dash-pw-foot"><span class="dash-pw-err" id="setDashPwErr" role="alert"></span><button type="button" class="sbtn" id="setDashPwCancel">Cancel</button><button type="submit" class="sbtn" id="setDashPwSave">Save password</button></div>
+          </form>
+          <label class="toggle"><input type="checkbox" id="setDashLan"><span class="tg"></span><span class="sr-txt"><b>Allow other devices (LAN)</b><span id="setDashLanNote">Reachable from devices on the same Wi-Fi, after signing in. Only turn on for a network you trust.</span></span></label>
         </section>
         <section class="sec" data-sec="sessions">
           <h3>Sessions</h3>

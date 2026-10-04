@@ -351,6 +351,7 @@ export function initBridges(): void {
         if (verdict === "early") { holdExit(id, run, code); break; }
         p.running = false;
         p.spawnedAt = null;
+        p.exitCode = code;
         clearAttention(p); // a dead agent isn't waiting on anyone
         if (p.recording) void stopRecording(p); // flush + close the recording
         setStatus(p, `exited (${code})`, "");

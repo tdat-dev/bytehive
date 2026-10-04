@@ -1,6 +1,7 @@
 pub mod browser;
 pub mod commands;
 pub mod core;
+pub mod dashauth;
 pub mod dashboard;
 pub mod error;
 pub mod land;
@@ -9,6 +10,7 @@ pub mod agentusage;
 pub mod state;
 pub mod review;
 pub mod tailfile;
+pub mod toast;
 pub mod transcripts;
 pub mod worktree;
 
@@ -79,6 +81,10 @@ pub fn run() {
         .manage(browser::BrowserState::default())
         .setup(|app| {
             build_tray(app)?;
+            // the dashboard password's hash lives with the app's config
+            if let Ok(dir) = app.path().app_config_dir() {
+                app.state::<AppState>().dashboard.auth.load_from(dir);
+            }
             browser::start(app.handle(), &app.state::<browser::BrowserState>());
             Ok(())
         })
@@ -91,6 +97,7 @@ pub fn run() {
             commands::pty_kill_all,
             commands::set_tray_visible,
             commands::set_tray_tooltip,
+            toast::notify_open,
             commands::programs_on_path,
             commands::record_start,
             commands::record_stop,
@@ -148,6 +155,9 @@ pub fn run() {
             dashboard::dashboard_start,
             dashboard::dashboard_stop,
             dashboard::dashboard_push,
+            dashboard::dashboard_password_status,
+            dashboard::dashboard_password_set,
+            dashboard::dashboard_password_clear,
             browser::browser_status,
             browser::browser_profiles,
             browser::browser_open_profile,

@@ -194,8 +194,17 @@ export async function resizePty(agentId: string, cols: number, rows: number): Pr
   await invoke("pty_resize", { agentId, cols, rows });
 }
 
+/** When each agent was last told to stop, so its exit isn't taken for a crash. */
+const stopsAsked = new Map<string, number>();
+
 export async function killPty(agentId: string): Promise<void> {
+  stopsAsked.set(agentId, Date.now());
   await invoke("pty_kill", { agentId });
+}
+
+/** When Maestro last told this agent to stop (Stop, merge, quit), if ever. */
+export function stopAskedAt(agentId: string): number | null {
+  return stopsAsked.get(agentId) ?? null;
 }
 
 export async function killAll(): Promise<void> {
@@ -272,6 +281,21 @@ export async function notify(title: string, body: string): Promise<void> {
   if (granted) sendNotification({ title, body });
 }
 
+/** A notification about one agent: clicking it brings Maestro forward and
+ *  opens that agent (onNotificationOpen). Falls back to a plain one. */
+export async function notifyAgent(title: string, body: string, paneId: string): Promise<void> {
+  try {
+    await invoke("notify_open", { title, body, target: paneId });
+  } catch {
+    await notify(title, body);
+  }
+}
+
+/** Fire `cb` with the agent id when one of notifyAgent's notifications is clicked. */
+export async function onNotificationOpen(cb: (paneId: string) => void): Promise<UnlistenFn> {
+  return listen<string | null>("notification-open", (e) => { if (e.payload) cb(e.payload); });
+}
+
 /** Fire `cb` when the tray menu's "Quit" item is chosen. */
 export async function onTrayQuit(cb: () => void | Promise<void>): Promise<UnlistenFn> {
   return listen("tray-quit", () => void cb());
@@ -298,6 +322,18 @@ export async function dashboardStop(): Promise<DashboardInfo> {
 /** Push the current fleet snapshot JSON for the dashboard to serve. */
 export async function dashboardPush(snapshot: string): Promise<void> {
   await invoke("dashboard_push", { snapshot });
+}
+/** Is a dashboard password set? */
+export async function dashboardPasswordStatus(): Promise<boolean> {
+  return invoke<boolean>("dashboard_password_status");
+}
+/** Set or change the dashboard password (only its hash is kept). */
+export async function dashboardPasswordSet(password: string): Promise<void> {
+  await invoke("dashboard_password_set", { password });
+}
+/** Remove the dashboard password; a server open to other devices stops with it. */
+export async function dashboardPasswordClear(): Promise<DashboardInfo> {
+  return invoke<DashboardInfo>("dashboard_password_clear");
 }
 /** Fire `cb` with the raw JSON body when the dashboard POSTs a send request. */
 export async function onDashboardSend(cb: (body: string) => void): Promise<UnlistenFn> {
