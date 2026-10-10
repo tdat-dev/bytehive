@@ -79,6 +79,24 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .manage(browser::BrowserState::default())
+        // WebView2 keeps compositing at full rate while its window is minimized unless the
+        // host says the view is hidden (Microsoft's guidance: IsVisible = false when
+        // minimized). Measured 2026-10-10: a minimized Maestro still kept the 3D engine
+        // ~45% busy. Hidden, the page gets document.hidden, requestAnimationFrame stops
+        // and xterm stops repainting; power.ts repaints on the way back.
+        .on_window_event(|window, event| {
+            #[cfg(windows)]
+            if let tauri::WindowEvent::Resized(_) = event {
+                if let Some(wv) = window.app_handle().get_webview_window(window.label()) {
+                    let visible = !wv.is_minimized().unwrap_or(false);
+                    let _ = wv.with_webview(move |pw| unsafe {
+                        let _ = pw.controller().SetIsVisible(visible);
+                    });
+                }
+            }
+            #[cfg(not(windows))]
+            let _ = (window, event);
+        })
         .setup(|app| {
             build_tray(app)?;
             // the dashboard password's hash lives with the app's config
