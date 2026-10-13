@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-10-13
+
+The stage is the terminal again, and the Grid shows only agents that run.
+
+### Changed
+
+- **The Grid leaves stopped agents out.** An agent that stopped or exited no
+  longer holds a tile; resume it from the list and it comes back into the Grid.
+  With fewer than two running, the Grid tells you to resume one or start another.
+- **The agent on the stage is always its real terminal.** The chat view could do
+  much less than the CLI itself, so it is gone, with its Chat / Terminal switch.
+  History still reads every earlier conversation back.
+
+### Removed
+
+- **Talk to Claude directly** and **Show one agent as a chat** in Settings.
+  Claude agents that had the first on start in their terminal as before.
+
 ## [0.9.8] - 2026-10-04
 
 Talk to Claude directly (new, opt-in).
