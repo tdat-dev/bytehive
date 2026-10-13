@@ -19,7 +19,6 @@ import { openNewAgent } from "./inboxnew";
 import { openPalette, closePalette, paletteOpen, type PaletteItem } from "./inboxpalette";
 import { createHistoryDrawer } from "./inboxhistory";
 import { createSessionsView } from "./sessionsview";
-import { isStream } from "./streamagent";
 import { mountStart, renderStart, unmountStart } from "./inboxstart";
 import { getPref } from "./prefs";
 import { activateWorkspace, removeWorkspace, renameWorkspace } from "./workspace";
@@ -27,12 +26,13 @@ import { confirmModal } from "./confirmmodal";
 import { openMenu, type MenuItem } from "./ctxmenu";
 import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
-import { chatSupported, focusAgent, hideChat, showChat, tokens } from "./chatview";
+import { tokens } from "./transcript";
+import { sourceOf } from "./chatsource";
 import { agentUsage, onAgentCost } from "./agentcost";
 import { faceSvg } from "./agentface";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
-import { handOff, handoffTargets, limitLiftsAt, startLimitGuard, stopLimitGuard } from "./limitguard";
+import { handOff, handoffTargets, startLimitGuard, stopLimitGuard } from "./limitguard";
 import { startFinishWatch, stopFinishWatch } from "./finishwatch";
 import { money } from "./pricing";
 import { topNote } from "./hint";
@@ -241,39 +241,6 @@ let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
 let historian: ReturnType<typeof createHistoryDrawer> | null = null;
 const sessions = createSessionsView();
 let dockEl: HTMLElement | null = null;
-/** Agents switched to Terminal on the stage; the rest show as a chat. */
-const termMode = new Set<string>();
-let chatFor: string | null = null;
-
-/** Whether the stage shows this agent as a conversation. */
-function wantsChat(p: Pane): boolean {
-  return getPref("chatView") && chatSupported(p) && !termMode.has(p.id);
-}
-
-/** The chat view follows the stage: on for the agent there (not in Split),
- *  off for everyone else, so the terminals Split shows are the real ones. */
-function renderChat(list: Task[], pane: Pane | undefined): void {
-  const on = pane && !splitOn && wantsChat(pane) ? pane : undefined;
-  for (const ws of workspaces.values()) for (const p of ws.panes.values()) if (p !== on && p.el.classList.contains("chat-on")) hideChat(p);
-  for (const id of borrowed.keys()) { const p = paneById(id); if (p && p !== on && p.el.classList.contains("chat-on")) hideChat(p); }
-  if (!on) { chatFor = null; return; }
-  const t = list.find((x) => x.paneId === on.id);
-  // The full answer card (not the tucked-away chip) is up for this agent: it is
-  // the way to reply, and the conversation keeps its end above it.
-  const asking = !!askEl && !askEl.hidden && !askEl.classList.contains("min") && (askEl.dataset.key ?? "").startsWith(`${on.id}|`);
-  if (asking && askEl) on.el.style.setProperty("--ask-h", `${askEl.offsetHeight + 24}px`);
-  // The question on its screen: the chat's copy of it picks its options too.
-  const a = t?.status.state === "needs" && t.status.ask?.kind === "question" ? t.status.ask : null;
-  const answers = a?.options.filter((o) => !o.deny && o.n !== a.freeTextOption).map((o) => ({ n: o.n, label: o.label }));
-  const onAnswer = (n: number) => { const o = currentAsk()?.options.find((x) => x.n === n); if (o) void pick(o); };
-  const limit = t?.status.limit ? { resetsAt: limitLiftsAt(t, on.spec.badge) } : null;
-  const handoffs = limit ? handoffTargets(on) : [];
-  const onHandoff = (id: string) => { const c = handoffs.find((x) => x.id === id); if (c) void handOverTo(on.id, on.spec.name, c.id, c.label); };
-  showChat(on, { name: on.spec.name, state: t?.status.state ?? "idle", problem: on.error, asking, branch: t?.branch ?? on.spec.branch ?? null, answers, onAnswer, limit, autoResume: getPref("autoResume"), handoffs, onHandoff, onReview: openReview, onTerminal: () => { termMode.add(on.id); render(); on.term.focus(); } }, chatFor !== on.id);
-  chatFor = on.id;
-}
-
-
 function paneOf(t: Task): Pane | undefined {
   return workspaces.get(t.wsId)?.panes.get(t.paneId);
 }
@@ -508,7 +475,7 @@ export function agentMenu(t: Task): MenuItem[] {
     ...handoffTargets(pane).slice(0, 4).map((c, k) => ({ label: `Hand over to ${c.label}`, sep: k === 0, hint: k === 0 && t.status.limit ? "Out of usage" : undefined, run: () => { void handOverTo(pane.id, pane.spec.name, c.id, c.label); } })),
     // Starts it again in place; a Claude agent carries on its own conversation.
     { label: pane.running ? "Restart" : "Resume", sep: true, run: () => void pane.restart?.() },
-    ...(chatSupported(pane) ? [{ label: "New conversation", run: () => void pane.restart?.({ fresh: true }) }] : []),
+    ...(sourceOf(pane) ? [{ label: "New conversation", run: () => void pane.restart?.({ fresh: true }) }] : []),
     { label: "Stop", disabled: !pane.running, run: () => { void killPty(pane.id).catch(() => {}); } },
     { label: "Remove agent…", danger: true, run: () => void confirmModal({
       title: `Remove ${pane.spec.name}?`,
@@ -609,13 +576,8 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     }
     pill.className = `ib-pill st-${t.status.state}`;
     pill.textContent = GROUP_LABEL[t.status.state];
-    // Grid is terminals only: no Chat/Terminal choice there, even for a lone agent.
     const mode = pinned ? "split" : splitOn ? "grid" : "stage";
-    const chatOk = mode === "stage" && chatSupported(p) && getPref("chatView");
-    // Talked to directly, it has no terminal to type / or /model into: its
-    // commands and models are in the chat.
-    const term = !isStream(p.id);
-    const build = `${mode}|${t.name}|${t.race?.of ?? ""}|${chatOk}|${term}`;
+    const build = `${mode}|${t.name}|${t.race?.of ?? ""}`;
     if (!acts || acts.dataset.mode !== build) {
       acts?.remove();
       acts = document.createElement("span");
@@ -623,12 +585,10 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.dataset.mode = build;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
-        : `${chatOk ? `<span class="ib-view" role="group" aria-label="Show ${esc(t.name)} as"><button data-stage="chat" title="The conversation">Chat</button><button data-stage="term" title="The terminal, as the CLI draws it">Terminal</button></span>` : ""}${term ? `<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
+        : `<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
-    acts.querySelector('[data-stage="chat"]')?.setAttribute("aria-pressed", String(!termMode.has(p.id)));
-    acts.querySelector('[data-stage="term"]')?.setAttribute("aria-pressed", String(termMode.has(p.id)));
     acts.querySelector('[data-stage="history"]')?.setAttribute("aria-pressed", String(historian?.paneId === p.id));
     // Just the branch: the project is already in the queue and the headline.
     // On a Split card the second line is the job, when there is one.
@@ -719,10 +679,7 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
   }
   askEl.className = "inbox-ask";
   // Tucked away, the question waits on a chip; in the terminal you can answer it by typing.
-  // (whether the chat shows is decided after this card, so ask the same question it does)
-  const hideBtn = pane && !splitOn && wantsChat(pane)
-    ? `<button class="ia-min" data-act="hide" title="Tuck this away; the chip brings it back">Hide</button>`
-    : `<button class="ia-min" data-act="hide" title="Tuck this away and answer by typing in the terminal">Hide · type in terminal</button>`;
+  const hideBtn = `<button class="ia-min" data-act="hide" title="Tuck this away and answer by typing in the terminal">Hide · type in terminal</button>`;
   const lead = a.kind === "run" ? `${t.name} wants to run a command` : a.kind === "edit" ? `${t.name} wants to edit a file` : `${t.name} has a question`;
   askEl.dataset.key = key;
   if (isYesNo(a)) {
@@ -785,7 +742,6 @@ function render(): void {
   renderHead(list);
   renderHeaders(list, pane);
   renderAsk(list, pane);
-  renderChat(list, pane);
   renderEmpty();
   renderStart();
   keepHistory(pane);
@@ -816,7 +772,7 @@ async function pick(option: AskOption): Promise<void> {
   render();
   if (splitOn) { const a = currentAsk(); if (a) { miniAnswered.set(pane.id, askKey(a)); pane.el.querySelector(".ib-mini")?.remove(); } }
   await answerOption(pane.id, option);
-  focusAgent(pane);
+  pane.term.focus();
 }
 
 function currentAsk() {
@@ -1006,18 +962,16 @@ function onStageButton(e: MouseEvent): void {
     if (!a || !o) return;
     miniAnswered.set(pane.id, askKey(a));
     pane.el.querySelector(".ib-mini")?.remove();
-    void answerOption(pane.id, o).then(() => focusAgent(pane));
+    void answerOption(pane.id, o).then(() => pane.term.focus());
     return;
   }
   const b = target.closest<HTMLElement>("[data-stage]");
   if (!b) return;
   e.stopPropagation();
   switch (b.dataset.stage) {
-    case "chat": if (pane) { termMode.delete(pane.id); chatFor = null; render(); } break;
     // The CLI's own menus, typed into its terminal as you would.
     case "cmds": if (pane) { void sendInput(pane.id, "/"); pane.term.focus(); } break;
     case "model": { const c = pane && profileOf(pane.spec.badge).modelCommand; if (pane && c) { void sendInput(pane.id, `${c}\r`); pane.term.focus(); } break; }
-    case "term": if (pane) { termMode.add(pane.id); render(); pane.term.focus(); } break;
     case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
     case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
     case "compare": { const r = pane && allTasks().find((x) => x.paneId === pane.id)?.race; if (r) openCompare(r.id); break; }
@@ -1188,7 +1142,7 @@ function mount(): void {
     const b = (e.target as HTMLElement).closest<HTMLElement>("button");
     if (!b || !askEl) return;
     const key = askEl.dataset.key ?? "";
-    if (b.dataset.act === "hide") { hidden.add(key); render(); const p = stagePane(); if (p) focusAgent(p); return; }
+    if (b.dataset.act === "hide") { hidden.add(key); render(); const p = stagePane(); if (p) p.term.focus(); return; }
     if (b.dataset.act === "show") { hidden.clear(); render(); return; }
     if (b.dataset.act === "review") { openReview(); return; }
     const o = currentAsk()?.options.find((x) => x.n === Number(b.dataset.n));
@@ -1201,7 +1155,7 @@ function mount(): void {
     if (!input?.value.trim() || !pane) return;
     const key = askEl?.dataset.key;
     if (key) answered.add(key);
-    void answerText(pane.id, input.value).then(() => focusAgent(pane));
+    void answerText(pane.id, input.value).then(() => pane.term.focus());
     render();
   });
   document.addEventListener("keydown", onKey, true);

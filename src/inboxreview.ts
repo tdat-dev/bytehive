@@ -8,7 +8,6 @@
 // comments wait per agent until Send back types them all in one message.
 
 import { parseDiff, type DiffFile } from "./diff";
-import { focusAgent } from "./chatview";
 import { confirmModal } from "./confirmmodal";
 import { topNote } from "./hint";
 import { killPty, repoDiff, reposUnder, reviewBranchDiff, reviewDiscardBranch, reviewLand, sendMessage, type LandResult } from "./ipc";
@@ -99,7 +98,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const was = current;
     current = null;
     onClose();
-    if (was) focusAgent(was);
+    if (was) was.term.focus();
   }
 
   function open(pane: Pane): void {
@@ -361,7 +360,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     viewed.delete(pane.id);
     busy = false;
     if (pane === current) close();
-    focusAgent(pane);
+    pane.term.focus();
     topNote(`Sent back to <b>${esc(pane.spec.name)}</b>`);
   }
 

@@ -23,7 +23,6 @@ vi.mock("./planmeter", () => ({
   limitResetsAt: (l: { resets_ms?: number }) => l.resets_ms ?? null,
 }));
 vi.mock("./appstate", () => ({ workspaces: new Map([["w1", { id: "w1", panes: io.panes }]]) }));
-vi.mock("./chatview", () => ({ chatOf: () => null }));
 vi.mock("./chatsource", () => ({ sourceOf: () => null }));
 vi.mock("./crew", () => ({
   CLI_PRESETS: [

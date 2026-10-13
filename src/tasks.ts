@@ -7,11 +7,10 @@
 // status line for notifications.
 
 import { workspaces } from "./appstate";
-import { gitChangedFiles, inputRoute, sendInput } from "./ipc";
+import { gitChangedFiles, sendInput } from "./ipc";
 import { freeTextKeys, type AskOption } from "./askparse";
 import { deriveTaskState, statusLine, type TaskState, type TaskStatus } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
-import { streamFacts } from "./streamagent";
 
 export interface Task {
   paneId: string;
@@ -111,7 +110,6 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
       screen: pane.running ? pane.term.snapshot(SCREEN_LINES) : "",
       changedFiles,
       merged: !!done,
-      stream: pane.running ? streamFacts(pane.id) : null,
     },
     now,
   );
@@ -235,7 +233,5 @@ export async function answerOption(paneId: string, option: AskOption): Promise<v
 export async function answerText(paneId: string, text: string): Promise<void> {
   const ask = tasks.get(paneId)?.status.ask ?? null;
   log(paneId, { at: Date.now(), kind: "answer", text: `You said “${text.trim()}”` });
-  const route = inputRoute(paneId);
-  if (route) return route.text(text);
   for (const part of freeTextKeys(ask, text)) await sendInput(paneId, part);
 }

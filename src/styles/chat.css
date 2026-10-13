@@ -1,24 +1,10 @@
-/* Chat view (chatview.ts): one agent as a conversation, over its terminal.
-   The terminal stays laid out underneath so the CLI keeps its size; the chat
-   only covers it. Cinema palette: black stage, white type, green/red only for
-   what was added, removed or failed. Only drawn under body.inbox-ui, so the
-   --ib-* tokens are always there. */
+/* A conversation read back from a transcript (transcript.ts), as History
+   shows it. Cinema palette: black stage, white type, green/red only for what
+   was added, removed or failed. Only drawn under body.inbox-ui, so the --ib-*
+   tokens are always there. */
 
 .term-host { position: relative; }
-.cv { display: none; }
-/* main column + side panel; the panel steps aside on a narrow stage */
-.pane.chat-on .cv {
-  position: absolute; inset: 0; z-index: 5;
-  display: flex; flex-direction: row; container-type: inline-size;
-  background: var(--ib-panel);
-  font-family: var(--sans);
-  color: var(--ib-ink);
-}
-.inbox-split .cv { display: none !important; }
-/* the find bar searches the terminal, which the chat hides */
-.pane.chat-on .pane-find { display: none; }
 
-.cv-main { flex: 1; min-width: 0; display: flex; flex-direction: column; container: cvm / inline-size; }
 /* the conversation scrolls under the header: a soft edge, not a cut */
 .cv-scroll {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
@@ -55,47 +41,13 @@
 .cv-a code.cv-fref:hover { color: var(--ib-ink); text-decoration-color: currentColor; }
 .cv-a code.cv-fref:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
-/* find in the conversation (Ctrl+F) */
-.cv-find {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4;
-  display: flex; align-items: center; gap: 4px; width: min(460px, calc(100% - 96px)); height: 40px; padding: 0 6px 0 12px;
-  border-radius: 12px; background: var(--ib-raise); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-.cv-find[hidden] { display: none; }
-.cv-find-i { flex: none; width: 15px; height: 15px; fill: none; stroke: var(--ib-ink-3); stroke-width: 1.5; stroke-linecap: round; }
-.cv-find-in { flex: 1; min-width: 0; height: 100%; padding: 0 6px; border: 0; outline: none; background: transparent; color: var(--ib-ink); font: 13.5px var(--sans); }
-.cv-find-in::placeholder { color: var(--ib-ink-3); }
-.cv-find-n { flex: none; font: 12px var(--mono); color: var(--ib-ink-3); padding: 0 4px; }
-.cv-find button { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--ib-ink-3); }
-.cv-find button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.cv-find button:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
-.cv-find button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 ::highlight(cv-find) { background-color: rgba(243, 199, 123, 0.28); color: inherit; }
 ::highlight(cv-find-now) { background-color: rgba(243, 199, 123, 0.75); color: #0b0b0d; }
-
-/* back to the latest, while you read further up */
-.cv-foot { position: relative; }
-.cv-jump {
-  position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 3;
-  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px;
-  font-size: 12.5px; color: var(--ib-ink-2); background: var(--ib-raise);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-.cv-jump[hidden] { display: none; }
-.cv-jump svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.cv-jump:hover { color: var(--ib-ink); }
-.cv-jump.new { color: #0b0b0d; background: var(--ib-ink); }
-.cv-jump:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* what you just sent, until the conversation has it */
 .cv-u.sending { flex-direction: column; align-items: flex-end; gap: 5px; }
 .cv-u.sending .cv-bubble { opacity: 0.72; }
-.cv-sending { font-size: 11.5px; color: var(--ib-ink-3); }
-/* it never left the CLI's box: say so, with the one thing that helps */
-.cv-u.sending.failed .cv-sending { display: inline-flex; align-items: center; gap: 8px; color: var(--ib-needs); }
-.cv-resend { height: 24px; padding: 0 10px; border-radius: 999px; font: 600 12px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
-.cv-resend:hover { background: rgba(255, 255, 255, 0.14); }
-.cv-resend:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
 .cv-img { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.06); }
 
 /* the agent */
@@ -119,9 +71,6 @@
 .cv-a th { font-weight: 600; background: rgba(255, 255, 255, 0.03); }
 .cv-a hr { border: 0; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 14px 0; }
 .cv-a img { max-width: 100%; height: auto; border-radius: 8px; }
-/* a reply still being written, read off the terminal until the transcript has it */
-.cv-a.cv-aw .cv-aw-note { display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font-size: 11.5px; color: var(--ib-ink-3); }
-.cv-a.cv-aw .cv-aw-cut { margin: 0 0 4px; color: var(--ib-ink-3); line-height: 1; }
 
 /* what it did: a quiet list of steps between the messages */
 .cv-steps { display: flex; flex-direction: column; gap: 1px; margin: -4px 0; }
@@ -211,15 +160,6 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-note { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--ib-ink-3); }
 .cv-note::before, .cv-note::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.07); }
 
-/* an empty conversation: what to do next, by what the agent is doing */
-.cv-empty { margin: 18vh auto 0; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
-.cv-empty b { max-width: 460px; font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
-.cv-empty span { font-size: 14px; color: var(--ib-ink-3); max-width: 360px; line-height: 1.5; }
-.cv-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; max-width: 520px; }
-.cv-starters button { min-height: 32px; padding: 6px 13px; border-radius: 999px; font-size: 13px; color: var(--ib-ink-2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
-.cv-starters button:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.04); }
-.cv-starters button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
 /* a finished turn: how long it worked, when, Copy */
 .cv-tf { display: flex; align-items: center; gap: 10px; margin: -4px 0 6px; font-size: 12px; color: var(--ib-ink-3); }
 .cv-tf time { font-variant-numeric: tabular-nums; }
@@ -228,349 +168,21 @@ button.cv-sh:hover { background: rgba(255, 255, 255, 0.04); color: var(--ib-ink-
 .cv-copy:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .cv-copy:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
-/* bottom: working line + composer, as wide as the conversation */
-.cv-foot { flex: none; width: min(780px, 100%); margin: 0 auto; padding: 0 28px 18px; display: flex; flex-direction: column; gap: 8px; }
-.cv-working { margin: 0 8px; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--ib-ink-3); }
-/* what it is doing, then how long and how many tokens */
-.cv-wt { min-width: 0; color: var(--ib-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv-wd { flex: none; font: 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--ib-ink-3); }
-.cv-wd[hidden] { display: none; }
 .cv-dots { display: inline-flex; gap: 3px; }
 .cv-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--ib-work); animation: cv-dot 1.2s ease-in-out infinite; }
 .cv-dots i:nth-child(2) { animation-delay: 0.15s; }
 .cv-dots i:nth-child(3) { animation-delay: 0.3s; }
 @keyframes cv-dot { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
-.cv-compose {
-  border-radius: 18px; background: var(--ib-raise);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  transition: box-shadow 0.15s;
-}
-.cv-compose:focus-within { box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 0 0 1.5px rgba(255, 255, 255, 0.45); }
-.cv-compose textarea {
-  display: block; width: 100%; min-height: 48px; max-height: 200px; resize: none;
-  padding: 14px 16px 4px; border: 0; outline: none; background: transparent;
-  color: var(--ib-ink); font: 14.5px/1.5 var(--sans);
-}
-.cv-compose textarea::placeholder { color: var(--ib-ink-3); }
-/* @: the files of the agent's folder, just above the composer */
-.cv-compose { position: relative; container: cvc / inline-size; }
-.cv-mention {
-  position: absolute; left: 6px; right: 6px; bottom: calc(100% + 8px); z-index: 7;
-  max-height: min(340px, 50vh); overflow-y: auto; scrollbar-width: thin; padding: 6px;
-  border-radius: 14px; background: var(--ib-raise);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-}
-.cv-mention[hidden] { display: none; }
-.cv-mention [role="option"] {
-  display: flex; align-items: baseline; gap: 10px; width: 100%; min-height: 34px; padding: 7px 10px; border-radius: 9px;
-  text-align: left; color: var(--ib-ink-2);
-}
-.cv-mention [role="option"][aria-selected="true"] { background: rgba(255, 255, 255, 0.09); color: var(--ib-ink); }
-.cv-mention [role="option"]:hover { background: rgba(255, 255, 255, 0.06); }
-.cv-mi { flex: none; align-self: center; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linejoin: round; opacity: 0.7; }
-.cv-mn { flex: none; max-width: 55%; font: 13px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv-md { min-width: 0; font-size: 12px; color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv-mnone { margin: 0; padding: 10px 12px; font-size: 12.5px; color: var(--ib-ink-3); }
 
-/* pictures pasted into the composer, going with the next message */
-.cv-atts { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px 0; }
-.cv-atts[hidden] { display: none; }
-.cv-att { position: relative; width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
-.cv-att-open { display: block; width: 100%; height: 100%; padding: 0; cursor: zoom-in; }
-.cv-att-open:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 10px; }
-.cv-att img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.15s; }
-.cv-att-open:hover img { transform: scale(1.04); }
-@media (prefers-reduced-motion: reduce) { .cv-att img { transition: none; } .cv-att-open:hover img { transform: none; } }
-.cv-att.failed { box-shadow: inset 0 0 0 1.5px var(--ib-del); }
-.cv-att.failed img { opacity: 0.4; }
-.cv-att-x {
-  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
-  display: grid; place-items: center; color: #fff; background: rgba(0, 0, 0, 0.72);
-  opacity: 0; transition: opacity 0.12s;
-}
-.cv-att-x svg { width: 11px; height: 11px; }
-.cv-att:hover .cv-att-x, .cv-att-x:focus-visible { opacity: 1; }
-.cv-att-x:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-@media (hover: none) { .cv-att-x { opacity: 1; } }
-.cv-bar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px 8px 12px; }
 .cv-sp { flex: 1; }
 
-/* composer tools: model, commands, context; all 28px */
-.cv-chip {
-  display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; max-width: 200px; height: 28px; padding: 0 11px; border-radius: 999px;
-  font-size: 12.5px; color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.06); white-space: nowrap;
-}
-.cv-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.cv-chip-c { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; }
-.cv-chip:hover, .cv-chip[aria-expanded="true"] { background: rgba(255, 255, 255, 0.11); color: var(--ib-ink); }
-.cv-chip:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.cv-chip-i { flex: none; width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }
-/* a mode that never asks is worth seeing at a glance */
-.cv-set.warn { color: #f3c77b; background: rgba(243, 199, 123, 0.1); }
-.cv-set.warn:hover { background: rgba(243, 199, 123, 0.16); color: #f7d898; }
-.cv-chip.busy { cursor: progress; color: var(--ib-ink-3); }
-.cv-chip.busy .cv-chip-t::after { content: "…"; }
-.cv-ctx { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ib-ink-3); white-space: nowrap; }
-/* nearly full: say so, and offer to sum it up */
-.cv-ctx.high { color: var(--ib-needs); }
-.cv-compact { color: var(--ib-needs); background: var(--ib-needs-bg); }
-.cv-compact:hover { color: var(--ib-needs); background: oklch(0.83 0.13 75 / 0.2); }
-.cv-stop { display: none; height: 28px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
-.cv.working .cv-stop { display: inline-flex; align-items: center; }
-.cv-stop:hover { background: rgba(255, 255, 255, 0.14); }
-/* the round send button, Stop, + and the context reading keep their size: the
-   chips give way instead, so nothing is squeezed out of the box */
-.cv-send, .cv-stop, .cv-attach, .cv-ctx { flex: none; }
-.cv-send { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #000; }
-.cv-send:hover { background: #e9e9ec; }
-.cv-send svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.cv-stop:focus-visible, .cv-send:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-/* a narrow composer (side panel open beside a short stage): Effort, Permissions
-   and Commands keep their icon and chevron, their words go to screen readers
-   only, and the model name gets less room */
-@container cvc (max-width: 560px) {
-  .cv-bar { gap: 6px; }
-  .cv-set .cv-chip-t, .cv-cmds-w {
-    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-  }
-  .cv-set, .cv-cmds { padding: 0 9px; }
-  .cv-model { max-width: 120px; }
-}
-@container cvc (max-width: 380px) {
-  .cv-ctx { display: none; }
-}
-
-/* while the answer card is up, it is the way to reply: the composer steps
-   aside and the end of the conversation stays above the card */
-.cv.asking .cv-compose { display: none; }
-.cv.asking .cv-thread { padding-bottom: var(--ask-h, 200px); }
-
-/* out of usage: when it comes back, and another CLI to carry on meanwhile */
-.cv-limit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 10px; padding: 10px 14px; border-radius: 14px;
-  background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--ib-needs-line); font-size: 13px; color: var(--ib-ink-2); }
-.cv-limit[hidden] { display: none; }
-.cv-lt { margin: 0; flex: 1 1 18em; line-height: 1.5; }
-.cv-lt b { color: var(--ib-needs); font-weight: 600; }
-.cv-lh { display: flex; flex-wrap: wrap; gap: 6px; }
-.cv-lh button { height: 28px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
-.cv-lh button:first-child { background: #fff; color: #000; }
-.cv-lh button:hover { filter: brightness(1.12); }
-.cv-lh button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-/* a conversation opened on its end: what came before is a click away */
-.cv-skip { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; margin: 4px 0 18px; font-size: 12.5px; color: var(--ib-ink-3); text-align: center; }
-.cv-skip .cv-earlier { margin: 0; }
-
-/* a stopped agent: say so (and why, when it failed), offer to carry on */
-.cv-stopped { display: none; }
-/* stopped, the message box stays: what you send starts it again on this conversation */
-.cv.stopped .cv-stopped {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 8px; padding: 0 4px;
-  font-size: 13px; color: var(--ib-ink-3);
-}
-.cv-sl { color: var(--ib-ink-2); font-weight: 600; }
-.cv-shint { flex: 1; min-width: 12em; }
-.cv-why { flex-basis: 100%; order: 9; color: var(--ib-del); font-size: 13px; overflow-wrap: anywhere; }
-.cv-restart, .cv-new { height: 28px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); }
-.cv-restart { background: #fff; color: #000; }
-.cv-restart:hover { background: #e9e9ec; }
-.cv-new { color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
-.cv-new:hover { background: rgba(255, 255, 255, 0.14); }
-.cv-restart:focus-visible, .cv-new:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-/* pressed: every chat control gives a little */
-.cv button:not([disabled]):active, .ib-acts button:active { transform: translateY(1px); }
-
-/* Chat | Terminal on the stage header: a segment inside the header's group,
-   same height and ink as its neighbours */
-.ib-view { display: inline-flex; align-items: center; gap: 2px; padding-right: 4px; margin-right: 2px; box-shadow: 1px 0 0 var(--ib-line); }
-.ib-view button { height: 26px; padding: 0 12px; border-radius: 999px; font: 500 12.5px var(--sans); color: var(--ib-ink-2); }
-.ib-view button:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
-.ib-view button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
-.ib-view button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-/* Commands / Model on the stage header act on the terminal: hidden over the chat */
-.pane.chat-on .ib-acts .ib-term { display: none; }
-
-/* ---- the work panel beside the conversation (after Mintlify, Devin, AI Studio):
-   what it changed with a file's diff large, what it left running with its
-   output, and the session. Resizable; hides; slides over a narrow stage. ---- */
-.cv { --cv-side-w: clamp(360px, 46%, 860px); }
-.cv-side {
-  position: relative; flex: 0 0 var(--cv-side-w); min-width: 0;
-  display: flex; flex-direction: column;
-  background: var(--ib-ground);
-  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.06);
-  container-type: inline-size; container-name: cp;
-}
-.cv.panel-off .cv-side, .cv.panel-off .cv-grip { display: none; }
-.cv-grip {
-  flex: none; width: 9px; margin: 0 -4px 0 -5px; z-index: 2; cursor: col-resize;
-  touch-action: none; position: relative;
-}
-.cv-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; transition: background 0.12s; }
-.cv-grip:hover::after, .cv.resizing .cv-grip::after { background: rgba(255, 255, 255, 0.28); }
-.cv-grip:focus-visible { outline: none; }
-.cv-grip:focus-visible::after { background: #fff; width: 2px; }
-.cv.resizing, .cv.resizing * { cursor: col-resize !important; user-select: none; }
-
-/* shows or hides the panel, top right of the conversation */
-.cv-main { position: relative; }
-.cv-ptoggle {
-  position: absolute; top: 12px; right: 14px; z-index: 3;
-  width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
-  color: var(--ib-ink-3); background: rgba(255, 255, 255, 0.04);
-}
-.cv-ptoggle svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
-.cv-ptoggle:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.1); }
-.cv-ptoggle[aria-pressed="true"] { color: var(--ib-ink-2); }
-.cv-ptoggle:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-/* once the conversation fills the column, keep its right edge clear of the
-   panel button, which sits over the first lines */
-@container cvm (max-width: 840px) {
-  .cv-thread { padding-right: 56px; }
-}
-/* a narrow column: the stopped line is Stopped, Resume and New conversation on
-   one row; the hint below them would push the conversation out of view */
-@container cvm (max-width: 560px) {
-  .cv-shint { display: none; }
-  .cv.stopped .cv-stopped { flex-wrap: nowrap; }
-  .cv-sl { flex: 1; }
-  .cv-restart, .cv-new { flex: none; }
-}
-
-/* tabs */
-.cp-tabs {
-  flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 10px 0 14px;
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
-}
-.cp-tabs [role="tab"] {
-  display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 9px;
-  font-size: 13px; color: var(--ib-ink-3); white-space: nowrap;
-}
-.cp-tabs [role="tab"] span { font: 12px var(--mono); color: var(--ib-ink-3); }
-.cp-tabs [role="tab"]:hover { color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.04); }
-.cp-tabs [role="tab"][aria-selected="true"] { color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
-.cp-tabs [role="tab"]:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.cp-x { margin-left: auto; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--ib-ink-3); }
-.cp-x svg { width: 14px; height: 14px; }
-.cp-x:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
-.cp-x:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-
-/* body: a list and what is picked in it, side by side when there is room */
-.cp-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(200px, 34%) minmax(0, 1fr); }
-.cp-body.cp-session { display: block; }
-.cp-list {
-  min-height: 0; overflow-y: auto; scrollbar-width: thin; padding: 14px 10px 18px 14px;
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.05);
-}
-.cp-view { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 18px; overflow: hidden; }
-.cp-vh { flex: none; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.cp-vh b { font: 500 13px var(--mono); color: var(--ib-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cp-vh span { min-width: 0; font-size: 12px; color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cp-vh .cs-to { margin-left: auto; }
-.cp-view .cv-diff, .cp-view .cp-out { flex: 1; min-height: 0; max-height: none; margin: 0; font-size: 12px; }
-.cp-view .cv-full { flex: none; }
-.cp-empty { grid-column: 1 / -1; margin: 0; padding: 28px 22px; max-width: 46ch; font-size: 13px; line-height: 1.6; color: var(--ib-ink-3); }
-.cp-scroll { height: 100%; overflow-y: auto; scrollbar-width: thin; padding: 20px 22px 24px; display: flex; flex-direction: column; gap: 26px; }
-.cp-sum { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 8px 6px; font-size: 12.5px; color: var(--ib-ink-2); }
-
-/* the lists: the picked row stands out, the rest stay quiet */
-.cs-files button[aria-current="true"] { background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
-.cp-list .cs-files button { width: 100%; margin: 0; }
-.cp-list .cs-review { margin: 12px 8px 0; }
-.cs-tasks li { min-height: 0; }
-.cs-tasks button {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 6px 8px; border-radius: 8px;
-  text-align: left; font-size: 12.5px;
-}
-.cs-tasks button:hover { background: rgba(255, 255, 255, 0.04); }
-.cs-tasks button[aria-current="true"] { background: rgba(255, 255, 255, 0.07); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
-.cs-tasks button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-
-/* a narrow panel stacks its list over what is picked */
-@container cp (max-width: 560px) {
-  .cp-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(120px, 38%) minmax(0, 1fr); }
-  .cp-list { box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.05); }
-}
-/* a narrow stage: the panel slides over the conversation when asked for */
-@container (max-width: 900px) {
-  .cv-grip { display: none; }
-  .cv-side {
-    position: absolute; top: 0; right: 0; bottom: 0; z-index: 6; width: min(92%, 560px);
-    box-shadow: -24px 0 48px rgba(0, 0, 0, 0.5), inset 1px 0 0 rgba(255, 255, 255, 0.08);
-    transform: translateX(104%); transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .cv.peek .cv-side { transform: none; }
-  .cv.panel-off.peek .cv-side { display: flex; }
-}
-@media (prefers-reduced-motion: reduce) { .cv-side { transition: none; } }
-
-
-.cs-sec h3 { margin: 0 0 10px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ib-ink-2); }
-.cs-sec h3 span { font: 400 12px var(--mono); color: var(--ib-ink-3); }
-.cs-sec h3 .a { color: var(--ib-work); font-weight: 400; }
-.cs-sec h3 .d { color: var(--ib-del); font-weight: 400; }
-.cs-bar { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; margin-bottom: 12px; }
-.cs-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ib-work); }
-.cs-todos { padding: 0; background: none; box-shadow: none; font-size: 13px; }
-.cs-files, .cs-convos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
-.cs-files button {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 10px;
-  width: calc(100% + 16px); padding: 7px 8px; margin: 0 -8px; border-radius: 8px; text-align: left; color: var(--ib-ink);
-}
-.cs-files button:not([disabled]):hover { background: rgba(255, 255, 255, 0.05); }
-.cs-files button[disabled] { cursor: default; }
-.cs-fn { grid-column: 1; font: 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-fd { grid-column: 1; grid-row: 2; font-size: 12px; color: var(--ib-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-files .cv-n { grid-column: 2; grid-row: 1 / 3; align-self: center; }
-.cs-review { margin-top: 10px; height: 32px; padding: 0 14px; border-radius: 999px; font: 600 12.5px var(--sans); color: var(--ib-ink); background: rgba(255, 255, 255, 0.08); }
-.cs-review:hover { background: rgba(255, 255, 255, 0.14); }
-.cs-convos button { display: flex; flex-direction: column; gap: 2px; width: calc(100% + 16px); padding: 7px 8px; margin: 0 -8px; border-radius: 8px; text-align: left; }
-.cs-convos button:hover { background: rgba(255, 255, 255, 0.05); }
-.cs-ct { font-size: 13px; color: var(--ib-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-cm { font-size: 12px; color: var(--ib-ink-3); }
-.cs-dl { margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.cs-dl div { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
-.cs-dl dt { color: var(--ib-ink-3); }
-.cs-dl dd { margin: 0; min-width: 0; color: var(--ib-ink-2); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-none { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ib-ink-3); }
-.cs-files button:focus-visible, .cs-review:focus-visible, .cs-convos button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-
-/* files: New and Edited, the latest reply's marked, a diff under an opened one */
-.cs-sub { margin: 12px 0 4px; display: flex; gap: 6px; align-items: baseline; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ib-ink-3); }
-.cs-sub:first-of-type { margin-top: 2px; }
-.cs-sub span { font: 400 11.5px var(--mono); }
-.cs-files .cs-fn { display: flex; align-items: center; gap: 7px; }
-.cs-now { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 3px rgba(120, 170, 255, 0.14); }
-.cs-files li.gone .cs-fn { text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.35); color: var(--ib-ink-3); }
-.cs-files button[aria-expanded="true"] { background: rgba(255, 255, 255, 0.05); }
-.cs-diff { margin: 4px 0 8px; max-height: 280px; font-size: 11.5px; }
-.cs-diff .gap { color: var(--ib-ink-3); }
-.cs-diffnone { margin: 2px 0 8px; }
-
-/* commands left running in the background */
-.cs-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.cs-tasks li { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 12.5px; }
-.cs-tasks i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ib-ink-3); }
-.cs-tasks li.running i { background: var(--ib-work); box-shadow: 0 0 0 3px rgba(111, 214, 160, 0.16); }
-.cs-tasks li.failed i { background: var(--ib-del); }
-.cs-tasks li.stopped i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ib-ink-3); }
-.cs-tl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ib-ink); }
-.cs-tasks li:not(.running) .cs-tl { color: var(--ib-ink-2); }
-.cs-ts { flex: none; font-size: 12px; color: var(--ib-ink-3); }
-.cs-tasks li.failed .cs-ts { color: var(--ib-del); }
-.cs-to { flex: none; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; color: var(--ib-ink-2); background: rgba(255, 255, 255, 0.06); }
-.cs-to:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.12); }
-.cs-to:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.cv-out-box { max-width: 1100px; }
-.cv-out-full { flex: 1; min-height: 0; max-height: none; font-size: 12.5px; }
+/* pressed: the stage header's buttons give a little */
+.ib-acts button:active { transform: translateY(1px); }
 
 @media (prefers-reduced-motion: reduce) {
   .cv-spin, .cv-dots i { animation: none; }
-  .cv-chev, .cv-compose { transition: none; }
-  .cv button:not([disabled]):active, .ib-acts button:active { transform: none; }
+  .cv-chev { transition: none; }
+  .ib-acts button:active { transform: none; }
 }
 
 /* ---- what the agent saw: screenshots and images, under the step that took them ---- */

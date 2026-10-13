@@ -15,7 +15,6 @@ import { clockOf } from "./taskstate";
 import { limitName, limitResetsAt, planResetFor, planSnapshot } from "./planmeter";
 import { workspaces } from "./appstate";
 import { handoffBrief } from "./handoff";
-import { chatOf } from "./chatview";
 import { sourceOf } from "./chatsource";
 import { CLI_PRESETS } from "./crew";
 import { loadCrew, presetAvailable, spawnAgents } from "./spawnmodal";
@@ -135,24 +134,20 @@ export function handoffTargets(pane: Pane, now = Date.now()): Array<{ id: string
     .map((p) => ({ id: p.id, label: p.label }));
 }
 
-/** The agent's conversation for a brief: what the chat has open, else read
- *  from its CLI's files (the start, for the first asks, and the end). */
+/** The agent's conversation for a brief, read from its CLI's files (the
+ *  start, for the first asks, and the end). */
 async function conversationOf(pane: Pane): Promise<{ chat: Chat | null; firstAsks: string[] }> {
   const src = sourceOf(pane);
   const dir = pane.spec.ranIn;
-  const open = chatOf(pane.id);
-  if (!src || !dir) return { chat: open?.chat ?? null, firstAsks: [] };
+  if (!src || !dir) return { chat: null, firstAsks: [] };
   const firstAsks: string[] = [];
-  // its first asks, from the start, when the open chat began further in
-  if (!open || open.skipped > 0) {
-    try {
-      const head = src.createChat();
-      const r = await src.read(pane, dir, 0);
-      head.feed(r.text);
-      for (const i of head.items) if (i.kind === "user" && i.text && firstAsks.length < 2) firstAsks.push(i.text);
-    } catch { /* go on without */ }
-  }
-  if (open) return { chat: open.chat, firstAsks };
+  // its first asks, from the start
+  try {
+    const head = src.createChat();
+    const r = await src.read(pane, dir, 0);
+    head.feed(r.text);
+    for (const i of head.items) if (i.kind === "user" && i.text && firstAsks.length < 2) firstAsks.push(i.text);
+  } catch { /* go on without */ }
   const chat = src.createChat();
   let offset = 0;
   try {

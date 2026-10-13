@@ -1,10 +1,10 @@
 // Sessions: every earlier Claude conversation of a project (its agents'
-// worktrees included), read back as the chat draws it. Only to read: nothing
+// worktrees included), read back as a conversation (transcript.ts). Only to read: nothing
 // here starts, resumes or types into an agent.
 
 import { claudeSessionsEverywhere, claudeSessionsIn, claudeTranscript, type ClaudeSession } from "./ipc";
 import { createChat, turnsOf, type Chat, type ChatItem } from "./chatmodel";
-import { ago, drawTranscript, forgetImages, openImage, samePath } from "./chatview";
+import { ago, drawTranscript, forgetImages, openImage, samePath } from "./transcript";
 import { dayLabel, clock } from "./inboxhistory";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);

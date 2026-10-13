@@ -22,9 +22,6 @@ export interface TaskFacts {
   changedFiles: number | null;
   /** Its branch was merged into the base (and its worktree removed) from Review. */
   merged?: boolean;
-  /** An agent Maestro talks to directly says these itself (streamagent.ts);
-   *  its screen is only a log. */
-  stream?: { working: boolean; ask: Ask | null; limit: LimitHit | null } | null;
 }
 
 export interface TaskStatus {
@@ -45,13 +42,6 @@ export const STATE_RANK: Record<TaskState, number> = { needs: 0, review: 1, work
 export function deriveTaskState(f: TaskFacts, now: number): TaskStatus {
   // A merged agent was stopped to land its branch: its job is done, not cut short.
   if (!f.running) return { state: f.merged ? "merged" : "stopped", ask: null };
-  if (f.stream) {
-    if (f.stream.ask) return { state: "needs", ask: f.stream.ask };
-    if (f.stream.working) return { state: "working", ask: null };
-    const limit = f.stream.limit;
-    if (f.changedFiles !== null && f.changedFiles > 0) return { state: "review", ask: null, limit };
-    return { state: "idle", ask: null, limit };
-  }
   // A prompt on screen wins over recency: selectors redraw while you move the
   // cursor, and a question is still a question the moment it appears.
   const ask = parseAsk(f.screen);

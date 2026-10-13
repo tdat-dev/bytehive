@@ -27,9 +27,6 @@ export async function spawnPty(
   rows: number,
   env: Array<[string, string]>,
   onBytes: (bytes: Uint8Array) => void,
-  /** On plain pipes instead of a terminal: an agent that talks in JSON lines
-   *  (streamagent.ts). Its output then arrives in whole lines. */
-  pipe = false,
 ): Promise<number> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
   // number[] path serialized every byte as a JSON number on both sides and
@@ -37,7 +34,7 @@ export async function spawnPty(
   const ch = new Channel<ArrayBuffer>();
   ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
   // The run number of this start; its exit event carries the same number.
-  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe, onBytes: ch });
+  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe: false, onBytes: ch });
 }
 
 /** Re-attach a RUNNING agent's output to this window (tab detach hand-off).
@@ -52,26 +49,7 @@ export async function attachPty(
   await invoke("pty_attach", { agentId, onBytes: ch });
 }
 
-/** How input reaches an agent that isn't a terminal (streamagent.ts): a
- *  message as one piece, a key as what it means (Esc stops, a number answers
- *  what it waits on), free text as the answer to its question. */
-export interface InputRoute {
-  message(text: string): Promise<boolean>;
-  key(data: string): Promise<void>;
-  text(text: string): Promise<void>;
-}
-let routeOf: ((agentId: string) => InputRoute | null) | null = null;
-export function setInputRouter(fn: (agentId: string) => InputRoute | null): void {
-  routeOf = fn;
-}
-/** The route for this agent, when it isn't a terminal. */
-export function inputRoute(agentId: string): InputRoute | null {
-  return routeOf?.(agentId) ?? null;
-}
-
 export async function sendInput(agentId: string, data: string): Promise<void> {
-  const route = inputRoute(agentId);
-  if (route) return route.key(data);
   await invoke("pty_input", { agentId, data });
 }
 
@@ -102,9 +80,6 @@ export function setPaneBracketedPasteReader(fn: (agentId: string) => boolean): v
  *  sitting in it. Use this instead of `sendInput(id, text + "\r")` — see
  *  typing.ts for what a single write does to Claude Code's composer. */
 export function sendMessage(agentId: string, text: string, submit = true): Promise<boolean> {
-  // Not a terminal: the message goes whole, nothing to type or check.
-  const route = inputRoute(agentId);
-  if (route) return submit ? route.message(text) : Promise.resolve(true);
   const read = paneScreen;
   const pasteMode = paneBracketedPaste;
   let sent = false; // stays false when typing throws (the pane went away)

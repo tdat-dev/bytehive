@@ -6,7 +6,6 @@ vi.mock("./ipc", () => ({
   gitChangedFiles: vi.fn(async (root: string) => Array.from({ length: changed[root] ?? 0 }, (_, i) => ({ path: `f${i}`, status: "M", added: 2, removed: 1 }))),
   sendInput: vi.fn(async (id: string, data: string) => { sent.push([id, data]); }),
   // every agent here is a terminal
-  inputRoute: () => null,
 }));
 
 import { workspaces } from "./appstate";

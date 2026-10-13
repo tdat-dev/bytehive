@@ -3,7 +3,6 @@
 // not scrolling back through a terminal.
 
 import { historyOf, type HistoryEvent } from "./tasks";
-import { focusAgent } from "./chatview";
 import type { Pane } from "./panetypes";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -45,7 +44,7 @@ export function createHistoryDrawer(host: HTMLElement, onClose: () => void) {
     current = null;
     drawn = -1;
     onClose();
-    if (was) focusAgent(was);
+    if (was) was.term.focus();
   }
 
   /** Redraw when new events arrived (cheap to call every tick). */
