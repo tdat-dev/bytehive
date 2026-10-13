@@ -62,7 +62,7 @@ vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
+import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, gridOrder, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
 
@@ -149,6 +149,15 @@ describe("inbox helpers", () => {
     expect(fillPins([], ["a", "b", "c", "d", "e", "f", "g"], new Set(), 6)).toEqual(["a", "b", "c", "d", "e", "f"]);
     expect(fillPins(["c", "a"], ["a", "b", "c"], new Set())).toEqual(["c", "a", "b"]);
     expect(fillPins(["a", "gone"], ["a", "b", "c"], new Set(["b"]))).toEqual(["a", "c"]);
+  });
+
+  it("keeps stopped agents out of the Grid until they are resumed", () => {
+    const list = [task("a", "Ana", "working"), task("b", "Bo", "stopped"), task("c", "Cy", "needs"), task("m", "Mo", "merged")];
+    expect(gridOrder(list)).toEqual(["a", "c"]);
+    // b was in the Grid when it stopped: it leaves, and comes back once it runs again.
+    expect(fillPins(["b", "a"], gridOrder(list), new Set())).toEqual(["a", "c"]);
+    list[1] = task("b", "Bo", "idle");
+    expect(fillPins(["a", "c"], gridOrder(list), new Set())).toEqual(["a", "c", "b"]);
   });
 
   it("lays two terminals side by side", () => {

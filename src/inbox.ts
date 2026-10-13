@@ -201,6 +201,12 @@ export function fillPins(pins: string[], order: string[], closed: Set<string>, m
   return out.slice(-max);
 }
 
+/** Who may sit in the Grid, in queue order: agents that are alive. A stopped
+ *  one leaves it and comes back once it is resumed. */
+export function gridOrder(list: Pick<Task, "paneId" | "status">[]): string[] {
+  return list.filter((t) => t.status.state !== "stopped" && t.status.state !== "merged").map((t) => t.paneId);
+}
+
 /* ---------------- DOM ---------------- */
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -366,7 +372,7 @@ function clearSplit(ws: Workspace): void {
 function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
-  if (splitOn) pins = fillPins(pins, allTasks().map((t) => t.paneId), splitClosed, getPref("splitMax"));
+  if (splitOn) pins = fillPins(pins, gridOrder(allTasks()), splitClosed, getPref("splitMax"));
   const shown = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
   const on = shown.length > 1;
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
@@ -409,7 +415,12 @@ function layoutSplit(): void {
 
 export function setSplit(on: boolean): void {
   splitOn = on;
-  if (on && allTasks().length < 2) topNote("The Grid shows agents side by side: start another with <b>New agent</b>");
+  if (on && gridOrder(allTasks()).length < 2) {
+    const parked = allTasks().some((t) => t.status.state === "stopped");
+    topNote(parked
+      ? "The Grid shows running agents side by side: resume a stopped one or start another with <b>New agent</b>"
+      : "The Grid shows agents side by side: start another with <b>New agent</b>");
+  }
   if (!on) { splitClosed.clear(); miniAnswered.clear(); }
   splitBtn?.setAttribute("aria-pressed", String(on));
   dockEl?.querySelector('[data-dock="queue"]')?.setAttribute("aria-pressed", String(!on));
