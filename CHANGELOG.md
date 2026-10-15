@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.10] - 2026-10-15
+
+Maestro stops working the graphics card when you are not looking at it.
+
+### Fixed
+
+- **Much less GPU while idle.** A minimized Maestro now tells its view it is
+  hidden, so it stops drawing; running agents that are not in focus no longer
+  re-blur the wallpaper on every terminal update, and the status dots stopped
+  breathing. Measured on a laptop: about 63% GPU visible and 45% minimized
+  before, about 4% visible and 0% minimized after.
+
 ## [0.9.9] - 2026-10-13
 
 The stage is the terminal again, and the Grid shows only agents that run.
