@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "maestro"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "anyhow",
  "argon2",

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.13] - 2026-10-19
+
+Many agents in the Grid, and every one of them readable.
+
+### Changed
+
+- **The Grid is one big terminal and a card for every other agent.** A terminal
+  only reads at about 80 columns, so a screen fits two to four of them. The
+  Grid now shows the agent you work with as a real terminal, as big as your
+  screen allows (its text grows until a line holds about 90 characters), and
+  every other agent as a card beside it: its state, its job, what it is doing
+  right now and the end of its last reply, in plain text that reads at any
+  width. A card that asks you something has Allow / Deny (or its choices) on
+  it. Click a card to work with that agent in the terminal. A wide screen gets
+  two columns of cards.
+- The Grid holds up to 9 agents by default. A saved 4 or 6 is lifted to 9 once;
+  Settings still sets it.
+
 ## [0.9.12] - 2026-10-19
 
 ### Fixed
