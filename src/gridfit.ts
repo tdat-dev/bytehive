@@ -17,16 +17,18 @@ export const READ_COLS = 80;
 export const READ_ROWS = 20;
 /** A card with room grows its font while a line still holds this many cells. */
 export const AIM_COLS = 90;
-export const AIM_ROWS = 24;
+export const AIM_ROWS = 20;
 /** How far past the setting the font may grow. */
 export const GROW = 4;
 export const GAP = 16;
-/** What a card spends around its terminal: the header, the padding and the scrollbar. */
-const CHROME_W = 42;
-const CHROME_H = 70;
-/** Geist Mono's cell is 0.6em wide; xterm draws lines at 1.2. */
+/** What a card spends around its terminal: the header, the padding and the
+ *  scrollbar (measured in the app: a 784 x 456 card has a 739 x 378 screen). */
+const CHROME_W = 46;
+const CHROME_H = 80;
+/** Geist Mono's cell is 0.6em wide; a row is 1.5em (the font's own line box
+ *  times xterm's lineHeight 1.2: 21px at 14px). */
 const CELL_W = 0.6;
-const CELL_H = 1.2;
+const CELL_H = 1.5;
 
 export interface GridPlan {
   /** How many cards are on screen (the first `count` of the ones asked for). */

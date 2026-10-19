@@ -331,14 +331,26 @@ function clearSplit(ws: Workspace): void {
   requestAnimationFrame(() => { if (stage) refit(stage, paneFont(ws, 2)); });
 }
 
-/** The Grid's notes, once each while the app runs. */
-let fitNoted = false;
-let wideNoted = false;
+/** The Grid's notes already shown while the app runs ("fewer|wide"). */
+const gridNoted = new Set<string>();
+
+/** Why the Grid shows fewer agents than asked for, or no list: once each. */
+function noteGrid(fewer: boolean, count: number): void {
+  const wide = document.body.classList.contains("ib-grid-wide");
+  const key = `${fewer}|${wide}`;
+  if (!(fewer || wide) || gridNoted.has(key)) return;
+  gridNoted.add(key);
+  topNote(fewer && wide
+    ? `The Grid shows <b>${count}</b> agents at a size you can read, and the list steps aside to make room · <kbd>Ctrl+K</kbd> swaps in another`
+    : fewer
+      ? `The Grid shows <b>${count}</b> agents at a size you can read · pick another in the list to swap it in`
+      : "The list steps aside so the Grid's terminals have room to read · <kbd>Alt+S</kbd> brings it back");
+}
 
 /** The list steps aside while not even two cards can be read beside it (a
  *  laptop screen). Judged as if the list were there, so it can't flip back
  *  and forth once it has gone. */
-function widenGrid(want: number, area: Area, plan: GridPlan | null, font: number): void {
+function widenGrid(want: number, area: Area, plan: GridPlan | null, font: number): boolean {
   const body = document.body;
   const wide = body.classList.contains("ib-grid-wide");
   let next = false;
@@ -347,13 +359,10 @@ function widenGrid(want: number, area: Area, plan: GridPlan | null, font: number
     const list = (parseFloat(getComputedStyle(body).getPropertyValue("--ib-q")) || 320) - 16;
     next = !(wide ? gridPlan(want, { width: area.width - list, height: area.height }, font) : plan).readable;
   }
-  if (next === wide) return;
+  if (next === wide) return false;
   body.classList.toggle("ib-grid-wide", next);
-  if (next && !wideNoted) {
-    wideNoted = true;
-    topNote("The list steps aside so the Grid's terminals have room to read · <kbd>Alt+S</kbd> brings it back");
-  }
   requestAnimationFrame(() => render());
+  return true;
 }
 
 /** Lay the agents in Split out side by side, from every project. Runs on
@@ -366,12 +375,13 @@ function layoutSplit(): void {
   // As many as fit at a readable size (gridfit), up to the number in Settings.
   let plan: GridPlan | null = null;
   let want = 0;
+  let moved = false;
   if (splitOn) {
     const order = gridOrder(allTasks());
     want = fillPins(pins, order, splitClosed, getPref("splitMax")).length;
     plan = gridPlan(want, area, paneFont(ws));
     pins = fillPins(pins, order, splitClosed, plan.count);
-    widenGrid(want, area, plan, paneFont(ws));
+    moved = widenGrid(want, area, plan, paneFont(ws));
   } else widenGrid(0, area, null, 0);
   const shown = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
   const on = shown.length > 1 && !!plan;
@@ -404,10 +414,8 @@ function layoutSplit(): void {
         p.el.style.setProperty("--sh", `${t.h}px`);
       }
       requestAnimationFrame(() => shown.forEach((p) => refit(p, font)));
-      if (plan!.count < want && !fitNoted) {
-        fitNoted = true;
-        topNote(`The Grid shows <b>${plan!.count}</b> agents at a size you can read · pick another in the list to swap it in`);
-      }
+      // the list is about to step aside: the note waits for the layout that follows
+      if (!moved) noteGrid(plan!.count < want, plan!.count);
     }
   }
   // The agent you talk to must be one of the cards on screen.

@@ -247,7 +247,7 @@ export function createAgent(
   if (restore) {
     setStatus(pane, "stopped", "");
     el.classList.add("stopped"); // dims the parked pane (cleared on boot)
-    term.write(enc.encode("\r\n\x1b[90m  [stopped — Resume to carry on]\x1b[0m\r\n"));
+    term.write(enc.encode("\r\n\x1b[90m  [stopped: Resume to carry on]\x1b[0m\r\n"));
   }
 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
