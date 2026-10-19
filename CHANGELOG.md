@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.11] - 2026-10-19
+
+The Grid you can read, and Resume that picks up where you left off.
+
+### Changed
+
+- **The Grid shows only as many terminals as you can read.** It used to split
+  the screen evenly between up to six agents, which left each one about 40
+  columns on a laptop and 75 on a 27" screen. Now it shows as many as fit at
+  80 x 20 characters or more, in the arrangement that leaves them the most
+  room, and gives their text a bigger font when there is space to spare. The
+  others wait in the list: pick one to swap it in. On a screen where not even
+  two fit beside the list, the list steps aside while the Grid is on.
+
+### Added
+
+- **A Resume button on every stopped agent**, in its row of the list and on
+  its stage, instead of only in the right-click menu.
+
+### Fixed
+
+- **Resume carries on the conversation the agent was last in.** After a
+  /clear (or switching conversation inside Claude Code), Resume, and a restart
+  of the computer, brought back the conversation the agent was first started
+  on. Maestro now follows the conversation each Claude agent is in and saves it.
+
 ## [0.9.10] - 2026-10-15
 
 Maestro stops working the graphics card when you are not looking at it.

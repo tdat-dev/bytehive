@@ -1,6 +1,6 @@
 [package]
 name = "maestro"
-version = "0.9.10"
+version = "0.9.11"
 description = "Maestro multi-agent CLI orchestrator"
 authors = ["tdat-dev"]
 license = "MIT"
