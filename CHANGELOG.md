@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.12] - 2026-10-19
+
+### Fixed
+
+- **The Grid sizes its terminals right on a 1080p screen.** 0.9.11 guessed a
+  terminal line shorter than it is, so a 1920 x 1080 screen got four cards
+  whose text then shrank to 14px. It now shows two at full size there (about
+  82 x 38 characters each); a 2560 x 1440 screen still shows four at 18px.
+- When the list steps aside for the Grid, its note says Ctrl+K swaps in another
+  agent, instead of pointing at the list you can't see.
+
 ## [0.9.11] - 2026-10-19
 
 The Grid you can read, and Resume that picks up where you left off.
