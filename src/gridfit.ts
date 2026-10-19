@@ -1,28 +1,34 @@
-// How the Grid lays its terminals out so each one stays worth reading.
+// How the Grid lays itself out so everything on it stays worth reading.
 //
-// Splitting the stage evenly by a fixed count (six agents, 3 × 2) leaves each
-// card ~40 columns on a laptop and ~75 on a 27" screen: Claude Code's TUI wraps
-// every line into mush, and a bigger font only makes it wrap more. So the Grid
-// asks the other way round: how many cards fit at a size a CLI can lay out in,
-// and which arrangement of them. The ones that don't fit wait in the list. A
-// card with room to spare gets a bigger font instead of more empty columns.
+// A terminal only reads at about 80 columns: below that Claude Code's TUI wraps
+// every line into mush, and a bigger font only makes it wrap more. So a screen
+// holds two to four readable terminals at most, never the six or nine agents
+// someone runs. The Grid therefore shows ONE real terminal, the agent you work
+// with, as big as it can be, and every other agent as a card beside it: plain
+// text that wraps at any width (see gridcards.ts). A wide screen gets two
+// columns of cards, as long as the terminal keeps plenty of room.
 //
-// Pure: estimates cells from the font instead of measuring, the real fit (and
-// the PTY size) still comes from xterm once the cards are placed.
+// Pure: estimates cells from the font instead of measuring; the real fit (and
+// the PTY size) still comes from xterm once the terminal is placed.
 
 import type { Area, Tile } from "./canvas";
 
 /** Below this a CLI's TUI wraps into mush, or shows little but its input box. */
 export const READ_COLS = 80;
 export const READ_ROWS = 20;
-/** A card with room grows its font while a line still holds this many cells. */
+/** The terminal grows its font while a line still holds this many cells. */
 export const AIM_COLS = 90;
 export const AIM_ROWS = 20;
 /** How far past the setting the font may grow. */
 export const GROW = 4;
 export const GAP = 16;
-/** What a card spends around its terminal: the header, the padding and the
- *  scrollbar (measured in the app: a 784 x 456 card has a 739 x 378 screen). */
+/** A column of cards, and the gap between two of them. */
+export const CARD_W = 340;
+export const CARD_GAP = 12;
+/** A second column of cards only while the terminal keeps this many columns. */
+export const TWO_COLS_KEEP = 110;
+/** What a pane spends around its terminal: the header, the padding and the
+ *  scrollbar (measured in the app: a 784 x 456 pane has a 739 x 378 screen). */
 const CHROME_W = 46;
 const CHROME_H = 80;
 /** Geist Mono's cell is 0.6em wide; a row is 1.5em (the font's own line box
@@ -30,16 +36,19 @@ const CHROME_H = 80;
 const CELL_W = 0.6;
 const CELL_H = 1.5;
 
-export interface GridPlan {
-  /** How many cards are on screen (the first `count` of the ones asked for). */
-  count: number;
+export interface RailPlan {
+  /** Where the terminal goes. */
+  big: Tile;
+  /** Where the cards go; null with no cards. */
+  rail: Tile | null;
+  /** Columns of cards. */
+  cols: number;
   font: number;
-  tiles: Tile[];
-  /** Every card reaches READ_COLS × READ_ROWS. */
+  /** The terminal reaches READ_COLS × READ_ROWS at the setting's font. */
   readable: boolean;
 }
 
-/** Roughly the terminal a card of this size holds at this font. */
+/** Roughly the terminal a pane of this size holds at this font. */
 export function cellsAt(tile: { w: number; h: number }, font: number): { cols: number; rows: number } {
   return {
     cols: Math.max(0, Math.floor((tile.w - CHROME_W) / (font * CELL_W))),
@@ -47,68 +56,24 @@ export function cellsAt(tile: { w: number; h: number }, font: number): { cols: n
   };
 }
 
-/** `n` cards in rows of `cols`, each row sharing the full width, so a short
- *  last row has wider cards instead of a hole. */
-export function gridTiles(n: number, cols: number, area: Area, gap = GAP): Tile[] {
-  if (n <= 0) return [];
-  const across = Math.max(1, Math.min(cols, n));
-  const rows = Math.ceil(n / across);
-  const th = (area.height - (rows - 1) * gap) / rows;
-  const out: Tile[] = [];
-  for (let r = 0; r < rows; r++) {
-    const inRow = Math.min(across, n - r * across);
-    const tw = (area.width - (inRow - 1) * gap) / inRow;
-    const top = r * (th + gap);
-    for (let c = 0; c < inRow; c++) {
-      const left = c * (tw + gap);
-      const x = Math.round(left), y = Math.round(top);
-      out.push({ x, y, w: Math.round(left + tw) - x, h: Math.round(top + th) - y });
-    }
-  }
-  return out;
-}
-
-/** The smallest card of a layout, width and height each. */
-function worst(tiles: Tile[]): { w: number; h: number } {
-  return { w: Math.min(...tiles.map((t) => t.w)), h: Math.min(...tiles.map((t) => t.h)) };
-}
-
-/** How close the smallest card comes to a size, 1 = reaches it. */
-function reach(tiles: Tile[], font: number, cols: number, rows: number): number {
-  const c = cellsAt(worst(tiles), font);
-  return Math.min(c.cols / cols, c.rows / rows);
-}
-
-/** The setting, grown while every card still holds AIM_COLS × AIM_ROWS. */
-export function growFont(base: number, tiles: Tile[]): number {
+/** The setting, grown while the pane still holds AIM_COLS × AIM_ROWS. */
+export function growFont(base: number, tile: { w: number; h: number }): number {
   let f = base;
-  while (f < base + GROW && reach(tiles, f + 1, AIM_COLS, AIM_ROWS) >= 1) f++;
+  const fits = (n: number) => { const c = cellsAt(tile, n); return c.cols >= AIM_COLS && c.rows >= AIM_ROWS; };
+  while (f < base + GROW && fits(f + 1)) f++;
   return f;
 }
 
-/**
- * The most of `want` cards that fit readably at font `base`, in the
- * arrangement that leaves them the most room. Two at the least: when not even
- * two fit, the least cramped way to show two.
- */
-export function gridPlan(want: number, area: Area, base: number): GridPlan {
-  if (want < 2) {
-    const tiles = gridTiles(want, 1, area);
-    return { count: tiles.length, font: base, tiles, readable: true };
-  }
-  for (let k = want; k >= 2; k--) {
-    let best: Tile[] | null = null;
-    let bestReach = 0;
-    for (let cols = 1; cols <= k; cols++) {
-      const tiles = gridTiles(k, cols, area);
-      const r = reach(tiles, base, AIM_COLS, AIM_ROWS);
-      if (reach(tiles, base, READ_COLS, READ_ROWS) >= 1 && r > bestReach) { best = tiles; bestReach = r; }
-    }
-    if (best) return { count: k, font: growFont(base, best), tiles: best, readable: true };
-  }
-  const side = gridTiles(2, 2, area);
-  const stacked = gridTiles(2, 1, area);
-  // a terminal reads in lines: a tie goes to the taller cards
-  const tiles = reach(stacked, base, READ_COLS, READ_ROWS) > reach(side, base, READ_COLS, READ_ROWS) + 0.05 ? stacked : side;
-  return { count: 2, font: base, tiles, readable: false };
+/** The terminal on the left, `cards` cards on the right in one column or two. */
+export function railPlan(cards: number, area: Area, base: number): RailPlan {
+  const full = { x: 0, y: 0, w: Math.round(area.width), h: Math.round(area.height) };
+  if (cards <= 0) return { big: full, rail: null, cols: 0, font: growFont(base, full), readable: cellsAt(full, base).cols >= READ_COLS };
+  const railW = (cols: number) => cols * CARD_W + (cols - 1) * CARD_GAP;
+  const bigFor = (cols: number) => ({ ...full, w: Math.max(0, full.w - railW(cols) - GAP) });
+  // two columns only when one would not show them all and the terminal keeps plenty
+  const cols = cards > 3 && cellsAt(bigFor(2), base).cols >= TWO_COLS_KEEP ? 2 : 1;
+  const big = bigFor(cols);
+  const rail = { x: big.w + GAP, y: 0, w: railW(cols), h: full.h };
+  const c = cellsAt(big, base);
+  return { big, rail, cols, font: growFont(base, big), readable: c.cols >= READ_COLS && c.rows >= READ_ROWS };
 }

@@ -1,48 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { cellsAt, gridPlan, gridTiles, READ_COLS, READ_ROWS } from "./gridfit";
+import { cellsAt, railPlan, CARD_W, GAP, READ_COLS } from "./gridfit";
 
-/** Every card of a plan reaches a readable terminal at its font. */
-const allReadable = (p: ReturnType<typeof gridPlan>) =>
-  p.tiles.every((t) => { const c = cellsAt(t, p.font); return c.cols >= READ_COLS && c.rows >= READ_ROWS; });
-
-describe("Grid fit", () => {
-  it("lays two cards side by side, a short last row sharing the full width", () => {
-    const [l, r] = gridTiles(2, 2, { width: 1012, height: 600 });
-    expect([l.x, l.w, r.x, r.w, l.h]).toEqual([0, 498, 514, 498, 600]);
-    const three = gridTiles(3, 2, { width: 1016, height: 616 });
-    expect(three.map((t) => [t.x, t.y, t.w, t.h])).toEqual([[0, 0, 500, 300], [516, 0, 500, 300], [0, 316, 1016, 300]]);
-  });
-
-  it("shows fewer agents on a 27-inch screen instead of six unreadable ones, and grows their font", () => {
-    const p = gridPlan(6, { width: 2200, height: 1280 }, 15);
-    expect(p.count).toBe(4);
+describe("Grid layout: one terminal and the cards beside it", () => {
+  it("gives a laptop's terminal enough columns beside one column of cards", () => {
+    const p = railPlan(5, { width: 1200, height: 712 }, 15);
+    expect(p.cols).toBe(1);
+    expect(p.big.w).toBe(1200 - CARD_W - GAP);
+    expect(p.rail).toEqual({ x: p.big.w + GAP, y: 0, w: CARD_W, h: 712 });
+    expect(cellsAt(p.big, 15).cols).toBeGreaterThanOrEqual(READ_COLS);
     expect(p.readable).toBe(true);
+  });
+
+  it("grows the terminal's font on a 1080p screen", () => {
+    const p = railPlan(5, { width: 1584, height: 928 }, 15);
     expect(p.font).toBeGreaterThan(15);
-    expect(allReadable(p)).toBe(true);
+    expect(cellsAt(p.big, p.font).cols).toBeGreaterThanOrEqual(90);
   });
 
-  it("shows all of them when there is room", () => {
-    const p = gridPlan(3, { width: 3400, height: 1300 }, 15);
-    expect(p.count).toBe(3);
-    expect(allReadable(p)).toBe(true);
+  it("puts the cards in two columns on a 27-inch screen, the terminal still wide", () => {
+    const p = railPlan(7, { width: 2224, height: 1288 }, 15);
+    expect(p.cols).toBe(2);
+    expect(p.rail!.w).toBe(2 * CARD_W + 12);
+    expect(p.font).toBe(19);
   });
 
-  it("never grows the font past what keeps a card readable", () => {
-    const p = gridPlan(2, { width: 1900, height: 900 }, 15);
-    expect(p.count).toBe(2);
-    expect(allReadable(p)).toBe(true);
-    expect(p.font).toBeLessThanOrEqual(19);
+  it("keeps one column for a few cards", () => {
+    expect(railPlan(3, { width: 2224, height: 1288 }, 15).cols).toBe(1);
   });
 
-  it("still shows two on a laptop where nothing fits, and says it is cramped", () => {
-    const p = gridPlan(6, { width: 1180, height: 700 }, 15);
-    expect(p.count).toBe(2);
+  it("says when the terminal is too narrow beside the cards", () => {
+    const p = railPlan(4, { width: 944, height: 700 }, 15);
     expect(p.readable).toBe(false);
-    expect(p.font).toBe(15);
   });
 
-  it("gives one agent the whole stage", () => {
-    const p = gridPlan(1, { width: 1000, height: 600 }, 15);
-    expect(p.tiles).toEqual([{ x: 0, y: 0, w: 1000, h: 600 }]);
+  it("gives the whole stage to the terminal with no cards", () => {
+    const p = railPlan(0, { width: 1000, height: 600 }, 15);
+    expect(p.big).toEqual({ x: 0, y: 0, w: 1000, h: 600 });
+    expect(p.rail).toBeNull();
   });
 });

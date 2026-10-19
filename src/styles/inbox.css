@@ -592,6 +592,54 @@ body.inbox-ui #btnResumeAll { height: 32px; padding: 0 14px; border-radius: 999p
 body.inbox-ui #btnResumeAll:disabled { opacity: 0.5; cursor: default; }
 body.inbox-ui #btnResumeAll:hover { background: rgba(255, 255, 255, 0.12); }
 
+/* ---------- the Grid's cards: every agent but the one in the terminal, as
+   plain text that reads at any width (inbox.ts renderRail) ---------- */
+.ib-rail {
+  position: absolute; z-index: 3;
+  display: grid; grid-template-columns: repeat(var(--rail-cols, 1), minmax(0, 1fr));
+  align-content: start; gap: 12px;
+  overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.rc {
+  display: grid; gap: 8px; padding: 14px 16px 16px;
+  border-radius: 16px; background: var(--ib-panel);
+  box-shadow: inset 0 0 0 1px var(--ib-line);
+  font: 14px/1.5 var(--sans); color: var(--ib-ink);
+  cursor: pointer; transition: background 0.12s;
+}
+.rc:hover { background: var(--ib-raise); }
+.rc:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.rc.st-needs { box-shadow: inset 0 0 0 1px var(--ib-needs-line); background: color-mix(in oklch, var(--ib-needs) 5%, var(--ib-panel)); }
+.rc-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rc-h .iq-mk { width: 26px; height: 26px; flex: none; }
+.rc-n { font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-cli { font-size: 12.5px; color: var(--ib-ink-3); }
+.rc-cli::before { content: "· "; }
+.rc-h .ib-pill { margin-left: auto; height: 24px; padding: 0 10px; font-size: 12px; flex: none; }
+.rc-t { margin: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-do { margin: 0; font-size: 13px; color: var(--ib-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc.st-working .rc-do { color: var(--ib-work); }
+.rc.limited .rc-do { color: var(--ib-needs); }
+.rc-do .iq-ln { margin-left: 8px; }
+.rc-say {
+  margin: 0; color: var(--ib-ink-2); white-space: pre-line; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-clamp: 5; overflow: hidden;
+}
+.rc-you span { font-weight: 600; color: var(--ib-ink-3); }
+.rc-ask p { margin: 0 0 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.rc-ask .lb { font-size: 12.5px; color: var(--ib-needs); }
+.rc-ask code { padding: 4px 8px; border-radius: 6px; background: var(--surface-0); font: 12.5px var(--mono); max-width: 100%; max-height: 4.8em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rc-q { overflow-wrap: anywhere; }
+.rc-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.rc-opts .ia-opt { width: auto; height: 30px; padding: 0 12px; border-radius: 999px; font: 600 12.5px var(--sans); background: rgba(255, 255, 255, 0.07); color: var(--ib-ink); }
+.rc-opts .ia-opt.always { background: transparent; color: var(--ib-ink-2); }
+.rc-opts .ia-opt.deny { background: oklch(0.72 0.15 25 / 0.12); color: var(--ib-del); }
+.rc-opts .ia-opt.allow { background: #fff; color: #000; }
+.rc-opts .ia-opt:hover { background: rgba(255, 255, 255, 0.13); }
+.rc-opts .ia-opt.allow:hover { background: #e9e9ec; }
+@media (prefers-reduced-motion: reduce) { .rc { transition: none; } }
+
 /* Grid on a small screen: the list steps aside so two terminals have room to read (inbox.ts widenGrid) */
 body.inbox-ui.ib-grid-wide .app { grid-template-columns: 0px 1fr var(--code-w, 380px) 0px; }
 body.inbox-ui.ib-grid-wide .inbox-queue { display: none; }

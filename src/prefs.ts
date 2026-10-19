@@ -23,7 +23,7 @@ export interface Prefs {
   jumpToNeeds: boolean;
   /** Show the answer box over the terminal (off: a small chip you open when ready). */
   askCard: boolean;
-  /** Most terminals Split lays out side by side. */
+  /** Most agents in the Grid: one terminal, the rest as cards. */
   splitMax: SplitMax;
   /** Open Changes on its own when the agent on screen finishes with changes. */
   reviewOnDone: boolean;
@@ -37,7 +37,7 @@ export interface Prefs {
   limitNotify: boolean;
 }
 
-/** How many terminals Split may lay out: 2 side by side up to a 3 × 3 grid. */
+/** How many agents the Grid may hold. */
 export const SPLIT_SIZES = [2, 3, 4, 6, 9] as const;
 export type SplitMax = (typeof SPLIT_SIZES)[number];
 
@@ -52,7 +52,7 @@ export const DEFAULTS: Prefs = {
   notifyDone: true,
   jumpToNeeds: false,
   askCard: true,
-  splitMax: 6,
+  splitMax: 9,
   reviewOnDone: false,
   restore: true,
   tips: true,
@@ -82,11 +82,21 @@ const SPLIT_LIFTED = "maestro.prefs.split6";
 /** A worktree per agent used to be on by default, which a saved copy keeps;
  *  agents work in the project folder now, so turn it off once. */
 const IN_PLACE = "maestro.prefs.inplace";
+/** The Grid holds one terminal and cards now, not a terminal each: a saved 4
+ *  or 6 (the old defaults) is lifted to the new one once. */
+const SPLIT_CARDS = "maestro.prefs.split9";
 function lift(raw: Partial<Prefs>): Partial<Prefs> {
   try {
     if (!localStorage.getItem(SPLIT_LIFTED)) {
       localStorage.setItem(SPLIT_LIFTED, "1");
       if ((raw.splitMax as number) === 4) {
+        raw = { ...raw, splitMax: DEFAULTS.splitMax };
+        localStorage.setItem(KEY, JSON.stringify(raw));
+      }
+    }
+    if (!localStorage.getItem(SPLIT_CARDS)) {
+      localStorage.setItem(SPLIT_CARDS, "1");
+      if ((raw.splitMax as number) === 4 || (raw.splitMax as number) === 6) {
         raw = { ...raw, splitMax: DEFAULTS.splitMax };
         localStorage.setItem(KEY, JSON.stringify(raw));
       }

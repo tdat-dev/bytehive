@@ -15,11 +15,16 @@ import type { Workspace } from "./panetypes";
 beforeEach(() => localStorage.clear());
 
 describe("prefs", () => {
-  it("lifts a saved Split size of 4, the old cap, to the new default once", () => {
+  it("lifts a saved Grid size of 4 or 6, the old defaults, to the new default once", () => {
     localStorage.setItem("maestro.prefs", JSON.stringify({ splitMax: 4, jobDelay: 7 }));
-    expect(getPrefs()).toMatchObject({ splitMax: 6, jobDelay: 7 });
+    expect(getPrefs()).toMatchObject({ splitMax: 9, jobDelay: 7 });
     setPref("splitMax", 4);
     expect(getPref("splitMax")).toBe(4);
+    localStorage.clear();
+    localStorage.setItem("maestro.prefs", JSON.stringify({ splitMax: 6 }));
+    expect(getPref("splitMax")).toBe(9);
+    setPref("splitMax", 6);
+    expect(getPref("splitMax")).toBe(6);
   });
 
   it("ships with defaults and keeps values in range", () => {
@@ -27,7 +32,7 @@ describe("prefs", () => {
     setPref("jobDelay", 99);
     expect(getPref("jobDelay")).toBe(20);
     setPref("splitMax", 7 as never);
-    expect(getPref("splitMax")).toBe(6);
+    expect(getPref("splitMax")).toBe(9);
     localStorage.setItem("maestro.prefs", "{broken");
     expect(getPrefs()).toEqual(DEFAULTS);
   });
@@ -84,7 +89,7 @@ describe("Settings rows", () => {
     expect($<HTMLInputElement>("prefWorktree").checked).toBe(false);
     expect($<HTMLInputElement>("prefAsk").checked).toBe(true);
     expect($("prefJobDelay").querySelector("[data-n]")!.textContent).toBe("4 s");
-    expect($("prefSplitMax").querySelector(".on")!.getAttribute("data-v")).toBe("6");
+    expect($("prefSplitMax").querySelector(".on")!.getAttribute("data-v")).toBe("9");
   });
 
   it("saves every change straight away", () => {

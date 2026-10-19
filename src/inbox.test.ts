@@ -367,34 +367,34 @@ describe("inbox DOM", () => {
     expect(document.querySelector(".ia-code")!.textContent).toBe("npm test");
   });
 
-  it("lays every agent of the project out in Split, each answering on its own card", async () => {
-    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
+  it("shows one agent as the Grid's terminal and the others as cards that answer and swap in", async () => {
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "needs")];
     setInbox(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
     expect(document.querySelector('[data-dock="split"]')!.getAttribute("aria-pressed")).toBe("true");
-    expect(document.querySelectorAll(".split-pin")).toHaveLength(2);
-    expect(panes[1].el.style.getPropertyValue("--sw")).not.toBe("");
-    // The floating card steps aside; Ana's card carries her question.
+    // Ana is the terminal, Eli a card
+    expect([...document.querySelectorAll(".split-pin")]).toEqual([panes[0].el]);
+    expect(panes[0].el.style.getPropertyValue("--sw")).not.toBe("");
+    const card = () => document.querySelector<HTMLElement>('.ib-rail [data-card="e"]');
+    expect(card()!.querySelector(".rc-n")!.textContent).toBe("Eli");
     expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
-    expect(panes[0].el.classList.contains("ib-needs")).toBe(true);
+    // Ana answers under her terminal, Eli on his card
     expect(panes[0].el.querySelector(".ib-mini code")!.textContent).toBe("npm run build");
     (panes[0].el.querySelector('.ib-mini [data-n="1"]') as HTMLButtonElement).click();
+    (card()!.querySelector('.rc-opts [data-n="1"]') as HTMLButtonElement).click();
     await Promise.resolve();
-    expect(state.answered).toEqual([["a", "1"]]);
-    expect(panes[0].el.querySelector(".ib-mini")).toBeNull();
-    // Clicking into the other terminal makes it the current one.
-    panes[1].el.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(state.answered).toEqual([["a", "1"], ["e", "1"]]);
+    // a click on Eli's card puts him in the terminal and Ana on a card
+    card()!.click();
+    expect([...document.querySelectorAll(".split-pin")]).toEqual([panes[1].el]);
     expect(panes[1].el.classList.contains("focused")).toBe(true);
-    // ✕ takes Eli out; with one agent left it is a single stage again.
-    (panes[0].spec as { badge?: string }).badge = "claude";
+    expect(document.querySelector('.ib-rail [data-card="a"]')).not.toBeNull();
+    // ✕ takes Eli out; with one agent left it is a single stage again
     (panes[1].el.querySelector('[data-stage="close"]') as HTMLButtonElement).click();
     expect(document.querySelectorAll(".split-pin")).toHaveLength(0);
+    expect(document.querySelector(".ib-rail")).toBeNull();
     expect(panes[0].el.classList.contains("focused")).toBe(true);
-    // Still Grid, so still a terminal: no Chat/Terminal choice to make.
-    expect(panes[0].el.querySelector(".ib-view")).toBeNull();
-    // and its buttons wear no class the canvas styles itself ("grid" did).
     expect(panes[0].el.querySelector(".ib-acts")!.className).toBe("ib-acts");
-    delete (panes[0].spec as { badge?: string }).badge;
     (document.querySelector('[data-dock="queue"]') as HTMLButtonElement).click();
     expect(document.querySelector('[data-dock="split"]')!.getAttribute("aria-pressed")).toBe("false");
     expect(panes[0].el.style.getPropertyValue("--sw")).toBe("");
@@ -643,7 +643,7 @@ describe("inbox DOM", () => {
     expect(panes[1].el.querySelector(".ib-ttl")!.textContent).toBe("Fix the flaky upload test");
   });
 
-  it("brings agents of other projects into Split and gives them back after", () => {
+  it("shows agents of other projects as cards, brings one in to work with it and gives it back after", () => {
     const qEl = document.createElement("div");
     qEl.className = "pane";
     qEl.innerHTML = '<div class="pane-bar"><span class="pb-sp"></span><span data-where></span></div>';
@@ -656,10 +656,11 @@ describe("inbox DOM", () => {
     setInbox(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
     const grid = panes[0].el.parentElement!;
+    // Quinn waits on a card, his terminal stays home
+    expect(qEl.parentElement).toBe(qGrid);
+    (document.querySelector('.ib-rail [data-card="q"]') as HTMLElement).click();
     expect(qEl.parentElement).toBe(grid);
     expect(qEl.classList.contains("split-pin")).toBe(true);
-    // Clicking into Quinn's terminal makes Quinn the current agent.
-    qEl.appendChild(document.createElement("textarea")).dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
     expect(qEl.classList.contains("focused")).toBe(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
     expect(qEl.parentElement).toBe(qGrid);

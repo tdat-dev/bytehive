@@ -10,8 +10,9 @@
 import { workspaces, activeWs } from "./appstate";
 import { focusPane, renamePane } from "./panelayout";
 import { revealPane } from "./agentbridge";
-import { type Area } from "./canvas";
-import { gridPlan, type GridPlan } from "./gridfit";
+import { type Area, type Tile } from "./canvas";
+import { railPlan } from "./gridfit";
+import { glanceFor, keepGlances, refreshGlance } from "./gridcards";
 import { killPty, resizePty, sendInput } from "./ipc";
 import { paneFont } from "./zoom";
 import { createReviewDrawer } from "./inboxreview";
@@ -222,12 +223,14 @@ const hidden = new Set<string>();
 const answered = new Set<string>();
 /** Questions already tucked away once because Settings says to start tucked. */
 const autoTucked = new Set<string>();
-/** Split: pinned agents shown side by side as real terminals. Only the pins in
+/** Split (the Grid): one agent's terminal with the others as cards. Only the pins in
  *  the shown project can be on screen, since each project has its own canvas. */
 let splitOn = false;
 let pins: string[] = [];
 let splitSig = "";
 let splitWs: Workspace | null = null;
+/** The agent in the Grid's terminal; the others are cards beside it. */
+let bigId: string | null = null;
 /** Agents of other projects shown in Split, with the project they belong to. */
 const borrowed = new Map<string, Workspace>();
 /** Agents closed out of Split with ✕; they stay out until Split is turned off. */
@@ -291,6 +294,8 @@ export function openTask(t: Task): void {
 /** Make a pane the one the decision card and Alt+number talk to, without
  *  moving or refitting anything (Split keeps every terminal where it is). */
 function setCurrent(pane: Pane): void {
+  // in the Grid it is the one in the terminal: the layout moves it there
+  if (splitOn) bigId = pane.id;
   for (const p of screenPanes()) p.el.classList.toggle("focused", p === pane);
   render();
   pane.term.focus();
@@ -331,33 +336,20 @@ function clearSplit(ws: Workspace): void {
   requestAnimationFrame(() => { if (stage) refit(stage, paneFont(ws, 2)); });
 }
 
-/** The Grid's notes already shown while the app runs ("fewer|wide"). */
-const gridNoted = new Set<string>();
+/** The list stepped aside for the Grid: said once while the app runs. */
+let wideNoted = false;
 
-/** Why the Grid shows fewer agents than asked for, or no list: once each. */
-function noteGrid(fewer: boolean, count: number): void {
-  const wide = document.body.classList.contains("ib-grid-wide");
-  const key = `${fewer}|${wide}`;
-  if (!(fewer || wide) || gridNoted.has(key)) return;
-  gridNoted.add(key);
-  topNote(fewer && wide
-    ? `The Grid shows <b>${count}</b> agents at a size you can read, and the list steps aside to make room · <kbd>Ctrl+K</kbd> swaps in another`
-    : fewer
-      ? `The Grid shows <b>${count}</b> agents at a size you can read · pick another in the list to swap it in`
-      : "The list steps aside so the Grid's terminals have room to read · <kbd>Alt+S</kbd> brings it back");
-}
-
-/** The list steps aside while not even two cards can be read beside it (a
- *  laptop screen). Judged as if the list were there, so it can't flip back
- *  and forth once it has gone. */
-function widenGrid(want: number, area: Area, plan: GridPlan | null, font: number): boolean {
+/** The list steps aside while the Grid's terminal can't be read beside it and
+ *  the cards (a laptop screen). Judged as if the list were there, so it can't
+ *  flip back and forth once it has gone. True when it just moved. */
+function widenGrid(on: boolean, area: Area, font: number, cards: number): boolean {
   const body = document.body;
   const wide = body.classList.contains("ib-grid-wide");
   let next = false;
-  if (plan && want >= 2) {
+  if (on) {
     // the list's column, less the gutter the stage gets back when it is gone
     const list = (parseFloat(getComputedStyle(body).getPropertyValue("--ib-q")) || 320) - 16;
-    next = !(wide ? gridPlan(want, { width: area.width - list, height: area.height }, font) : plan).readable;
+    next = !railPlan(cards, wide ? { width: area.width - list, height: area.height } : area, font).readable;
   }
   if (next === wide) return false;
   body.classList.toggle("ib-grid-wide", next);
@@ -365,64 +357,161 @@ function widenGrid(want: number, area: Area, plan: GridPlan | null, font: number
   return true;
 }
 
-/** Lay the agents in Split out side by side, from every project. Runs on
- *  every render but only touches the DOM (and resizes PTYs) when the set of
- *  panes or the space they share changed. */
+/** The Grid: the agent you work with as a big real terminal, every other one
+ *  in it as a card beside it (gridfit.ts, gridcards.ts), from every project.
+ *  Runs on every render but only moves the terminal (and resizes its PTY) when
+ *  which agent it is, or the space, changed. */
 function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
+  if (splitOn) pins = fillPins(pins, gridOrder(allTasks()), splitClosed, getPref("splitMax"));
+  const inGrid = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
+  const on = inGrid.length > 1;
+  const cur = stagePane();
+  const big = on ? inGrid.find((p) => p.id === bigId) ?? (cur && inGrid.includes(cur) ? cur : inGrid[0]) : undefined;
+  bigId = big?.id ?? bigId;
+  const cards = big ? inGrid.filter((p) => p !== big) : [];
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
-  // As many as fit at a readable size (gridfit), up to the number in Settings.
-  let plan: GridPlan | null = null;
-  let want = 0;
-  let moved = false;
-  if (splitOn) {
-    const order = gridOrder(allTasks());
-    want = fillPins(pins, order, splitClosed, getPref("splitMax")).length;
-    plan = gridPlan(want, area, paneFont(ws));
-    pins = fillPins(pins, order, splitClosed, plan.count);
-    moved = widenGrid(want, area, plan, paneFont(ws));
-  } else widenGrid(0, area, null, 0);
-  const shown = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
-  const on = shown.length > 1 && !!plan;
-  const sig = on ? `${ws.id}|${shown.map((p) => p.id).join(",")}|${area.width}x${area.height}` : "";
+  const font = paneFont(ws);
+  const moved = widenGrid(on, area, font, cards.length);
+  const plan = big ? railPlan(cards.length, area, font) : null;
+  const sig = big && plan ? `${ws.id}|${big.id}|${plan.cols}|${area.width}x${area.height}` : "";
   if (sig !== splitSig) {
     splitSig = sig;
-    // Leaving Split, or moving to another project, puts the old canvas back.
-    if (splitWs && (!on || splitWs !== ws)) clearSplit(splitWs);
-    splitWs = on ? ws : null;
-    if (on) {
-      for (const id of [...borrowed.keys()]) if (!shown.some((p) => p.id === id)) giveBack(id);
-      for (const p of shown) {
-        if (ws.panes.has(p.id) || borrowed.has(p.id)) continue;
-        const home = wsOf(p.id);
-        if (!home) continue;
-        borrowed.set(p.id, home);
-        ws.gridEl.appendChild(p.el);
+    // Leaving the Grid, or moving to another project, puts the old canvas back.
+    if (splitWs && (!big || splitWs !== ws)) clearSplit(splitWs);
+    splitWs = big ? ws : null;
+    if (big && plan) {
+      for (const id of [...borrowed.keys()]) if (id !== big.id) giveBack(id);
+      const home = wsOf(big.id);
+      if (home && home !== ws && !borrowed.has(big.id)) {
+        borrowed.set(big.id, home);
+        ws.gridEl.appendChild(big.el);
       }
       ws.gridEl.classList.add("inbox-split", "has-focus");
-      const tiles = plan!.tiles;
-      const font = plan!.font;
       for (const p of screenPanes()) {
-        const i = shown.indexOf(p);
-        p.el.classList.toggle("split-pin", i >= 0);
-        if (i < 0) continue;
-        const t = tiles[i];
-        p.el.style.setProperty("--sx", `${t.x}px`);
-        p.el.style.setProperty("--sy", `${t.y}px`);
-        p.el.style.setProperty("--sw", `${t.w}px`);
-        p.el.style.setProperty("--sh", `${t.h}px`);
+        const isBig = p === big;
+        p.el.classList.toggle("split-pin", isBig);
+        p.el.classList.toggle("focused", isBig);
+        if (!isBig) { for (const v of SPLIT_VARS) p.el.style.removeProperty(v); continue; }
+        p.el.style.setProperty("--sx", `${plan.big.x}px`);
+        p.el.style.setProperty("--sy", `${plan.big.y}px`);
+        p.el.style.setProperty("--sw", `${plan.big.w}px`);
+        p.el.style.setProperty("--sh", `${plan.big.h}px`);
       }
-      requestAnimationFrame(() => shown.forEach((p) => refit(p, font)));
+      requestAnimationFrame(() => refit(big, plan.font));
       // the list is about to step aside: the note waits for the layout that follows
-      if (!moved) noteGrid(plan!.count < want, plan!.count);
+      if (!moved && !wideNoted && document.body.classList.contains("ib-grid-wide")) {
+        wideNoted = true;
+        topNote("The list steps aside so the terminal has room to read · <kbd>Alt+S</kbd> brings it back");
+      }
     }
   }
-  // The agent you talk to must be one of the cards on screen.
-  if (on) {
-    const cur = stagePane();
-    if (!cur || !shown.includes(cur)) for (const p of screenPanes()) p.el.classList.toggle("focused", p === shown[0]);
+  renderRail(ws, cards, plan?.rail ?? null, plan?.cols ?? 0);
+}
+
+/* ---------------- the Grid's cards ---------------- */
+
+let railEl: HTMLElement | null = null;
+let railTimer: number | null = null;
+/** What the cards show now, so an unchanged render leaves them (and a hovered button) alone. */
+let railHtml = "";
+/** The agents on cards now, for the reader. */
+let railPanes: Pane[] = [];
+/** How often a card reads what its agent wrote. */
+const RAIL_READ_MS = 2000;
+
+/** One card: who, its state and job, what it is doing and last said, and its
+ *  answer buttons while it asks you something. */
+function cardHtml(t: Task, p: Pane): string {
+  const g = glanceFor(p.id);
+  const a = t.status.state === "needs" ? t.status.ask : null;
+  let body: string;
+  if (a && miniAnswered.get(p.id) !== askKey(a)) {
+    const lead = a.kind === "run" ? "Wants to run" : a.kind === "edit" ? "Wants to edit" : "Asks";
+    const what = a.kind !== "question" && a.detail ? `<code title="${esc(a.detail)}">${esc(a.detail)}</code>` : `<span class="rc-q">${esc(a.prompt)}</span>`;
+    body = `<div class="rc-ask"><p><span class="lb">${lead}</span>${what}</p><div class="rc-opts">${askButtons(a).join("")}</div></div>`;
+  } else {
+    const doing = t.status.state === "working" && !t.status.limit ? g.doing || (g.asked ? "Working on what you asked" : "Working") : rowLine(t);
+    const said = g.said ? `<p class="rc-say">${esc(g.said)}</p>` : g.asked ? `<p class="rc-say rc-you"><span>You</span> ${esc(g.asked)}</p>` : "";
+    body = `<p class="rc-do">${esc(doing)}${lineCounts(t)}</p>${said}`;
   }
+  const color = p.color ?? "#888";
+  return `<div class="rc st-${t.status.state}${t.status.limit ? " limited" : ""}" role="listitem" tabindex="0" data-card="${esc(p.id)}" title="${esc(t.name)} · click to work with it in the terminal, right-click for more">
+    <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${faceSvg(t.name, color)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+    ${t.title ? `<p class="rc-t" title="${esc(t.title)}">${esc(t.title)}</p>` : ""}${body}
+  </div>`;
+}
+
+function renderRail(ws: Workspace, cards: Pane[], tile: Tile | null, cols: number): void {
+  if (!tile || !cards.length) {
+    railEl?.remove();
+    railEl = null;
+    railPanes = [];
+    if (railTimer !== null) { window.clearInterval(railTimer); railTimer = null; }
+    keepGlances(new Set());
+    return;
+  }
+  if (!railEl || railEl.parentElement !== ws.gridEl) {
+    railEl?.remove();
+    railHtml = "";
+    railEl = document.createElement("div");
+    railEl.className = "ib-rail";
+    railEl.setAttribute("role", "list");
+    railEl.setAttribute("aria-label", "The other agents in the Grid");
+    railEl.addEventListener("click", onRailClick);
+    railEl.addEventListener("keydown", onRailKey);
+    railEl.addEventListener("contextmenu", onRailMenu);
+    ws.gridEl.appendChild(railEl);
+  }
+  const st = railEl.style;
+  st.left = `${tile.x}px`; st.top = `${tile.y}px`; st.width = `${tile.w}px`; st.height = `${tile.h}px`;
+  st.setProperty("--rail-cols", String(cols));
+  const list = allTasks();
+  const html = cards.map((p) => { const t = list.find((x) => x.paneId === p.id); return t ? cardHtml(t, p) : ""; }).join("");
+  if (railHtml !== html) { railHtml = html; railEl.innerHTML = html; }
+  railPanes = cards;
+  keepGlances(new Set(cards.map((p) => p.id)));
+  if (railTimer === null) {
+    const read = () => void Promise.all(railPanes.map((p) => refreshGlance(p))).then((ch) => { if (ch.some(Boolean)) render(); });
+    read();
+    railTimer = window.setInterval(read, RAIL_READ_MS);
+  }
+}
+
+/** A card makes its agent the one in the terminal; its buttons answer it. */
+function onRailClick(e: MouseEvent): void {
+  const target = e.target as HTMLElement;
+  const card = target.closest<HTMLElement>("[data-card]");
+  const pane = card ? paneById(card.dataset.card ?? "") : undefined;
+  if (!pane) return;
+  const opt = target.closest<HTMLElement>(".rc-opts [data-n]");
+  if (opt) {
+    const a = taskOf(pane.id)?.status.ask;
+    const o = a?.options.find((x) => x.n === Number(opt.dataset.n));
+    if (!a || !o) return;
+    miniAnswered.set(pane.id, askKey(a));
+    void answerOption(pane.id, o).then(() => render());
+    return;
+  }
+  setCurrent(pane);
+}
+
+function onRailKey(e: KeyboardEvent): void {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const card = (e.target as HTMLElement).closest<HTMLElement>("[data-card]");
+  if (!card || e.target !== card) return;
+  e.preventDefault();
+  const pane = paneById(card.dataset.card ?? "");
+  if (pane) setCurrent(pane);
+}
+
+function onRailMenu(e: MouseEvent): void {
+  const card = (e.target as HTMLElement).closest<HTMLElement>("[data-card]");
+  const t = card ? taskOf(card.dataset.card ?? "") : undefined;
+  if (!t) return;
+  e.preventDefault();
+  openMenu(e.clientX, e.clientY, agentMenu(t), `${t.name} actions`);
 }
 
 export function setSplit(on: boolean): void {
@@ -430,8 +519,8 @@ export function setSplit(on: boolean): void {
   if (on && gridOrder(allTasks()).length < 2) {
     const parked = allTasks().some((t) => t.status.state === "stopped");
     topNote(parked
-      ? "The Grid shows running agents side by side: resume a stopped one or start another with <b>New agent</b>"
-      : "The Grid shows agents side by side: start another with <b>New agent</b>");
+      ? "The Grid shows a running agent with the others beside it: resume a stopped one or start another with <b>New agent</b>"
+      : "The Grid shows an agent with the others beside it: start another with <b>New agent</b>");
   }
   if (!on) { splitClosed.clear(); miniAnswered.clear(); }
   splitBtn?.setAttribute("aria-pressed", String(on));
@@ -667,6 +756,14 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
 
 const askKey = (a: NonNullable<Task["status"]["ask"]>) => `${a.prompt}|${a.detail ?? ""}|${a.options.map((o) => o.label).join("/")}`;
 
+/** The buttons that answer a prompt: Allow / Always / Deny, or its numbered choices. */
+function askButtons(a: NonNullable<Task["status"]["ask"]>): string[] {
+  return isYesNo(a)
+    ? [...a.options].sort((x, y) => rank(x) - rank(y)).map((o) =>
+        `<button class="ia-opt ${o.deny ? "deny" : o.always ? "always" : "allow"}" data-n="${o.n}" title="${esc(o.label)}">${esc(shortLabel(o))}</button>`)
+    : a.options.map((o) => `<button class="ia-opt" data-n="${o.n}">${o.n}. ${esc(o.label)}</button>`);
+}
+
 /** A Split card answers its own agent, right under that agent's terminal. */
 function renderMini(p: Pane, t: Task, pinned: boolean): void {
   let mini = p.el.querySelector<HTMLElement>(".ib-mini");
@@ -681,10 +778,7 @@ function renderMini(p: Pane, t: Task, pinned: boolean): void {
     p.el.appendChild(mini);
   }
   mini.dataset.sig = key;
-  const btns = isYesNo(a)
-    ? [...a.options].sort((x, y) => rank(x) - rank(y)).map((o) =>
-        `<button class="ia-opt ${o.deny ? "deny" : o.always ? "always" : "allow"}" data-n="${o.n}" title="${esc(o.label)}">${esc(shortLabel(o))}</button>`)
-    : a.options.map((o) => `<button class="ia-opt" data-n="${o.n}">${o.n}. ${esc(o.label)}</button>`);
+  const btns = askButtons(a);
   const lead = a.kind === "run" ? `${t.name} wants to run` : a.kind === "edit" ? `${t.name} wants to edit` : `${t.name} asks`;
   mini.innerHTML = `<p><span class="lb">${esc(lead)}</span>${a.kind !== "question" && a.detail ? `<code title="${esc(a.detail)}">${esc(a.detail)}</code>` : esc(a.prompt)}</p><div class="ib-mini-opts">${btns.join("")}</div>`;
 }
@@ -956,7 +1050,7 @@ export function paletteItems(): PaletteItem[] {
   return [
     ...agents,
     act("New agent", () => openNewAgent(), "Ctrl+Shift+T", "Give 2 or 3 the same job to race them"),
-    act(splitOn ? "Back to Focus: one agent, full size" : "Grid: agents side by side", () => setSplit(!splitOn), "Alt+S", splitOn ? undefined : "Each agent on its own card, answering in place"),
+    act(splitOn ? "Back to Focus: one agent, full size" : "Grid: one agent and the others beside it", () => setSplit(!splitOn), "Alt+S", splitOn ? undefined : "The one you work with as a terminal, every other one on a card that answers in place"),
     act("Add the current agent to the Grid, or take it out", () => pinCurrent(), "Alt+P"),
     act("Changes of the current agent", () => openReview(), "Alt+R", "Merge them, or send it back with a note"),
     ...mergeItem(),
@@ -1118,7 +1212,7 @@ function mount(): void {
   dockEl.innerHTML = `
     <div class="id-seg">
       <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, full size (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
-      <button data-dock="split" aria-pressed="false" title="Grid: several agents side by side, as terminals (Alt+S switches, Alt+P adds one)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg><span>Grid</span></button>
+      <button data-dock="split" aria-pressed="false" title="Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg><span>Grid</span></button>
     </div>
     <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl+K)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>

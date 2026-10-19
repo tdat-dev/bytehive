@@ -23,7 +23,7 @@ export const HELP: HelpSection[] = [
     { keys: [["Ctrl", "Shift", "T"]], what: "New agent. Give 2 or 3 agents the same job to race them, then Compare and keep the best." },
   ] },
   { title: "Focus, Grid and review", rows: [
-    { keys: [["Alt", "S"]], what: "Switch between Focus, one agent full size, and Grid, several side by side as terminals, each answering on its own card. Up to 9, in Settings." },
+    { keys: [["Alt", "S"]], what: "Switch between Focus, one agent full size, and Grid, the agent you work with as a terminal and every other one as a card beside it that answers in place. Click a card to work with that agent. Up to 9, in Settings." },
     { keys: [["Alt", "P"]], what: "Add the agent on screen to the Grid, or take it out." },
     { keys: [["Alt", "R"]], what: "What the agent changed, file by file. Merge it, or send it back with a note." },
     { keys: [["Alt", "H"]], what: "What the agent did, and what you answered, by day." },
