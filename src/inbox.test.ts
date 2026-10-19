@@ -62,7 +62,7 @@ vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, splitTiles, fillPins, gridOrder, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
+import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
 
@@ -158,11 +158,6 @@ describe("inbox helpers", () => {
     expect(fillPins(["b", "a"], gridOrder(list), new Set())).toEqual(["a", "c"]);
     list[1] = task("b", "Bo", "idle");
     expect(fillPins(["a", "c"], gridOrder(list), new Set())).toEqual(["a", "c", "b"]);
-  });
-
-  it("lays two terminals side by side", () => {
-    const [l, r] = splitTiles(2, { width: 1012, height: 600 });
-    expect([l.x, l.w, r.x, r.w, l.h]).toEqual([0, 498, 514, 498, 600]);
   });
 });
 

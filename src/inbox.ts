@@ -10,7 +10,8 @@
 import { workspaces, activeWs } from "./appstate";
 import { focusPane, renamePane } from "./panelayout";
 import { revealPane } from "./agentbridge";
-import { tileToFit, type Area, type Tile } from "./canvas";
+import { type Area } from "./canvas";
+import { gridPlan, type GridPlan } from "./gridfit";
 import { killPty, resizePty, sendInput } from "./ipc";
 import { paneFont } from "./zoom";
 import { createReviewDrawer } from "./inboxreview";
@@ -185,10 +186,6 @@ export function togglePin(pins: string[], id: string, keep?: string, max: number
   return next;
 }
 
-/** Where each terminal sits in Split: an even grid with a gap. */
-export function splitTiles(n: number, area: Area): Tile[] {
-  return tileToFit(n, area, { gap: 16, margin: 0, top: 0, bottom: 0 });
-}
 
 /** Who is in Split: the agents already there (so nobody jumps around), topped
  *  up from the queue order to the Split size in Settings, skipping the ones you closed. */
@@ -333,16 +330,50 @@ function clearSplit(ws: Workspace): void {
   requestAnimationFrame(() => { if (stage) refit(stage, paneFont(ws, 2)); });
 }
 
+/** The Grid's notes, once each while the app runs. */
+let fitNoted = false;
+let wideNoted = false;
+
+/** The list steps aside while not even two cards can be read beside it (a
+ *  laptop screen). Judged as if the list were there, so it can't flip back
+ *  and forth once it has gone. */
+function widenGrid(want: number, area: Area, plan: GridPlan | null, font: number): void {
+  const body = document.body;
+  const wide = body.classList.contains("ib-grid-wide");
+  let next = false;
+  if (plan && want >= 2) {
+    // the list's column, less the gutter the stage gets back when it is gone
+    const list = (parseFloat(getComputedStyle(body).getPropertyValue("--ib-q")) || 320) - 16;
+    next = !(wide ? gridPlan(want, { width: area.width - list, height: area.height }, font) : plan).readable;
+  }
+  if (next === wide) return;
+  body.classList.toggle("ib-grid-wide", next);
+  if (next && !wideNoted) {
+    wideNoted = true;
+    topNote("The list steps aside so the Grid's terminals have room to read · <kbd>Alt+S</kbd> brings it back");
+  }
+  requestAnimationFrame(() => render());
+}
+
 /** Lay the agents in Split out side by side, from every project. Runs on
  *  every render but only touches the DOM (and resizes PTYs) when the set of
  *  panes or the space they share changed. */
 function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
-  if (splitOn) pins = fillPins(pins, gridOrder(allTasks()), splitClosed, getPref("splitMax"));
-  const shown = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
-  const on = shown.length > 1;
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
+  // As many as fit at a readable size (gridfit), up to the number in Settings.
+  let plan: GridPlan | null = null;
+  let want = 0;
+  if (splitOn) {
+    const order = gridOrder(allTasks());
+    want = fillPins(pins, order, splitClosed, getPref("splitMax")).length;
+    plan = gridPlan(want, area, paneFont(ws));
+    pins = fillPins(pins, order, splitClosed, plan.count);
+    widenGrid(want, area, plan, paneFont(ws));
+  } else widenGrid(0, area, null, 0);
+  const shown = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
+  const on = shown.length > 1 && !!plan;
   const sig = on ? `${ws.id}|${shown.map((p) => p.id).join(",")}|${area.width}x${area.height}` : "";
   if (sig !== splitSig) {
     splitSig = sig;
@@ -359,7 +390,8 @@ function layoutSplit(): void {
         ws.gridEl.appendChild(p.el);
       }
       ws.gridEl.classList.add("inbox-split", "has-focus");
-      const tiles = splitTiles(shown.length, area);
+      const tiles = plan!.tiles;
+      const font = plan!.font;
       for (const p of screenPanes()) {
         const i = shown.indexOf(p);
         p.el.classList.toggle("split-pin", i >= 0);
@@ -370,7 +402,11 @@ function layoutSplit(): void {
         p.el.style.setProperty("--sw", `${t.w}px`);
         p.el.style.setProperty("--sh", `${t.h}px`);
       }
-      requestAnimationFrame(() => shown.forEach((p) => refit(p, paneFont(ws))));
+      requestAnimationFrame(() => shown.forEach((p) => refit(p, font)));
+      if (plan!.count < want && !fitNoted) {
+        fitNoted = true;
+        topNote(`The Grid shows <b>${plan!.count}</b> agents at a size you can read · pick another in the list to swap it in`);
+      }
     }
   }
   // The agent you talk to must be one of the cards on screen.

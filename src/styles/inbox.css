@@ -592,6 +592,11 @@ body.inbox-ui #btnResumeAll { height: 32px; padding: 0 14px; border-radius: 999p
 body.inbox-ui #btnResumeAll:disabled { opacity: 0.5; cursor: default; }
 body.inbox-ui #btnResumeAll:hover { background: rgba(255, 255, 255, 0.12); }
 
+/* Grid on a small screen: the list steps aside so two terminals have room to read (inbox.ts widenGrid) */
+body.inbox-ui.ib-grid-wide .app { grid-template-columns: 0px 1fr var(--code-w, 380px) 0px; }
+body.inbox-ui.ib-grid-wide .inbox-queue { display: none; }
+body.inbox-ui.ib-grid-wide .app > .main { padding-left: 16px; }
+
 /* Split: every terminal wears the same header, so nothing jumps out except the
    state pill; the one you are talking to only gets a brighter edge. */
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pane-bar {
