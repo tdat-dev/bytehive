@@ -176,6 +176,19 @@ export async function claudeSessionExists(dir: string, sessionId: string): Promi
   return invoke<boolean>("claude_session_exists", { dir, sessionId });
 }
 
+/** A Claude Code process running now and the conversation it is in. */
+export interface LiveSession {
+  pid: number;
+  session_id: string;
+  cwd: string;
+  started_ms: number;
+}
+
+/** Every Claude Code process running now (`~/.claude/sessions`). */
+export async function claudeLiveSessions(): Promise<LiveSession[]> {
+  return invoke<LiveSession[]>("claude_live_sessions");
+}
+
 /** One earlier Claude Code conversation in a folder. */
 export interface ClaudeSession { id: string; modified_ms: number; title: string; messages: number; /** The folder it ran in. */ cwd: string }
 

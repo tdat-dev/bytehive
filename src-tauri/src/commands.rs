@@ -632,6 +632,47 @@ pub async fn claude_session_exists(dir: String, session_id: String) -> Result<bo
     .await
 }
 
+/// A Claude Code process that is running now, as it describes itself in
+/// `~/.claude/sessions/<pid>.json`. Its session id there follows the
+/// conversation it is in: a /clear or a /resume inside it moves it on.
+#[derive(Serialize, Clone)]
+pub struct LiveSession {
+    pub pid: u32,
+    pub session_id: String,
+    pub cwd: String,
+    pub started_ms: u64,
+}
+
+#[tauri::command]
+pub async fn claude_live_sessions() -> Result<Vec<LiveSession>, CommandError> {
+    run_blocking(|| {
+        let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Ok(Vec::new()) };
+        Ok(live_sessions_in(&Path::new(&home).join(".claude").join("sessions")))
+    })
+    .await
+}
+
+fn live_sessions_in(dir: &Path) -> Vec<LiveSession> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter(|e| e.path().extension().map_or(false, |x| x == "json"))
+        .filter_map(|e| {
+            let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(e.path()).ok()?).ok()?;
+            let session_id = v.get("sessionId")?.as_str()?.to_string();
+            if !is_session_id(&session_id) {
+                return None;
+            }
+            Some(LiveSession {
+                pid: u32::try_from(v.get("pid")?.as_u64()?).ok()?,
+                session_id,
+                cwd: v.get("cwd").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+                started_ms: v.get("startedAt").and_then(|s| s.as_u64()).unwrap_or(0),
+            })
+        })
+        .collect()
+}
+
 /// One earlier conversation, for "resume a conversation".
 #[derive(Serialize, Clone)]
 pub struct SessionInfo {
@@ -1128,6 +1169,20 @@ mod paste_tests {
 #[cfg(test)]
 mod session_tests {
     use super::*;
+
+    #[test]
+    fn live_sessions_are_read_from_claudes_pid_files() {
+        let dir = std::env::temp_dir().join(format!("maestro-live-sessions-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("20916.json"), r#"{"pid":20916,"sessionId":"7f19387c-fc1f-4bc7-af25-0e3ba5fcf7e2","cwd":"D:\\app","startedAt":1792395112932,"status":"busy"}"#).unwrap();
+        std::fs::write(dir.join("1.json"), r#"{"pid":1,"sessionId":"../../etc","cwd":"D:\\app"}"#).unwrap();
+        std::fs::write(dir.join("2.json"), "not json").unwrap();
+        std::fs::write(dir.join("20916.abc.key"), "x").unwrap();
+        let live = live_sessions_in(&dir);
+        assert_eq!(live.len(), 1);
+        assert_eq!((live[0].pid, live[0].session_id.as_str(), live[0].cwd.as_str(), live[0].started_ms), (20916, "7f19387c-fc1f-4bc7-af25-0e3ba5fcf7e2", "D:\\app", 1792395112932));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_session_says_its_folder_title_and_what_you_typed() {

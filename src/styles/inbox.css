@@ -743,6 +743,9 @@ body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
 .ib-act:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .ib-act[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
 .ib-act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* the one thing to do with a stopped agent */
+.ib-act.ib-go { color: #050506; background: var(--ib-ink); }
+.ib-act.ib-go:hover { background: #fff; }
 body.inbox-ui .grid.canvas.inbox-split .ib-acts { display: none; }
 
 /* ---------- Split cards (as in the design): name · CLI over a quiet second
@@ -1104,6 +1107,16 @@ body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }
 .iq-row:hover .iq-tm, .iq-row:focus-visible .iq-tm { visibility: hidden; }
 .iq-more:hover { color: var(--ib-ink); background: #24252b; }
 @media (hover: none) { .iq-more { opacity: 1; } .iq-tm { visibility: hidden; } }
+/* Resume on a stopped row: always there, one click starts it again */
+.iq-resume {
+  position: absolute; right: 8px; bottom: 8px;
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  display: inline-flex; align-items: center;
+  font: 500 12px var(--sans); color: var(--ib-ink);
+  background: rgba(255, 255, 255, 0.1);
+}
+.iq-resume:hover { color: #050506; background: var(--ib-ink); }
+.iq-row.st-stopped .iq-s { padding-right: 72px; }
 .st-help { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 4px 2px; font-size: 13px; color: var(--ib-ink-3); }
 .st-help:hover { color: var(--ib-ink); }
 .st-help:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }

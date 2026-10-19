@@ -60,6 +60,7 @@ vi.mock("./spawnmodal", () => ({ openModal: () => {}, presetAvailable: (p: strin
 vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
+vi.mock("./sessionfollow", () => ({ startSessionFollow: () => {}, stopSessionFollow: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
 import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
@@ -278,6 +279,21 @@ describe("inbox DOM", () => {
     (document.querySelector('[data-dock="help"]') as HTMLButtonElement).click();
     expect(document.querySelector(".hp-back")).not.toBeNull();
     document.querySelector(".hp-back")!.remove();
+  });
+
+  it("resumes a stopped agent from its row and from the stage, one click each", () => {
+    state.tasks = [task("a", "Ana", "stopped"), task("e", "Eli", "working")];
+    const resumed: string[] = [];
+    for (const p of panes) p.restart = async () => { resumed.push(p.id); };
+    setInbox(true);
+    expect(document.querySelector('.iq-row[data-id="e"] [data-resume]')).toBeNull();
+    (document.querySelector('.iq-row[data-id="a"] [data-resume]') as HTMLElement).click();
+    expect(resumed).toEqual(["a"]);
+    // on the stage a stopped agent gets Resume instead of the CLI's buttons
+    const stage = panes[0].el;
+    expect(stage.querySelector('[data-stage="cmds"]')).toBeNull();
+    (stage.querySelector('[data-stage="resume"]') as HTMLButtonElement).click();
+    expect(resumed).toEqual(["a", "a"]);
   });
 
   it("mounts at startup", () => {

@@ -35,6 +35,7 @@ import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
 import { handOff, handoffTargets, startLimitGuard, stopLimitGuard } from "./limitguard";
 import { startFinishWatch, stopFinishWatch } from "./finishwatch";
+import { startSessionFollow, stopSessionFollow } from "./sessionfollow";
 import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
@@ -550,6 +551,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
           <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${faceSvg(t.name, p?.color ?? "#888")}</span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
+          ${t.status.state === "stopped" ? `<span class="iq-resume" data-resume aria-hidden="true" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</span>` : ""}
           <span class="iq-more" data-more aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
           <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}${cost}${full}</span>
         </button></li>`;
@@ -613,7 +615,8 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     pill.className = `ib-pill st-${t.status.state}`;
     pill.textContent = GROUP_LABEL[t.status.state];
     const mode = pinned ? "split" : splitOn ? "grid" : "stage";
-    const build = `${mode}|${t.name}|${t.race?.of ?? ""}`;
+    const stopped = t.status.state === "stopped";
+    const build = `${mode}|${t.name}|${t.race?.of ?? ""}|${stopped}`;
     if (!acts || acts.dataset.mode !== build) {
       acts?.remove();
       acts = document.createElement("span");
@@ -621,7 +624,10 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.dataset.mode = build;
       acts.innerHTML = pinned
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
-        : `<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
+        : stopped
+          // stopped: nothing to type into, one button starts it again
+          ? `<button class="ib-act ib-go" data-stage="resume" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</button><button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`
+          : `<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
@@ -1011,6 +1017,7 @@ function onStageButton(e: MouseEvent): void {
     case "review": if (reviewer?.paneId) reviewer.close(); else openReview(); break;
     case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
     case "compare": { const r = pane && allTasks().find((x) => x.paneId === pane.id)?.race; if (r) openCompare(r.id); break; }
+    case "resume": if (pane) void pane.restart?.(); break;
     case "close": if (pane) closeFromSplit(pane.id); break;
     case "full": {
       const t = pane && allTasks().find((x) => x.paneId === pane.id);
@@ -1166,6 +1173,8 @@ function mount(): void {
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
     const t = row && allTasks().find((x) => x.paneId === row.dataset.id);
     if (!t || !row) return;
+    // Resume on a stopped row starts it again, in place.
+    if ((e.target as HTMLElement).closest("[data-resume]")) { void paneOf(t)?.restart?.(); return; }
     // The ⋯ on a row opens the same menu as a right-click.
     if ((e.target as HTMLElement).closest("[data-more]")) {
       const r = (e.target as HTMLElement).closest<HTMLElement>("[data-more]")!.getBoundingClientRect();
@@ -1204,6 +1213,8 @@ function mount(): void {
   onAgentCost(render);
   startPlanMeter(render);
   startLimitGuard();
+  // Resume carries on the conversation each agent was last in.
+  startSessionFollow();
   // Agents that finish say so; a click on that notification opens the agent.
   startFinishWatch({
     screen: () => stagePane()?.id ?? null,
@@ -1223,6 +1234,7 @@ function unmount(): void {
   stopPlanMeter();
   stopLimitGuard();
   stopFinishWatch();
+  stopSessionFollow();
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();
