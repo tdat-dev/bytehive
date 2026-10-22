@@ -41,4 +41,7 @@ describe("agent laws", () => {
       expect(text).toMatch(/language they used/);
     });
   }
+  it("tells every agent to look at what the others did first", () => {
+    expect(MAESTRO_LAWS).toContain("call agent_context");
+  });
 });
