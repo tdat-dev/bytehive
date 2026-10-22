@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-22
+
+Agents of every CLI share what they did, and one carries on another's task.
+
+### Added
+
+- **agent_context: every agent can read what the others did.** A new tool of
+  the maestro MCP lists the conversations of Claude Code, Codex and OpenCode in
+  the project (and its worktrees) for the last 14 days: who, running or
+  stopped, the task, how far its plan got. With `who` it gives one agent's
+  asks, plan, changed files and last words, so another agent can carry the
+  task on. It reads each CLI's own files, so it works for agents run outside
+  Maestro too, and while Maestro is closed: any agent with the maestro MCP
+  installed can use it (the MCP README has the Codex and OpenCode lines).
+  Claude agents in Maestro are told to look at it before they start a task.
+- **Hand over to an agent that is already open.** The agent menu offers the
+  free agents of another CLI working in the same folder ("Hand over to Bo
+  (OpenCode)"), before a new agent. The one taking over reads the first
+  one's context itself. A stopped agent has a Hand over button next to
+  Resume.
+- **An agent that runs out of usage hands its task over by itself**, at
+  once: to a free agent in its folder whose plan has room, else to a new
+  agent of a CLI whose plan has room. When every plan is out, it waits for
+  the reset as before. Settings: Hand over when an agent runs out of usage
+  (on by default).
+
 ## [0.9.13] - 2026-10-19
 
 Many agents in the Grid, and every one of them readable.

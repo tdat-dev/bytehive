@@ -29,6 +29,22 @@ cd mcp && npm install && npm run build
 claude mcp add --scope user maestro -- node <absolute path to mcp/dist/index.js>
 ```
 
+## Install (Codex, OpenCode)
+
+Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.maestro]
+command = "node"
+args = ["<absolute path to mcp/dist/index.js>"]
+```
+
+OpenCode, in `~/.config/opencode/opencode.json` under `"mcp"`:
+
+```json
+"maestro": { "type": "local", "command": ["node", "<absolute path to mcp/dist/index.js>"], "enabled": true }
+```
+
 ## Tools
 
 | Tool | What it does |
@@ -43,6 +59,7 @@ claude mcp add --scope user maestro -- node <absolute path to mcp/dist/index.js>
 | `fleet_status` | List the other agents Maestro runs in this workspace + their live status (needs / active / idle / stopped) |
 | `fleet_send` | Send a message into another agent's terminal (or broadcast to all) — for hand-offs and coordination |
 | `agent_output` | Read the recent on-screen text of another agent (by name) — check a worker's progress or whether it's stuck |
+| `agent_context` | What every coding agent (Claude Code, Codex, OpenCode) did in this project, read from their own conversations, including ones that stopped and ones run outside Maestro. No arguments: a list. `who` (a name, an id, or a CLI): one agent's asks, plan, changed files and last words, to carry its task on |
 | `agent_spawn` | Ask Maestro to spawn new worker agent(s) in this workspace — a conductor grows its own crew (with an optional task) |
 
 Cards and lists are addressed by id (from `board_get`) or by title; ambiguous
@@ -71,6 +88,19 @@ progress) and `agent_spawn` (grow its own crew): Maestro publishes each agent's
 recent screen into `fleet.json`, and `agent_spawn` appends to
 `.maestro/spawn-requests.jsonl`, which Maestro watches and boots the requested
 CLI(s) into the same workspace.
+
+## Shared context across CLIs
+
+`agent_context` reads each CLI's own store for the project folder and every
+git worktree of its repo, for the last 14 days: Claude Code's
+`~/.claude/projects/<folder>/*.jsonl`, Codex's `~/.codex/sessions/`
+rollouts, and OpenCode's `~/.local/share/opencode/opencode.db` (through
+`node:sqlite`, so Node 22.13 or newer). It needs nothing from the Maestro app;
+when the app runs, it also names each conversation after its agent, from the
+`cli`/`session`/`folder`/`since` fields of `.maestro/fleet.json`.
+
+The build bundles the app's own conversation parsers (`../src/chatmodel.ts`,
+`codexmodel.ts`, `opencodemodel.ts`, `convdigest.ts`) with esbuild.
 
 ## How it stays in sync
 
