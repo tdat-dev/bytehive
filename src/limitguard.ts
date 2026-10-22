@@ -8,6 +8,8 @@
 //     the same folder, told to read the first one's context (maestro-mcp
 //     agent_context), or a new agent there, briefed from its conversation
 //     (handoff.ts).
+//     With "Hand over when an agent runs out of usage" on (the default) that
+//     happens by itself, the moment it runs out.
 //   - Before any of that: a notification when a plan passes 90% of a limit.
 
 import { allTasks, onTasksChange, type Task } from "./tasks";
@@ -38,7 +40,15 @@ export function planOf(badge: string): string {
   return badge === "claude" ? "Claude" : badge === "codex" ? "Codex" : "";
 }
 
-interface Episode { what: string; reset: number | null; notified: boolean }
+interface Episode {
+  what: string;
+  reset: number | null;
+  notified: boolean;
+  /** Its task was handed over in this episode (or is being): no carry-on. */
+  handed: boolean;
+  /** A handover was tried: never twice in one episode. */
+  tried: boolean;
+}
 const episodes = new Map<string, Episode>();
 const resumedAt = new Map<string, number>();
 const warned = new Set<string>();
@@ -67,11 +77,22 @@ function checkAgents(now: number): void {
     // plan only knows a reset until it has passed
     let e = episodes.get(t.paneId);
     if (!e || e.what !== lim.what) {
-      e = { what: lim.what, reset: limitLiftsAt(t, found.pane.spec.badge, now), notified: false };
+      e = { what: lim.what, reset: limitLiftsAt(t, found.pane.spec.badge, now), notified: false, handed: false, tried: false };
       episodes.set(t.paneId, e);
     } else if (e.reset === null) e.reset = limitLiftsAt(t, found.pane.spec.badge, now);
     const reset = e.reset;
     const carryOn = getPref("autoResume");
+    if (!e.tried && !found.pane.handedTo && getPref("autoHandover")) {
+      e.tried = true;
+      const to = takeoverFor(found.pane, now);
+      if (to) {
+        e.handed = true;
+        e.notified = true;
+        void notify(`${t.name} ran out of usage`, `${to.label} takes its task over.`);
+        void to.run().then((name) => { if (!name) e!.handed = false; });
+      }
+    }
+    if (e.handed) continue;
     if (!e.notified) {
       e.notified = true;
       if (getPref("limitNotify")) {
@@ -139,7 +160,7 @@ const sameFolder = (a: string, b: string) => {
   return norm(a) === norm(b);
 };
 
-export interface OpenTarget { paneId: string; name: string; cli: string }
+export interface OpenTarget { paneId: string; name: string; cli: string; badge: string }
 
 /** Agents already open that could take over this agent's task: running, of
  *  another CLI, not a shell or the Director, free (idle, or done with its
@@ -155,7 +176,7 @@ export function openTargets(pane: Pane, now = Date.now()): OpenTarget[] {
       && p.spec.role !== "conductor" && !!p.spec.ranIn && sameFolder(p.spec.ranIn, dir)
       && (state.get(p.id) === "idle" || state.get(p.id) === "review"))
     .sort((a, b) => Number(full(a.spec.badge, now)) - Number(full(b.spec.badge, now)))
-    .map((p) => ({ paneId: p.id, name: p.spec.name, cli: cliLabel(p.spec.badge) }));
+    .map((p) => ({ paneId: p.id, name: p.spec.name, cli: cliLabel(p.spec.badge), badge: p.spec.badge }));
 }
 
 /** What an open agent is told when it takes a task over: one line, the rest
@@ -179,6 +200,19 @@ export async function handOverToAgent(fromId: string, toId: string, why: string)
   await sendMessage(toId, takeOverLine({ name: from.pane.spec.name, cli: cliLabel(from.pane.spec.badge) }, why));
   markHanded(from.pane, to.pane.spec.name);
   return to.pane.spec.name;
+}
+
+const LIMIT_WHY = "it hit its plan's usage limit";
+
+/** Who takes an agent's task when it runs out of usage: an open agent in its
+ *  folder whose plan has room, else a new agent of an installed CLI whose plan
+ *  has room; null when every plan is out too. */
+export function takeoverFor(pane: Pane, now = Date.now()): { label: string; run: () => Promise<string | null> } | null {
+  const open = openTargets(pane, now).find((o) => !full(o.badge, now));
+  if (open) return { label: `${open.name} (${open.cli})`, run: () => handOverToAgent(pane.id, open.paneId, LIMIT_WHY) };
+  const fresh = handoffTargets(pane, now).find((c) => !full(CLI_PRESETS.find((p) => p.id === c.id)?.badge ?? "", now));
+  if (fresh) return { label: `A new ${fresh.label} agent`, run: () => handOff(pane.id, fresh.id, LIMIT_WHY) };
+  return null;
 }
 
 /** CLIs that could take over this agent's task: installed, not a shell, not

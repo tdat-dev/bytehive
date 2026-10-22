@@ -33,6 +33,8 @@ export interface Prefs {
   tips: boolean;
   /** Tell an agent that stopped at its plan's usage limit to carry on once the limit resets. */
   autoResume: boolean;
+  /** An agent that runs out of usage hands its task to another agent whose plan has room, at once. */
+  autoHandover: boolean;
   /** Windows notification when a plan passes 90% of a limit, and when an agent runs out. */
   limitNotify: boolean;
 }
@@ -57,6 +59,7 @@ export const DEFAULTS: Prefs = {
   restore: true,
   tips: true,
   autoResume: true,
+  autoHandover: true,
   limitNotify: true,
 };
 

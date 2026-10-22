@@ -160,4 +160,49 @@ describe("Limit Guard", () => {
       expect(io.sent).toEqual([]);
     });
   });
+
+  describe("handing over by itself when it runs out", () => {
+    const limited = () => task({ what: "You've hit your limit", resetsAt: RESET });
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+    beforeEach(() => {
+      io.prefs.autoHandover = true;
+    });
+
+    it("gives the task to a free agent already open in its folder, once, and never tells it to carry on", async () => {
+      io.panes.set("p3", { id: "p3", running: true, spec: { name: "Bo", badge: "opencode", ranIn: "D:/app" } });
+      io.tasks = [limited(), { paneId: "p3", wsId: "w1", name: "Bo", status: { state: "idle", ask: null } }];
+      checkLimits(RESET - 3600e3);
+      await flush();
+      checkLimits(RESET - 1800e3);
+      await flush();
+      expect(io.sent.map(([id]) => id)).toEqual(["p3"]);
+      expect(io.notes).toEqual(["Ana ran out of usage"]);
+      expect((io.panes.get("p1") as { handedTo?: string }).handedTo).toBe("Bo");
+      checkLimits(RESET + 600e3);
+      expect(io.sent.map(([id]) => id)).toEqual(["p3"]);
+    });
+
+    it("starts a new agent of a CLI with room when none is open", async () => {
+      io.tasks = [limited()];
+      checkLimits(RESET - 3600e3);
+      await flush();
+      expect(io.spawned.map((x) => x.preset)).toEqual(["codex"]);
+    });
+
+    it("waits for the reset when every other plan is out too", () => {
+      io.planReset = RESET; // every plan out
+      io.tasks = [limited()];
+      checkLimits(RESET - 3600e3);
+      expect(io.spawned).toEqual([]);
+      expect(io.notes).toEqual(["Ana is out of usage"]);
+    });
+
+    it("leaves it be when the setting is off", () => {
+      io.prefs.autoHandover = false;
+      io.tasks = [limited()];
+      checkLimits(RESET - 3600e3);
+      expect(io.spawned).toEqual([]);
+      expect(io.sent).toEqual([]);
+    });
+  });
 });

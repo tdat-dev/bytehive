@@ -20,6 +20,7 @@ const TOGGLES: Toggle[] = [
   { id: "prefReviewOnDone", key: "reviewOnDone" },
   { id: "prefRestore", key: "restore" },
   { id: "prefTips", key: "tips" },
+  { id: "prefAutoHandover", key: "autoHandover" },
   { id: "prefAutoResume", key: "autoResume" },
   { id: "prefLimitNotify", key: "limitNotify" },
 ];

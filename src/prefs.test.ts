@@ -27,6 +27,10 @@ describe("prefs", () => {
     expect(getPref("splitMax")).toBe(6);
   });
 
+  it("hands a task over by itself when an agent runs out of usage, unless turned off", () => {
+    expect(getPref("autoHandover")).toBe(true);
+  });
+
   it("ships with defaults and keeps values in range", () => {
     expect(getPrefs()).toEqual(DEFAULTS);
     setPref("jobDelay", 99);
