@@ -136,9 +136,9 @@ Take over the unfinished task of Ana (Claude Code), which stopped because <why>.
 ```
 
 The old agent's row title becomes "Handed to Bo". `pane.handedTo` is set, which
-turns off its carry-on at reset. On the stage, a stopped agent whose transcript
-has open todos gets a **Hand over** button next to Resume, and the button opens
-the same targets as a small menu.
+turns off its carry-on at reset. On the stage, a stopped agent that has any target
+gets a **Hand over** button next to Resume, and the button opens the same
+targets as a small menu.
 
 ### 6. Automatic takeover on usage limit (app, on by default)
 
