@@ -20,6 +20,8 @@ import {
 import { changedFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
+import { agentContext } from "./context/agentcontext.js";
+import os from "node:os";
 
 type ToolResult = {
   content: { type: "text"; text: string }[];
@@ -54,6 +56,10 @@ For any non-trivial task, plan on the board BEFORE implementing:
 
 Keep card titles stable so the board can track them. Use fleet_status to see
 the other agents here and fleet_send to hand work to a specific one.
+
+Other agents may have worked here before you, in Maestro or not, with any CLI.
+Call agent_context first to see who did what, and agent_context with who to
+pick up an unfinished task instead of starting over.
 
 Write every fleet_send message in English, whatever language the user speaks to
 you in — the fleet shares one working language so no agent has to translate a
@@ -262,6 +268,27 @@ export function createServer(dir: string): McpServer {
         const screen = readAgentScreen(dir, agent);
         if (screen === null) return fail(`no agent "${agent}" — see fleet_status`);
         return ok(screen || "(no output yet)");
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "agent_context",
+    {
+      description:
+        "What other coding agents (Claude Code, Codex, OpenCode) did in this project, including ones that stopped. Call it with no arguments when you start working here, and with who to read one agent's full context before you continue or take over its work.",
+      inputSchema: {
+        who: z
+          .string()
+          .optional()
+          .describe("An agent's name, a conversation [id] from the list, or a CLI (claude, codex, opencode) for its newest conversation. Omit for the list."),
+      },
+    },
+    async ({ who }) => {
+      try {
+        return ok(await agentContext(dir, who, { home: os.homedir(), now: Date.now() }));
       } catch (e) {
         return fail(e);
       }

@@ -13,6 +13,13 @@ export interface FleetAgent {
   status: "needs" | "active" | "idle" | "stopped";
   workspace: string;
   screen: string; // recent on-screen text (for agent_output)
+  /** Its CLI ("claude", "codex", "opencode"…), for agent_context. */
+  cli?: string;
+  /** Its conversation: a Claude session id, a Codex rollout path, an OpenCode session id. */
+  session?: string;
+  /** The folder it runs in, and when it started (ms): its conversation is the newest one there since. */
+  folder?: string;
+  since?: number;
 }
 
 export interface OutboxMessage {
@@ -111,6 +118,10 @@ export function readFleet(dir: string): FleetAgent[] {
           : "idle",
       workspace: typeof o.workspace === "string" ? o.workspace : "",
       screen: typeof o.screen === "string" ? o.screen : "",
+      ...(typeof o.cli === "string" && o.cli ? { cli: o.cli } : {}),
+      ...(typeof o.session === "string" && o.session ? { session: o.session } : {}),
+      ...(typeof o.folder === "string" && o.folder ? { folder: o.folder } : {}),
+      ...(typeof o.since === "number" && o.since > 0 ? { since: o.since } : {}),
     });
   }
   return out;
