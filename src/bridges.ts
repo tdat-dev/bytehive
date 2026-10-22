@@ -27,6 +27,7 @@ import {
   type FleetPane,
 } from "./agentbridge";
 import { initFleetBridge, deliveryTargets } from "./fleetbridge";
+import { knownConversation } from "./chatsource";
 import { exitVerdict, holdExit, setExitHandler } from "./ptyexit";
 import { spawnForConductor } from "./spawnmodal";
 import { paneStatus } from "./fleet";
@@ -286,6 +287,10 @@ export function initBridges(): void {
             // Recent on-screen text so an agent (a conductor) can read a worker's
             // progress via the MCP agent_output tool. Capped for the file.
             screen: p.term.snapshot(40).slice(-2000),
+            cli: p.spec.badge,
+            session: p.spec.sessionId ?? knownConversation(p.id) ?? undefined,
+            folder: p.spec.ranIn ?? undefined,
+            since: p.spawnedAt ?? undefined,
           })),
         });
       }

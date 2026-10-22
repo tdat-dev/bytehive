@@ -53,6 +53,12 @@ async function remembered(pane: Pane, read: (path: string | null) => Promise<Chu
   return r;
 }
 
+/** The conversation last found for an agent (a Codex rollout path, an
+ *  OpenCode session id), or null before anything read it. */
+export function knownConversation(paneId: string): string | null {
+  return known.get(paneId)?.path ?? null;
+}
+
 /** Forget what was remembered for an agent (tests; a closed pane). */
 export function forgetConversation(paneId?: string): void {
   if (paneId === undefined) known.clear();

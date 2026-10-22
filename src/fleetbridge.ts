@@ -20,6 +20,13 @@ export interface BridgeAgent {
   name: string;
   status: "needs" | "active" | "idle" | "stopped";
   screen?: string; // recent on-screen text, for the MCP agent_output tool
+  /** For the MCP agent_context tool: its CLI, its conversation when known (a
+   *  Claude session id, a Codex rollout path, an OpenCode session id), the
+   *  folder it runs in and when it started, so its conversation can be found. */
+  cli?: string;
+  session?: string;
+  folder?: string;
+  since?: number;
 }
 export interface BridgeWorkspace {
   dir: string;
@@ -36,6 +43,10 @@ export function serializeFleet(ws: BridgeWorkspace): string {
       status: a.status,
       workspace: ws.name,
       screen: a.screen ?? "",
+      ...(a.cli ? { cli: a.cli } : {}),
+      ...(a.session ? { session: a.session } : {}),
+      ...(a.folder ? { folder: a.folder } : {}),
+      ...(a.since ? { since: a.since } : {}),
     })),
   });
 }

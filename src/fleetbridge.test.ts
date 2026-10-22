@@ -49,6 +49,15 @@ describe("serializeFleet", () => {
       agents: [{ id: "p1", name: "Claude #1", status: "needs", workspace: "demo", screen: "" }],
     });
   });
+
+  it("says each agent's CLI, conversation, folder and start, for agent_context", () => {
+    const s = serializeFleet({
+      dir: "D:\demo",
+      name: "demo",
+      agents: [{ id: "p1", name: "Ana", status: "idle", cli: "codex", session: "D:/r/rollout.jsonl", folder: "D:\demo", since: 1000 }],
+    });
+    expect(JSON.parse(s).agents[0]).toMatchObject({ cli: "codex", session: "D:/r/rollout.jsonl", folder: "D:\demo", since: 1000 });
+  });
 });
 
 describe("parseOutboxLine", () => {
