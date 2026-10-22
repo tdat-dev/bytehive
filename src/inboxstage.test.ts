@@ -15,7 +15,7 @@ vi.mock("./tasks", () => ({
 vi.mock("./diffview", () => ({ createDiffView: () => ({ mount: () => {}, setContext: () => {}, show: () => {} }) }));
 vi.mock("./agentbridge", () => ({ revealPane: () => true }));
 vi.mock("./ipc", () => ({ resizePty: async () => {}, killPty: async () => {}, claudeTranscript: async () => ({ path: "", text: "", next: 0 }), sendMessage: async () => {}, sendInput: async () => {} }));
-vi.mock("./spawnmodal", () => ({ openModal: () => {} }));
+vi.mock("./spawnmodal", () => ({ openModal: () => {}, presetAvailable: () => false, loadCrew: () => ({}), spawnAgents: async () => [] }));
 vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));

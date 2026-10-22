@@ -4,8 +4,10 @@
 //   - When the limit lifts, Maestro tells it to carry on (Settings: Carry on
 //     when a usage limit resets). The time comes from its own screen, else
 //     from the plan's numbers (planmeter).
-//   - Or the task goes on at once with another CLI: a new agent in the same
-//     folder, briefed from the first one's conversation (handoff.ts).
+//   - Or the task goes on at once with another CLI: an agent already open in
+//     the same folder, told to read the first one's context (maestro-mcp
+//     agent_context), or a new agent there, briefed from its conversation
+//     (handoff.ts).
 //   - Before any of that: a notification when a plan passes 90% of a limit.
 
 import { allTasks, onTasksChange, type Task } from "./tasks";
@@ -78,6 +80,8 @@ function checkAgents(now: number): void {
           : "Its plan's usage limit ran out. You can hand its task to another CLI from its menu.");
       }
     }
+    // another agent has its task: telling it to carry on too would make two
+    if (found.pane.handedTo) continue;
     if (!carryOn || !reset || now < reset + GRACE_MS) continue;
     if (!found.pane.running || t.status.state === "working") continue;
     if (now - (resumedAt.get(t.paneId) ?? 0) < RESUME_GAP_MS) continue;
@@ -124,13 +128,65 @@ export function stopLimitGuard(): void {
   warned.clear();
 }
 
+/** Whether a CLI's plan is out until a reset. */
+const full = (badge: string, now: number) => planResetFor(planOf(badge), now) !== null;
+const presetOf = (badge: string) => CLI_PRESETS.find((p) => p.badge === badge);
+/** "Claude Code" for "claude". */
+export const cliLabel = (badge: string) => presetOf(badge)?.label ?? badge;
+/** "D:\App\" and "d:/app" are the same folder. */
+const sameFolder = (a: string, b: string) => {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return norm(a) === norm(b);
+};
+
+export interface OpenTarget { paneId: string; name: string; cli: string }
+
+/** Agents already open that could take over this agent's task: running, of
+ *  another CLI, not a shell or the Director, free (idle, or done with its
+ *  changes waiting), and in the same folder, so they see its changes. The
+ *  ones whose plan has room first. */
+export function openTargets(pane: Pane, now = Date.now()): OpenTarget[] {
+  const found = find(pane.id);
+  const dir = pane.spec.ranIn;
+  if (!found || !dir) return [];
+  const state = new Map(allTasks().map((t) => [t.paneId, t.status.state]));
+  return [...found.ws.panes.values()]
+    .filter((p) => p.id !== pane.id && p.running && p.spec.badge !== pane.spec.badge && !presetOf(p.spec.badge)?.shell
+      && p.spec.role !== "conductor" && !!p.spec.ranIn && sameFolder(p.spec.ranIn, dir)
+      && (state.get(p.id) === "idle" || state.get(p.id) === "review"))
+    .sort((a, b) => Number(full(a.spec.badge, now)) - Number(full(b.spec.badge, now)))
+    .map((p) => ({ paneId: p.id, name: p.spec.name, cli: cliLabel(p.spec.badge) }));
+}
+
+/** What an open agent is told when it takes a task over: one line, the rest
+ *  it reads itself with the maestro MCP. */
+export function takeOverLine(from: { name: string; cli: string }, why: string): string {
+  return `Take over the unfinished task of ${from.name} (${from.cli}), which stopped because ${why}. Call the maestro agent_context tool with who set to ${from.name} to read its task, plan, changed files and last words, check git status, then finish what is left. Say in one line what you picked up first.`;
+}
+
+/** Its row says who has its task now. */
+function markHanded(pane: Pane, to: string): void {
+  pane.handedTo = to;
+  const title = (pane.spec.title ?? "").replace(/^Handed to [^:]+: /, "");
+  pane.spec.title = `Handed to ${to}${title ? `: ${title}` : ""}`;
+}
+
+/** An open agent takes this agent's task over. Returns its name. */
+export async function handOverToAgent(fromId: string, toId: string, why: string): Promise<string | null> {
+  const from = find(fromId);
+  const to = find(toId);
+  if (!from || !to || !to.pane.running) return null;
+  await sendMessage(toId, takeOverLine({ name: from.pane.spec.name, cli: cliLabel(from.pane.spec.badge) }, why));
+  markHanded(from.pane, to.pane.spec.name);
+  return to.pane.spec.name;
+}
+
 /** CLIs that could take over this agent's task: installed, not a shell, not
  *  its own, the ones whose plan has room first. */
 export function handoffTargets(pane: Pane, now = Date.now()): Array<{ id: string; label: string }> {
-  const full = (badge: string) => planResetFor(planOf(badge), now) !== null;
   return CLI_PRESETS
     .filter((p) => !p.shell && p.badge !== pane.spec.badge && p.id !== "custom" && presetAvailable(p.program))
-    .sort((a, b) => Number(full(a.badge)) - Number(full(b.badge)))
+    .sort((a, b) => Number(full(a.badge, now)) - Number(full(b.badge, now)))
     .map((p) => ({ id: p.id, label: p.label }));
 }
 
@@ -175,5 +231,6 @@ export async function handOff(paneId: string, presetId: string, why = "it hit it
   // its row says whose task it carries on, not the brief's first words
   const next = [...ws.panes.values()].find((p) => p.spec.name === name);
   if (next) next.spec.title = `Carries on ${pane.spec.name}'s task${pane.spec.title ? `: ${pane.spec.title}` : ""}`;
+  if (name) markHanded(pane, name);
   return name ?? null;
 }

@@ -46,6 +46,9 @@ export interface Pane {
    *  conversation again, a new one (fresh), or an earlier one (session). */
   restart?: (opts?: { fresh?: boolean; session?: string; dir?: string }) => Promise<void>;
   recording?: string; // absolute path of the active recording file, when recording
+  /** Another agent took over its task (by name): it is not told to carry on
+   *  when its usage limit resets. Cleared when it starts again. */
+  handedTo?: string;
 }
 
 /** A workspace tab: its own canvas of panes. Only the active one is shown. */

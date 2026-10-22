@@ -34,7 +34,7 @@ import { agentUsage, onAgentCost } from "./agentcost";
 import { faceSvg } from "./agentface";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
-import { handOff, handoffTargets, startLimitGuard, stopLimitGuard } from "./limitguard";
+import { handOff, handOverToAgent, handoffTargets, openTargets, startLimitGuard, stopLimitGuard } from "./limitguard";
 import { startFinishWatch, stopFinishWatch } from "./finishwatch";
 import { startSessionFollow, stopSessionFollow } from "./sessionfollow";
 import { money } from "./pricing";
@@ -580,6 +580,24 @@ async function handOverTo(paneId: string, from: string, presetId: string, label:
   render();
 }
 
+/** Why an agent's task is being handed over, in the words the next agent reads. */
+const handoverWhy = (paneId: string) => (taskOf(paneId)?.status.limit ? "it hit its plan's usage limit" : "you asked another agent to carry on");
+
+/** An open agent takes the task over, and says so. */
+async function handOverToOpen(paneId: string, from: string, toId: string): Promise<void> {
+  const name = await handOverToAgent(paneId, toId, handoverWhy(paneId));
+  topNote(name ? `<b>${esc(name)}</b> carries on <b>${esc(from)}</b>'s task, reading what it did` : `Couldn't hand <b>${esc(from)}</b>'s task over`);
+  render();
+}
+
+/** Who can carry on an agent's task: the agents already open in its folder
+ *  first, then a new agent of another installed CLI. */
+function handoverItems(pane: Pane, t: Task): MenuItem[] {
+  const open = openTargets(pane).slice(0, 3).map((o) => ({ label: `Hand over to ${o.name} (${o.cli})`, run: () => { void handOverToOpen(pane.id, pane.spec.name, o.paneId); } }));
+  const fresh = handoffTargets(pane).slice(0, Math.max(2, 5 - open.length)).map((c) => ({ label: `Hand over to a new ${c.label} agent`, run: () => { void handOverTo(pane.id, pane.spec.name, c.id, c.label); } }));
+  return [...open, ...fresh].map((it, k) => ({ ...it, sep: k === 0, hint: k === 0 && t.status.limit ? "Out of usage" : undefined }));
+}
+
 export function agentMenu(t: Task): MenuItem[] {
   const pane = paneOf(t);
   const ws = workspaces.get(t.wsId);
@@ -605,8 +623,8 @@ export function agentMenu(t: Task): MenuItem[] {
     { label: "Changes", hint: key("Alt+R"), sep: true, disabled: !pane.spec.worktree && !pane.spec.cwd, run: () => { onStage(); openReview(); } },
     { label: "History", hint: key("Alt+H"), run: () => { onStage(); openHistory(); } },
     { label: "Copy branch name", disabled: !branch, run: () => { if (branch) void navigator.clipboard?.writeText(branch).catch(() => {}); } },
-    // Another CLI carries on its task, in the same folder, briefed from its conversation.
-    ...handoffTargets(pane).slice(0, 4).map((c, k) => ({ label: `Hand over to ${c.label}`, sep: k === 0, hint: k === 0 && t.status.limit ? "Out of usage" : undefined, run: () => { void handOverTo(pane.id, pane.spec.name, c.id, c.label); } })),
+    // Another agent carries on its task, in the same folder, from its conversation.
+    ...handoverItems(pane, t),
     // Starts it again in place; a Claude agent carries on its own conversation.
     { label: pane.running ? "Restart" : "Resume", sep: true, run: () => void pane.restart?.() },
     ...(sourceOf(pane) ? [{ label: "New conversation", run: () => void pane.restart?.({ fresh: true }) }] : []),
@@ -723,7 +741,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
         ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
         : stopped
           // stopped: nothing to type into, one button starts it again
-          ? `<button class="ib-act ib-go" data-stage="resume" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</button><button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`
+          ? `<button class="ib-act ib-go" data-stage="resume" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</button>${handoffTargets(p).length || openTargets(p).length ? `<button class="ib-act" data-stage="handover" title="Another agent carries on ${esc(t.name)}'s task">Hand over</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`
           : `<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
@@ -1120,6 +1138,13 @@ function onStageButton(e: MouseEvent): void {
     case "history": if (historian?.paneId) historian.close(); else openHistory(); break;
     case "compare": { const r = pane && allTasks().find((x) => x.paneId === pane.id)?.race; if (r) openCompare(r.id); break; }
     case "resume": if (pane) void pane.restart?.(); break;
+    case "handover": {
+      const t = pane && allTasks().find((x) => x.paneId === pane.id);
+      if (!pane || !t) break;
+      const r = b.getBoundingClientRect();
+      openMenu(r.left, r.bottom + 4, handoverItems(pane, t), `Hand over ${t.name}'s task`);
+      break;
+    }
     case "close": if (pane) closeFromSplit(pane.id); break;
     case "full": {
       const t = pane && allTasks().find((x) => x.paneId === pane.id);

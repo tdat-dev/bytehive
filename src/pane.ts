@@ -389,6 +389,7 @@ export function createAgent(
   pane.restart = async (opts = {}) => {
     if (restarting) return;
     restarting = true;
+    delete pane.handedTo;
     try {
       // A new conversation, or a given earlier one; otherwise its own again.
       if (opts.fresh) { delete spec.sessionId; delete spec.resumeIn; }

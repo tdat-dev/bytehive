@@ -29,6 +29,7 @@ vi.mock("./crew", () => ({
     { id: "claude", label: "Claude Code", program: "claude", badge: "claude" },
     { id: "codex", label: "Codex", program: "codex", badge: "codex" },
     { id: "gemini", label: "Gemini", program: "gemini", badge: "gemini" },
+    { id: "opencode", label: "OpenCode", program: "opencode", badge: "opencode" },
     { id: "powershell", label: "PowerShell", program: "powershell.exe", badge: "shell", shell: true },
   ],
 }));
@@ -42,7 +43,7 @@ vi.mock("./spawnmodal", () => ({
   },
 }));
 
-import { CARRY_ON, checkLimits, handOff, handoffTargets, stopLimitGuard } from "./limitguard";
+import { CARRY_ON, checkLimits, handOff, handOverToAgent, handoffTargets, openTargets, stopLimitGuard } from "./limitguard";
 
 const RESET = Date.parse("2026-09-27T12:00:00Z");
 const pane = (over: object = {}) => ({ id: "p1", running: true, spec: { name: "Ana", badge: "claude", ranIn: "D:/app", title: "Fix the header" }, ...over });
@@ -115,7 +116,7 @@ describe("Limit Guard", () => {
 
   it("hands the task to another installed CLI, briefed, with a title that says whose task it is", async () => {
     const p = io.panes.get("p1") as never;
-    expect(handoffTargets(p).map((t) => t.id)).toEqual(["codex"]); // not itself, not a shell, not one not installed
+    expect(handoffTargets(p).map((t) => t.id)).toEqual(["codex", "opencode"]); // not itself, not a shell, not one not installed
     io.tasks = [task({ what: "You've hit your limit", resetsAt: RESET })];
     const name = await handOff("p1", "codex");
     expect(name).toBe("Bob");
@@ -123,5 +124,40 @@ describe("Limit Guard", () => {
     expect(io.spawned[0].task).toContain("taking over a task from Ana (Claude Code)");
     expect(io.spawned[0].task).toContain("Its task: Fix the header");
     expect((io.panes.get("p2") as { spec: { title: string } }).spec.title).toBe("Carries on Ana's task: Fix the header");
+  });
+
+  describe("handing over to an agent already open", () => {
+    const other = (id: string, name: string, badge: string, over: object = {}) =>
+      ({ id, running: true, spec: { name, badge, ranIn: "d:\\APP\\", ...over } });
+    const state = (paneId: string, s: string) => ({ paneId, wsId: "w1", name: paneId, status: { state: s, ask: null } });
+
+    beforeEach(() => {
+      io.panes.set("p3", other("p3", "Bo", "opencode"));
+      io.panes.set("p4", other("p4", "Cy", "codex"));
+      io.panes.set("p5", other("p5", "Di", "codex", { ranIn: "D:/elsewhere" }));
+      io.panes.set("p6", other("p6", "Ed", "gemini", { role: "conductor" }));
+      io.panes.set("p7", other("p7", "Fy", "claude"));
+      io.tasks = [task(null), state("p3", "idle"), state("p4", "working"), state("p5", "idle"), state("p6", "idle"), state("p7", "idle")];
+    });
+
+    it("offers the free agents of another CLI in the same folder", () => {
+      expect(openTargets(io.panes.get("p1") as never).map((t) => t.name)).toEqual(["Bo"]);
+      io.tasks = [task(null), state("p3", "idle"), state("p4", "review")];
+      expect(openTargets(io.panes.get("p1") as never).map((t) => `${t.name} (${t.cli})`)).toEqual(["Bo (OpenCode)", "Cy (Codex)"]);
+    });
+
+    it("tells it to read the first agent's context, and the first one is no longer told to carry on", async () => {
+      expect(await handOverToAgent("p1", "p3", "you asked")).toBe("Bo");
+      expect(io.sent[0][0]).toBe("p3");
+      expect(io.sent[0][1]).toContain("Take over the unfinished task of Ana (Claude Code), which stopped because you asked.");
+      expect(io.sent[0][1]).toContain("agent_context tool with who set to Ana");
+      const ana = io.panes.get("p1") as { handedTo?: string; spec: { title: string } };
+      expect(ana.handedTo).toBe("Bo");
+      expect(ana.spec.title).toBe("Handed to Bo: Fix the header");
+      io.sent = [];
+      io.tasks = [task({ what: "You've hit your limit", resetsAt: RESET })];
+      checkLimits(RESET + 600e3);
+      expect(io.sent).toEqual([]);
+    });
   });
 });
