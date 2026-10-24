@@ -124,6 +124,9 @@ struct Inner {
     urls: Vec<String>, // computed once at start (off the main thread), then cached
     snapshot: Arc<Mutex<String>>,
     stop: Option<Arc<AtomicBool>>,
+    /// The running server's threads: a restart waits for them, so the old
+    /// server has let go of its ports before the new one takes them.
+    threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -194,8 +197,52 @@ fn stop_server(dash: &Dashboard) -> DashboardInfo {
     if let Some(stop) = inner.stop.take() {
         stop.store(true, Ordering::SeqCst);
     }
+    // Waiting for the threads takes up to half a second: not on the UI thread.
+    let (threads, port) = (std::mem::take(&mut inner.threads), inner.port);
+    if !threads.is_empty() {
+        std::thread::spawn(move || finish(threads, port));
+    }
     inner.running = false;
     info(&inner)
+}
+
+/// Wait for a stopped server's threads, then make sure its port is let go.
+/// tiny_http closes its listener on its own accept thread, which it wakes by
+/// connecting to the address it listens on; 0.0.0.0 (other devices let in)
+/// can't be connected to on Windows, so it stays blocked, holding the port,
+/// until something connects. Connecting on loopback wakes it.
+fn finish(threads: Vec<std::thread::JoinHandle<()>>, port: u16) {
+    for t in threads {
+        let _ = t.join();
+    }
+    let _ = TcpStream::connect_timeout(&(Ipv4Addr::LOCALHOST, port).into(), Duration::from_millis(300));
+}
+
+/// How long a start waits for ports a server it just stopped is letting go of.
+const BIND_PATIENCE: Duration = Duration::from_secs(3);
+
+/// Bind the page's port and the terminal's (port + 1), trying again for a
+/// little while: a server stopped a moment ago may still be letting go of them.
+fn bind_both(bind: Ipv4Addr, port: u16, patience: Duration) -> Result<(Server, TcpListener), CommandError> {
+    let until = Instant::now() + patience;
+    loop {
+        let tried = match Server::http((bind, port)) {
+            Err(e) => Err(format!("dashboard: cannot bind port {port}: {e}")),
+            Ok(server) => match TcpListener::bind((bind, port + 1)) {
+                Ok(ws) => Ok((server, ws)),
+                Err(e) => {
+                    drop(server);
+                    finish(Vec::new(), port);
+                    Err(format!("dashboard: cannot bind ws port {}: {e}", port + 1))
+                }
+            },
+        };
+        match tried {
+            Ok(both) => return Ok(both),
+            Err(e) if Instant::now() >= until => return Err(CommandError::Failed(e)),
+            Err(_) => std::thread::sleep(Duration::from_millis(100)),
+        }
+    }
 }
 
 /// Is a dashboard password set?
@@ -246,21 +293,24 @@ pub async fn dashboard_start(
     // Grab what the server thread needs WITHOUT holding a lock across an await.
     let snapshot = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner()).snapshot.clone();
     let registry = state.registry.clone();
-    // Stop any previous server before rebinding.
-    if let Some(stop) = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner()).stop.take() {
-        stop.store(true, Ordering::SeqCst);
-    }
+    // Stop any previous server before rebinding; its threads are waited for
+    // below, off the UI thread.
+    let (old_threads, old_port) = {
+        let mut inner = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(stop) = inner.stop.take() {
+            stop.store(true, Ordering::SeqCst);
+        }
+        (std::mem::take(&mut inner.threads), inner.port)
+    };
 
     // Binding to 0.0.0.0 (LAN) and probing the local IP can block; do it OFF the
     // main/UI thread so toggling LAN never freezes the app. The full web
     // terminal uses a WebSocket on port+1 (own the TcpStream → set TCP_NODELAY).
     let (server, ws_listener, (urls, lan_ip)) = run_blocking(move || {
-        let server = Server::http((bind, port)).map_err(|e| {
-            CommandError::Failed(format!("dashboard: cannot bind port {port}: {e}"))
-        })?;
-        let ws_listener = TcpListener::bind((bind, port + 1)).map_err(|e| {
-            CommandError::Failed(format!("dashboard: cannot bind ws port {}: {e}", port + 1))
-        })?;
+        if !old_threads.is_empty() {
+            finish(old_threads, old_port);
+        }
+        let (server, ws_listener) = bind_both(bind, port, BIND_PATIENCE)?;
         Ok((server, ws_listener, urls_for(port, lan)))
     })
     .await?;
@@ -279,9 +329,11 @@ pub async fn dashboard_start(
         stop: stop.clone(),
     };
     let ctx_ws = ctx.clone();
-    std::thread::spawn(move || serve(server, ctx, stop_thread));
     let stop_ws = stop.clone();
-    std::thread::spawn(move || serve_ws(ws_listener, stop_ws, ctx_ws));
+    let threads = vec![
+        std::thread::spawn(move || serve(server, ctx, stop_thread)),
+        std::thread::spawn(move || serve_ws(ws_listener, stop_ws, ctx_ws)),
+    ];
 
     let mut inner = state.dashboard.inner.lock().unwrap_or_else(|p| p.into_inner());
     inner.running = true;
@@ -289,6 +341,7 @@ pub async fn dashboard_start(
     inner.lan = lan;
     inner.urls = urls;
     inner.stop = Some(stop);
+    inner.threads = threads;
     Ok(info(&inner))
 }
 
@@ -1046,6 +1099,40 @@ mod tests {
         let mut out = String::new();
         s.read_to_string(&mut out).ok()?;
         out.split(' ').nth(1)?.parse().ok()
+    }
+
+    /// Turning "let other devices in" on restarts the server on the same
+    /// port at once: the restart waits for the old one to let go of its ports
+    /// instead of failing with "only one usage of each socket address".
+    #[test]
+    fn a_restart_finds_the_old_servers_ports_free() {
+        // Two free ports side by side, above the range Windows hands out to
+        // other tests' sockets (which takes port + 1 of an OS-picked port).
+        let free = |p: u16| TcpListener::bind(("127.0.0.1", p)).is_ok();
+        let port = (0..400u16)
+            .map(|k| 47_000 + (std::process::id() as u16 % 50) * 40 + k * 2)
+            .find(|&p| free(p) && free(p + 1))
+            .expect("two free ports");
+        for round in 0..3 {
+            let (server, ws) = bind_both(Ipv4Addr::LOCALHOST, port, Duration::ZERO).unwrap_or_else(|e| panic!("round {round}: {e:?}"));
+            let stop = Arc::new(AtomicBool::new(false));
+            let ctx = Ctx {
+                snapshot: Arc::new(Mutex::new("{}".into())),
+                registry: Arc::new(Mutex::new(Registry::default())),
+                auth: locked("correct horse"),
+                send: Arc::new(|_| {}),
+                guard: Guard { port, ws_port: port + 1, lan_ip: None },
+                stop: stop.clone(),
+            };
+            let (ctx_ws, stop_http, stop_ws) = (ctx.clone(), stop.clone(), stop.clone());
+            let threads = vec![
+                std::thread::spawn(move || serve(server, ctx, stop_http)),
+                std::thread::spawn(move || serve_ws(ws, stop_ws, ctx_ws)),
+            ];
+            assert_eq!(try_status(port), Some(401));
+            stop.store(true, Ordering::SeqCst);
+            finish(threads, port);
+        }
     }
 
     /// Removing the password stops a server other devices can reach BEFORE
