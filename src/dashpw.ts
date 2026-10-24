@@ -12,6 +12,9 @@ export function passwordProblem(first: string, again: string): string | null {
   return null;
 }
 
+/** The dashboard's port, for the Tailscale hint (dashboard.ts DASH_PORT). */
+const DASH_PORT_HINT = 8477;
+
 /** The dashboard is plain http: on the LAN the password and cookie travel as is. */
 export const LAN_CLEARTEXT = "On your Wi-Fi the password goes unencrypted: use it only on a network you trust.";
 
@@ -20,7 +23,7 @@ export function passwordNotes(hasPassword: boolean): { pw: string; lan: string }
   return hasPassword
     ? {
       pw: "Set. Anyone opening the dashboard signs in with it, this computer included.",
-      lan: `Reachable from devices on the same Wi-Fi, after signing in. ${LAN_CLEARTEXT}`,
+      lan: `Reachable from devices on the same Wi-Fi, after signing in. ${LAN_CLEARTEXT} From another network: put Tailscale on this computer and your phone, then open this computer's Tailscale address (100.x.y.z) with :${DASH_PORT_HINT}.`,
     }
     : {
       pw: "None yet. Other devices need one before they can connect.",

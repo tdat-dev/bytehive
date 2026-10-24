@@ -66,6 +66,9 @@ struct Guard {
     ws_port: u16,
     /// The LAN address shown in Settings, when other devices are let in.
     lan_ip: Option<Ipv4Addr>,
+    /// Other devices are let in: every address of this computer is ours,
+    /// a VPN's (Tailscale's 100.x.y.z, from another network) included.
+    others: bool,
 }
 
 impl Guard {
@@ -80,7 +83,13 @@ impl Guard {
     /// Is `host` (a Host header) one of ours on `port`?
     fn host_ok(&self, host: Option<&str>, port: u16) -> bool {
         let Some(host) = host.map(|h| h.trim().to_ascii_lowercase()) else { return false };
-        self.names().iter().any(|n| host == format!("{n}:{port}") || (port == 80 && host == *n))
+        if self.names().iter().any(|n| host == format!("{n}:{port}") || (port == 80 && host == *n)) {
+            return true;
+        }
+        // An address typed straight into the browser can't be a rebinding
+        // page's (that needs a name), so any address of this computer will do.
+        let addr = host.strip_suffix(&format!(":{port}")).unwrap_or(if port == 80 { &host } else { "" });
+        self.others && addr.parse::<Ipv4Addr>().is_ok_and(is_own_ip)
     }
 
     /// No Origin (not a browser, or a same-origin GET), or the page's own.
@@ -153,6 +162,12 @@ fn local_ip() -> Option<Ipv4Addr> {
         std::net::IpAddr::V4(v4) => Some(v4),
         _ => None,
     }
+}
+
+/// Is `ip` an address of this computer, on any network it is on (a VPN's
+/// included)? A socket can be bound to an address only if it is ours.
+fn is_own_ip(ip: Ipv4Addr) -> bool {
+    !ip.is_unspecified() && !ip.is_broadcast() && !ip.is_multicast() && UdpSocket::bind((ip, 0)).is_ok()
 }
 
 /// The URLs to show, and the LAN address (when let in) the server answers to.
@@ -325,7 +340,7 @@ pub async fn dashboard_start(
         send: Arc::new(move |body| {
             let _ = send_app.emit("dashboard-send", body);
         }),
-        guard: Guard { port, ws_port: port + 1, lan_ip },
+        guard: Guard { port, ws_port: port + 1, lan_ip, others: lan },
         stop: stop.clone(),
     };
     let ctx_ws = ctx.clone();
@@ -800,7 +815,7 @@ mod tests {
             registry,
             auth,
             send: Arc::new(move |b| sink.lock().unwrap().push(b)),
-            guard: Guard { port, ws_port, lan_ip: None },
+            guard: Guard { port, ws_port, lan_ip: None, others: false },
             stop: stop.clone(),
         };
         let (ctx_ws, stop_http, stop_ws) = (ctx.clone(), stop.clone(), stop.clone());
@@ -1121,7 +1136,7 @@ mod tests {
                 registry: Arc::new(Mutex::new(Registry::default())),
                 auth: locked("correct horse"),
                 send: Arc::new(|_| {}),
-                guard: Guard { port, ws_port: port + 1, lan_ip: None },
+                guard: Guard { port, ws_port: port + 1, lan_ip: None, others: false },
                 stop: stop.clone(),
             };
             let (ctx_ws, stop_http, stop_ws) = (ctx.clone(), stop.clone(), stop.clone());
@@ -1172,7 +1187,7 @@ mod tests {
 
     #[test]
     fn the_guard_knows_its_own_names() {
-        let g = Guard { port: 8477, ws_port: 8478, lan_ip: Some(Ipv4Addr::new(192, 168, 1, 7)) };
+        let g = Guard { port: 8477, ws_port: 8478, lan_ip: Some(Ipv4Addr::new(192, 168, 1, 7)), others: true };
         assert!(g.host_ok(Some("192.168.1.7:8477"), 8477));
         assert!(g.host_ok(Some("192.168.1.7:8478"), 8478));
         assert!(!g.host_ok(Some("192.168.1.7:8478"), 8477));
@@ -1182,8 +1197,27 @@ mod tests {
         assert!(g.origin_ok(Some("http://192.168.1.7:8477")));
         assert!(!g.origin_ok(Some("http://192.168.1.7:8478")), "the socket port is not a page");
         assert!(!g.origin_ok(Some("http://192.168.1.7:8477/x")));
-        let local = Guard { lan_ip: None, ..g };
+        let local = Guard { lan_ip: None, others: false, ..g };
         assert!(!local.host_ok(Some("192.168.1.7:8477"), 8477), "the LAN address only when let in");
+    }
+
+    /// From another network the phone comes in through a VPN such as
+    /// Tailscale, at another address of this computer (100.x.y.z): let in,
+    /// every address of this computer is ours; an address of no network it
+    /// is on never is.
+    #[test]
+    fn let_in_every_address_of_this_computer_answers() {
+        let g = Guard { port: 8477, ws_port: 8478, lan_ip: None, others: true };
+        assert!(!g.host_ok(Some("203.0.113.9:8477"), 8477), "not an address of this computer");
+        assert!(!g.host_ok(Some("0.0.0.0:8477"), 8477));
+        assert!(!g.host_ok(Some("evil.example:8477"), 8477));
+        if let Some(ip) = local_ip() {
+            let host = format!("{ip}:8477");
+            assert!(g.host_ok(Some(&host), 8477));
+            assert!(g.origin_ok(Some(&format!("http://{host}"))));
+            let local = Guard { others: false, ..g };
+            assert!(!local.host_ok(Some(&host), 8477), "only when other devices are let in");
+        }
     }
 
     #[test]
