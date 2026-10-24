@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-24
+
+### Fixed
+
+- **Remote: letting other devices in no longer fails with "cannot bind port
+  8477".** Turning on Let other devices in while Remote was on restarted its
+  server before the old one had let go of the port, so the start failed and
+  nothing was left running, and your phone could not reach it. The restart
+  now waits for the old server to close (a server other devices could reach
+  could also keep its port after being turned off).
+
 ## [0.10.0] - 2026-10-22
 
 Agents of every CLI share what they did, and one carries on another's task.
