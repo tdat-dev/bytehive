@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-24
+
+### Fixed
+
+- **Remote works from another network, through Tailscale.** The dashboard
+  answered only to 127.0.0.1, localhost and this computer's Wi-Fi address, so
+  a phone on 4G or another Wi-Fi coming in through Tailscale (at the
+  computer's 100.x.y.z address) was turned away. With Let other devices in
+  on, every address of this computer is accepted now. Put Tailscale on the
+  computer and the phone, then open http://<the computer's Tailscale
+  address>:8477; Settings > Remote says so too.
+
 ## [0.10.1] - 2026-10-24
 
 ### Fixed
