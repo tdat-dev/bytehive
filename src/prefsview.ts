@@ -16,7 +16,6 @@ const TOGGLES: Toggle[] = [
   { id: "prefNotify", key: "notifyNeeds" },
   { id: "prefNotifyDone", key: "notifyDone" },
   { id: "prefJump", key: "jumpToNeeds" },
-  { id: "prefAskCard", key: "askCard" },
   { id: "prefReviewOnDone", key: "reviewOnDone" },
   { id: "prefRestore", key: "restore" },
   { id: "prefTips", key: "tips" },

@@ -298,8 +298,8 @@ function askHtml(s: StepItem, live: LiveOption[] = [], stopped = false): string 
       }).join("")}</ul>${ownWords ? `<p class="cv-qa">You answered: ${esc(ownWords)}</p>` : ""}</section>`;
   }).join("");
   const note = waiting ? `<p class="cv-qs wait"><span class="cv-dots" aria-hidden="true"><i></i><i></i><i></i></span>${clickable
-    ? "Waiting for your answer: pick one here, or answer in your own words in the answer card."
-    : "Waiting for your answer: pick it in the answer card, or in the terminal."}</p>`
+    ? "Waiting for your answer: pick one here, or answer in your own words in the terminal."
+    : "Waiting for your answer: pick it in the terminal."}</p>`
     : turnedDown ? `<p class="cv-qs">You chose to talk it over instead of picking.</p>`
     : lapsed ? `<p class="cv-qs">It stopped before you answered.</p>` : "";
   return `<div class="cv-ask${waiting ? " waiting" : ""}" data-id="${s.id}" role="group" aria-label="${esc(s.verb)} ${esc(s.target)}">

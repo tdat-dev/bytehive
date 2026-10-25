@@ -356,8 +356,8 @@ document.addEventListener("keydown", (e) => {
   // Any open backdrop (confirm / settings / …) swallows shortcuts.
   if (document.querySelector(".backdrop.open")) return;
 
-  // Alt+1..9 → focus that pane (no other modifiers). In the Inbox they answer
-  // the agent on screen instead (inbox.ts), and there is no row of panes.
+  // Alt+1..9 → focus that pane (no other modifiers). The Inbox has no row of
+  // panes, so there they do nothing.
   if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code.startsWith("Digit")) {
     if (document.body.classList.contains("inbox-ui")) return;
     const n = Number(e.code.slice(5));

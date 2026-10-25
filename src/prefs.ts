@@ -21,8 +21,6 @@ export interface Prefs {
   notifyDone: boolean;
   /** When an agent needs you and the one on screen is not busy, show it. */
   jumpToNeeds: boolean;
-  /** Show the answer box over the terminal (off: a small chip you open when ready). */
-  askCard: boolean;
   /** Most agents in the Grid: one terminal, the rest as cards. */
   splitMax: SplitMax;
   /** Open Changes on its own when the agent on screen finishes with changes. */
@@ -53,7 +51,6 @@ export const DEFAULTS: Prefs = {
   notifyNeeds: true,
   notifyDone: true,
   jumpToNeeds: false,
-  askCard: true,
   splitMax: 9,
   reviewOnDone: false,
   restore: true,

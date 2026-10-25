@@ -311,38 +311,20 @@ describe("inbox DOM", () => {
     expect(state.focused).toContain("e");
   });
 
-  it("puts the agent that needs you on the stage and answers it with a button", async () => {
+  it("puts the agent that needs you on the stage and leaves the answer to its terminal", () => {
     state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
     setInbox(true);
     expect(state.focused[0]).toBe("a");
     expect(document.querySelector(".inbox-head")!.textContent).toBe("1 agent needs you. 1 is working.");
     expect(document.querySelectorAll(".iq-row")).toHaveLength(2);
-    expect(document.querySelector(".ia-code")!.textContent).toBe("npm run build");
-    // Allow sits last and brightest, as in the design.
-    expect([...document.querySelectorAll(".ia-acts .ia-opt")].map((b) => b.querySelector("span")!.textContent))
-      .toEqual(["Always allow here", "Deny", "Allow"]);
+    // no card of Maestro's own over the terminal: the CLI asks there
+    expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
+    expect(document.querySelector(".ia-opt")).toBeNull();
     expect(panes[0].el.querySelector(".ib-pill")!.textContent).toBe("Needs you");
     expect([...panes[0].el.querySelectorAll(".ib-act")].map((b) => b.textContent)).toEqual(["Commands", "Changes", "History"]);
-    (document.querySelector('.ia-opt[data-n="3"]') as HTMLButtonElement).click();
-    await Promise.resolve();
-    expect(state.answered).toEqual([["a", "\x1b"]]);
-    expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
   });
 
-  it("sends a free-text answer and lets you tuck the card away", async () => {
-    state.tasks = [task("a", "Ana", "needs")];
-    setInbox(true);
-    (document.querySelector(".ia-min") as HTMLButtonElement).click();
-    expect(document.querySelector(".ia-chip")).not.toBeNull();
-    (document.querySelector(".ia-chip") as HTMLButtonElement).click();
-    const input = document.getElementById("iaFree") as HTMLInputElement;
-    input.value = "use pnpm";
-    document.querySelector(".ia-free")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    await Promise.resolve();
-    expect(state.texts).toEqual([["a", "use pnpm"]]);
-  });
-
-  it("switches the stage from the queue and with Alt+arrows, and picks options with Alt+number", async () => {
+  it("switches the stage from the queue and with Alt+arrows, and leaves Alt+number to the terminal", async () => {
     state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working")];
     setInbox(true);
     (document.querySelector('.iq-row[data-id="e"]') as HTMLButtonElement).click();
@@ -351,20 +333,7 @@ describe("inbox DOM", () => {
     expect(state.focused[state.focused.length - 1]).toBe("a");
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "1", altKey: true }));
     await Promise.resolve();
-    expect(state.answered).toEqual([["a", "1"]]);
-  });
-
-  it("shows the next permission prompt even when its wording matches the one just answered", async () => {
-    state.tasks = [task("a", "Ana", "needs")];
-    setInbox(true);
-    (document.querySelector('.ia-opt[data-n="1"]') as HTMLButtonElement).click();
-    await Promise.resolve();
-    expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
-    // Same "Do you want to proceed?" and options, different command, before any state change.
-    state.tasks = [task("a", "Ana", "needs", { status: { state: "needs", ask: { ...RUN_ASK, detail: "npm test" } } })];
-    state.listeners.forEach((cb) => cb());
-    expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(false);
-    expect(document.querySelector(".ia-code")!.textContent).toBe("npm test");
+    expect(state.answered).toEqual([]);
   });
 
   it("shows one agent as the Grid's terminal and the others as cards that answer and swap in", async () => {
@@ -378,12 +347,11 @@ describe("inbox DOM", () => {
     const card = () => document.querySelector<HTMLElement>('.ib-rail [data-card="e"]');
     expect(card()!.querySelector(".rc-n")!.textContent).toBe("Eli");
     expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
-    // Ana answers under her terminal, Eli on his card
-    expect(panes[0].el.querySelector(".ib-mini code")!.textContent).toBe("npm run build");
-    (panes[0].el.querySelector('.ib-mini [data-n="1"]') as HTMLButtonElement).click();
+    // Ana answers in her terminal, Eli on his card
+    expect(panes[0].el.querySelector(".ia-opt")).toBeNull();
     (card()!.querySelector('.rc-opts [data-n="1"]') as HTMLButtonElement).click();
     await Promise.resolve();
-    expect(state.answered).toEqual([["a", "1"], ["e", "1"]]);
+    expect(state.answered).toEqual([["e", "1"]]);
     // a click on Eli's card puts him in the terminal and Ana on a card
     card()!.click();
     expect([...document.querySelectorAll(".split-pin")]).toEqual([panes[1].el]);
@@ -684,15 +652,6 @@ describe("inbox DOM", () => {
     expect(state.reviewed).toEqual(["D:/wt/e"]);
   });
 
-  it("starts a prompt as a small chip when Settings says so", () => {
-    setPref("askCard", false);
-    state.tasks = [task("a", "Ana", "needs")];
-    setInbox(true);
-    expect(document.querySelector(".inbox-ask .ia-chip")!.textContent).toContain("Ana is waiting on you");
-    (document.querySelector(".ia-chip") as HTMLButtonElement).click();
-    expect(document.querySelector(".ia-code")!.textContent).toBe("npm run build");
-  });
-
   it("brings up an agent that starts needing you when Settings says so and the stage is quiet", () => {
     setPref("jumpToNeeds", true);
     state.tasks = [task("a", "Ana", "idle"), task("e", "Eli", "working")];
@@ -701,14 +660,5 @@ describe("inbox DOM", () => {
     state.tasks = [task("e", "Eli", "needs"), task("a", "Ana", "idle")];
     state.listeners.forEach((cb) => (cb as (l: Task[]) => void)(state.tasks));
     expect(state.focused[state.focused.length - 1]).toBe("e");
-  });
-
-  it("does not wipe what you are typing when the tick re-renders", () => {
-    state.tasks = [task("a", "Ana", "needs")];
-    setInbox(true);
-    const input = document.getElementById("iaFree") as HTMLInputElement;
-    input.value = "half-typed";
-    state.listeners.forEach((cb) => cb()); // a task change elsewhere
-    expect((document.getElementById("iaFree") as HTMLInputElement).value).toBe("half-typed");
   });
 });

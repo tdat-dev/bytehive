@@ -40,7 +40,7 @@ import { startSessionFollow, stopSessionFollow } from "./sessionfollow";
 import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
-import { allTasks, answerOption, answerText, onTasksChange, taskOf, type Task } from "./tasks";
+import { allTasks, answerOption, onTasksChange, taskOf, type Task } from "./tasks";
 import type { AskOption } from "./askparse";
 import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
@@ -212,17 +212,12 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 let queueEl: HTMLElement | null = null;
 let headEl: HTMLElement | null = null;
+/** The chip over the stage that opens Review when an agent finished with changes. */
 let askEl: HTMLElement | null = null;
 /** What the stage says when the shown project has no agents. */
 let emptyEl: HTMLElement | null = null;
 let timer: number | null = null;
 let offTasks: (() => void) | null = null;
-/** Prompts the user tucked away ("paneId|prompt"), so they can type in the terminal instead. */
-const hidden = new Set<string>();
-/** Prompts already answered from a button, until the screen moves on. */
-const answered = new Set<string>();
-/** Questions already tucked away once because Settings says to start tucked. */
-const autoTucked = new Set<string>();
 /** Split (the Grid): one agent's terminal with the others as cards. Only the pins in
  *  the shown project can be on screen, since each project has its own canvas. */
 let splitOn = false;
@@ -235,7 +230,7 @@ let bigId: string | null = null;
 const borrowed = new Map<string, Workspace>();
 /** Agents closed out of Split with ✕; they stay out until Split is turned off. */
 const splitClosed = new Set<string>();
-/** Per-pane answer box in Split: which question it shows, and answered ones. */
+/** Grid cards answered from a button: which question, so its buttons go. */
 const miniAnswered = new Map<string, string>();
 let splitBtn: HTMLButtonElement | null = null;
 let reviewer: ReturnType<typeof createReviewDrawer> | null = null;
@@ -722,7 +717,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     let pill = p.el.querySelector<HTMLElement>(".ib-pill");
     let acts = p.el.querySelector<HTMLElement>(".ib-acts");
     p.el.classList.toggle("ib-needs", !!t && pinned && t.status.state === "needs");
-    if (!t) { pill?.remove(); acts?.remove(); p.el.querySelector(".ib-mini")?.remove(); continue; }
+    if (!t) { pill?.remove(); acts?.remove(); continue; }
     if (!pill) {
       pill = document.createElement("span");
       p.el.querySelector(".pane-bar .pb-sp")?.after(pill);
@@ -768,7 +763,6 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       ttl.textContent = t.title!;
       ttl.title = t.title!;
     }
-    renderMini(p, t, pinned);
   }
 }
 
@@ -782,93 +776,24 @@ function askButtons(a: NonNullable<Task["status"]["ask"]>): string[] {
     : a.options.map((o) => `<button class="ia-opt" data-n="${o.n}">${o.n}. ${esc(o.label)}</button>`);
 }
 
-/** A Split card answers its own agent, right under that agent's terminal. */
-function renderMini(p: Pane, t: Task, pinned: boolean): void {
-  let mini = p.el.querySelector<HTMLElement>(".ib-mini");
-  const a = pinned && t.status.state === "needs" ? t.status.ask : null;
-  if (!a) { mini?.remove(); miniAnswered.delete(p.id); return; }
-  const key = askKey(a);
-  if (miniAnswered.get(p.id) === key) { mini?.remove(); return; }
-  if (mini?.dataset.sig === key) return;
-  if (!mini) {
-    mini = document.createElement("div");
-    mini.className = "ib-mini";
-    p.el.appendChild(mini);
-  }
-  mini.dataset.sig = key;
-  const btns = askButtons(a);
-  const lead = a.kind === "run" ? `${t.name} wants to run` : a.kind === "edit" ? `${t.name} wants to edit` : `${t.name} asks`;
-  mini.innerHTML = `<p><span class="lb">${esc(lead)}</span>${a.kind !== "question" && a.detail ? `<code title="${esc(a.detail)}">${esc(a.detail)}</code>` : esc(a.prompt)}</p><div class="ib-mini-opts">${btns.join("")}</div>`;
-}
-
+/** An agent's questions are answered in its own terminal; the stage only
+ *  carries a chip to Review when an agent finished with changes. */
 function renderAsk(list: Task[], pane: Pane | undefined): void {
   if (!askEl) return;
-  // In Split every card carries its own answer box.
+  // No chip in Split: its cards say which agents are done.
   if (splitSig) { askEl.hidden = true; askEl.innerHTML = ""; askEl.dataset.sig = ""; return; }
   const t = pane ? list.find((x) => x.paneId === pane.id) : undefined;
-  const a = t?.status.state === "needs" ? t.status.ask : null;
-  // The command is part of the identity: Claude asks "Do you want to proceed?"
-  // with the same options for every command, and each one is a new question.
-  const key = t && a ? `${t.paneId}|${a.prompt}|${a.detail ?? ""}|${a.options.map((o) => o.label).join("/")}` : "";
-  // Forget answers and tucked-away cards for questions no longer on screen.
-  for (const k of answered) if (k !== key) answered.delete(k);
-  for (const k of hidden) if (k !== key) hidden.delete(k);
-  for (const k of autoTucked) if (k !== key) autoTucked.delete(k);
-  // Settings → Inbox: start with the small chip instead of the full box.
-  if (key && !getPref("askCard") && !autoTucked.has(key)) { autoTucked.add(key); hidden.add(key); }
   // An agent that finished with changes gets a quiet chip that opens Review.
   if (t && t.status.state === "review" && reviewer?.paneId !== t.paneId) {
     const sig = `review|${t.paneId}|${t.changedFiles ?? 0}`;
     if (askEl.dataset.sig === sig && !askEl.hidden) return;
     askEl.dataset.sig = sig;
-    askEl.dataset.key = "";
     askEl.hidden = false;
     askEl.className = "inbox-ask min review";
     askEl.innerHTML = `<button class="ia-chip" data-act="review"><i class="ia-dot" aria-hidden="true"></i>${esc(t.name)} is ready · ${esc(rowLine(t))} · Review</button>`;
     return;
   }
-  if (!t || !a || answered.has(key)) { askEl.hidden = true; askEl.innerHTML = ""; askEl.dataset.sig = ""; return; }
-  // Rebuild only when the question changes: the tick re-renders every second
-  // and would otherwise wipe what the user is typing in the answer field.
-  const sig = key + (hidden.has(key) ? "|min" : "");
-  if (askEl.dataset.sig === sig && !askEl.hidden) return;
-  askEl.dataset.sig = sig;
-  askEl.hidden = false;
-  if (hidden.has(key)) {
-    askEl.className = "inbox-ask min";
-    askEl.innerHTML = `<button class="ia-chip" data-act="show"><i class="ia-dia" aria-hidden="true"></i>${esc(t.name)} is waiting on you · Show</button>`;
-    return;
-  }
-  askEl.className = "inbox-ask";
-  // Tucked away, the question waits on a chip; in the terminal you can answer it by typing.
-  const hideBtn = `<button class="ia-min" data-act="hide" title="Tuck this away and answer by typing in the terminal">Hide · type in terminal</button>`;
-  const lead = a.kind === "run" ? `${t.name} wants to run a command` : a.kind === "edit" ? `${t.name} wants to edit a file` : `${t.name} has a question`;
-  askEl.dataset.key = key;
-  if (isYesNo(a)) {
-    // One row, as in the design: say what to do instead on the left, the
-    // three choices on the right with Allow last and brightest.
-    const order = [...a.options].sort((x, y) => rank(x) - rank(y));
-    askEl.innerHTML = `
-    <div class="ia-top"><i class="ia-dia" aria-hidden="true"></i><span>${esc(lead)}</span>${a.title ? `<span class="ia-title">${esc(a.title)}</span>` : ""}
-      ${hideBtn}</div>
-    ${a.detail ? `<p class="ia-why">${esc(a.prompt)}</p><code class="ia-code">${esc(a.detail)}</code>` : `<p class="ia-q">${esc(a.prompt)}</p>`}
-    <div class="ia-row">
-      <form class="ia-free"><label class="ia-sr" for="iaFree">Tell ${esc(t.name)} what to do instead</label>
-        <input id="iaFree" autocomplete="off" placeholder="Or tell ${esc(t.name)} what to do instead…" title="Alt+A to type here"></form>
-      <div class="ia-acts">${order.map((o) => `<button class="ia-opt ${o.deny ? "deny" : o.always ? "always" : "allow"}" data-n="${o.n}" title="${esc(o.label)} (Alt+${o.n})">
-        <span>${esc(shortLabel(o))}</span><kbd class="ia-k">Alt ${o.n}</kbd></button>`).join("")}</div>
-    </div>`;
-    return;
-  }
-  askEl.innerHTML = `
-    <div class="ia-top"><i class="ia-dia" aria-hidden="true"></i><span>${esc(lead)}</span>${a.title ? `<span class="ia-title">${esc(a.title)}</span>` : ""}
-      ${hideBtn}</div>
-    ${a.kind === "question" ? `<p class="ia-q">${esc(a.prompt)}</p>` : a.detail ? `<code class="ia-code">${esc(a.detail)}</code>` : `<p class="ia-q">${esc(a.prompt)}</p>`}
-    <div class="ia-opts">${a.options.map((o, i) => `<button class="ia-opt${o.deny ? " deny" : ""}${i === 0 ? " first" : ""}" data-n="${o.n}">
-      <span class="ia-k">${o.n}</span><span>${esc(o.label)}</span></button>`).join("")}</div>
-    <form class="ia-free"><label class="ia-sr" for="iaFree">Answer ${esc(t.name)} in your own words</label>
-      <input id="iaFree" autocomplete="off" placeholder="${a.kind === "question" ? "Something else…" : `Or tell ${esc(t.name)} what to do instead…`}"><button type="submit">Send</button></form>
-    <p class="ia-hint">Alt+1…${a.options.length} picks an option · Alt+A types an answer · Alt+↑/↓ moves through the list</p>`;
+  askEl.hidden = true; askEl.innerHTML = ""; askEl.dataset.sig = "";
 }
 
 const rank = (o: AskOption) => (o.always ? 0 : o.deny ? 1 : 2);
@@ -926,23 +851,6 @@ function keepHistory(stage: Pane | undefined, now = Date.now()): void {
   }
 }
 
-async function pick(option: AskOption): Promise<void> {
-  const pane = stagePane();
-  const key = askEl?.dataset.key;
-  if (!pane) return;
-  if (key) answered.add(key);
-  render();
-  if (splitOn) { const a = currentAsk(); if (a) { miniAnswered.set(pane.id, askKey(a)); pane.el.querySelector(".ib-mini")?.remove(); } }
-  await answerOption(pane.id, option);
-  pane.term.focus();
-}
-
-function currentAsk() {
-  const pane = stagePane();
-  const t = pane ? allTasks().find((x) => x.paneId === pane.id) : undefined;
-  return t?.status.state === "needs" ? t.status.ask : null;
-}
-
 function move(delta: number): void {
   // In the order the list shows them: project by project.
   const list = projectGroups(allTasks(), listOrder()).filter((g) => !foldedProjects.has(g.wsId)).flatMap((g) => g.tasks);
@@ -968,12 +876,6 @@ function onKey(e: KeyboardEvent): void {
   if (k === "r") { e.preventDefault(); if (reviewer?.paneId) reviewer.close(); else openReview(); return; }
   if (k === "h") { e.preventDefault(); if (historian?.paneId) historian.close(); else openHistory(); return; }
   if (k === "o") { e.preventDefault(); openSessions(); return; }
-  // Alt+A: answer in your own words, from wherever the keyboard is.
-  if (k === "a") { const f = askEl?.querySelector<HTMLInputElement>("#iaFree"); if (f) { e.preventDefault(); f.focus(); } return; }
-  if (/^[1-9]$/.test(e.key)) {
-    const o = currentAsk()?.options.find((x) => x.n === Number(e.key));
-    if (o) { e.preventDefault(); e.stopPropagation(); void pick(o); }
-  }
 }
 
 function openReview(): void {
@@ -1116,17 +1018,6 @@ function onStageButton(e: MouseEvent): void {
   const paneEl = target.closest<HTMLElement>(".pane");
   const ws = activeWs;
   const pane = ws && paneEl ? screenPanes().find((p) => p.el === paneEl) : undefined;
-  const opt = target.closest<HTMLElement>(".ib-mini [data-n]");
-  if (opt && pane) {
-    e.stopPropagation();
-    const a = allTasks().find((x) => x.paneId === pane.id)?.status.ask;
-    const o = a?.options.find((x) => x.n === Number(opt.dataset.n));
-    if (!a || !o) return;
-    miniAnswered.set(pane.id, askKey(a));
-    pane.el.querySelector(".ib-mini")?.remove();
-    void answerOption(pane.id, o).then(() => pane.term.focus());
-    return;
-  }
   const b = target.closest<HTMLElement>("[data-stage]");
   if (!b) return;
   e.stopPropagation();
@@ -1313,22 +1204,7 @@ function mount(): void {
   askEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("button");
     if (!b || !askEl) return;
-    const key = askEl.dataset.key ?? "";
-    if (b.dataset.act === "hide") { hidden.add(key); render(); const p = stagePane(); if (p) p.term.focus(); return; }
-    if (b.dataset.act === "show") { hidden.clear(); render(); return; }
-    if (b.dataset.act === "review") { openReview(); return; }
-    const o = currentAsk()?.options.find((x) => x.n === Number(b.dataset.n));
-    if (o) void pick(o);
-  });
-  askEl.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = askEl?.querySelector<HTMLInputElement>("#iaFree");
-    const pane = stagePane();
-    if (!input?.value.trim() || !pane) return;
-    const key = askEl?.dataset.key;
-    if (key) answered.add(key);
-    void answerText(pane.id, input.value).then(() => pane.term.focus());
-    render();
+    if (b.dataset.act === "review") openReview();
   });
   document.addEventListener("keydown", onKey, true);
   document.addEventListener("focusin", onFocusIn);
@@ -1365,7 +1241,7 @@ function unmount(): void {
   if (splitWs) clearSplit(splitWs);
   splitOn = false; pins = []; splitSig = ""; splitWs = null;
   if (reviewer?.paneId) reviewer.close();
-  for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-mini")?.remove(); p.el.querySelector(".ib-ttl")?.remove(); p.el.classList.remove("ib-needs", "ib-has-title"); }
+  for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-ttl")?.remove(); p.el.classList.remove("ib-needs", "ib-has-title"); }
   queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); emptyEl?.remove(); emptyEl = null;
   queueEl = askEl = headEl = dockEl = null; splitBtn = null; reviewer = null; historian = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
@@ -1377,7 +1253,7 @@ function unmount(): void {
   window.removeEventListener("keydown", onCtrlK, true);
   closePalette();
   window.removeEventListener("resize", render);
-  answered.clear(); hidden.clear(); autoTucked.clear(); lastState.clear();
+  lastState.clear();
 }
 
 /** Mount or take down the interface. The app mounts it once at startup
