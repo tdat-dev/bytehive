@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-10-25
+
+### Changed
+
+- **The phone dashboard shows the agents that are running, by project.**
+  Stopped agents no longer fill the list: they show up again once you resume
+  them in Maestro, and Show N stopped brings them back on demand. Agents sit
+  under a heading per project (its folder beside it), the projects that need
+  you first, and rows no longer jump around as agents go active and idle.
+  The terminal tabs leave stopped agents out too.
+
 ## [0.10.2] - 2026-10-24
 
 ### Fixed
