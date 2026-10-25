@@ -9,6 +9,7 @@ import { paneStatus } from "./fleet";
 import { taskOf } from "./tasks";
 import { lastFinish } from "./finishwatch";
 import { finishedLabel } from "./finishnote";
+import { projectOf, orderForDash } from "./dashorder";
 import {
   sendInput,
   sendMessage,
@@ -50,11 +51,16 @@ function fleetSnapshotJson(): string {
   for (const ws of workspaces.values())
     for (const p of ws.panes.values()) {
       const t = taskOf(p.id);
+      const project = projectOf(p.spec, ws);
       agents.push({
         id: p.id,
         name: p.spec.name,
         wsId: ws.id,
         wsName: ws.name,
+        // the page groups agents under their project
+        project: project.name,
+        projectKey: project.key,
+        projectDir: project.dir,
         status: paneStatus(
           {
             id: p.id, name: p.spec.name, color: p.color, wsId: ws.id, wsName: ws.name,
@@ -69,10 +75,13 @@ function fleetSnapshotJson(): string {
         // the run that just ended, so the page can tell you once (a browser notification)
         finish: lastFinish(p.id),
       });
+      // a stopped agent is hidden on the page until it runs again: no need to
+      // read its screen every second
+      if (!p.running) continue;
       const screen = p.term.snapshot(DASH_OUTPUT_ROWS);
       if (screen.trim()) output[p.id] = screen;
     }
-  return JSON.stringify({ agents, output });
+  return JSON.stringify({ agents: orderForDash(agents), output });
 }
 
 let dashboardOn = false;

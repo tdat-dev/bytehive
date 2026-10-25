@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Maestro — Fleet</title>
+<title>Maestro fleet</title>
 <style>
   :root{--bg:#090a0c;--s0:#0f1115;--s1:#16181d;--s2:#20232a;--line:#20232a;--line2:#323842;
     --text:#f8fafc;--muted:#94a3b8;--muted2:#64748b;--accent:#c6f135;--ink:#1a2e05;
@@ -18,6 +18,15 @@
   .sum b{color:var(--text)}
   .sum .n{color:var(--accent)}
   .list{display:flex;flex-direction:column;gap:8px}
+  /* one heading per project, its agents under it */
+  .group{display:flex;align-items:baseline;gap:8px;margin:12px 2px 0}
+  .group:first-child{margin-top:0}
+  .group b{font-size:13px;font-weight:700;white-space:nowrap}
+  .group .gdir{flex:1;min-width:0;font-size:11px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .group .gn{font-size:11px;color:var(--muted);white-space:nowrap}
+  .more{margin-top:6px;width:100%;background:none;border:1px dashed var(--line2);color:var(--muted);
+    border-radius:10px;padding:10px;font-size:12.5px;font-weight:600}
+  .sum .stp{color:var(--muted2)}
   .row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px 12px;
     padding:12px 13px;border:1px solid var(--line);border-radius:11px;background:var(--s1)}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--idle);grid-row:1/span 2}
@@ -86,6 +95,8 @@
   .ttab.st-active .d{background:var(--run)} .ttab.st-needs .d{background:var(--accent)}
   .ttab.on{background:var(--accent);color:var(--ink);border-color:var(--accent)}
   .ttab.on .d{background:var(--ink)}
+  .ttab .p{color:var(--muted2);font-weight:500}
+  .ttab.on .p{color:var(--ink);opacity:.7}
   /* Insets go on .xterm: addon-fit only subtracts padding declared there, so
      padding on the host makes it propose more rows than fit and the last line
      gets clipped (same bug the app panes had). */
@@ -123,6 +134,10 @@
 <script>
   const enc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
   let openId = null;
+  // Stopped agents stay out of the way until they run again (resume them in
+  // Maestro); this shows them anyway, remembered on this device.
+  let showStopped = false;
+  try { showStopped = localStorage.getItem("maestro.showStopped") === "1"; } catch (e) {}
   // Every call to the app says it comes from this page (the server refuses
   // API calls without X-Maestro, which another site can't send).
   const API = { "Content-Type": "application/json", "X-Maestro": "1" };
@@ -214,38 +229,72 @@
     const output = (data && data.output) || {};
     const list = document.getElementById("list");
     tellFinishes(agents);
-    const needs = agents.filter((a) => a.status === "needs" && !a.finished).length;
-    const active = agents.filter((a) => a.status === "active").length;
-    const done = agents.filter((a) => a.finished).length;
+    const running = agents.filter((a) => a.status !== "stopped");
+    const stopped = agents.length - running.length;
+    const shown = showStopped ? agents : running;
+    const needs = running.filter((a) => a.status === "needs" && !a.finished).length;
+    const active = running.filter((a) => a.status === "active").length;
+    const done = running.filter((a) => a.finished).length;
     document.getElementById("sum").innerHTML = agents.length
-      ? `<b>${agents.length}</b> agents` + (needs ? ` · <span class="n">${needs} need you</span>` : "")
+      ? `<b>${running.length}</b> running` + (needs ? ` · <span class="n">${needs} need you</span>` : "")
         + (active ? ` · ${active} working` : "") + (done ? ` · ${done} done` : "")
+        + (stopped ? ` · <span class="stp">${stopped} stopped</span>` : "")
       : "";
-    if (!agents.length) { list.innerHTML = '<div class="empty">No agents running.</div>'; return; }
+    const more = stopped
+      ? `<button class="more" id="more">${showStopped ? "Hide stopped agents" : "Show " + stopped + " stopped"}</button>`
+      : "";
+    const wireMore = () => {
+      document.getElementById("more")?.addEventListener("click", () => {
+        showStopped = !showStopped;
+        try { localStorage.setItem("maestro.showStopped", showStopped ? "1" : "0"); } catch (e) {}
+        render(data);
+      });
+    };
+    if (!shown.length) {
+      list.innerHTML = '<div class="empty">No agents running.'
+        + (stopped ? "<br>Resume one in Maestro and it shows up here." : "") + "</div>" + more;
+      wireMore();
+      return;
+    }
+    // how many of each project's agents are running, for its heading
+    const live = {};
+    for (const a of running) live[a.projectKey] = (live[a.projectKey] || 0) + 1;
+    let lastKey = null;
     // A 2s poll rebuilds this list; capture any in-progress message + focus so
     // typing isn't wiped mid-sentence.
     const ae = document.activeElement;
     const typingId = ae && ae.tagName === "INPUT" ? ae.closest(".row")?.dataset.id : null;
     const draft = typingId != null ? ae.value : null;
-    list.innerHTML = agents.map((a) => {
+    list.innerHTML = shown.map((a) => {
       const open = a.id === openId ? " open" : "";
+      // the server sends agents grouped by project: a heading where one starts
+      let head = "";
+      if (a.projectKey !== lastKey) {
+        lastKey = a.projectKey;
+        const n = live[a.projectKey] || 0;
+        head = `<div class="group"><b>${enc(a.project || a.wsName || "")}</b><span class="gdir">${enc(a.projectDir || "")}</span>`
+          + `<span class="gn">${n ? n + " running" : "stopped"}</span></div>`;
+      }
+      const meta = [a.uptime, a.finished === "review" && a.files ? a.files + (a.files === 1 ? " file" : " files") + " changed" : "",
+        a.status === "stopped" ? "not running" : ""].filter(Boolean).join(" · ");
       const tail = output[a.id];
       const body = tail ? enc(tail) : '<span class="empty-out">No recent output.</span>';
       const fin = a.finished ? " fin-" + enc(a.finished) : "";
-      return `<div class="row st-${enc(a.status)}${fin}${open}" data-id="${enc(a.id)}">
+      return head + `<div class="row st-${enc(a.status)}${fin}${open}" data-id="${enc(a.id)}">
         <span class="dot"></span>
         <span class="name">${enc(a.name)}</span>
-        <span class="meta">${enc(a.wsName || "")}${a.uptime ? " · " + enc(a.uptime) : ""}${a.finished === "review" && a.files ? " · " + a.files + (a.files === 1 ? " file" : " files") + " changed" : ""}</span>
+        <span class="meta">${enc(meta)}</span>
         <span class="st">${enc(stLabel(a))}</span>
         <pre class="out">${body}</pre>
-        <button class="termbtn-full" data-term>⛶ Open full terminal — type directly</button>
+        <button class="termbtn-full" data-term>⛶ Open full terminal, type directly</button>
         <div class="keys">${KEYS.map((k, i) => `<button data-k="${i}">${enc(k[1])}</button>`).join("")}</div>
         <div class="send">
           <input placeholder="Message this agent…" autocomplete="off">
           <button class="send-btn">Send</button>
         </div>
       </div>`;
-    }).join("");
+    }).join("") + more;
+    wireMore();
     for (const row of list.querySelectorAll(".row")) {
       const id = row.dataset.id;
       const input = row.querySelector("input");
@@ -344,10 +393,15 @@
   function buildTabs(activeId) {
     const bar = document.getElementById("term-tabs");
     bar.innerHTML = "";
-    for (const a of allAgents) {
+    // running agents only (a stopped one has no terminal to type into), with
+    // their project when they come from several
+    const tabs = allAgents.filter((a) => a.status !== "stopped" || a.id === activeId);
+    const several = new Set(tabs.map((a) => a.projectKey)).size > 1;
+    for (const a of tabs) {
       const b = document.createElement("button");
       b.className = "ttab st-" + enc(a.status) + (a.id === activeId ? " on" : "");
-      b.innerHTML = '<span class="d"></span>' + enc(a.name);
+      b.innerHTML = '<span class="d"></span>' + enc(a.name)
+        + (several && a.project ? ' <span class="p">' + enc(a.project) + "</span>" : "");
       b.addEventListener("click", () => switchTerm(a.id, a.name));
       bar.appendChild(b);
     }
