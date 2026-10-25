@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-10-25
+
+### Removed
+
+- **The question card over the terminal.** When an agent asked something,
+  Maestro floated its own card with the question and buttons over the
+  terminal (and a small answer box under the terminal in the Grid). It is
+  gone, with its Settings toggle and the Alt+1..9 and Alt+A shortcuts: the
+  agent asks in its own terminal and you answer there. Grid cards of the
+  other agents still answer with a click, and the agent that needs you
+  still moves to the top of the list.
+
 ## [0.10.3] - 2026-10-25
 
 ### Changed
