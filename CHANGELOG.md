@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.7] - 2026-10-26
+
+### Added
+
+- **Project memory.** Each project keeps what every agent working in it
+  should know: conventions, decisions, where things live, gotchas. Agents
+  read it when they start and add to it as they learn, whatever CLI they
+  run. Open it with the book beside a project's name (or Ctrl K, or an
+  agent's right-click menu) to add, edit and delete facts yourself, or to
+  send one fact, or all of them, to a running agent of the project to check
+  against the code and fix. It lives in .maestro/memory.json and never
+  takes keys or passwords.
+
 ## [0.10.6] - 2026-10-26
 
 ### Fixed
