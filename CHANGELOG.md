@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.6] - 2026-10-26
+
+### Fixed
+
+- **An agent's browser tab keeps going when its window is covered.**
+  Windows tells Chrome a covered window is hidden, and Chrome then stopped
+  drawing the page and slowed it to once a minute, so the agent waited for
+  you to bring the window up. Maestro for Chrome (0.1.11) now keeps every tab
+  an agent drives running behind other windows.
+- **Maestro uses far less of the GPU in the background.** An agent's spinner
+  repainted its terminal on every update, competing with a video on the same
+  screen. While Maestro is not the window you are using, terminals draw four
+  times a second and looping animations pause; click back in and everything
+  catches up at once.
+
 ## [0.10.5] - 2026-10-26
 
 ### Changed
