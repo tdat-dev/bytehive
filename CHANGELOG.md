@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-10-26
+
+### Changed
+
+- **The Grid says which project each agent is in.** Its cards are grouped
+  by project, under the project's name, with the terminal's own project
+  first, so three agents called Ana in three repos no longer look alike.
+  The big terminal names its project too, before the job.
+
 ## [0.10.4] - 2026-10-25
 
 ### Removed
