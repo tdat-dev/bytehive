@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.9] - 2026-10-26
+
+### Changed
+
+- **Folding a project keeps its running agents.** Clicking a project's
+  name in the list now folds only its stopped and merged agents away; the
+  ones still working, idle or waiting on you stay in view. Click it again to
+  see the stopped ones.
+
 ## [0.10.8] - 2026-10-26
 
 ### Changed
