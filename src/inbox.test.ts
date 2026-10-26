@@ -588,12 +588,19 @@ describe("inbox DOM", () => {
     expect(document.querySelector('.iq-row[data-id="e"] .iq-l')!.textContent).toBe("Stopped");
     // who needs you is counted on its project
     expect(document.querySelector('[data-proj="ws-1"] .iq-need')!.textContent).toBe("1");
-    // a project folds, still showing its count, and stays folded
+    // a project folds its stopped agents away, keeps the running ones and its count, and stays folded
     (document.querySelector('[data-proj="ws-1"]') as HTMLButtonElement).click();
     const head = document.querySelector('[data-proj="ws-1"]')!;
     expect(head.getAttribute("aria-expanded")).toBe("false");
-    expect((head.closest(".iq-group")!.querySelector(".iq-rows") as HTMLElement).hidden).toBe(true);
+    expect([...head.closest(".iq-group")!.querySelectorAll(".iq-row")].map((r) => (r as HTMLElement).dataset.id)).toEqual(["a"]);
+    expect(head.getAttribute("title")).toContain("show 1 stopped");
     expect(head.querySelector(".iq-need")!.textContent).toBe("1");
+    // a folded project with nobody running shows no rows at all
+    (document.querySelector('[data-proj="ws-2"]') as HTMLButtonElement).click();
+    state.tasks = [task("e", "Eli", "stopped"), task("q", "Quinn", "stopped", { wsId: "ws-2", project: "quy" }), task("a", "Ana", "needs")];
+    state.listeners.forEach((cb) => cb());
+    expect((document.querySelector('[data-proj="ws-2"]')!.closest(".iq-group")!.querySelector(".iq-rows") as HTMLElement).hidden).toBe(true);
+    (document.querySelector('[data-proj="ws-2"]') as HTMLButtonElement).click();
     expect(JSON.parse(localStorage.getItem("maestro.inbox.folded")!)).toEqual(["ws-1"]);
     (document.querySelector('[data-proj="ws-1"]') as HTMLButtonElement).click();
     expect(document.querySelector('[data-proj="ws-1"]')!.getAttribute("aria-expanded")).toBe("true");

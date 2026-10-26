@@ -85,13 +85,18 @@ export function projectGroups(list: Task[], order?: ListOrder): Array<{ wsId: st
   return groups.sort((a, b) => at(order?.ws, a.wsId, 1e6 + came.get(a.wsId)!) - at(order?.ws, b.wsId, 1e6 + came.get(b.wsId)!));
 }
 
-/** Projects whose agents you folded away in the list, remembered. */
+/** Projects whose stopped agents you folded away in the list, remembered. */
 const FOLDED_KEY = "maestro.inbox.folded";
 const foldedProjects = new Set<string>((() => {
   try { return JSON.parse(localStorage.getItem(FOLDED_KEY) || "[]") as string[]; } catch { return []; }
 })());
 function saveFolded(): void {
   try { localStorage.setItem(FOLDED_KEY, JSON.stringify([...foldedProjects])); } catch { /* storage blocked */ }
+}
+/** What a project's rows show: all of them, or folded, only the agents still
+ *  going (a stopped or merged one is out of the way until you unfold it). */
+function shownTasks(g: { wsId: string; tasks: Task[] }): Task[] {
+  return foldedProjects.has(g.wsId) ? g.tasks.filter((t) => t.status.state !== "stopped" && t.status.state !== "merged") : g.tasks;
 }
 
 /** The fixed order of the projects and agents open now. */
@@ -660,15 +665,18 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
   if (!queueEl) return;
   // One group per project, in a fixed order (projects as you opened them,
   // agents as they were made): nothing moves when a state changes. Who needs
-  // you is marked where it is, and counted on its project, which folds.
+  // you is marked where it is, and counted on its project, which folds its
+  // stopped agents away and keeps the running ones.
   const groups = projectGroups(list, listOrder());
   const html = `<div class="iq-list">` +
     (groups.length ? groups.map((g, gi) => {
       const folded = foldedProjects.has(g.wsId);
+      const rows = shownTasks(g);
+      const away = g.tasks.length - rows.length;
       return `<section class="iq-group${folded ? " folded" : ""}${g.needs ? " has-needs" : ""}">
-      <h2 class="iq-gt iq-proj"><button type="button" class="iq-ph" data-proj="${esc(g.wsId)}" aria-expanded="${!folded}" aria-controls="iq-r-${gi}" title="${esc(g.name)}${folded ? " · show its agents" : " · fold"}">
+      <h2 class="iq-gt iq-proj"><button type="button" class="iq-ph" data-proj="${esc(g.wsId)}" aria-expanded="${!folded}" aria-controls="iq-r-${gi}" title="${esc(g.name)}${folded ? (away ? ` · show ${away} stopped` : " · unfold") : " · fold the stopped away"}">
         <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 12a1.5 1.5 0 0 1 1.5-1.5h7.5M6.5 5.5h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></h2>
-      <ul class="iq-rows" id="iq-r-${gi}"${folded ? " hidden" : ""}>${g.tasks.map((t) => {
+      <ul class="iq-rows" id="iq-r-${gi}"${rows.length ? "" : " hidden"}>${rows.map((t) => {
         const p = paneOf(t);
         const main = t.title ?? t.name;
         const said = rowLine(t);
@@ -877,7 +885,7 @@ function keepHistory(stage: Pane | undefined, now = Date.now()): void {
 
 function move(delta: number): void {
   // In the order the list shows them: project by project.
-  const list = projectGroups(allTasks(), listOrder()).filter((g) => !foldedProjects.has(g.wsId)).flatMap((g) => g.tasks);
+  const list = projectGroups(allTasks(), listOrder()).flatMap(shownTasks);
   if (!list.length) return;
   const cur = stagePane()?.id;
   const i = list.findIndex((t) => t.paneId === cur);
@@ -1228,7 +1236,7 @@ function mount(): void {
   queueEl.addEventListener("click", (e) => {
     const mem = (e.target as HTMLElement).closest<HTMLElement>("[data-mem]");
     if (mem) { openProjectMemory(mem.dataset.mem ?? ""); return; }
-    // A project's name folds its agents away, or shows them again (remembered).
+    // A project's name folds its stopped agents away, or shows them again (remembered).
     const head = (e.target as HTMLElement).closest<HTMLElement>("[data-proj]");
     if (head) {
       const id = head.dataset.proj ?? "";
