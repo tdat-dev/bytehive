@@ -18,6 +18,7 @@ import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setS
 import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
 import { initInbox } from "./inbox";
+import { initCalm } from "./calm";
 import { initBrowserView } from "./browserview";
 import { enhanceSelects } from "./selectmenu";
 import { blockNativeMenu } from "./ctxmenu";
@@ -227,6 +228,7 @@ configureBackground({ toast: paneToast, onLookChange: retheme });
 configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZoom(ws, z), note: topNote });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
 initSettingsModal();
+initCalm(); // terminals draw less while Maestro is in the background
 initInbox(); // the Agent Inbox interface
 initBrowserView(); // live view + Stop for the agent using a browser
 enhanceSelects(); // every drop-down uses the app menu, not the Windows popup

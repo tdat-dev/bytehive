@@ -7,6 +7,7 @@ import "@xterm/xterm/css/xterm.css";
 import { paletteFor, backgroundAlpha, type TermPalette } from "./termtheme";
 import { createBgFilter } from "./ansibg";
 import { openMenu } from "./ctxmenu";
+import { createPacer } from "./calm";
 
 /** How a pane paints: which palette, and whether the CLI's own background
  *  plate is stripped out of the byte stream on the way in. */
@@ -354,6 +355,9 @@ export function mountTerminal(
   // across chunks, so it must not be rebuilt when the look changes. It reads
   // `look.stripPlate` itself so toggling can't strand a carried sequence.
   const bgFilter = createBgFilter(() => look.stripPlate);
+  // In the background (calm.ts) output is drawn a few times a second, not on
+  // every byte: an agent's spinner otherwise repaints its terminal nonstop.
+  const pacer = createPacer<Uint8Array>((chunk) => term.write(chunk));
 
   const snapshot = (lines = 40): string => {
     try {
@@ -373,13 +377,14 @@ export function mountTerminal(
   };
 
   return {
-    write: (data) => term.write(bgFilter(data)),
+    write: (data) => pacer.push(bgFilter(data)),
     fit: () => {
       fitToBox();
       return { cols: term.cols, rows: term.rows };
     },
-    reset: () => term.reset(),
+    reset: () => { pacer.flush(); term.reset(); },
     dispose: () => {
+      pacer.dispose();
       ro.disconnect();
       term.dispose();
       if (usedWebgl) liveWebgl--;
