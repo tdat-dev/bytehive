@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.8] - 2026-10-26
+
+### Changed
+
+- **Every project memory from one place.** The project memory panel has a
+  tab per project, so you can read and edit each project memory without
+  closing it. The help page lists it too.
+
 ## [0.10.7] - 2026-10-26
 
 ### Added
