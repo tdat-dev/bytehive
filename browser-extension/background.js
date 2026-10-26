@@ -210,6 +210,20 @@ async function dbg(tabId) {
   }
   attached.add(tabId);
   await Promise.all(["Page.enable", "Runtime.enable", "Network.enable"].map((m) => cdp(tabId, m).catch(() => {})));
+  // Windows tells Chrome a window covered by another one is hidden, and Chrome
+  // then stops painting its page and slows its timers to once a minute: the
+  // agent's work stalls until someone brings the window up. Focus emulation
+  // counts the tab as being captured, so it stays visible, focused and running
+  // behind other windows (or behind another tab) while Maestro drives it.
+  await cdp(tabId, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
+  await cdp(tabId, "Page.setWebLifecycleState", { state: "active" }).catch(() => {});
+}
+
+/** Keep an agent's tab running even when its window is covered (see dbg).
+ *  Pages Chrome won't let an extension drive (chrome://, the Web Store) just
+ *  go without. */
+async function awake(tabId) {
+  try { await dbg(tabId); } catch {}
 }
 
 const cdp = (tabId, method, params = {}) => chrome.debugger.sendCommand({ tabId }, method, params);
@@ -404,6 +418,7 @@ function startRecording(agent, tabId) {
     try {
       const tab = await chrome.tabs.get(rec.tabId);
       if (tab.active) {
+        await awake(tab.id);
         const img = await grab(tab, GIF_WIDTH, 70);
         const last = rec.frames[rec.frames.length - 1];
         // A still page adds time to the last frame instead of another frame.
@@ -492,6 +507,7 @@ async function run(agent, tool, a) {
     case "tab_new": {
       const tab = await chrome.tabs.create({ url: a.url ? withScheme(a.url) : "about:blank", active: true });
       await intoGroup(agent, tab.id);
+      await awake(tab.id);
       if (a.url) await waitLoaded(tab.id);
       void cursor(tab.id, agent, "show");
       return withBlocker(tab.id, text(brief(await chrome.tabs.get(tab.id))));
@@ -499,6 +515,7 @@ async function run(agent, tool, a) {
     case "tab_adopt": {
       const tab = await chrome.tabs.get(a.tabId);
       await intoGroup(agent, tab.id);
+      await awake(tab.id);
       return text({ adopted: brief(tab) });
     }
     case "tab_close": {
@@ -512,11 +529,13 @@ async function run(agent, tool, a) {
         if (/^(back|forward|reload)$/.test(a.url)) throw new Error(`${agent} has no tab yet.`);
         const tab = await chrome.tabs.create({ url: withScheme(a.url), active: true });
         await intoGroup(agent, tab.id);
+        await awake(tab.id);
         await waitLoaded(tab.id);
         void cursor(tab.id, agent, "show");
         return withBlocker(tab.id, text(brief(await chrome.tabs.get(tab.id))));
       }
       const t = await tabFor(agent, a.tabId);
+      await awake(t.id);
       if (a.url === "back") await chrome.tabs.goBack(t.id);
       else if (a.url === "forward") await chrome.tabs.goForward(t.id);
       else if (a.url === "reload") await chrome.tabs.reload(t.id);
@@ -528,21 +547,25 @@ async function run(agent, tool, a) {
     }
     case "read_page": {
       const t = await shown(await tabFor(agent, a.tabId));
+      await awake(t.id);
       const r = await inPage(t.id, snapshotPage, [a.filter === "all" ? "all" : "interactive", a.max ?? 400]);
       return withBlocker(t.id, text(`${r.title}\n${r.url}\nviewport ${r.viewport}\n\n${r.lines.join("\n")}${r.note ? `\n\n(${r.note})` : ""}`));
     }
     case "find": {
       const t = await shown(await tabFor(agent, a.tabId));
+      await awake(t.id);
       const hits = await inPage(t.id, findInPage, [a.query, 30]);
       return text(hits.length ? hits.join("\n") : `Nothing on the page matches "${a.query}".`);
     }
     case "page_text": {
       const t = await tabFor(agent, a.tabId);
+      await awake(t.id);
       const r = await inPage(t.id, pageText, [a.max ?? 40000]);
       return text(`${r.title}\n${r.url}\n\n${r.text}`);
     }
     case "form_input": {
       const t = await shown(await tabFor(agent, a.tabId));
+      await awake(t.id);
       const at = await inPage(t.id, locateRef, [a.ref]);
       await cursor(t.id, agent, "move", at);
       void cursor(t.id, agent, "type", { text: typeof a.value === "string" ? a.value : String(a.value) });
@@ -630,6 +653,7 @@ async function run(agent, tool, a) {
       // Maestro's live view: a small frame of the agent's current tab. Never
       // brings the tab forward, so watching never gets in the agent's way.
       const t = await tabFor(agent, a.tabId);
+      await awake(t.id);
       // As wide as Maestro shows it (the small card, or the large view), so a
       // large view is sharp and a small one stays light.
       const maxW = Math.max(320, Math.min(2560, Number(a.maxW) || 720));
