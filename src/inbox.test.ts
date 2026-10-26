@@ -225,7 +225,7 @@ describe("inbox DOM", () => {
     const item = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(".cm-item")].find((b) => b.textContent!.startsWith(label))!;
     open();
     expect([...document.querySelectorAll(".cm-item span")].map((x) => x.textContent))
-      .toEqual(["Open", "Rename…", "Add to Grid", "Changes", "History", "Copy branch name", "Hand over to a new Codex agent", "Restart", "Stop", "Remove agent…"]);
+      .toEqual(["Open", "Rename…", "Add to Grid", "Changes", "History", "Project memory", "Copy branch name", "Hand over to a new Codex agent", "Restart", "Stop", "Remove agent…"]);
     item("Stop").click();
     await Promise.resolve();
     expect(state.killed).toEqual(["e"]);

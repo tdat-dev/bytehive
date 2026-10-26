@@ -157,7 +157,12 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 
 /* one group per project: its name over its agents */
 .iq-group + .iq-group { margin-top: 6px; }
-.iq-proj { display: block; padding: 8px 4px 4px; }
+.iq-proj { display: flex; align-items: center; gap: 2px; padding: 8px 4px 4px; }
+.iq-proj .iq-ph { flex: 1; min-width: 0; }
+/* the project's memory, beside its name */
+.iq-mem { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--ib-ink-3); opacity: 0.7; }
+.iq-mem:hover { opacity: 1; color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
+.iq-mem:focus-visible { opacity: 1; outline: 2px solid #fff; outline-offset: 1px; }
 /* the project's name folds its agents; a count says who needs you even folded */
 .iq-ph {
   display: flex; align-items: center; gap: 7px; width: 100%; min-height: 32px; padding: 0 8px 0 6px; border-radius: 9px;
@@ -1143,3 +1148,36 @@ body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }
 /* a new agent: how much of its CLI's plan is left, when little */
 .st-room { margin: 10px 4px 0; font-size: 12.5px; color: var(--ib-needs); }
 .im-room { margin: 4px 0 12px; color: var(--ib-needs); }
+
+/* ---------- project memory (memoryview.ts): what a project's agents share ---------- */
+.inbox-modal.mm { width: min(720px, 100%); max-height: 80vh; }
+.mm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mm .im-sub b { font-weight: 600; color: var(--ib-ink-2); }
+.mm-add { display: flex; align-items: flex-end; gap: 8px; }
+.mm-add textarea, .mm-edit textarea, .mm-ask textarea { min-height: 0; margin-top: 0; }
+.mm-add textarea { flex: 1; }
+.mm-body { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -22px; padding: 0 22px; scrollbar-width: thin; }
+.mm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.mm-e { padding: 12px 0; border-top: 1px solid var(--ib-line); }
+.mm-e:first-child { border-top: 0; }
+.mm-t { font-size: 14px; line-height: 1.55; color: var(--ib-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mm-m { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--ib-ink-3); }
+.mm-id { font: 12px var(--mono); }
+.mm-b { height: 26px; padding: 0 9px; border-radius: 999px; font: 500 12px var(--sans); color: var(--ib-ink-3); }
+.mm-b:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.07); }
+.mm-b.danger:hover { color: var(--ib-del); background: oklch(0.72 0.15 25 / 0.12); }
+.mm-b:focus-visible { outline: 2px solid #fff; outline-offset: 1px; color: var(--ib-ink); }
+/* the Ask and Edit buttons stay quiet until you reach the fact */
+@media (hover: hover) { .mm-e .mm-b { opacity: 0; } .mm-e:hover .mm-b, .mm-e:focus-within .mm-b { opacity: 1; } }
+.mm-edit, .mm-ask { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.mm-edit { margin-top: 0; }
+.mm-acts { display: flex; align-items: center; gap: 8px; }
+.mm-to { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ib-ink-2); }
+.mm-to select { height: 32px; padding: 0 10px; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.07); color: var(--ib-ink); font: 500 13px var(--sans); }
+.mm-askall { padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); box-shadow: inset 0 0 0 1px var(--ib-line); }
+.mm-askall .mm-ask { margin-top: 0; }
+.mm-foot { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.mm-status { font-size: 12.5px; color: var(--ib-ink-2); }
+.mm-note, .mm-empty { margin: 0; font-size: 13px; color: var(--ib-ink-3); }
+.mm-empty { padding: 18px 0; }
+.mm-err { margin: 0 0 8px; font-size: 13px; color: var(--ib-del); }

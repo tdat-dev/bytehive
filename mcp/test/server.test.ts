@@ -64,6 +64,10 @@ describe("maestro-mcp server", () => {
       "list_add",
       "list_delete",
       "list_rename",
+      "memory_delete",
+      "memory_get",
+      "memory_save",
+      "memory_update",
     ]);
   });
 

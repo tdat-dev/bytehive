@@ -21,6 +21,7 @@ import { changedFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
 import { agentContext } from "./context/agentcontext.js";
+import { memoryDelete, memoryForInstructions, memoryGet, memorySave, memoryUpdate } from "./memory.js";
 import os from "node:os";
 
 type ToolResult = {
@@ -61,6 +62,14 @@ Other agents may have worked here before you, in Maestro or not, with any CLI.
 Call agent_context first to see who did what, and agent_context with who to
 pick up an unfinished task instead of starting over.
 
+This project keeps a shared memory (.maestro/memory.json) that every agent
+reads and the user edits in Maestro: what anyone working here should know
+(conventions, decisions, where things live, gotchas). Read it with memory_get
+before you start. When you learn something lasting about the project, save it
+with memory_save, one fact per entry; fix a fact that turned out wrong with
+memory_update, and remove a stale one with memory_delete. Never save secrets,
+and never save notes about one task in progress.
+
 Write every fleet_send message in English, whatever language the user speaks to
 you in — the fleet shares one working language so no agent has to translate a
 hand-off. Answer the user in the language they used.
@@ -68,7 +77,9 @@ hand-off. Answer the user in the language they used.
 ${BROWSER_INSTRUCTIONS}`;
 
 export function createServer(dir: string): McpServer {
-  const server = new McpServer({ name: "maestro", version: "0.1.0" }, { instructions: INSTRUCTIONS });
+  // The project's memory rides in the instructions, so an agent knows it
+  // before its first tool call (read once, when the agent starts).
+  const server = new McpServer({ name: "maestro", version: "0.1.0" }, { instructions: INSTRUCTIONS + memoryForInstructions(dir) });
 
   // Maestro sets MAESTRO_AGENT=<pane name> on every terminal it spawns, so
   // board mutations can record which agent acted (done.by, claim-on-move).
@@ -289,6 +300,71 @@ export function createServer(dir: string): McpServer {
     async ({ who }) => {
       try {
         return ok(await agentContext(dir, who, { home: os.homedir(), now: Date.now() }));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "memory_get",
+    {
+      description:
+        "Read this project's shared memory: the facts every agent working here should know, one per line with its id. Call it before you start a task.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return ok(memoryGet(dir));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "memory_save",
+    {
+      description:
+        "Save one lasting fact about this project to its shared memory, for every agent and the user (who sees it in Maestro): a convention, a decision and why, where something lives, a gotcha. One fact per call, a sentence or two. Not secrets, not notes about the task in progress.",
+      inputSchema: { fact: z.string().describe("The fact, in a sentence or two") },
+    },
+    async ({ fact }) => {
+      try {
+        return ok(memorySave(dir, fact, agentName ?? "agent", Date.now()));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "memory_update",
+    {
+      description: "Rewrite one fact in this project's memory (by its id from memory_get), when it is wrong or out of date.",
+      inputSchema: {
+        id: z.string().describe("The fact's id, like m3"),
+        fact: z.string().describe("The corrected fact"),
+      },
+    },
+    async ({ id, fact }) => {
+      try {
+        return ok(memoryUpdate(dir, id, fact, agentName ?? "agent", Date.now()));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "memory_delete",
+    {
+      description: "Remove one fact from this project's memory (by its id from memory_get), when it no longer holds.",
+      inputSchema: { id: z.string().describe("The fact's id, like m3") },
+    },
+    async ({ id }) => {
+      try {
+        return ok(memoryDelete(dir, id));
       } catch (e) {
         return fail(e);
       }

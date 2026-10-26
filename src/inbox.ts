@@ -13,7 +13,8 @@ import { revealPane } from "./agentbridge";
 import { type Area, type Tile } from "./canvas";
 import { railPlan } from "./gridfit";
 import { glanceFor, keepGlances, refreshGlance } from "./gridcards";
-import { killPty, resizePty, sendInput } from "./ipc";
+import { killPty, resizePty, sendInput, sendMessage } from "./ipc";
+import { openMemory } from "./memoryview";
 import { paneFont } from "./zoom";
 import { createReviewDrawer } from "./inboxreview";
 import { openSettings } from "./settingsmodal";
@@ -638,6 +639,7 @@ export function agentMenu(t: Task): MenuItem[] {
     } },
     { label: "Changes", hint: key("Alt+R"), sep: true, disabled: !pane.spec.worktree && !pane.spec.cwd, run: () => { onStage(); openReview(); } },
     { label: "History", hint: key("Alt+H"), run: () => { onStage(); openHistory(); } },
+    { label: "Project memory", run: () => openProjectMemory(t.wsId) },
     { label: "Copy branch name", disabled: !branch, run: () => { if (branch) void navigator.clipboard?.writeText(branch).catch(() => {}); } },
     // Another agent carries on its task, in the same folder, from its conversation.
     ...handoverItems(pane, t),
@@ -665,7 +667,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
       const folded = foldedProjects.has(g.wsId);
       return `<section class="iq-group${folded ? " folded" : ""}${g.needs ? " has-needs" : ""}">
       <h2 class="iq-gt iq-proj"><button type="button" class="iq-ph" data-proj="${esc(g.wsId)}" aria-expanded="${!folded}" aria-controls="iq-r-${gi}" title="${esc(g.name)}${folded ? " · show its agents" : " · fold"}">
-        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button></h2>
+        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 12a1.5 1.5 0 0 1 1.5-1.5h7.5M6.5 5.5h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></h2>
       <ul class="iq-rows" id="iq-r-${gi}"${folded ? " hidden" : ""}>${g.tasks.map((t) => {
         const p = paneOf(t);
         const main = t.title ?? t.name;
@@ -999,6 +1001,7 @@ export function paletteItems(): PaletteItem[] {
     act("History of the current agent", () => openHistory(), "Alt+H", "What it did and what you answered"),
     act("Sessions", () => openSessions(), "Alt+O", "Read back earlier Claude conversations"),
     act("Board", () => openTool("kanban"), "Ctrl+Shift+K", "Cards the agents move as they work"),
+    ...(ws ? [act("Project memory", () => openProjectMemory(ws.id), undefined, `What every agent in ${ws.name} knows: read, edit, or ask an agent to fix it`)] : []),
     act("Files", () => document.getElementById("btnToggleCode")?.click(), "Ctrl+Shift+E", "Folder tree and editor"),
     act("Settings", () => openSettings(), "Ctrl+,"),
     act("Pomodoro timer", () => openTool("pomodoro"), "Ctrl+Shift+J"),
@@ -1011,6 +1014,27 @@ export function paletteItems(): PaletteItem[] {
     ...projects,
     ...here,
   ];
+}
+
+/** A project's memory (memoryview.ts): what its agents share, to edit by hand
+ *  or send to one of its running agents to fix. */
+function openProjectMemory(wsId: string): void {
+  const ws = workspaces.get(wsId);
+  if (!ws) return;
+  if (!ws.dir) { topNote(`<b>${esc(ws.name)}</b> has no folder, so it has no memory`); return; }
+  closePalette();
+  openMemory({
+    dir: ws.dir,
+    project: ws.name,
+    agents: () => {
+      const cur = stagePane()?.id;
+      return allTasks()
+        .filter((t) => t.wsId === wsId && paneOf(t)?.running && t.status.state !== "stopped" && t.status.state !== "merged")
+        .sort((a, b) => Number(b.paneId === cur) - Number(a.paneId === cur))
+        .map((t) => ({ id: t.paneId, name: t.name }));
+    },
+    send: (id, text) => sendMessage(id, text),
+  });
 }
 
 /** Ctrl K: merge the agent on the stage, when it is done on a branch of its own. */
@@ -1199,6 +1223,8 @@ function mount(): void {
     openMenu(r.left + 24, r.bottom - 4, agentMenu(t), `${t.name} actions`);
   });
   queueEl.addEventListener("click", (e) => {
+    const mem = (e.target as HTMLElement).closest<HTMLElement>("[data-mem]");
+    if (mem) { openProjectMemory(mem.dataset.mem ?? ""); return; }
     // A project's name folds its agents away, or shows them again (remembered).
     const head = (e.target as HTMLElement).closest<HTMLElement>("[data-proj]");
     if (head) {
