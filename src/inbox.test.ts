@@ -63,7 +63,7 @@ vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: (
 vi.mock("./sessionfollow", () => ({ startSessionFollow: () => {}, stopSessionFollow: () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
+import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
 
@@ -103,6 +103,18 @@ describe("inbox helpers", () => {
     // Zia answered, Zed started working: same places
     const later = list.map((t) => (t.paneId === "z2" ? { ...t, status: { state: "working" as const, ask: null } } : t.paneId === "z1" ? { ...t, status: { state: "needs" as const, ask: null } } : t));
     expect(projectGroups(later, order).map((x) => x.tasks.map((t) => t.paneId))).toEqual([["m1"], ["z1", "z2"], ["a1"]]);
+  });
+
+  it("groups the Grid's cards by project, the terminal's project first", () => {
+    const list = [
+      task("z1", "Ana", "working", { wsId: "z", project: "zoldify" }),
+      task("m1", "Ana", "needs", { wsId: "m", project: "maestro" }),
+      task("a1", "Ana", "working", { wsId: "a", project: "app" }),
+      task("z2", "Bob", "idle", { wsId: "z", project: "zoldify" }),
+    ];
+    expect(railGroups(list, "z").map((g) => [g.project, g.tasks.map((t) => t.paneId)]))
+      .toEqual([["zoldify", ["z1", "z2"]], ["app", ["a1"]], ["maestro", ["m1"]]]);
+    expect(railGroups(list, null).map((g) => g.project)).toEqual(["app", "maestro", "zoldify"]);
   });
 
   it("groups in queue order and keeps an empty Needs you group", () => {
@@ -626,10 +638,16 @@ describe("inbox DOM", () => {
     const grid = panes[0].el.parentElement!;
     // Quinn waits on a card, his terminal stays home
     expect(qEl.parentElement).toBe(qGrid);
+    // his card sits under his project's name, as it is not the terminal's
+    expect([...document.querySelectorAll(".ib-rail .rc-g b")].map((b) => b.textContent)).toEqual(["quy"]);
+    expect(document.querySelector('.ib-rail [data-card="q"]')!.getAttribute("aria-label")).toBe("Quinn, in quy");
     (document.querySelector('.ib-rail [data-card="q"]') as HTMLElement).click();
     expect(qEl.parentElement).toBe(grid);
     expect(qEl.classList.contains("split-pin")).toBe(true);
     expect(qEl.classList.contains("focused")).toBe(true);
+    // the terminal names its project; Ana's card now goes under hers
+    expect(qEl.querySelector("[data-where]")!.textContent).toBe("quy");
+    expect([...document.querySelectorAll(".ib-rail .rc-g b")].map((b) => b.textContent)).toEqual(["maestro"]);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
     expect(qEl.parentElement).toBe(qGrid);
     expect(qEl.classList.contains("split-pin")).toBe(false);

@@ -206,6 +206,18 @@ export function gridOrder(list: Pick<Task, "paneId" | "status">[]): string[] {
   return list.filter((t) => t.status.state !== "stopped" && t.status.state !== "merged").map((t) => t.paneId);
 }
 
+/** The Grid's cards by project, the terminal's own project first and the rest
+ *  by name, so agents of one project sit together (several projects can each
+ *  have an "Ana"). Within a project they keep the order they came in. */
+export function railGroups<T extends Pick<Task, "wsId" | "project">>(list: T[], homeWs: string | null): { wsId: string; project: string; tasks: T[] }[] {
+  const groups: { wsId: string; project: string; tasks: T[] }[] = [];
+  for (const t of list) {
+    const g = groups.find((x) => x.wsId === t.wsId);
+    if (g) g.tasks.push(t); else groups.push({ wsId: t.wsId, project: t.project, tasks: [t] });
+  }
+  return groups.sort((a, b) => Number(b.wsId === homeWs) - Number(a.wsId === homeWs) || a.project.localeCompare(b.project) || a.wsId.localeCompare(b.wsId));
+}
+
 /* ---------------- DOM ---------------- */
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -402,7 +414,7 @@ function layoutSplit(): void {
       }
     }
   }
-  renderRail(ws, cards, plan?.rail ?? null, plan?.cols ?? 0);
+  renderRail(ws, big, cards, plan?.rail ?? null, plan?.cols ?? 0);
 }
 
 /* ---------------- the Grid's cards ---------------- */
@@ -432,13 +444,13 @@ function cardHtml(t: Task, p: Pane): string {
     body = `<p class="rc-do">${esc(doing)}${lineCounts(t)}</p>${said}`;
   }
   const color = p.color ?? "#888";
-  return `<div class="rc st-${t.status.state}${t.status.limit ? " limited" : ""}" role="listitem" tabindex="0" data-card="${esc(p.id)}" title="${esc(t.name)} · click to work with it in the terminal, right-click for more">
+  return `<div class="rc st-${t.status.state}${t.status.limit ? " limited" : ""}" role="listitem" tabindex="0" data-card="${esc(p.id)}" aria-label="${esc(t.name)}, in ${esc(t.project)}" title="${esc(t.name)} in ${esc(t.project)} · click to work with it in the terminal, right-click for more">
     <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${faceSvg(t.name, color)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
     ${t.title ? `<p class="rc-t" title="${esc(t.title)}">${esc(t.title)}</p>` : ""}${body}
   </div>`;
 }
 
-function renderRail(ws: Workspace, cards: Pane[], tile: Tile | null, cols: number): void {
+function renderRail(ws: Workspace, big: Pane | undefined, cards: Pane[], tile: Tile | null, cols: number): void {
   if (!tile || !cards.length) {
     railEl?.remove();
     railEl = null;
@@ -463,9 +475,18 @@ function renderRail(ws: Workspace, cards: Pane[], tile: Tile | null, cols: numbe
   st.left = `${tile.x}px`; st.top = `${tile.y}px`; st.width = `${tile.w}px`; st.height = `${tile.h}px`;
   st.setProperty("--rail-cols", String(cols));
   const list = allTasks();
-  const html = cards.map((p) => { const t = list.find((x) => x.paneId === p.id); return t ? cardHtml(t, p) : ""; }).join("");
+  const home = big ? list.find((x) => x.paneId === big.id)?.wsId ?? null : null;
+  const shown = cards.flatMap((p) => { const t = list.find((x) => x.paneId === p.id); return t ? [{ ...t, pane: p }] : []; });
+  const groups = railGroups(shown, home);
+  // A heading names the project above its cards, unless every card shares the
+  // terminal's project: then there is nothing to tell apart.
+  const heads = groups.length > 1 || (groups[0] && groups[0].wsId !== home);
+  const html = groups.map((g) => {
+    const head = heads ? `<div class="rc-g" role="none"><b>${esc(g.project)}</b>${g.wsId === home ? "<span>the terminal's project</span>" : ""}</div>` : "";
+    return head + g.tasks.map((t) => cardHtml(t, t.pane)).join("");
+  }).join("");
   if (railHtml !== html) { railHtml = html; railEl.innerHTML = html; }
-  railPanes = cards;
+  railPanes = groups.flatMap((g) => g.tasks.map((t) => t.pane));
   keepGlances(new Set(cards.map((p) => p.id)));
   if (railTimer === null) {
     const read = () => void Promise.all(railPanes.map((p) => refreshGlance(p))).then((ch) => { if (ch.some(Boolean)) render(); });
@@ -743,9 +764,10 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
     acts.querySelector('[data-stage="history"]')?.setAttribute("aria-pressed", String(historian?.paneId === p.id));
     // Just the branch: the project is already in the queue and the headline.
-    // On a Split card the second line is the job, when there is one.
+    // The Grid's terminal says its project first, as its cards are grouped by
+    // project, then the job when there is one.
     const where = p.el.querySelector<HTMLElement>("[data-where]");
-    if (where) { where.textContent = pinned ? t.title ?? t.branch ?? t.project : t.branch ?? ""; where.title = where.textContent; }
+    if (where) { where.textContent = pinned ? [t.project, t.title ?? t.branch].filter(Boolean).join(" · ") : t.branch ?? ""; where.title = where.textContent; }
     // On the stage the job is the big line, the agent's name moves up with the CLI.
     let ttl = p.el.querySelector<HTMLElement>(".ib-ttl");
     const showTtl = !pinned && !!t.title;
