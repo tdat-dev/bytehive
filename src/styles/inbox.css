@@ -702,6 +702,22 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
 .im-choice input:checked + span { background: #fff; color: #000; box-shadow: none; font-weight: 600; }
 .im-choice.missing { opacity: 0.4; cursor: not-allowed; }
 .im-choice input:focus-visible + span, .im-seg input:focus-visible + span { outline: 2px solid #fff; outline-offset: 2px; }
+/* New agent: the free-text command box, shown while Custom is picked. */
+.im-custom {
+  width: 100%;
+  height: 36px;
+  margin-top: 8px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  color: var(--ib-ink);
+  font: 13.5px var(--mono);
+}
+.im-custom::placeholder { color: var(--ib-ink-3); }
+.im-custom:focus { outline: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.im-custom[hidden] { display: none; }
 .im-row { display: flex; align-items: flex-end; gap: 16px; }
 .im-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }
 .im-seg span { display: grid; place-items: center; width: 36px; height: 28px; border-radius: 999px; font: 13px var(--mono); color: var(--ib-ink-2); }
@@ -909,6 +925,22 @@ body.inbox-ui .inbox-start {
 }
 .st-chip:hover { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
 .st-chip:has(:focus-visible) { outline: 2px solid #fff; outline-offset: 2px; }
+/* Start screen: the free-text command box in the composer bar. */
+.st-custom {
+  height: 32px;
+  min-width: 200px;
+  flex: 1 1 200px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  color: var(--ib-ink);
+  font: 13px var(--mono);
+}
+.st-custom::placeholder { color: var(--ib-ink-3); }
+.st-custom:focus { outline: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.st-custom[hidden] { display: none; }
 .st-sp { flex: 1; }
 .st-go {
   display: inline-flex; align-items: center; gap: 8px;

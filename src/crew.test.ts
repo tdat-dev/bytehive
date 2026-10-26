@@ -6,6 +6,8 @@ import {
   runLimited,
   launchSpec,
   effectiveArgs,
+  customPreset,
+  resolvePreset,
   PERSONA_NAMES,
   nameForNewPane,
   type CrewState,
@@ -140,5 +142,45 @@ describe("nameForNewPane", () => {
   it("falls back to '<CLI> N' when the pool is exhausted", () => {
     const taken = [...PERSONA_NAMES];
     expect(nameForNewPane("codex", taken)).toBe(`codex ${PERSONA_NAMES.length + 1}`);
+  });
+});
+
+describe("customPreset", () => {
+  it("builds a custom preset from a free-text command", () => {
+    expect(customPreset("ollama run llama3.1")).toEqual({
+      id: "custom",
+      label: "ollama run llama3.1",
+      program: "ollama",
+      args: ["run", "llama3.1"],
+      badge: "custom",
+    });
+  });
+  it("strips the custom: prefix when present", () => {
+    expect(customPreset("custom:my-agent --model x")).toMatchObject({
+      program: "my-agent",
+      args: ["--model", "x"],
+      badge: "custom",
+    });
+  });
+  it("returns null for a blank command", () => {
+    expect(customPreset("   ")).toBeNull();
+    expect(customPreset("custom:   ")).toBeNull();
+  });
+});
+
+describe("resolvePreset", () => {
+  it("prefers a built-in preset id", () => {
+    expect(resolvePreset("claude")).toMatchObject({ id: "claude", program: "claude" });
+  });
+  it("falls back to a custom preset for anything else", () => {
+    expect(resolvePreset("my-agent --fast")).toMatchObject({
+      id: "custom",
+      program: "my-agent",
+      args: ["--fast"],
+    });
+    expect(resolvePreset("custom:my-agent")).toMatchObject({ id: "custom", program: "my-agent" });
+  });
+  it("returns null for a blank id", () => {
+    expect(resolvePreset("")).toBeNull();
   });
 });

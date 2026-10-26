@@ -59,6 +59,25 @@ export function parseCommand(cmd: string): { program: string; args: string[] } {
   return { program: tokens[0] ?? "", args: tokens.slice(1) };
 }
 
+/** Prefix that marks a spawn id as a free-text command, not a preset id. */
+export const CUSTOM_PREFIX = "custom:";
+
+/** Build a launchable preset from a free-text command ("ollama run llama3",
+ *  "my-agent --model x"). Null when there is no program to run. */
+export function customPreset(cmd: string): CliPreset | null {
+  const raw = cmd.startsWith(CUSTOM_PREFIX) ? cmd.slice(CUSTOM_PREFIX.length) : cmd;
+  const { program, args } = parseCommand(raw);
+  if (!program) return null;
+  const label = raw.trim();
+  return { id: "custom", label, program, args, badge: "custom" };
+}
+
+/** Resolve a spawn id to a preset: a built-in id first, else a free-text
+ *  custom command (with or without the "custom:" prefix). */
+export function resolvePreset(id: string): CliPreset | null {
+  return CLI_PRESETS.find((p) => p.id === id) ?? customPreset(id);
+}
+
 /** Expand a crew into a flat, ordered list of presets to spawn. */
 export function expandCrew(state: CrewState): CliPreset[] {
   const out: CliPreset[] = [];

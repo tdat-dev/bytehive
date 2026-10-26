@@ -14,6 +14,7 @@ import {
   runLimited,
   effectiveArgs,
   nameForNewPane,
+  resolvePreset,
   type CrewState,
   type CliPreset,
 } from "./crew";
@@ -282,7 +283,8 @@ export function presetAvailable(program: string): boolean {
 /** New agent (the Agent Inbox form): start `count` agents of one CLI in `ws`,
  *  named like every other pane (Ana, Bob, …), and type `task` into each once
  *  it has reached its prompt. Several agents on one task is a race: compare
- *  their diffs and keep the best. Returns the new agents' names. */
+ *  their diffs and keep the best. `presetId` is a preset id or a free-text
+ *  custom command ("custom:…" or plain). Returns the new agents' names. */
 export async function spawnAgents(
   ws: Workspace,
   presetId: string,
@@ -290,7 +292,7 @@ export async function spawnAgents(
   task: string | null,
   skipPerms: boolean,
 ): Promise<string[]> {
-  const preset = CLI_PRESETS.find((p) => p.id === presetId);
+  const preset = resolvePreset(presetId);
   if (!preset || count < 1) return [];
   saveSkipPerms(skipPerms);
   await prepareIsolation(ws);
@@ -369,6 +371,6 @@ export function templateSummary(t: Template): string {
 }
 
 /** Save a crew as a preset that Settings → Sessions → Scheduled agents can launch. */
-export function saveTemplate(name: string, counts: Record<string, number>, dir: string, skipPerms: boolean): void {
-  saveTemplates([...loadTemplates(), { id: "tpl-" + Math.random().toString(36).slice(2, 9), name, counts, custom: "", customCount: 0, dir, skipPerms }]);
+export function saveTemplate(name: string, counts: Record<string, number>, dir: string, skipPerms: boolean, custom = "", customCount = 0): void {
+  saveTemplates([...loadTemplates(), { id: "tpl-" + Math.random().toString(36).slice(2, 9), name, counts, custom, customCount, dir, skipPerms }]);
 }

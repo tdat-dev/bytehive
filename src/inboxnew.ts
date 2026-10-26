@@ -2,7 +2,7 @@
 // the agent should do, pick the CLI, and how many agents take the same job
 // (two or three is a race: compare their diffs, keep the best one).
 
-import { CLI_PRESETS, type CliPreset } from "./crew";
+import { CLI_PRESETS, CUSTOM_PREFIX, type CliPreset } from "./crew";
 import { roomNote } from "./planmeter";
 import { topNote } from "./hint";
 import { activeWs } from "./appstate";
@@ -11,6 +11,9 @@ import { getPref } from "./prefs";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const LAST_CLI = "maestro.inbox.lastCli";
+const LAST_CUSTOM = "maestro.inbox.lastCustom";
+/** Radio value for the free-text command row (an AI CLI not listed above). */
+const CUSTOM = "custom";
 
 /** The coding CLIs worth offering here (shells stay in the old crew picker). */
 export function agentPresets(): CliPreset[] {
@@ -46,7 +49,12 @@ export function openNewAgent(opts: { count?: number } = {}): void {
   el?.remove();
   returnTo = document.activeElement as HTMLElement | null;
   const presets = agentPresets();
-  const chosen = presets.some((p) => p.id === lastCli()) ? lastCli() : "claude";
+  const last = lastCli();
+  const chosen = last.startsWith(CUSTOM_PREFIX) ? CUSTOM : presets.some((p) => p.id === last) ? last : "claude";
+  let lastCustom = "";
+  try {
+    lastCustom = last.startsWith(CUSTOM_PREFIX) ? last.slice(CUSTOM_PREFIX.length) : localStorage.getItem(LAST_CUSTOM) || "";
+  } catch { /* private window */ }
   el = document.createElement("div");
   el.className = "inbox-modal-back";
   el.innerHTML = `
@@ -63,7 +71,8 @@ export function openNewAgent(opts: { count?: number } = {}): void {
           const missing = !presetAvailable(p.program);
           return `<label class="im-choice${missing ? " missing" : ""}" title="${missing ? `${esc(p.program)} is not installed` : esc(p.program)}">
             <input type="radio" name="naCli" value="${esc(p.id)}"${p.id === chosen ? " checked" : ""}${missing ? " disabled" : ""}><span>${esc(p.label)}</span></label>`;
-        }).join("")}</div>
+        }).join("")}<label class="im-choice" title="Any other AI command on your PATH"><input type="radio" name="naCli" value="custom"${chosen === CUSTOM ? " checked" : ""}><span>Custom…</span></label></div>
+        <input id="naCustom" class="im-custom" placeholder="Command, e.g. ollama run llama3.1" value="${esc(lastCustom)}" aria-label="Custom command"${chosen === CUSTOM ? "" : " hidden"}>
       </fieldset>
       <p class="im-hint im-room" data-room hidden></p>
       <div class="im-row">
@@ -94,20 +103,32 @@ export function openNewAgent(opts: { count?: number } = {}): void {
     if (n) { n.textContent = note; n.hidden = !note; }
   };
   room();
-  form.addEventListener("change", () => {
+  form.addEventListener("change", (e) => {
     room();
     start.textContent = startLabel(count());
     el?.querySelector<HTMLElement>("[data-race]")?.toggleAttribute("hidden", count() < 2);
+    const isCustom = form.querySelector<HTMLInputElement>('input[name="naCli"]:checked')?.value === CUSTOM;
+    el?.querySelector<HTMLElement>("#naCustom")?.toggleAttribute("hidden", !isCustom);
+    if (isCustom && (e.target as HTMLElement).closest?.('input[name="naCli"]')) {
+      el?.querySelector<HTMLInputElement>("#naCustom")?.focus();
+    }
   });
   el.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     if (t === el || t.closest("[data-close]")) { closeNewAgent(); return; }
     if (t.closest("[data-save]")) {
-      const cli = form.querySelector<HTMLInputElement>('input[name="naCli"]:checked')?.value;
-      if (!cli) return;
-      const label = agentPresets().find((p) => p.id === cli)?.label ?? cli;
+      const picked = form.querySelector<HTMLInputElement>('input[name="naCli"]:checked')?.value;
+      if (!picked) return;
       const n = count();
-      saveTemplate(`${n > 1 ? `${n}× ` : ""}${label} · ${ws.name}`, { [cli]: n }, ws.dir ?? "", el?.querySelector<HTMLInputElement>("#naSkip")?.checked ?? false);
+      const skip = el?.querySelector<HTMLInputElement>("#naSkip")?.checked ?? false;
+      if (picked === CUSTOM) {
+        const cmd = el?.querySelector<HTMLInputElement>("#naCustom")?.value.trim() ?? "";
+        if (!cmd) { topNote("Type the command to run, e.g. <b>ollama run llama3.1</b>"); return; }
+        saveTemplate(`${n > 1 ? `${n}× ` : ""}${cmd} · ${ws.name}`, {}, ws.dir ?? "", skip, cmd, n);
+      } else {
+        const label = agentPresets().find((p) => p.id === picked)?.label ?? picked;
+        saveTemplate(`${n > 1 ? `${n}× ` : ""}${label} · ${ws.name}`, { [picked]: n }, ws.dir ?? "", skip);
+      }
       const b = t.closest<HTMLButtonElement>("[data-save]")!;
       b.textContent = "Saved";
       b.disabled = true;
@@ -120,8 +141,14 @@ export function openNewAgent(opts: { count?: number } = {}): void {
   });
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const cli = form.querySelector<HTMLInputElement>('input[name="naCli"]:checked')?.value;
+    let cli = form.querySelector<HTMLInputElement>('input[name="naCli"]:checked')?.value;
     if (!cli) return;
+    if (cli === CUSTOM) {
+      const cmd = el?.querySelector<HTMLInputElement>("#naCustom")?.value.trim() ?? "";
+      if (!cmd) { topNote("Type the command to run, e.g. <b>ollama run llama3.1</b>"); return; }
+      cli = CUSTOM_PREFIX + cmd;
+      try { localStorage.setItem(LAST_CUSTOM, cmd); } catch { /* private window */ }
+    }
     try { localStorage.setItem(LAST_CLI, cli); } catch { /* private window */ }
     const job = task.value.trim() || null;
     const skip = el?.querySelector<HTMLInputElement>("#naSkip")?.checked ?? false;

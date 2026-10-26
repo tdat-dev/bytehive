@@ -14,7 +14,7 @@ import { addRecent, getRecents } from "./recents";
 import { allTasks, type Task } from "./tasks";
 import { openNewAgent } from "./inboxnew";
 import { loadCrew, presetAvailable, quickTerminal, spawnAgents } from "./spawnmodal";
-import { CLI_PRESETS } from "./crew";
+import { CLI_PRESETS, CUSTOM_PREFIX } from "./crew";
 import { getPref } from "./prefs";
 import { sameFolder } from "./workspaces";
 import { revealPane } from "./agentbridge";
@@ -26,7 +26,10 @@ import type { Workspace } from "./panetypes";
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const FOLDER_SVG = `<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`;
 const LAST_CLI = "maestro.inbox.lastCli";
+const LAST_CUSTOM = "maestro.inbox.lastCustom";
 const CHOOSE = "__choose__";
+/** Agent select value for the free-text command row. */
+const CUSTOM_OPT = "__custom__";
 
 import { STARTERS } from "./starters";
 export { STARTERS };
@@ -110,7 +113,13 @@ function dirOptions(recents: string[]): string {
 
 function composerHTML(): string {
   const recents = getRecents();
-  const cli = lastCli();
+  const last = lastCli();
+  const isCustom = last.startsWith(CUSTOM_PREFIX);
+  const cli = isCustom ? CUSTOM_OPT : last;
+  let customCmd = "";
+  try {
+    customCmd = isCustom ? last.slice(CUSTOM_PREFIX.length) : localStorage.getItem(LAST_CUSTOM) || "";
+  } catch { /* private window */ }
   const count = getPref("defaultCount");
   const clis = CLI_PRESETS.filter((p) => !p.shell);
   return `
@@ -122,7 +131,8 @@ function composerHTML(): string {
           <span class="ia-sr">Project</span>
           <select id="stDir">${dirOptions(recents)}</select></label>
         <label class="st-chip"><span class="ia-sr">Agent</span>
-          <select id="stCli">${clis.map((p) => `<option value="${esc(p.id)}"${p.id === cli ? " selected" : ""}${presetAvailable(p.program) ? "" : ` disabled data-note="${NOT_INSTALLED}"`}>${esc(p.label)}</option>`).join("")}</select></label>
+          <select id="stCli">${clis.map((p) => `<option value="${esc(p.id)}"${p.id === cli ? " selected" : ""}${presetAvailable(p.program) ? "" : ` disabled data-note="${NOT_INSTALLED}"`}>${esc(p.label)}</option>`).join("")}<option value="${CUSTOM_OPT}"${isCustom ? " selected" : ""}>Custom…</option></select></label>
+        <input id="stCustom" class="st-custom" placeholder="Command, e.g. ollama run llama3.1" value="${esc(customCmd)}" aria-label="Custom command"${isCustom ? "" : " hidden"}>
         <label class="st-chip"><span class="ia-sr">How many agents</span>
           <select id="stCount">${[1, 2, 3].map((n) => `<option value="${n}"${n === count ? " selected" : ""}>${n === 1 ? "1 agent" : `${n} agents, same job`}</option>`).join("")}</select></label>
         <span class="st-sp"></span>
@@ -199,6 +209,12 @@ function syncChoices(recents: string[]): void {
   });
 }
 
+/** Show the custom command box only while Custom is the chosen CLI. */
+function syncCustomInput(): void {
+  const sel = el?.querySelector<HTMLSelectElement>("#stCli");
+  el?.querySelector<HTMLElement>("#stCustom")?.toggleAttribute("hidden", sel?.value !== CUSTOM_OPT);
+}
+
 /** How much of the chosen CLI's plan is left, when little. */
 function syncRoom(): void {
   const n = el?.querySelector<HTMLElement>("[data-room]");
@@ -222,8 +238,14 @@ function askLine(t: Task): string {
 async function start(form: HTMLFormElement): Promise<void> {
   const job = form.querySelector<HTMLTextAreaElement>("#stJob")!;
   const dirSel = form.querySelector<HTMLSelectElement>("#stDir")!;
-  const cli = form.querySelector<HTMLSelectElement>("#stCli")!.value;
+  let cli = form.querySelector<HTMLSelectElement>("#stCli")!.value;
   const n = Number(form.querySelector<HTMLSelectElement>("#stCount")!.value) || 1;
+  if (cli === CUSTOM_OPT) {
+    const cmd = form.querySelector<HTMLInputElement>("#stCustom")?.value.trim() ?? "";
+    if (!cmd) { form.querySelector<HTMLInputElement>("#stCustom")?.focus(); return; }
+    cli = CUSTOM_PREFIX + cmd;
+    try { localStorage.setItem(LAST_CUSTOM, cmd); } catch { /* private window */ }
+  }
   let dir = dirSel.value;
   if (dir === CHOOSE) {
     const picked = await pickFolder();
@@ -257,7 +279,7 @@ export function mountStart(): void {
   const form = el.querySelector<HTMLFormElement>(".st-compose")!;
   const job = el.querySelector<HTMLTextAreaElement>("#stJob")!;
   form.addEventListener("submit", (e) => { e.preventDefault(); void start(form); });
-  form.addEventListener("change", syncRoom);
+  form.addEventListener("change", () => { syncRoom(); syncCustomInput(); });
   // Enter starts, Shift+Enter is a new line, as in a chat box.
   job.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
