@@ -1034,6 +1034,9 @@ function openProjectMemory(wsId: string): void {
         .map((t) => ({ id: t.paneId, name: t.name }));
     },
     send: (id, text) => sendMessage(id, text),
+    projects: [...workspaces.values()].filter((w) => !!w.dir).map((w) => ({ id: w.id, name: w.name })),
+    current: wsId,
+    switchTo: (id) => openProjectMemory(id),
   });
 }
 

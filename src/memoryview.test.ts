@@ -86,6 +86,17 @@ describe("project memory panel", () => {
     expect(document.querySelector(".mm-status")!.textContent).toContain("Sent to Bob");
   });
 
+  it("switches to another project's memory from its tab", async () => {
+    const went: string[] = [];
+    openMemory({ dir: "D:/p", project: "maestro", agents: () => [], send: async () => true,
+      projects: [{ id: "w1", name: "maestro" }, { id: "w2", name: "zoldify" }], current: "w1", switchTo: (id) => went.push(id) });
+    await tick();
+    expect([...document.querySelectorAll(".mm-tab")].map((b) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["maestro", "true"], ["zoldify", null]]);
+    document.querySelector<HTMLButtonElement>('[data-proj-tab="w2"]')!.click();
+    expect(went).toEqual(["w2"]);
+    expect(document.querySelector(".mm-back")).toBeNull();
+  });
+
   it("tells you to start an agent when none of the project's is running", async () => {
     disk.files.set(FILE, { content: JSON.stringify({ version: 1, entries: [{ id: "m1", text: "a fact", at: 1, by: "you" }] }), mtime: 1 });
     openMemory({ dir: "D:/p", project: "quy", agents: () => [], send: async () => true });

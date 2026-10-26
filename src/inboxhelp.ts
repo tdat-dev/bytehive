@@ -18,6 +18,7 @@ export const HELP: HelpSection[] = [
   { title: "Agents", rows: [
     { keys: [["Right-click"], ["Shift", "F10"]], what: "An agent in the list: rename it, add it to the Grid, see its changes, restart, stop or remove it." },
     { keys: [["Alt", "↑"], ["Alt", "↓"]], what: "Move through the agents in the list." },
+    { keys: [["Book"]], what: "Beside a project name: its memory, what every agent there knows. Add, edit or delete facts, send one to an agent to fix, or switch project with the tabs." },
     { keys: [["Ctrl", "Shift", "T"]], what: "New agent. Give 2 or 3 agents the same job to race them, then Compare and keep the best." },
   ] },
   { title: "Focus, Grid and review", rows: [

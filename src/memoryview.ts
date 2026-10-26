@@ -18,6 +18,12 @@ export interface MemoryViewOpts {
   agents: () => MemoryAgent[];
   /** Types a message into an agent's terminal and presses Enter. */
   send: (agentId: string, text: string) => Promise<boolean>;
+  /** Every project with a memory, to switch between them from the panel. */
+  projects?: { id: string; name: string }[];
+  /** The project shown, by id (one of `projects`). */
+  current?: string;
+  /** Show another project's memory in place of this one. */
+  switchTo?: (id: string) => void;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -82,6 +88,8 @@ export function openMemory(o: MemoryViewOpts): void {
   back.innerHTML = `<div class="inbox-modal mm" role="dialog" aria-modal="true" aria-labelledby="mmTitle">
     <header class="im-head"><div><h2 id="mmTitle">Project memory</h2><p class="im-sub">What every agent in <b>${esc(o.project)}</b> knows when it starts. Agents add to it as they learn.</p></div>
       <button type="button" class="im-x" data-close aria-label="Close">✕</button></header>
+    ${o.projects && o.projects.length > 1 ? `<nav class="mm-tabs" aria-label="Projects">${o.projects.map((p) =>
+      `<button type="button" class="mm-tab" data-proj-tab="${esc(p.id)}"${p.id === o.current ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</nav>` : ""}
     <form class="mm-add"><label class="mm-sr" for="mmNew">Add a fact</label><textarea id="mmNew" rows="2" placeholder="Add a fact every agent here should know: a convention, a decision, where something lives…"></textarea><button type="submit" class="im-btn primary">Add</button></form>
     <div class="mm-body" aria-live="polite"></div>
     <footer class="mm-foot"></footer>
@@ -170,6 +178,8 @@ export function openMemory(o: MemoryViewOpts): void {
   back.addEventListener("click", (ev) => {
     const t = ev.target as HTMLElement;
     if (t === back || t.closest("[data-close]")) { close(); return; }
+    const tab = t.closest<HTMLElement>("[data-proj-tab]")?.dataset.projTab;
+    if (tab) { if (tab !== o.current && o.switchTo) { close(); o.switchTo(tab); } return; }
     if (t.closest("[data-cancel]")) { editing = null; asking = null; render(); return; }
     const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
     const id = t.closest<HTMLElement>("[data-id]")?.dataset.id ?? "";
