@@ -477,6 +477,11 @@ export async function focusThisWindow(): Promise<void> {
   await w.setFocus();
 }
 
+/** Rename this window (the Supervisor build wears its own name). */
+export async function setWindowTitle(title: string): Promise<void> {
+  await getCurrentWindow().setTitle(title);
+}
+
 /* ---- custom title-bar window controls (frameless) ---- */
 export async function minimizeWindow(): Promise<void> {
   await getCurrentWindow().minimize();

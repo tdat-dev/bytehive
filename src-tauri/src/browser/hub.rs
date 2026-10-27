@@ -202,14 +202,22 @@ pub fn hub_file() -> Option<PathBuf> {
 /// Whether this Maestro is the one the browser talks to. A test build (tauri
 /// dev) is not, unless MAESTRO_DEV_BROWSER=1 says so: run beside the installed
 /// app it took over the hub file and the browser host, and left both pointing
-/// at nothing when it closed.
+/// at nothing when it closed. The Supervisor edition is not either: it keeps
+/// its own hub file and leaves the installed app talking to the extension.
 pub fn owns_browser() -> bool {
+    if crate::edition::is_supervisor() {
+        return false;
+    }
     !cfg!(debug_assertions) || std::env::var("MAESTRO_DEV_BROWSER").map(|v| v == "1").unwrap_or(false)
 }
 
 /// Where this Maestro publishes its hub: the installed one's file, or a test
 /// build's own. Its agents are told which (MAESTRO_HUB_FILE).
 pub fn own_hub_file() -> Option<PathBuf> {
+    // The Supervisor edition publishes beside the installed app, never over it.
+    if crate::edition::is_supervisor() {
+        return hub_file().map(|f| f.with_file_name("browser-hub.supervisor.json"));
+    }
     if owns_browser() {
         return hub_file();
     }

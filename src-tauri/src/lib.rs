@@ -4,6 +4,7 @@ pub mod core;
 pub mod dashauth;
 pub mod dashboard;
 pub mod error;
+pub mod edition;
 pub mod land;
 pub mod planusage;
 pub mod agentusage;
@@ -30,12 +31,13 @@ fn show_main_window(app: &tauri::AppHandle) {
 /// Build the system-tray icon with a Show/Quit menu. Created hidden — the
 /// frontend turns it on via `set_tray_visible` when "Hide to tray" is enabled.
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show_i = MenuItem::with_id(app, "show", "Show Maestro", true, None::<&str>)?;
+    let app_name = if crate::edition::is_supervisor() { "Maestro Supervisor" } else { "Maestro" };
+    let show_i = MenuItem::with_id(app, "show", format!("Show {app_name}"), true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Maestro")
+        .tooltip(app_name)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
