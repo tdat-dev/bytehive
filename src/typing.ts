@@ -36,7 +36,16 @@
  * bracketed paste, stop making it guess — mark the block the way a terminal
  * does, and it assembles it itself.
  *
- * The pure part takes its `send`/`sleep` injected so it tests without Tauri. */
+ * The pure part takes its `send`/`sleep` injected so it tests without Tauri.
+ *
+ * The retry check is deliberately CLI-agnostic: it reads the known composers
+ * (`>`, `›`, `❯`) on every pane, and when none of them matches it falls back to
+ * recognising our own text sitting in the bottom lines — so a CLI Maestro has
+ * never seen still gets its Enter retried instead of its message left unsent.
+ * Retries stop while a live question is on screen, so a match inside a
+ * permission prompt can never approve anything. */
+
+import { parseAsk } from "./askparse";
 
 /** Code points per write. Small enough that ConPTY never has to swallow a
  *  blob, large enough that a paragraph is a handful of writes. */
@@ -98,8 +107,10 @@ const HINT_LINE =
  *  screen snapshot.
  *
  *  Claude Code draws the composer between two horizontal rules, with `>` on the
- *  first line and wrapped continuation lines under it. Everything else on the
- *  screen is transcript. Returns "" when the box is empty.
+ *  first line and wrapped continuation lines under it. Muse draws the same box
+ *  with a `❯` prompt (its top rule carries a label, so it often reads as
+ *  boxless). Everything else on the screen is transcript. Returns "" when the
+ *  box is empty.
  *
  *  Caveat the callers must respect: the snapshot has no colour, so a dimmed
  *  history suggestion inside an EMPTY box reads exactly like typed text. Never
@@ -119,7 +130,7 @@ export function composerText(screen: string): string {
     const tail = lines.slice(-6);
     for (let i = tail.length - 1; i >= 0; i -= 1) {
       if (HINT_LINE.test(tail[i])) continue;
-      const m = tail[i].match(/^\s*[>›]\s?(.*)$/);
+      const m = tail[i].match(/^\s*[>›❯]\s?(.*)$/);
       if (m) return m[1].replace(/\s+/g, " ").trim();
     }
     return "";
@@ -129,7 +140,7 @@ export function composerText(screen: string): string {
   let seen = false;
   for (const l of region) {
     if (HINT_LINE.test(l)) continue;
-    const m = l.match(/^\s*[>›]\s?(.*)$/);
+    const m = l.match(/^\s*[>›❯]\s?(.*)$/);
     if (m) {
       seen = true;
       body.push(m[1]);
@@ -140,11 +151,49 @@ export function composerText(screen: string): string {
 
 /** True when what's in the box is part of the message we just typed — the only
  *  case where pressing Enter again is safe. Unrelated text (a suggestion, or
- *  something the user is typing) must never be submitted on our behalf. */
+ *  something the user is typing) must never be submitted on our behalf.
+ *
+ *  When none of the known composers match, falls back to recognising our own
+ *  text sitting in the bottom lines, so a CLI Maestro has never seen still gets
+ *  its Enter retried instead of its message left unsent. */
 export function stillHolding(typed: string, screen: string): boolean {
   const box = squash(composerText(screen));
-  if (box.length < 12) return false; // too little to tell from a suggestion
-  return squash(typed).includes(box);
+  const want = squash(typed);
+  if (box.length >= 12 && want.includes(box)) return true;
+  return fallbackHolding(want, screen);
+}
+
+/** Last resort for a CLI whose composer uses none of the known prompts: our own
+ *  distinctive text sitting in the last few lines means the Enter didn't take.
+ *  Either direction matches — a wrapped fragment of our message, or our whole
+ *  message quoted inside a longer line (an unknown prompt glyph included).
+ *
+ *  An empty known composer below the match means the text above it is a
+ *  transcript echo of an already-submitted message, not a stuck send. And the
+ *  caller (typeInto) never presses Enter while a live question is on screen, so
+ *  a match inside a permission prompt can't approve anything. */
+function fallbackHolding(want: string, screen: string): boolean {
+  if (want.length < 12) return false; // too little to tell from a suggestion
+  const lines = screen
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(-4);
+  for (let i = 0; i < lines.length; i++) {
+    if (HINT_LINE.test(lines[i])) continue;
+    // The line as drawn, and with a possible unknown prompt glyph stripped —
+    // "◈ do the thing" reads as our text either way.
+    const variants = [lines[i], lines[i].replace(/^\S+\s+/, "")];
+    const hit = variants.some((v) => {
+      const frag = squash(v);
+      return frag.length >= 12 && (want.includes(frag) || frag.includes(want));
+    });
+    if (!hit) continue;
+    const below = lines.slice(i + 1);
+    if (below.some((l) => /^\s*[>›❯]\s*$/.test(l))) return false;
+    return true;
+  }
+  return false;
 }
 
 /** Type `text` through `send`, then optionally Enter.
@@ -152,7 +201,10 @@ export function stillHolding(typed: string, screen: string): boolean {
  *  With `o.screen`, the Enter is verified: a TUI that is still assembling the
  *  burst reads the CR as a newline instead of a keypress and the message just
  *  sits in the box, so we look and press again. Returns false when the message
- *  was still in the box after the last retry. */
+ *  was still in the box after the last retry.
+ *
+ *  Retries stop while a live question is on screen: the message reached the CLI
+ *  and it is asking something, and Enter there would answer the prompt. */
 export async function typeInto(
   send: (data: string) => Promise<void>,
   text: string,
@@ -176,10 +228,14 @@ export async function typeInto(
   if (!screen) return true;
   for (const waitMs of o.retryWaitsMs ?? RETRY_WAITS_MS) {
     await sleep(waitMs);
-    if (!stillHolding(text, screen())) return true;
+    const shot = screen();
+    if (!stillHolding(text, shot)) return true;
+    if (parseAsk(shot) !== null) return true; // a live question, not a stuck send
     await send("\r");
   }
-  return !stillHolding(text, screen());
+  const last = screen();
+  if (parseAsk(last) !== null) return true;
+  return !stillHolding(text, last);
 }
 
 // One promise chain per agent id, so concurrent hand-offs queue instead of

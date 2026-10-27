@@ -77,6 +77,63 @@ describe("typeInto", () => {
     expect(sent).toEqual(["do the thing carefully", "\r", "\r"]); // one retry, then the box was clear
   });
 
+  it("presses Enter again on a Muse pane while the ❯ box still holds it", async () => {
+    const museWith = (box: string): string =>
+      [
+        "◇ Thinking (5s · esc to interrupt)",
+        "",
+        "── Voice input (Alt+V to start) ───────────────────────────────",
+        `❯ ${box}`,
+        "───────────────────────────────────────────────────────────────",
+        "  muse-spark-1.3-contributor · max · D:\\maestro · YOLO",
+      ].join("\n");
+    const sent: string[] = [];
+    const box = "take the archive fix and report back";
+    const screens = [museWith(box), museWith("")];
+    const ok = await typeInto(async (d) => void sent.push(d), box, true, {
+      sleep: noSleep,
+      screen: () => screens.shift() ?? museWith(""),
+    });
+    expect(ok).toBe(true);
+    expect(sent).toEqual([box, "\r", "\r"]); // one retry, then the box was clear
+  });
+
+  it("retries Enter on an unknown CLI while our text sits in its box", async () => {
+    const box = "Director, land the archive fix and report back";
+    const screen =
+      ["◇ Working…", "", `◈ ${box}`, "", "  somenewcli-2.0 · D:\\proj"].join("\n");
+    const sent: string[] = [];
+    const ok = await typeInto(async (d) => void sent.push(d), box, true, {
+      sleep: noSleep,
+      screen: () => screen, // never clears
+      retryWaitsMs: [1],
+    });
+    expect(ok).toBe(false);
+    expect(sent).toEqual([box, "\r", "\r"]); // first Enter + one retry
+  });
+
+  it("never presses Enter into a live permission prompt", async () => {
+    // Our command is quoted inside the options, so the fallback sees our text —
+    // but the screen is asking a question, and Enter would approve option 1.
+    // Fails if the ask guard is removed.
+    const box = "deploy the archive fix now";
+    const screen = [
+      "Allow execution?",
+      `❯ 1. Yes, run: ${box}`,
+      "  2. No, stop here (esc)",
+      "",
+      "Enter to confirm · Esc to cancel",
+    ].join("\n");
+    const sent: string[] = [];
+    const ok = await typeInto(async (d) => void sent.push(d), box, true, {
+      sleep: noSleep,
+      screen: () => screen,
+      retryWaitsMs: [1, 2],
+    });
+    expect(ok).toBe(true);
+    expect(sent).toEqual([box, "\r"]); // first Enter only, no retries
+  });
+
   it("stops pressing Enter once the composer is empty", async () => {
     const sent: string[] = [];
     const ok = await typeInto(async (d) => void sent.push(d), "do the thing carefully", true, {
@@ -221,6 +278,37 @@ describe("composerText", () => {
     expect(composerText(screen)).toBe("land the archive fix and report back");
   });
 
+  it("reads a Muse composer (boxless, ❯ prompt, labelled rule above)", () => {
+    const screen = [
+      "◇ Thinking (5s · esc to interrupt)",
+      "",
+      "── Voice input (Alt+V to start) ───────────────────────────────",
+      "❯ take the archive fix and report back",
+      "───────────────────────────────────────────────────────────────",
+      "  muse-spark-1.3-contributor · max · D:\\maestro · YOLO",
+    ].join("\n");
+    expect(composerText(screen)).toBe("take the archive fix and report back");
+  });
+
+  it("reads a ❯ prompt inside a plain box", () => {
+    const screen = [
+      "────────────────────────────────────────",
+      "❯ first half of the message",
+      "  second half of the message",
+      "────────────────────────────────────────",
+    ].join("\n");
+    expect(composerText(screen)).toBe("first half of the message second half of the message");
+  });
+
+  it("is empty when the ❯ box holds nothing", () => {
+    const screen = [
+      "── Voice input (Alt+V to start) ───────────────────────────────",
+      "❯ ",
+      "───────────────────────────────────────────────────────────────",
+    ].join("\n");
+    expect(composerText(screen)).toBe("");
+  });
+
   it("does not mistake an old transcript prompt for the boxless composer", () => {
     const screen = [
       "> a message sent ten minutes ago",
@@ -260,6 +348,44 @@ describe("stillHolding", () => {
 
   it("refuses a box too short to tell apart from a suggestion", () => {
     expect(stillHolding("go ahead now", screenWith("go ahead"))).toBe(false);
+  });
+
+  it("recognises our own message in a Muse ❯ composer", () => {
+    const screen = [
+      "◇ Thinking (5s · esc to interrupt)",
+      "",
+      "── Voice input (Alt+V to start) ───────────────────────────────",
+      "❯ Director, take the archive fix and report back",
+      "───────────────────────────────────────────────────────────────",
+      "  muse-spark-1.3-contributor · max · D:\\maestro · YOLO",
+    ].join("\n");
+    expect(stillHolding("Director, take the archive fix and report back", screen)).toBe(true);
+  });
+
+  it("recognises our text under an unknown prompt glyph (a CLI never seen)", () => {
+    const screen = [
+      "◇ Working…",
+      "",
+      "◈ Director, land the archive fix and report back",
+      "",
+      "  somenewcli-2.0 · D:\\proj",
+    ].join("\n");
+    expect(stillHolding("Director, land the archive fix and report back", screen)).toBe(true);
+  });
+
+  it("does not mistake a transcript echo above an empty box for a stuck send", () => {
+    const screen = [
+      "› Director, land the archive fix now",
+      "",
+      "› ",
+      "",
+      "  gpt-5.6-sol high · D:\\proj",
+    ].join("\n");
+    expect(stillHolding("Director, land the archive fix now", screen)).toBe(false);
+  });
+
+  it("sees nothing to hold on a plain shell screen", () => {
+    expect(stillHolding("npm test run now please", "$ npm test\nall good\n")).toBe(false);
   });
 });
 
