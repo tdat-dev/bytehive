@@ -44,4 +44,9 @@ describe("agent laws", () => {
   it("tells every agent to look at what the others did first", () => {
     expect(MAESTRO_LAWS).toContain("call agent_context");
   });
+  for (const [name, text] of Object.entries(LAWS)) {
+    it(`${name} orders periodic status reports via summary_write`, () => {
+      expect(text).toMatch(/call summary_write with one line each for doing, blocked, and next/);
+    });
+  }
 });

@@ -21,6 +21,7 @@ import { changedFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
 import { agentContext } from "./context/agentcontext.js";
+import { writeSummary } from "./summary.js";
 import { memoryDelete, memoryForInstructions, memoryGet, memorySave, memoryUpdate } from "./memory.js";
 import os from "node:os";
 
@@ -73,6 +74,12 @@ and never save notes about one task in progress.
 Write every fleet_send message in English, whatever language the user speaks to
 you in — the fleet shares one working language so no agent has to translate a
 hand-off. Answer the user in the language they used.
+
+REPORTING (mandatory): the fleet dashboard shows your status from your own
+reports, so keep it fresh. Call summary_write every 15 minutes and whenever
+you get blocked, unblocked, or finish a milestone, with one line each for
+doing, blocked (write no when unblocked), and next. A missing or stale
+report reads as a stuck agent.
 
 ${BROWSER_INSTRUCTIONS}`;
 
@@ -386,6 +393,29 @@ export function createServer(dir: string): McpServer {
       try {
         const r = queueSpawn(dir, { from: agentName, cli, task, count, now: Date.now() });
         return ok(`queued ${r.count}× ${r.cli}${r.task ? " with a task" : ""}`);
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "summary_write",
+    {
+      description:
+        "Report your status for the fleet dashboard (mandatory every 15 minutes, when blocked/unblocked, and on milestones). Writes .maestro/summary-<you>.md; the dashboard shows a missing report as a stuck agent.",
+      inputSchema: {
+        doing: z.string().describe("One line: what you are doing right now"),
+        blocked: z.string().describe("One line: what blocks you, or no when unblocked"),
+        next: z.string().describe("One line: your next step"),
+        agent: z.string().optional().describe("Your Maestro pane name (defaults to MAESTRO_AGENT; pass it when running outside Maestro)"),
+      },
+    },
+    async ({ doing, blocked, next, agent }) => {
+      try {
+        const who = agent?.trim() || agentName;
+        if (!who) return fail(new Error("no agent name: pass agent, or run inside Maestro so MAESTRO_AGENT is set"));
+        return ok(writeSummary(dir, who, { doing, blocked, next }));
       } catch (e) {
         return fail(e);
       }
