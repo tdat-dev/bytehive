@@ -33,6 +33,7 @@ import { tokens } from "./transcript";
 import { sourceOf } from "./chatsource";
 import { agentUsage, onAgentCost } from "./agentcost";
 import { faceSvg } from "./agentface";
+import { cliLogo } from "./clilogos";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
 import { handOff, handOverToAgent, handoffTargets, openTargets, startLimitGuard, stopLimitGuard } from "./limitguard";
@@ -451,7 +452,7 @@ function cardHtml(t: Task, p: Pane): string {
   }
   const color = p.color ?? "#888";
   return `<div class="rc st-${t.status.state}${t.status.limit ? " limited" : ""}" role="listitem" tabindex="0" data-card="${esc(p.id)}" aria-label="${esc(t.name)}, in ${esc(t.project)}" title="${esc(t.name)} in ${esc(t.project)} · click to work with it in the terminal, right-click for more">
-    <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${faceSvg(t.name, color)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+    <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${faceSvg(t.name, color)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${cliLogo(p.spec.badge)}${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
     ${t.title ? `<p class="rc-t" title="${esc(t.title)}">${esc(t.title)}</p>` : ""}${body}
   </div>`;
 }

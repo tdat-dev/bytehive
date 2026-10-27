@@ -208,6 +208,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* CLI brand mark inside the badge chips (pane header + inbox rows). */
+.pb-cli .cli-mark,
+.rc-cli .cli-mark {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.rc-cli {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 /* "⋯ more" overflow — holds the extra controls (search/record/restart) so the
    header shows the mockup's exact three (rename · focus · kill) by default. */

@@ -42,6 +42,7 @@ import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
 import { faceSvg } from "./agentface";
+import { cliLogo } from "./clilogos";
 import { replayEarlyExit, takeEarlyExit } from "./ptyexit";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
@@ -143,7 +144,7 @@ function buildPaneEl(
       <span class="pb-av" style="--mk:${color}" aria-hidden="true">${faceSvg(name, color)}</span>
       <span class="pb-name pane-name">${name}</span>
       ${roleChip}
-      <span class="pb-cli">${badge}</span>
+      <span class="pb-cli">${cliLogo(badge)}${badge}</span>
       <span class="pb-where" data-where></span>
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
