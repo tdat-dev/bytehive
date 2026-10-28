@@ -16,6 +16,12 @@ describe("cliLogo", () => {
     expect(cliLogo("custom")).toContain("<title>Custom CLI</title>");
   });
 
+  it("embeds the real brand paths (Simple Icons), not lookalikes", () => {
+    expect(cliLogo("codex")).toContain("M22.2819 9.8211"); // OpenAI blossom
+    expect(cliLogo("claude")).toContain("M17.3041 3.541"); // Anthropic A
+    expect(cliLogo("gemini")).toContain("M11.04 19.32"); // Gemini sparkle
+  });
+
   it("falls back to the generic mark for unknown badges", () => {
     const svg = cliLogo("deepseek-future");
     expect(svg).toContain("<title>Agent CLI</title>");

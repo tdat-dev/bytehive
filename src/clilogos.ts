@@ -1,62 +1,45 @@
-// Each CLI's brand mark for the pane header and inbox rows: a small inline SVG
-// in front of the badge text (the text stays — a glyph alone needs a legend).
-// Simplified geometric marks, not trademark artwork: a starburst for Claude,
-// a six-petal blossom for Codex, a sparkle for Gemini, an arrow for Cursor,
-// prompt glyphs for terminals, and a bold letter for the rest. Pure: badge in,
-// markup out. The badge is only a lookup key, never interpolated, so unknown
-// or hostile input falls back to the generic mark.
+// Each CLI's brand mark for pane avatars and badges: a small inline SVG.
+// Brand paths are the real ones from Simple Icons (CC0, 24×24 viewBox):
+// OpenAI, Anthropic, Google Gemini, Cursor, GitHub Copilot, OpenCode, Qwen.
+// CLIs without a brand icon (Aider, Goose) get a bold letter in a fitting
+// colour; terminals keep a hand-drawn prompt glyph. Pure: badge in, markup
+// out. The badge is only a lookup key, never interpolated, so unknown or
+// missing input falls back to the generic mark.
 
 const open = (label: string) =>
-  `<svg class="cli-mark" viewBox="0 0 16 16" aria-hidden="true"><title>${label}</title>`;
+  `<svg class="cli-mark" viewBox="0 0 24 24" aria-hidden="true"><title>${label}</title>`;
 
-function spokes(color: string): string {
-  const c = 8;
-  const r = 6.5;
-  const lines: string[] = [];
-  for (let deg = 0; deg < 180; deg += 30) {
-    const a = (deg * Math.PI) / 180;
-    const dx = r * Math.sin(a);
-    const dy = r * Math.cos(a);
-    const f = (n: number) => n.toFixed(2);
-    lines.push(`<line x1="${f(c - dx)}" y1="${f(c - dy)}" x2="${f(c + dx)}" y2="${f(c + dy)}"/>`);
-  }
-  return `<g stroke="${color}" stroke-width="1.6" stroke-linecap="round">${lines.join("")}</g>`;
-}
+const brand = (color: string, d: string) => `<path fill="${color}" d="${d}"/>`;
 
-function petals(color: string): string {
-  const rings: string[] = [];
-  for (let deg = 0; deg < 360; deg += 60) {
-    rings.push(`<ellipse cx="8" cy="4.3" rx="2.1" ry="3.3" transform="rotate(${deg} 8 8)"/>`);
-  }
-  return `<g fill="none" stroke="${color}" stroke-width="1.4">${rings.join("")}</g>`;
-}
+/** 16-box hand drawing scaled onto the shared 24 grid. */
+const scaled = (inner: string) => `<g transform="scale(1.5)">${inner}</g>`;
 
 function letter(ch: string, color: string): string {
   return `<text x="8" y="12.5" text-anchor="middle" font-size="11" font-weight="700" ` +
     `font-family="ui-monospace,SFMono-Regular,Menlo,monospace" fill="${color}">${ch}</text>`;
 }
 
+const PROMPT_16 =
+  `<g fill="none" stroke="#9AA0A6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">` +
+  `<polyline points="3.5,5 7,8 3.5,11"/><line x1="8.5" y1="12" x2="13" y2="12"/></g>`;
+
 /** badge → [tooltip label, inner SVG]. Keys are CliPreset badge ids. */
 const MARKS: Record<string, [string, string]> = {
-  claude: ["Claude Code", spokes("#D97757")],
-  codex: ["Codex", petals("#E8E8E8")],
-  gemini: [
-    "Gemini",
-    `<path fill="#8AB4F8" d="M8 1 C8.7 5.2 9.6 6.6 15 8 C9.6 9.4 8.7 10.8 8 15 C7.3 10.8 6.4 9.4 1 8 C6.4 6.6 7.3 5.2 8 1 Z"/>` +
-    `<path fill="#C58AF9" d="M12.6 10.4 C12.8 11.7 13.1 12.1 14.4 12.4 C13.1 12.7 12.8 13.1 12.6 14.4 C12.4 13.1 12.1 12.7 10.8 12.4 C12.1 12.1 12.4 11.7 12.6 10.4 Z"/>`,
-  ],
-  cursor: ["Cursor", `<path fill="#FFFFFF" d="M4.5 2 L12 8.2 L8.2 8.7 L9.6 13.2 L8 13.8 L6.6 9.3 L4.5 11 Z"/>`],
-  opencode: ["opencode", `<text x="8" y="12" text-anchor="middle" font-size="8.5" font-weight="700" font-family="ui-monospace,Menlo,monospace" fill="#FFFFFF">&lt;/&gt;</text>`],
-  copilot: ["Muse", letter("C", "#A371F7")],
-  qwen: ["Qwen Code", letter("Q", "#7C7CF4")],
-  aider: ["Aider", letter("A", "#4CC38A")],
-  goose: ["Goose", letter("G", "#00C781")],
-  shell: ["Terminal", `<g fill="none" stroke="#9AA0A6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5,5 7,8 3.5,11"/><line x1="8.5" y1="12" x2="13" y2="12"/></g>`],
-  cmd: ["Terminal", `<g fill="none" stroke="#9AA0A6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5,5 7,8 3.5,11"/><line x1="8.5" y1="12" x2="13" y2="12"/></g>`],
-  custom: ["Custom CLI", `<polyline points="6,3.5 10.5,8 6,12.5" fill="none" stroke="#9AA0A6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`],
+  claude: ["Claude Code", brand("#D97757", "M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z")],
+  codex: ["Codex", brand("#FFFFFF", "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z")],
+  gemini: ["Gemini", brand("#8AB4F8", "M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81")],
+  cursor: ["Cursor", brand("#FFFFFF", "M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23")],
+  opencode: ["opencode", brand("#FFFFFF", "M22 24H2V0h20zM17 4.8H7v14.4h10z")],
+  copilot: ["Muse", brand("#FFFFFF", "M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z")],
+  qwen: ["Qwen Code", brand("#615CED", "M23.919 14.545 20.817 9.17l1.47-2.544a.56.56 0 0 0 0-.566l-1.633-2.83a.57.57 0 0 0-.49-.283h-6.207L12.487.402a.57.57 0 0 0-.49-.284H8.732a.56.56 0 0 0-.49.284L5.139 5.775h-2.94a.56.56 0 0 0-.49.284L.077 8.887a.56.56 0 0 0 0 .567L3.18 14.83l-1.47 2.545a.56.56 0 0 0 0 .566l1.634 2.83a.57.57 0 0 0 .49.283h6.205l1.47 2.545a.57.57 0 0 0 .49.284h3.266a.57.57 0 0 0 .49-.284l3.104-5.375h2.94a.57.57 0 0 0 .49-.283l1.634-2.828a.55.55 0 0 0-.004-.568M8.733.686l1.634 2.828-1.634 2.828H21.8L20.164 9.17H7.425L5.63 6.06Zm1.306 19.801-6.205-.002 1.634-2.83h3.265L2.201 6.344h3.267q3.182 5.517 6.367 11.032zm10.124-5.66L18.53 12l-6.532 11.315-1.634-2.83c2.129-3.673 4.25-7.351 6.373-11.028h3.592l3.102 5.374z")],
+  aider: ["Aider", scaled(letter("A", "#4CC38A"))],
+  goose: ["Goose", scaled(letter("G", "#00C781"))],
+  shell: ["Terminal", scaled(PROMPT_16)],
+  cmd: ["Terminal", scaled(PROMPT_16)],
+  custom: ["Custom CLI", scaled(`<polyline points="6,3.5 10.5,8 6,12.5" fill="none" stroke="#9AA0A6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`)],
 };
 
-const FALLBACK: [string, string] = ["Agent CLI", `<circle cx="8" cy="8" r="5.5" fill="none" stroke="#9AA0A6" stroke-width="1.6"/>`];
+const FALLBACK: [string, string] = ["Agent CLI", scaled(`<circle cx="8" cy="8" r="5.5" fill="none" stroke="#9AA0A6" stroke-width="1.6"/>`)];
 
 /** Inline SVG mark for a CLI badge id. Unknown or missing badges get the
  *  generic mark — panes in tests and old sessions don't always carry one. */
