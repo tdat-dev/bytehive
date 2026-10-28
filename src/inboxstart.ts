@@ -83,11 +83,19 @@ export function openProject(dir: string, count?: number): void {
   if (!ws.panes.size || count) openNewAgent({ count });
 }
 
-/** The native picker, with its failure shown instead of swallowed: a silent
- *  throw here reads as "the button does nothing". */
+/** The native picker, with every failure mode shown instead of swallowed: a
+ *  silent throw, a hang, or an instant-null all read as "the button does
+ *  nothing". */
 async function pickFolderShown(): Promise<string | null> {
+  const t0 = Date.now();
+  let picked: string | null;
   try {
-    return await pickFolder();
+    picked = await Promise.race([
+      pickFolder(),
+      new Promise<never>((_, reject) =>
+        window.setTimeout(() => reject(new Error("timed out after 10s (the window never answered)")), 10_000),
+      ),
+    ]);
   } catch (e) {
     console.error("[maestro] folder picker failed:", e);
     void messageDialog(
@@ -97,6 +105,14 @@ async function pickFolderShown(): Promise<string | null> {
     );
     return null;
   }
+  if (picked === null && Date.now() - t0 < 500) {
+    void messageDialog(
+      "The folder window closed at once without a choice.\nIf you saw no window at all, it may be hidden behind Maestro — check the taskbar.",
+      "Choose a folder",
+      "warning",
+    );
+  }
+  return picked;
 }
 
 async function chooseFolder(count?: number): Promise<void> {
@@ -251,7 +267,7 @@ function askLine(t: Task): string {
   return a.prompt;
 }
 
-async function start(form: HTMLFormElement): Promise<void> {
+async function startInner(form: HTMLFormElement): Promise<void> {
   const job = form.querySelector<HTMLTextAreaElement>("#stJob")!;
   const dirSel = form.querySelector<HTMLSelectElement>("#stDir")!;
   let cli = form.querySelector<HTMLSelectElement>("#stCli")!.value;
@@ -273,6 +289,21 @@ async function start(form: HTMLFormElement): Promise<void> {
   job.value = "";
   const ws = projectFor(dir);
   void spawnAgents(ws, cli, n, task, loadCrew().skipPerms);
+}
+
+/** startInner, with any surprise shown: an unhandled rejection here also
+ *  reads as "the button does nothing". */
+async function start(form: HTMLFormElement): Promise<void> {
+  try {
+    await startInner(form);
+  } catch (e) {
+    console.error("[maestro] start failed:", e);
+    void messageDialog(
+      `Couldn't start:\n${e instanceof Error ? e.message : String(e)}`,
+      "Start",
+      "error",
+    );
+  }
 }
 
 export function mountStart(): void {
