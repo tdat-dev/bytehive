@@ -10,8 +10,11 @@ vi.mock("./workspace", () => ({
   createWorkspace: (dir: string) => { calls.created.push(dir); return { id: "new", dir, panes: new Map() }; },
   activateWorkspace: (ws: { id: string }) => { calls.activated.push(ws.id); },
 }));
-vi.mock("./ipc", () => ({ pickFolder: async () => "D:\\new" }));
-vi.mock("./recents", () => ({ getRecents: () => calls.recentList, addRecent: (d: string) => { calls.recents.push(d); } }));
+vi.mock("./ipc", () => ({ pickFolder: vi.fn(async () => "D:\\new"), messageDialog: vi.fn(async () => {}) }));
+vi.mock("./recents", () => ({
+  getRecents: () => calls.recentList,
+  addRecent: (d: string) => { calls.recents.push(d); if (!calls.recentList.includes(d)) calls.recentList.unshift(d); },
+}));
 vi.mock("./inboxnew", () => ({ openNewAgent: (o: { count?: number } = {}) => { calls.newAgent.push(o.count); } }));
 vi.mock("./spawnmodal", () => ({
   loadCrew: () => ({ skipPerms: false }),
@@ -84,6 +87,41 @@ describe("start screen", () => {
     expect(calls.created).toEqual(["D:\\new"]);
     expect(calls.recents).toEqual(["D:\\new"]);
     expect(calls.spawned[0].slice(0, 2)).toEqual(["new", "claude"]);
+  });
+
+  it("opens the picker as soon as Choose is picked, and selects the result", async () => {
+    mountStart();
+    const dir = document.getElementById("stDir") as HTMLSelectElement;
+    dir.value = "__choose__";
+    dir.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    expect(calls.recents).toEqual(["D:\\new"]);
+    expect(dir.value).toBe("D:\\new");
+    expect([...dir.options].map((o) => o.value)).toContain("D:\\new");
+  });
+
+  it("falls back to the previous folder when the picker is cancelled", async () => {
+    const { pickFolder, messageDialog } = await import("./ipc");
+    vi.mocked(pickFolder).mockResolvedValueOnce(null);
+    vi.mocked(messageDialog).mockClear();
+    mountStart();
+    const dir = document.getElementById("stDir") as HTMLSelectElement;
+    expect(dir.value).toBe("D:\\maestro");
+    dir.value = "__choose__";
+    dir.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    expect(dir.value).toBe("D:\\maestro");
+    expect(calls.recents).toEqual([]);
+    expect(messageDialog).toHaveBeenCalledTimes(1); // instant close, not a real cancel
+  });
+
+  it("offers a Choose button on first run", async () => {
+    calls.recentList = [];
+    workspaces.clear();
+    mountStart();
+    (document.querySelector('[data-st="choose"]') as HTMLButtonElement).click();
+    await flush();
+    expect(calls.created).toEqual(["D:\\new"]);
   });
 
   it("lists who waits on you and your projects, and opens each", () => {

@@ -1010,6 +1010,10 @@ body.inbox-ui .inbox-start {
 }
 .st-steps li::before { content: counter(st); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); font: 600 12px var(--mono); color: var(--ib-ink-2); }
 .st-steps b { font-weight: 600; font-size: 14px; }
+.st-steps .st-choose { all: unset; cursor: pointer; align-self: flex-start; border-radius: 6px; }
+.st-steps .st-choose b { color: var(--ib-work); }
+.st-steps .st-choose:hover b { text-decoration: underline; }
+.st-steps .st-choose:focus-visible { outline: 2px solid var(--ib-work); outline-offset: 2px; }
 .st-steps span { font-size: 13px; line-height: 1.45; color: var(--ib-ink-3); }
 @media (max-width: 640px) {
   body.inbox-ui .inbox-start { padding: 40px 16px 40px; }

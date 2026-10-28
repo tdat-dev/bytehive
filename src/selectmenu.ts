@@ -181,7 +181,9 @@ function choose(i: number): void {
   const changed = sel.selectedIndex !== i;
   sel.selectedIndex = i;
   close(true);
-  if (changed) {
+  // data-reselect: choosing the already-chosen row still means something
+  // (the Start screen's "Choose a folder…", preselected on first run).
+  if (changed || sel.hasAttribute("data-reselect")) {
     sel.dispatchEvent(new Event("input", { bubbles: true }));
     sel.dispatchEvent(new Event("change", { bubbles: true }));
   }

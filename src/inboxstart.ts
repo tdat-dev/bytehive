@@ -161,7 +161,7 @@ function composerHTML(): string {
       <div class="st-bar">
         <label class="st-chip" title="The folder it works in">${FOLDER_SVG}
           <span class="ia-sr">Project</span>
-          <select id="stDir">${dirOptions(recents)}</select></label>
+          <select id="stDir" data-reselect>${dirOptions(recents)}</select></label>
         <label class="st-chip"><span class="ia-sr">Agent</span>
           <select id="stCli">${clis.map((p) => `<option value="${esc(p.id)}"${p.id === cli ? " selected" : ""}${presetAvailable(p.program) ? "" : ` disabled data-note="${NOT_INSTALLED}"`}>${esc(p.label)}</option>`).join("")}<option value="${CUSTOM_OPT}"${isCustom ? " selected" : ""}>Custom…</option></select></label>
         <input id="stCustom" class="st-custom" placeholder="Command, e.g. ollama run llama3.1" value="${esc(customCmd)}" aria-label="Custom command"${isCustom ? "" : " hidden"}>
@@ -205,7 +205,7 @@ export function renderStart(): void {
         <i class="st-dia" aria-hidden="true"></i><b>${esc(t.name)}</b><span class="st-wp">${esc(t.project)}</span>
         <span class="st-wl">${esc(askLine(t))}</span><span class="st-open">Answer</span></button>`).join("")}</div></section>` : "") +
     (firstRun ? `<section class="st-sec" aria-label="Getting started"><h2>Getting started</h2><ol class="st-steps">
-        <li><b>Choose a folder</b><span>Any project on your disk. Each agent gets its own git branch there, so your checkout stays clean.</span></li>
+        <li><button type="button" class="st-choose" data-st="choose"><b>Choose a folder</b></button><span>Any project on your disk. Each agent gets its own git branch there, so your checkout stays clean.</span></li>
         <li><b>Say what you want done</b><span>In plain words, in the box above. Pick Claude Code, Codex, Gemini or another CLI you have installed.</span></li>
         <li><b>Answer when it asks</b><span>When an agent wants to run a command or has a question, it moves to the top of the list. Answer it in its terminal.</span></li>
       </ol></section>`
@@ -325,6 +325,31 @@ export function mountStart(): void {
   sig = "";
   const form = el.querySelector<HTMLFormElement>(".st-compose")!;
   const job = el.querySelector<HTMLTextAreaElement>("#stJob")!;
+  const dirSel = el.querySelector<HTMLSelectElement>("#stDir")!;
+  // Picking "Choose a folder…" opens the picker at once — choosing it must
+  // not silently wait for Start. The picked folder joins the recents and
+  // becomes the choice; a cancel falls back to the previous one.
+  let prevDir = dirSel.value;
+  let picking = false;
+  dirSel.addEventListener("change", async () => {
+    if (dirSel.value !== CHOOSE) { prevDir = dirSel.value; return; }
+    if (picking) return;
+    picking = true;
+    try {
+      const picked = await pickFolderShown();
+      if (picked) {
+        addRecent(picked);
+        dirSel.innerHTML = dirOptions(getRecents());
+        dirSel.value = picked;
+        prevDir = picked;
+      } else {
+        dirSel.value = prevDir;
+      }
+      dirSel.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      picking = false;
+    }
+  });
   form.addEventListener("submit", (e) => { e.preventDefault(); void start(form); });
   form.addEventListener("change", () => { syncRoom(); syncCustomInput(); });
   // Enter starts, Shift+Enter is a new line, as in a chat box.
