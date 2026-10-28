@@ -101,6 +101,67 @@ pub(crate) fn find_rollout(root: &Path, dir: &str, since_ms: u64) -> Option<Path
     best.map(|(_, p)| p)
 }
 
+/// The session id from a rollout file name (`rollout-<time>-<id>.jsonl`):
+/// the same id `codex resume` takes. None for anything shaped otherwise.
+pub(crate) fn rollout_id(path: &Path) -> Option<String> {
+    let name = path.file_name().and_then(|n| n.to_str())?;
+    let rest = name.strip_prefix("rollout-")?.strip_suffix(".jsonl")?;
+    let cut = rest.len().checked_sub(36)?;
+    if !rest.is_char_boundary(cut) || (cut > 0 && !rest[..cut].ends_with('-')) {
+        return None;
+    }
+    let id = &rest[cut..];
+    crate::commands::is_session_id(id).then(|| id.to_string())
+}
+
+/// The newest session begun in `dir` at or after `since_ms`, for learning a
+/// fresh run's session id right after spawning it.
+#[tauri::command]
+pub async fn codex_latest_session(dir: String, since_ms: u64) -> Result<Option<String>, CommandError> {
+    run_blocking(move || {
+        let Some(root) = sessions_root() else { return Ok(None) };
+        Ok(find_rollout(&root, &dir, since_ms).and_then(|p| rollout_id(&p)))
+    })
+    .await
+}
+
+/// Whether `codex resume <id>` can pick this session up: its rollout is still
+/// on disk, or the session index still names it.
+#[tauri::command]
+pub async fn codex_session_exists(session_id: String) -> Result<bool, CommandError> {
+    run_blocking(move || {
+        if !crate::commands::is_session_id(&session_id) {
+            return Ok(false);
+        }
+        let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Ok(false) };
+        let codex = Path::new(&home).join(".codex");
+        if rollout_with_id(&codex.join("sessions"), &session_id) {
+            return Ok(true);
+        }
+        let idx = codex.join("session_index.jsonl");
+        Ok(std::fs::read_to_string(&idx).map_or(false, |t| t.contains(&format!("\"id\":\"{session_id}\""))))
+    })
+    .await
+}
+
+/// Any rollout file under `root` (any day) carrying this session id.
+/// File names only, no reads: cheap enough to scan without a day cap.
+fn rollout_with_id(root: &Path, id: &str) -> bool {
+    for y in sorted_dirs(root) {
+        for m in sorted_dirs(&y) {
+            for d in sorted_dirs(&m) {
+                let Ok(entries) = std::fs::read_dir(&d) else { continue };
+                for ent in entries.flatten() {
+                    if rollout_id(&ent.path()).as_deref() == Some(id) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 pub(crate) fn sorted_dirs(p: &Path) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = std::fs::read_dir(p)
         .map(|it| it.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
@@ -217,6 +278,20 @@ mod tests {
         assert_eq!(got.path, "");
         assert_eq!(session_cwd(&p).as_deref(), Some("D:\\app"));
         let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rollout_ids_power_resume() {
+        let root = tmp("resume");
+        let id = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+        let mine = rollout(&root, "2026/09/25", &format!("2026-09-25T10-00-00-{id}"), "D:/app", "");
+        assert_eq!(rollout_id(&mine).as_deref(), Some(id));
+        assert_eq!(rollout_id(Path::new("rollout-nope.jsonl")), None);
+        let p = find_rollout(&root, "D:/app", 0).unwrap();
+        assert_eq!(rollout_id(&p).as_deref(), Some(id));
+        assert!(rollout_with_id(&root, id));
+        assert!(!rollout_with_id(&root, "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

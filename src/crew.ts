@@ -22,7 +22,7 @@ export const CLI_PRESETS: CliPreset[] = [
   { id: "codex", label: "Codex", program: "codex", args: [], badge: "codex", skipPermsArgs: ["--yolo"] },
   { id: "gemini", label: "Gemini", program: "gemini", args: [], badge: "gemini", skipPermsArgs: ["--yolo"] },
   { id: "aider", label: "Aider", program: "aider", args: [], badge: "aider", skipPermsArgs: ["--yes-always"] },
-  { id: "cursor", label: "Cursor Agent", program: "cursor-agent", args: [], badge: "cursor" },
+  { id: "cursor", label: "Cursor Agent", program: "cursor-agent", args: [], badge: "cursor", skipPermsArgs: ["--yolo"] },
   { id: "opencode", label: "opencode", program: "opencode", args: [], badge: "opencode" },
   { id: "qwen", label: "Qwen Code", program: "qwen", args: [], badge: "qwen", skipPermsArgs: ["--yolo"] },
   { id: "copilot", label: "GitHub Copilot", program: "copilot", args: [], badge: "copilot", skipPermsArgs: ["--allow-all-tools"] },

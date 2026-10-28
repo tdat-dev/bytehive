@@ -99,6 +99,38 @@ pub(crate) fn newest_session(conn: &Connection, dir: &str, since_ms: Option<u64>
     found
 }
 
+/// The newest session begun in `dir` at or after `since_ms`, for learning a
+/// fresh run's session id right after spawning it.
+#[tauri::command]
+pub async fn opencode_latest_session(dir: String, since_ms: u64) -> Result<Option<String>, CommandError> {
+    run_blocking(move || {
+        let Some(db) = db_path() else { return Ok(None) };
+        let Ok(conn) = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX) else {
+            return Ok(None);
+        };
+        let _ = conn.busy_timeout(Duration::from_millis(1500));
+        Ok(newest_session(&conn, &dir, Some(since_ms)))
+    })
+    .await
+}
+
+/// Whether `opencode --session <id>` can pick this session up.
+#[tauri::command]
+pub async fn opencode_session_exists(session_id: String) -> Result<bool, CommandError> {
+    run_blocking(move || {
+        if session_id.is_empty() || session_id.len() > 128 {
+            return Ok(false);
+        }
+        let Some(db) = db_path() else { return Ok(false) };
+        let Ok(conn) = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX) else {
+            return Ok(false);
+        };
+        let _ = conn.busy_timeout(Duration::from_millis(1500));
+        Ok(session_exists(&conn, &session_id))
+    })
+    .await
+}
+
 /// Message and part rows changed after `cursor`, oldest change first, one JSON
 /// object per line: `{"kind":"message"|"part","id","messageId","created","updated","data":{…}}`.
 fn rows_after(conn: &Connection, session: &str, cursor: u64) -> rusqlite::Result<(String, u64)> {
@@ -177,6 +209,18 @@ mod tests {
         // a known session that is gone falls back to the newest one
         assert_eq!(opencode_transcript_in(&db, "D:/app", None, Some("ses_gone"), 0).path, "ses_new");
         assert_eq!(opencode_transcript_in(&db, "D:/app", None, Some("ses_old"), 0).path, "ses_old");
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn latest_and_exists_power_resume() {
+        let db = temp_db("resume");
+        let conn = Connection::open(&db).unwrap();
+        assert_eq!(newest_session(&conn, "D:/app", Some(1000)).as_deref(), Some("ses_new"));
+        assert_eq!(newest_session(&conn, "D:/app", Some(1600)).as_deref(), None);
+        assert!(session_exists(&conn, "ses_new"));
+        assert!(!session_exists(&conn, "ses_gone"));
+        drop(conn);
         let _ = std::fs::remove_file(&db);
     }
 

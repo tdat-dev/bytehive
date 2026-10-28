@@ -189,6 +189,28 @@ export async function museSessionExists(sessionId: string): Promise<boolean> {
   return invoke<boolean>("muse_session_exists", { sessionId });
 }
 
+/** The newest Codex session begun in `dir` at or after `sinceMs`, for
+ *  learning a fresh run's session id. Null when there is none yet. */
+export async function codexLatestSession(dir: string, sinceMs: number): Promise<string | null> {
+  return invoke<string | null>("codex_latest_session", { dir, sinceMs });
+}
+
+/** Whether `codex resume <sessionId>` can pick this session up. */
+export async function codexSessionExists(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("codex_session_exists", { sessionId });
+}
+
+/** The newest opencode session begun in `dir` at or after `sinceMs`, for
+ *  learning a fresh run's session id. Null when there is none yet. */
+export async function opencodeLatestSession(dir: string, sinceMs: number): Promise<string | null> {
+  return invoke<string | null>("opencode_latest_session", { dir, sinceMs });
+}
+
+/** Whether `opencode --session <sessionId>` can pick this session up. */
+export async function opencodeSessionExists(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("opencode_session_exists", { sessionId });
+}
+
 /** A Claude Code process running now and the conversation it is in. */
 export interface LiveSession {
   pid: number;

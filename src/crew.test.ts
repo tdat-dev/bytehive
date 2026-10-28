@@ -74,14 +74,14 @@ describe("effectiveArgs (skip-permissions)", () => {
     expect(effectiveArgs(find("aider"), true)).toEqual(["--yes-always"]);
     expect(effectiveArgs(find("copilot"), true)).toEqual(["--allow-all-tools"]);
     expect(effectiveArgs(find("muse"), true)).toEqual(["--yolo"]);
+    expect(effectiveArgs(find("cursor"), true)).toEqual(["--yolo"]);
   });
 
   it("keeps existing args and appends (PowerShell stays untouched — no flag)", () => {
     expect(effectiveArgs(find("powershell"), true)).toEqual(["-NoLogo"]);
   });
 
-  it("leaves config-only CLIs unchanged (cursor, opencode, goose)", () => {
-    expect(effectiveArgs(find("cursor"), true)).toEqual([]);
+  it("leaves config-only CLIs unchanged (opencode, goose)", () => {
     expect(effectiveArgs(find("opencode"), true)).toEqual([]);
     expect(effectiveArgs(find("goose"), true)).toEqual([]);
   });

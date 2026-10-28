@@ -13,6 +13,10 @@ import {
   claudeSessionExists,
   museSessions,
   museSessionExists,
+  codexLatestSession,
+  codexSessionExists,
+  opencodeLatestSession,
+  opencodeSessionExists,
   attachPty,
   openExternal,
   worktreeAdd,
@@ -311,8 +315,8 @@ export function createAgent(
   const boot = async () => {
     if (!ws.panes.has(id)) return; // killed before its turn to boot
     const { cols, rows } = term.fit();
-    // Held from a fresh Muse snapshot to its capture; the finally lets go.
-    let releaseMuseCapture: () => void = () => {};
+    // Held from a fresh capture's lock to its find; the finally lets go.
+    let releaseCapture: () => void = () => {};
     try {
       // Isolated agents get their own worktree+branch; point the PTY cwd there.
       let cwd = spec.cwd;
@@ -360,22 +364,25 @@ export function createAgent(
       const own =
         spec.badge === "claude" ? await claudeSessionArgs(spec, cwd)
         : spec.badge === "muse" ? await museSessionArgs(spec)
+        : spec.badge === "codex" ? await codexSessionArgs(spec)
+        : spec.badge === "opencode" ? await opencodeSessionArgs(spec)
         : [];
       if (own.length) saveSession(); // History finds this run's transcript after a restart too
-      // A Muse resume is a subcommand (`muse resume <id>`); its root options
+      // A Muse/Codex resume is a subcommand (`muse resume <id>`); root options
       // (--yolo, …) may stand on either side of it, so appending is fine.
       const args =
         spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws]
-        : spec.badge === "muse" ? [...spec.args, ...own]
+        : own.length ? [...spec.args, ...own]
         : spec.args;
-      // A fresh Muse run can't be given its session id (no such flag): learn
-      // it from what appears in the session store while we hold the capture
-      // lock, so two Muse agents booting together can't claim each other's.
-      const captureMuse = spec.badge === "muse" && !spec.sessionId && !musePicksSession(spec.args);
-      let museBefore: Set<string> | null = null;
-      if (captureMuse) {
-        releaseMuseCapture = await lockMuseCapture();
-        museBefore = new Set((await museSessions().catch(() => [])).map((s) => s.id));
+      // A fresh run of these CLIs can't be given its session id (no such
+      // flag): learn it from the newest session begun after we lock, so two
+      // agents of one CLI booting together can't claim each other's.
+      const captureBadge = (spec.badge === "muse" || spec.badge === "codex" || spec.badge === "opencode") &&
+        !spec.sessionId && !picksSession(spec.badge, spec.args) ? spec.badge : null;
+      let spawnTs = 0;
+      if (captureBadge) {
+        releaseCapture = await lockSessionCapture(captureBadge);
+        spawnTs = Date.now();
       }
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
@@ -405,7 +412,7 @@ export function createAgent(
       // It may already be gone: a CLI that fails at once can exit before
       // spawnPty returned. Its exit was held; end the pane now.
       if (replayEarlyExit(id, pane.run)) return;
-      if (museBefore) await detectMuseSession(spec, museBefore, () => pane.running && ws.panes.has(id));
+      if (captureBadge) await detectSpawnedSession(spec, captureBadge, cwd, spawnTs, () => pane.running && ws.panes.has(id));
       // Re-fit once the grid layout has settled; correct the PTY size if it moved.
       requestAnimationFrame(() => {
         const s = term.fit();
@@ -420,7 +427,7 @@ export function createAgent(
       setStatus(pane, "spawn failed", "err");
       term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${pane.error}]\x1b[0m\r\n`));
     } finally {
-      releaseMuseCapture();
+      releaseCapture();
     }
   };
 
@@ -526,29 +533,96 @@ export async function museSessionArgs(
   return [];
 }
 
-let museCaptureTail: Promise<void> = Promise.resolve();
-/** One Muse session capture at a time: the lock spans a fresh boot's
- *  snapshot, spawn and capture, so two Muse agents starting together each
- *  learn their own session. Resolves to the release. */
-function lockMuseCapture(): Promise<() => void> {
+/** True when the agent's own args already choose a Codex session (`resume …`,
+ *  `exec …`, `fork …`): Maestro must neither append its own nor capture one. */
+export function codexPicksSession(args: string[]): boolean {
+  return args.some((a) => a === "resume" || a === "--last" || a === "exec" || a === "fork");
+}
+
+/** Codex's session for this run, remembered on the spec: its own one again
+ *  (`codex resume <id>`) when Codex still has it, else a fresh boot whose id
+ *  the capture after spawning learns (see boot). None when the args already
+ *  pick a session themselves. */
+export async function codexSessionArgs(
+  spec: AgentSpec,
+  exists: (id: string) => Promise<boolean> = codexSessionExists,
+): Promise<string[]> {
+  if (codexPicksSession(spec.args)) { delete spec.sessionId; return []; }
+  // Its own conversation, when Codex still has it: a restart, an app restart
+  // or Resume all carries on where it was instead of starting blank.
+  if (spec.sessionId && (await exists(spec.sessionId).catch(() => false))) return ["resume", spec.sessionId];
+  delete spec.sessionId; // gone or never had one: boot fresh, capture after
+  return [];
+}
+
+/** True when the agent's own args already choose an opencode session
+ *  (`--continue`, `--session …`, `run …`): Maestro must neither append its
+ *  own nor capture one. */
+export function opencodePicksSession(args: string[]): boolean {
+  return args.some((a) => a === "--continue" || a === "-c" || a === "--session" || a === "-s" ||
+    a.startsWith("--session=") || a === "--fork" || a === "run" || a === "session" || a === "export" || a === "import");
+}
+
+/** opencode's session for this run, remembered on the spec: its own one again
+ *  (`opencode --session <id>`) when opencode still has it, else a fresh boot
+ *  whose id the capture after spawning learns (see boot). None when the args
+ *  already pick a session themselves. */
+export async function opencodeSessionArgs(
+  spec: AgentSpec,
+  exists: (id: string) => Promise<boolean> = opencodeSessionExists,
+): Promise<string[]> {
+  if (opencodePicksSession(spec.args)) { delete spec.sessionId; return []; }
+  // Its own conversation, when opencode still has it: a restart, an app
+  // restart or Resume all carries on where it was instead of starting blank.
+  if (spec.sessionId && (await exists(spec.sessionId).catch(() => false))) return ["--session", spec.sessionId];
+  delete spec.sessionId; // gone or never had one: boot fresh, capture after
+  return [];
+}
+
+/** Whether the agent's own args already choose this CLI's session. */
+function picksSession(badge: string, args: string[]): boolean {
+  if (badge === "muse") return musePicksSession(args);
+  if (badge === "codex") return codexPicksSession(args);
+  if (badge === "opencode") return opencodePicksSession(args);
+  return false;
+}
+
+const captureTails = new Map<string, Promise<void>>();
+/** One session capture per CLI at a time: the lock spans a fresh boot's
+ *  spawn and capture, so two agents of one CLI starting together each learn
+ *  their own session. Resolves to the release. */
+function lockSessionCapture(badge: string): Promise<() => void> {
   let release!: () => void;
   const taken = new Promise<void>((res) => { release = res; });
-  const prev = museCaptureTail;
-  museCaptureTail = prev.then(() => taken);
+  const prev = captureTails.get(badge) ?? Promise.resolve();
+  captureTails.set(badge, prev.then(() => taken));
   return prev.then(() => release);
 }
 
-/** Learn a fresh Muse run's session id: the session that appeared since
- *  `before`. Gives up silently past the deadline or when the pane is gone —
- *  the next restart then just boots fresh again, as before. */
-async function detectMuseSession(spec: AgentSpec, before: Set<string>, alive: () => boolean): Promise<void> {
+/** The newest session of `badge` begun at or after `sinceMs`: a Muse session
+ *  anywhere, a Codex/opencode one in `dir`. Null when none exists yet. */
+async function latestSession(badge: string, dir: string | null, sinceMs: number): Promise<string | null> {
+  if (badge === "muse") {
+    const fresh = (await museSessions()).filter((s) => s.modified_ms >= sinceMs);
+    fresh.sort((a, b) => b.modified_ms - a.modified_ms);
+    return fresh[0]?.id ?? null;
+  }
+  if (!dir) return null;
+  if (badge === "codex") return codexLatestSession(dir, sinceMs);
+  if (badge === "opencode") return opencodeLatestSession(dir, sinceMs);
+  return null;
+}
+
+/** Learn a fresh run's session id: the session begun since `sinceMs` while
+ *  the capture lock was held. Gives up silently past the deadline or when the
+ *  pane is gone — the next restart then just boots fresh again, as before. */
+async function detectSpawnedSession(spec: AgentSpec, badge: string, dir: string | null, sinceMs: number, alive: () => boolean): Promise<void> {
   const deadline = Date.now() + 12_000;
   for (;;) {
     try {
-      const fresh = (await museSessions()).filter((s) => !before.has(s.id));
-      if (fresh.length) {
-        fresh.sort((a, b) => b.modified_ms - a.modified_ms);
-        spec.sessionId = fresh[0].id;
+      const id = await latestSession(badge, dir, sinceMs);
+      if (id) {
+        spec.sessionId = id;
         saveSession();
         return;
       }

@@ -617,7 +617,7 @@ pub(crate) fn claude_project_dir(dir: &str) -> Option<std::path::PathBuf> {
 }
 
 /// A session id is a UUID; anything else never reaches the filesystem.
-fn is_session_id(id: &str) -> bool {
+pub(crate) fn is_session_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
 }
 
