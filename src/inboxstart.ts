@@ -9,7 +9,7 @@
 import { workspaces } from "./appstate";
 import { roomNote } from "./planmeter";
 import { activateWorkspace, createWorkspace } from "./workspace";
-import { pickFolder } from "./ipc";
+import { messageDialog, pickFolder } from "./ipc";
 import { addRecent, getRecents } from "./recents";
 import { allTasks, type Task } from "./tasks";
 import { openNewAgent } from "./inboxnew";
@@ -83,8 +83,24 @@ export function openProject(dir: string, count?: number): void {
   if (!ws.panes.size || count) openNewAgent({ count });
 }
 
+/** The native picker, with its failure shown instead of swallowed: a silent
+ *  throw here reads as "the button does nothing". */
+async function pickFolderShown(): Promise<string | null> {
+  try {
+    return await pickFolder();
+  } catch (e) {
+    console.error("[maestro] folder picker failed:", e);
+    void messageDialog(
+      `Couldn't open the folder picker:\n${e instanceof Error ? e.message : String(e)}`,
+      "Choose a folder",
+      "error",
+    );
+    return null;
+  }
+}
+
 async function chooseFolder(count?: number): Promise<void> {
-  const dir = await pickFolder();
+  const dir = await pickFolderShown();
   if (dir) openProject(dir, count);
 }
 
@@ -248,7 +264,7 @@ async function start(form: HTMLFormElement): Promise<void> {
   }
   let dir = dirSel.value;
   if (dir === CHOOSE) {
-    const picked = await pickFolder();
+    const picked = await pickFolderShown();
     if (!picked) return;
     dir = picked;
   }
