@@ -727,6 +727,60 @@ pub async fn muse_session_exists(session_id: String) -> Result<bool, CommandErro
     .await
 }
 
+/// New complete lines of a Muse agent's session log from `offset`: the
+/// agent's own session when `session_id` names one, else nothing (`path`
+/// "" until one is known).
+#[tauri::command]
+pub async fn muse_transcript(session_id: Option<String>, offset: u64, tail_bytes: Option<u64>) -> Result<TranscriptChunk, CommandError> {
+    run_blocking(move || {
+        let Some(id) = session_id.filter(|s| is_muse_session_id(s)) else { return Ok(TranscriptChunk::default()) };
+        let Some(root) = muse_sessions_root() else { return Ok(TranscriptChunk::default()) };
+        Ok(muse_transcript_in(&root, &id, offset, tail_bytes))
+    })
+    .await
+}
+
+/// Most bytes one read hands back, so a long session loads in slices.
+const MUSE_SLICE: u64 = 2 * 1024 * 1024;
+
+fn muse_transcript_in(root: &Path, id: &str, offset: u64, tail: Option<u64>) -> TranscriptChunk {
+    use std::io::{Read, Seek, SeekFrom};
+    let Some(log) = muse_session_log(root, id) else { return TranscriptChunk::default() };
+    let Ok(mut file) = std::fs::File::open(&log) else {
+        return TranscriptChunk { path: id.to_string(), text: String::new(), next: offset, from: offset };
+    };
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let start = read_start(&mut file, size, offset, tail);
+    let want = size.saturating_sub(start).min(MUSE_SLICE);
+    let mut buf = vec![0u8; want as usize];
+    if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut buf).is_err() {
+        return TranscriptChunk { path: id.to_string(), text: String::new(), next: start, from: start };
+    }
+    // Hand back whole lines only; the rest is read next time.
+    let cut = buf.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    buf.truncate(cut);
+    TranscriptChunk { path: id.to_string(), text: String::from_utf8_lossy(&buf).into_owned(), next: start + cut as u64, from: start }
+}
+
+/// A session's log: the `<id>/session.jsonl` under any date shard. The id
+/// never reaches the filesystem unvalidated.
+fn muse_session_log(root: &Path, id: &str) -> Option<std::path::PathBuf> {
+    if !is_muse_session_id(id) {
+        return None;
+    }
+    for y in crate::transcripts::codex::sorted_dirs(root) {
+        for m in crate::transcripts::codex::sorted_dirs(&y) {
+            for d in crate::transcripts::codex::sorted_dirs(&m) {
+                let log = d.join(id).join("session.jsonl");
+                if log.is_file() {
+                    return Some(log);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// A Claude Code process that is running now, as it describes itself in
 /// `~/.claude/sessions/<pid>.json`. Its session id there follows the
 /// conversation it is in: a /clear or a /resume inside it moves it on.
@@ -1276,6 +1330,26 @@ mod muse_tests {
         assert!(!is_muse_session_id(""));
         assert!(!is_muse_session_id("../evil"));
         assert!(!is_muse_session_id("01a18216 5bd8"));
+    }
+
+    #[test]
+    fn muse_transcript_reads_whole_lines_in_slices() {
+        let root = std::env::temp_dir().join(format!("maestro-muse-tx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("2026").join("10").join("28").join("01a18216-5bd8-7b20-9b10-9f481ee54a74");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("session.jsonl"), "{\"a\":1}\n{\"b\":2}\n{\"half\":").unwrap();
+        let id = "01a18216-5bd8-7b20-9b10-9f481ee54a74";
+        let c = muse_transcript_in(&root, id, 0, None);
+        assert_eq!(c.path, id);
+        assert_eq!(c.text, "{\"a\":1}\n{\"b\":2}\n"); // the half-written last one waits
+        assert_eq!(c.from, 0);
+        let c2 = muse_transcript_in(&root, id, c.next, None);
+        assert_eq!(c2.text, "");
+        // unknown id: nothing yet; a hostile id never reaches the filesystem
+        assert_eq!(muse_transcript_in(&root, "00000000-0000-4000-8000-000000000000", 0, None).path, "");
+        assert_eq!(muse_session_log(&root, "../../evil"), None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 

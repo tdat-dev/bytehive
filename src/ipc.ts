@@ -211,6 +211,17 @@ export async function opencodeSessionExists(sessionId: string): Promise<boolean>
   return invoke<boolean>("opencode_session_exists", { sessionId });
 }
 
+/** New complete lines of a Muse agent's session log from `offset`: the
+ *  agent's own session when `sessionId` names one, else nothing (`path` ""
+ *  until one is known). */
+export async function museTranscript(
+  sessionId: string | null,
+  offset: number,
+  tailBytes?: number,
+): Promise<{ path: string; text: string; next: number; from?: number }> {
+  return invoke("muse_transcript", { sessionId, offset, tailBytes: tailBytes ?? null });
+}
+
 /** A Claude Code process running now and the conversation it is in. */
 export interface LiveSession {
   pid: number;

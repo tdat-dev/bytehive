@@ -2,16 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const codex = vi.fn();
 const opencode = vi.fn();
+const muse = vi.fn();
 vi.mock("./ipc", () => ({
   claudeTranscript: vi.fn(),
   codexTranscript: (...a: unknown[]) => codex(...a),
   opencodeTranscript: (...a: unknown[]) => opencode(...a),
+  museTranscript: (...a: unknown[]) => muse(...a),
 }));
 
 import { SOURCES, RECHECK_MS, forgetConversation } from "./chatsource";
 import type { Pane } from "./panetypes";
 
-const pane = (id: string, spawnedAt: number) => ({ id, spawnedAt, spec: { badge: "codex" } }) as unknown as Pane;
+const pane = (id: string, spawnedAt: number, spec = {}) => ({ id, spawnedAt, spec: { badge: "codex", ...spec } }) as unknown as Pane;
 
 describe("chat sources remember the conversation they found", () => {
   beforeEach(() => {
@@ -20,6 +22,7 @@ describe("chat sources remember the conversation they found", () => {
     forgetConversation();
     codex.mockReset();
     opencode.mockReset();
+    muse.mockReset();
   });
   afterEach(() => vi.useRealTimers());
 
@@ -66,5 +69,16 @@ describe("chat sources remember the conversation they found", () => {
     await SOURCES.opencode.read(a, "D:/a", 5);
     await SOURCES.opencode.read(b, "D:/b", 5);
     expect(opencode.mock.calls.map((c) => c[2])).toEqual([null, null, "ses_a", "ses_b"]);
+  });
+
+  it("muse: reads its own session id, nothing until the capture lands it", async () => {
+    muse.mockResolvedValue({ path: "s1", text: "{}", next: 5 });
+    const p = pane("pm", 900_000, { badge: "muse", sessionId: "s1" });
+    const r = await SOURCES.muse.read(p, "D:/app", 0, 99);
+    expect(muse.mock.calls).toEqual([["s1", 0, 99]]);
+    expect(r).toEqual({ path: "s1", text: "{}", next: 5 });
+    const none = pane("pn", 900_000, { badge: "muse" });
+    expect(await SOURCES.muse.read(none, "D:/app", 7)).toEqual({ path: "", text: "", next: 7 });
+    expect(muse).toHaveBeenCalledTimes(1);
   });
 });
