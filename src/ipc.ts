@@ -176,6 +176,19 @@ export async function claudeSessionExists(dir: string, sessionId: string): Promi
   return invoke<boolean>("claude_session_exists", { dir, sessionId });
 }
 
+/** One Muse conversation: its session id and when its log last changed. */
+export interface MuseSession { id: string; modified_ms: number }
+
+/** The conversations Muse has, newest first. */
+export async function museSessions(): Promise<MuseSession[]> {
+  return invoke<MuseSession[]>("muse_sessions", {});
+}
+
+/** Whether `muse resume <sessionId>` can pick this session up. */
+export async function museSessionExists(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("muse_session_exists", { sessionId });
+}
+
 /** A Claude Code process running now and the conversation it is in. */
 export interface LiveSession {
   pid: number;

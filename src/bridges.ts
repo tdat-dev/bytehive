@@ -352,6 +352,7 @@ export function initBridges(): void {
         p.running = false;
         p.spawnedAt = null;
         p.exitCode = code;
+        p.el.classList.add("stopped"); // dims the tile; the veil offers Resume
         clearAttention(p); // a dead agent isn't waiting on anyone
         if (p.recording) void stopRecording(p); // flush + close the recording
         setStatus(p, `exited (${code})`, "");

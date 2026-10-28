@@ -632,6 +632,101 @@ pub async fn claude_session_exists(dir: String, session_id: String) -> Result<bo
     .await
 }
 
+/// Where Muse keeps its session logs:
+/// `<data>/muse/sessions/YYYY/MM/DD/<id>/session.jsonl`. Unlike Claude, a run
+/// can't be given its session id up front, so Maestro learns a new run's id
+/// from what appeared since before it spawned (see pane.ts).
+fn muse_sessions_root() -> Option<std::path::PathBuf> {
+    let data = std::env::var("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .ok()
+        .filter(|p| p.is_absolute())
+        .or_else(|| {
+            let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
+            Some(Path::new(&home).join(".local").join("share"))
+        })?;
+    Some(data.join("muse").join("sessions"))
+}
+
+/// A Muse session id only ever names a directory we enumerate, never a path
+/// we build from it, so this is just a shape guard: ULID-ish ids like
+/// `01a18216-5bd8-…` (hex and dashes) pass, anything odd stays out.
+fn is_muse_session_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+/// Every Muse session under `root`: (id, when its log last changed). Four
+/// levels deep exactly (`YYYY/MM/DD/<id>/session.jsonl`); anything nested
+/// deeper (subagent logs) is not a session of its own.
+fn muse_session_files(root: &Path) -> Vec<(String, u64)> {
+    fn dirs(dir: &Path) -> Vec<std::path::PathBuf> {
+        let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+        entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()
+    }
+    let mut out = Vec::new();
+    for y in dirs(root) {
+        for m in dirs(&y) {
+            for d in dirs(&m) {
+                for id_dir in dirs(&d) {
+                    let Some(id) = id_dir.file_name().and_then(|s| s.to_str()) else { continue };
+                    if id == "subagent" || !is_muse_session_id(id) {
+                        continue;
+                    }
+                    let log = id_dir.join("session.jsonl");
+                    if !log.is_file() {
+                        continue;
+                    }
+                    let ms = std::fs::metadata(&log)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    out.push((id.to_string(), ms));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// One Muse conversation: its session id and when its log last changed.
+#[derive(Serialize, Clone)]
+pub struct MuseSession {
+    pub id: String,
+    pub modified_ms: u64,
+}
+
+/// The conversations Muse has, newest first. The frontend diffs this against
+/// before it spawned to learn a new run's session id.
+#[tauri::command]
+pub async fn muse_sessions() -> Result<Vec<MuseSession>, CommandError> {
+    run_blocking(|| {
+        let Some(root) = muse_sessions_root() else { return Ok(Vec::new()) };
+        let mut out: Vec<MuseSession> = muse_session_files(&root)
+            .into_iter()
+            .map(|(id, modified_ms)| MuseSession { id, modified_ms })
+            .collect();
+        out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
+        out.truncate(200);
+        Ok(out)
+    })
+    .await
+}
+
+/// Whether `muse resume <id>` can pick this session up.
+#[tauri::command]
+pub async fn muse_session_exists(session_id: String) -> Result<bool, CommandError> {
+    run_blocking(move || {
+        if !is_muse_session_id(&session_id) {
+            return Ok(false);
+        }
+        let Some(root) = muse_sessions_root() else { return Ok(false) };
+        Ok(muse_session_files(&root).iter().any(|(id, _)| *id == session_id))
+    })
+    .await
+}
+
 /// A Claude Code process that is running now, as it describes itself in
 /// `~/.claude/sessions/<pid>.json`. Its session id there follows the
 /// conversation it is in: a /clear or a /resume inside it moves it on.
@@ -1124,6 +1219,63 @@ mod tests {
             "C:\\Windows\\System32\\no-such-binary.exe",
             &default_exts()
         ));
+    }
+}
+
+#[cfg(test)]
+mod muse_tests {
+    use super::*;
+
+    fn muse_tree() -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("maestro-muse-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for id in [
+            "01a18216-5bd8-7b20-9b10-9f481ee54a74",
+            "01a18217-0000-4000-8000-000000000000",
+        ] {
+            let dir = root.join("2026").join("10").join("28").join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("session.jsonl"), "{}\n").unwrap();
+        }
+        // A subagent log nested deeper is not a session of its own.
+        let sub = root
+            .join("2026")
+            .join("10")
+            .join("28")
+            .join("01a18216-5bd8-7b20-9b10-9f481ee54a74")
+            .join("subagent")
+            .join("01a18218-1111-4222-8333-444444444444");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("session.jsonl"), "{}\n").unwrap();
+        // An id dir without a log is a crashed start, not a session.
+        std::fs::create_dir_all(
+            root.join("2026").join("10").join("28").join("01a18219-2222-4333-8444-555555555555"),
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn muse_lists_top_level_sessions_only() {
+        let root = muse_tree();
+        let mut ids: Vec<String> = muse_session_files(&root).into_iter().map(|(id, _)| id).collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            vec![
+                "01a18216-5bd8-7b20-9b10-9f481ee54a74".to_string(),
+                "01a18217-0000-4000-8000-000000000000".to_string(),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn muse_id_shapes() {
+        assert!(is_muse_session_id("01a18216-5bd8-7b20-9b10-9f481ee54a74"));
+        assert!(!is_muse_session_id(""));
+        assert!(!is_muse_session_id("../evil"));
+        assert!(!is_muse_session_id("01a18216 5bd8"));
     }
 }
 

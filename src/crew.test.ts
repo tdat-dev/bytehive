@@ -73,6 +73,7 @@ describe("effectiveArgs (skip-permissions)", () => {
     expect(effectiveArgs(find("qwen"), true)).toEqual(["--yolo"]);
     expect(effectiveArgs(find("aider"), true)).toEqual(["--yes-always"]);
     expect(effectiveArgs(find("copilot"), true)).toEqual(["--allow-all-tools"]);
+    expect(effectiveArgs(find("muse"), true)).toEqual(["--yolo"]);
   });
 
   it("keeps existing args and appends (PowerShell stays untouched — no flag)", () => {

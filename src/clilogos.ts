@@ -1,7 +1,7 @@
 // Each CLI's brand mark for pane avatars and badges: a small inline SVG.
 // Brand paths are the real ones from Simple Icons (CC0, 24×24 viewBox):
 // OpenAI, Anthropic, Google Gemini, Cursor, GitHub Copilot, OpenCode, Qwen.
-// CLIs without a brand icon (Aider, Goose) get a bold letter in a fitting
+// CLIs without a brand icon (Aider, Goose, Muse) get a bold letter in a fitting
 // colour; terminals keep a hand-drawn prompt glyph. Pure: badge in, markup
 // out. The badge is only a lookup key, never interpolated, so unknown or
 // missing input falls back to the generic mark.
@@ -34,6 +34,7 @@ const MARKS: Record<string, [string, string]> = {
   qwen: ["Qwen Code", brand("#615CED", "M23.919 14.545 20.817 9.17l1.47-2.544a.56.56 0 0 0 0-.566l-1.633-2.83a.57.57 0 0 0-.49-.283h-6.207L12.487.402a.57.57 0 0 0-.49-.284H8.732a.56.56 0 0 0-.49.284L5.139 5.775h-2.94a.56.56 0 0 0-.49.284L.077 8.887a.56.56 0 0 0 0 .567L3.18 14.83l-1.47 2.545a.56.56 0 0 0 0 .566l1.634 2.83a.57.57 0 0 0 .49.283h6.205l1.47 2.545a.57.57 0 0 0 .49.284h3.266a.57.57 0 0 0 .49-.284l3.104-5.375h2.94a.57.57 0 0 0 .49-.283l1.634-2.828a.55.55 0 0 0-.004-.568M8.733.686l1.634 2.828-1.634 2.828H21.8L20.164 9.17H7.425L5.63 6.06Zm1.306 19.801-6.205-.002 1.634-2.83h3.265L2.201 6.344h3.267q3.182 5.517 6.367 11.032zm10.124-5.66L18.53 12l-6.532 11.315-1.634-2.83c2.129-3.673 4.25-7.351 6.373-11.028h3.592l3.102 5.374z")],
   aider: ["Aider", scaled(letter("A", "#4CC38A"))],
   goose: ["Goose", scaled(letter("G", "#00C781"))],
+  muse: ["Muse", scaled(letter("M", "#F472B6"))],
   shell: ["Terminal", scaled(PROMPT_16)],
   cmd: ["Terminal", scaled(PROMPT_16)],
   custom: ["Custom CLI", scaled(`<polyline points="6,3.5 10.5,8 6,12.5" fill="none" stroke="#9AA0A6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`)],

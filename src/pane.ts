@@ -11,6 +11,8 @@ import {
   killPty,
   spawnPty,
   claudeSessionExists,
+  museSessions,
+  museSessionExists,
   attachPty,
   openExternal,
   worktreeAdd,
@@ -171,6 +173,23 @@ function buildPaneEl(
   return el;
 }
 
+/** A stopped pane keeps its last output with a centered Resume card over the terminal. Visibility follows the stopped class: restored panes carry it from mount, exits add it, boot clears it. */
+export function updateStoppedOverlay(pane: Pane): void {
+  const host = pane.el.querySelector<HTMLElement>(".term-host");
+  let veil = pane.el.querySelector<HTMLElement>(".pane-veil");
+  if (!pane.el.classList.contains("stopped") || !host) { veil?.remove(); return; }
+  if (!veil) {
+    veil = document.createElement("div");
+    veil.className = "pane-veil";
+    veil.innerHTML = `<div class="pane-veil-card"><div class="pane-veil-name"></div><div class="pane-veil-sub"></div><button type="button" class="pane-resume">Resume</button></div>`;
+    veil.querySelector("button")!.addEventListener("click", () => void pane.restart?.());
+    host.append(veil);
+  }
+  veil.querySelector(".pane-veil-name")!.textContent = `${pane.spec.name} stopped`;
+  veil.querySelector(".pane-veil-sub")!.textContent = pane.exitCode ? `exit code ${pane.exitCode} · Resume to carry on` : "Resume to carry on";
+  veil.querySelector("button")!.setAttribute("aria-label", `Resume ${pane.spec.name}`);
+}
+
 export function setStatus(p: Pane, text: string, cls: "" | "run" | "err" | "wait") {
   const s = p.el.querySelector<HTMLElement>("[data-status]");
   if (s) {
@@ -179,6 +198,7 @@ export function setStatus(p: Pane, text: string, cls: "" | "run" | "err" | "wait
   }
   p.el.classList.toggle("err", cls === "err");
   p.el.classList.toggle("run", cls === "run");
+  updateStoppedOverlay(p);
 }
 
 // Mount a pane immediately (status "queued…"); return a thunk that boots the
@@ -248,6 +268,7 @@ export function createAgent(
     setStatus(pane, "stopped", "");
     el.classList.add("stopped"); // dims the parked pane (cleared on boot)
     term.write(enc.encode("\r\n\x1b[90m  [stopped: Resume to carry on]\x1b[0m\r\n"));
+    updateStoppedOverlay(pane);
   }
 
   el.querySelector("[data-kill]")?.addEventListener("click", () => void removeAgent(ws, id));
@@ -290,6 +311,8 @@ export function createAgent(
   const boot = async () => {
     if (!ws.panes.has(id)) return; // killed before its turn to boot
     const { cols, rows } = term.fit();
+    // Held from a fresh Muse snapshot to its capture; the finally lets go.
+    let releaseMuseCapture: () => void = () => {};
     try {
       // Isolated agents get their own worktree+branch; point the PTY cwd there.
       let cwd = spec.cwd;
@@ -334,10 +357,26 @@ export function createAgent(
       // tools + server instructions. New array — never mutate spec.args, or a
       // restart would append the flag again and again.
       const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
-      const own = spec.badge === "claude" ? await claudeSessionArgs(spec, cwd) : [];
+      const own =
+        spec.badge === "claude" ? await claudeSessionArgs(spec, cwd)
+        : spec.badge === "muse" ? await museSessionArgs(spec)
+        : [];
       if (own.length) saveSession(); // History finds this run's transcript after a restart too
+      // A Muse resume is a subcommand (`muse resume <id>`); its root options
+      // (--yolo, …) may stand on either side of it, so appending is fine.
       const args =
-        spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws] : spec.args;
+        spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws]
+        : spec.badge === "muse" ? [...spec.args, ...own]
+        : spec.args;
+      // A fresh Muse run can't be given its session id (no such flag): learn
+      // it from what appears in the session store while we hold the capture
+      // lock, so two Muse agents booting together can't claim each other's.
+      const captureMuse = spec.badge === "muse" && !spec.sessionId && !musePicksSession(spec.args);
+      let museBefore: Set<string> | null = null;
+      if (captureMuse) {
+        releaseMuseCapture = await lockMuseCapture();
+        museBefore = new Set((await museSessions().catch(() => [])).map((s) => s.id));
+      }
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, args);
@@ -366,6 +405,7 @@ export function createAgent(
       // It may already be gone: a CLI that fails at once can exit before
       // spawnPty returned. Its exit was held; end the pane now.
       if (replayEarlyExit(id, pane.run)) return;
+      if (museBefore) await detectMuseSession(spec, museBefore, () => pane.running && ws.panes.has(id));
       // Re-fit once the grid layout has settled; correct the PTY size if it moved.
       requestAnimationFrame(() => {
         const s = term.fit();
@@ -379,6 +419,8 @@ export function createAgent(
       pane.error = onErrMsg(e);
       setStatus(pane, "spawn failed", "err");
       term.write(enc.encode(`\r\n\x1b[31m[spawn failed: ${pane.error}]\x1b[0m\r\n`));
+    } finally {
+      releaseMuseCapture();
     }
   };
 
@@ -460,6 +502,60 @@ export async function claudeSessionArgs(
   if (spec.sessionId && (await exists(dir, spec.sessionId).catch(() => false))) return ["--resume", spec.sessionId];
   spec.sessionId = crypto.randomUUID();
   return ["--session-id", spec.sessionId];
+}
+
+/** True when the agent's own args already choose a Muse session (`resume …`,
+ *  `exec …`): Maestro must neither append its own nor capture one. */
+export function musePicksSession(args: string[]): boolean {
+  return args.some((a) => a === "resume" || a === "--last" || a === "exec");
+}
+
+/** Muse's session for this run, remembered on the spec: its own one again
+ *  (`muse resume <id>`) when the store still has it, else a fresh boot whose
+ *  id the capture after spawning learns (see boot). None when the args
+ *  already pick a session themselves. */
+export async function museSessionArgs(
+  spec: AgentSpec,
+  exists: (id: string) => Promise<boolean> = museSessionExists,
+): Promise<string[]> {
+  if (musePicksSession(spec.args)) { delete spec.sessionId; return []; }
+  // Its own conversation, when Muse still has it: a restart, an app restart
+  // or Resume all carries on where it was instead of starting blank.
+  if (spec.sessionId && (await exists(spec.sessionId).catch(() => false))) return ["resume", spec.sessionId];
+  delete spec.sessionId; // gone or never had one: boot fresh, capture after
+  return [];
+}
+
+let museCaptureTail: Promise<void> = Promise.resolve();
+/** One Muse session capture at a time: the lock spans a fresh boot's
+ *  snapshot, spawn and capture, so two Muse agents starting together each
+ *  learn their own session. Resolves to the release. */
+function lockMuseCapture(): Promise<() => void> {
+  let release!: () => void;
+  const taken = new Promise<void>((res) => { release = res; });
+  const prev = museCaptureTail;
+  museCaptureTail = prev.then(() => taken);
+  return prev.then(() => release);
+}
+
+/** Learn a fresh Muse run's session id: the session that appeared since
+ *  `before`. Gives up silently past the deadline or when the pane is gone —
+ *  the next restart then just boots fresh again, as before. */
+async function detectMuseSession(spec: AgentSpec, before: Set<string>, alive: () => boolean): Promise<void> {
+  const deadline = Date.now() + 12_000;
+  for (;;) {
+    try {
+      const fresh = (await museSessions()).filter((s) => !before.has(s.id));
+      if (fresh.length) {
+        fresh.sort((a, b) => b.modified_ms - a.modified_ms);
+        spec.sessionId = fresh[0].id;
+        saveSession();
+        return;
+      }
+    } catch { /* the store read hiccuped: retry until the deadline */ }
+    if (!alive() || Date.now() >= deadline) return;
+    await new Promise((r) => setTimeout(r, 400));
+  }
 }
 
 export async function removeAgent(ws: Workspace, id: string) {

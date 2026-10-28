@@ -140,6 +140,8 @@ pub fn run() {
             commands::claude_sessions,
             commands::claude_sessions_everywhere,
             commands::claude_sessions_in,
+            commands::muse_sessions,
+            commands::muse_session_exists,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,

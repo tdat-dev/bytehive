@@ -27,6 +27,7 @@ export const CLI_PRESETS: CliPreset[] = [
   { id: "qwen", label: "Qwen Code", program: "qwen", args: [], badge: "qwen", skipPermsArgs: ["--yolo"] },
   { id: "copilot", label: "GitHub Copilot", program: "copilot", args: [], badge: "copilot", skipPermsArgs: ["--allow-all-tools"] },
   { id: "goose", label: "Goose", program: "goose", args: [], badge: "goose" },
+  { id: "muse", label: "Muse", program: "muse", args: [], badge: "muse", skipPermsArgs: ["--yolo"] },
   { id: "powershell", label: "PowerShell", program: "powershell.exe", args: ["-NoLogo"], badge: "shell", shell: true },
   { id: "cmd", label: "CMD", program: "cmd.exe", args: [], badge: "cmd", shell: true },
 ];

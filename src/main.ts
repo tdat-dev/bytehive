@@ -62,6 +62,7 @@ const CLI_COLORS: Record<string, string> = {
   qwen: "#a855f7",
   copilot: "#9aa4b2",
   goose: "#f6c453",
+  muse: "#f472b6",
   shell: "#5ec2f0",
   cmd: "#94a3b1",
   custom: "#c6f135",

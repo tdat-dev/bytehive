@@ -42,7 +42,7 @@ describe("cliLogo", () => {
   });
 
   it("differs per agent CLI (the two shells share one)", () => {
-    const agents = ["claude", "codex", "gemini", "cursor", "opencode", "copilot", "qwen", "aider", "goose", "custom"];
+    const agents = ["claude", "codex", "gemini", "cursor", "opencode", "copilot", "qwen", "aider", "goose", "muse", "custom"];
     expect(new Set(agents.map(cliLogo)).size).toBe(agents.length);
     expect(cliLogo("shell")).toBe(cliLogo("cmd"));
   });

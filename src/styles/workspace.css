@@ -59,15 +59,9 @@
 /* live stats + clock (numbers in mono) */
 .tb-btn-icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text-2);background:var(--surface-1);border:1px solid var(--line-strong);transition:border-color .15s,color .15s,background .15s;flex:none}
 .tb-btn-icon:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
-/* Still the positioning context — the panes, the sigil canvas, the focus rail
-   and the delegation overlay are all absolutely placed inside it. What is gone
-   is the floating Tidy pill: it sat at right:16/top:14, i.e. on top of the
-   top-right pane's own rename/focus/kill buttons, and won every click. Tidy and
-   the zoom pill are topbar chrome now (index.html + zoomui.ts). */
+/* Positioning context for the absolutely placed canvas layers (tiled panes
+   in canvas mode, menus, overlays). */
 .main{position:relative}
-/* the topbar's canvas controls sit slightly quieter than the tab strip */
-#btnTidy{color:var(--muted);font-weight:600}
-#btnTidy:hover{color:var(--accent)}
 
 /* hide stats + clock as requested */
 .stats, .clock { display: none !important; }
@@ -130,6 +124,14 @@
    The plate belongs to .pane (var(--pane-plate), set by background.ts). No
    layer inside the terminal may paint one of its own. */
 .term-host .xterm .xterm-viewport{background-color:transparent}
+.term-host{position:relative}
+.pane-veil{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:rgba(5,5,8,0.55);backdrop-filter:blur(2px);border-radius:0 0 12px 12px}
+.pane-veil-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 32px;border-radius:16px;background:rgba(20,21,26,0.94);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.09),0 16px 40px rgba(0,0,0,0.5);text-align:center}
+.pane-veil-name{font:600 14px var(--sans);color:var(--text)}
+.pane-veil-sub{font:12.5px var(--sans);color:var(--muted)}
+.pane-resume{margin-top:10px;height:38px;padding:0 24px;border:0;border-radius:999px;background:#fff;color:#000;font:600 13.5px var(--sans);cursor:pointer}
+.pane-resume:hover{background:#e8e8ec}
+.pane-resume:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ---------- maximize / focus one pane ---------- */
 .grid.has-max .pane{display:none}
