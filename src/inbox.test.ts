@@ -630,6 +630,54 @@ describe("inbox DOM", () => {
     expect(panes[1].el.querySelector(".ib-ttl")!.textContent).toBe("Fix the flaky upload test");
   });
 
+  it("filters the Grid by project and status from the dock, terminal stays put", async () => {
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working", { project: "shop" })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    const cluster = () => document.querySelector("[data-filter]") as HTMLElement;
+    expect(cluster().hidden).toBe(false);
+    expect([...cluster().querySelectorAll("[data-gfp-opt]")].map((o) => (o as HTMLElement).dataset.gfpOpt)).toEqual(["", "maestro", "shop"]);
+    expect(cluster().querySelector('[data-gf="needs"]')!.textContent).toContain("1");
+    // the status chip hides Eli's card; Ana's terminal stays where it is
+    (cluster().querySelector('[data-gf="needs"]') as HTMLButtonElement).click();
+    expect(document.querySelector('.ib-rail [data-card="e"]')).toBeNull();
+    expect([...document.querySelectorAll(".split-pin")]).toEqual([panes[0].el]);
+    expect(cluster().querySelector('[data-gf="reset"]')).not.toBeNull();
+    // reset brings the card back
+    (cluster().querySelector('[data-gf="reset"]') as HTMLButtonElement).click();
+    expect(document.querySelector('.ib-rail [data-card="e"]')).not.toBeNull();
+    // narrowing to shop moves the terminal to Eli
+    (cluster().querySelector("[data-gfp-btn]") as HTMLButtonElement).click();
+    (cluster().querySelector('[data-gfp-opt="shop"]') as HTMLButtonElement).click();
+    expect([...document.querySelectorAll(".split-pin")]).toEqual([panes[1].el]);
+    expect(document.querySelector('.ib-rail [data-card="a"]')).toBeNull();
+  });
+  it("project menu opens above the dock, shows counts, picks and closes", async () => {
+    state.tasks = [
+      task("a", "Ana", "needs", { branch: "maestro/a", title: "Ask" }),
+      task("e", "Eli", "working", { branch: "maestro/e", title: "Work" }),
+    ];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    await flush();
+    const cluster = () => document.querySelector("[data-filter]") as HTMLElement;
+    const btn = () => cluster().querySelector("[data-gfp-btn]") as HTMLButtonElement;
+    const menu = () => cluster().querySelector(".id-menu") as HTMLElement;
+    expect(btn().getAttribute("aria-expanded")).toBe("false");
+    expect(menu().hidden).toBe(true);
+    btn().click();
+    expect(btn().getAttribute("aria-expanded")).toBe("true");
+    expect(menu().hidden).toBe(false);
+    expect([...menu().querySelectorAll("[data-gfp-opt]")].map((o) => `${(o as HTMLElement).dataset.gfpOpt}:${o.textContent}`))
+      .toEqual([":✓All projects2", "maestro:✓maestro2"]);
+    btn().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(menu().hidden).toBe(true);
+    expect(document.activeElement).toBe(btn());
+    btn().click();
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(menu().hidden).toBe(true);
+  });
+
   it("shows agents of other projects as cards, brings one in to work with it and gives it back after", () => {
     const qEl = document.createElement("div");
     qEl.className = "pane";

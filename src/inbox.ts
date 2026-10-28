@@ -42,6 +42,7 @@ import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
 import { allTasks, answerOption, onTasksChange, taskOf, type Task } from "./tasks";
+import { filterGrid, gridCounts, gridProjects, projectCounts, type GridRow, type GridStatus } from "./gridfilter";
 import type { AskOption } from "./askparse";
 import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
@@ -248,6 +249,28 @@ let bigId: string | null = null;
 const borrowed = new Map<string, Workspace>();
 /** Agents closed out of Split with ✕; they stay out until Split is turned off. */
 const splitClosed = new Set<string>();
+/** Pins as filter rows (project + state come from the queue). */
+function gridRows(): GridRow[] {
+  const byId = new Map(allTasks().map((t) => [t.paneId, t]));
+  return pins.flatMap((id) => {
+    const t = byId.get(id);
+    return t ? [{ id, project: t.project, state: t.status.state }] : [];
+  });
+}
+/** Set the Grid filters from the dock: the terminal follows the first
+ *  visible agent when its own is filtered out. The only place a filter
+ *  change moves the terminal — status drift never yanks it mid-typing. */
+function applyGridFilter(project: string | null, status: GridStatus): void {
+  gridProject = project;
+  gridStatus = status;
+  const vis = filterGrid(gridRows(), project, status).map((r) => r.id);
+  if (bigId === null || !vis.includes(bigId)) bigId = vis[0] ?? bigId;
+  render();
+}
+/** Grid filters (dock cluster): one project, one status group, or everything. */
+let gridProject: string | null = null;
+let gridStatus: GridStatus = "all";
+let gridMenuOpen = false;
 /** Grid cards answered from a button: which question, so its buttons go. */
 const miniAnswered = new Map<string, string>();
 let splitBtn: HTMLButtonElement | null = null;
@@ -378,10 +401,18 @@ function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
   if (splitOn) pins = fillPins(pins, gridOrder(allTasks()), splitClosed, getPref("splitMax"));
-  const inGrid = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
-  const on = inGrid.length > 1;
+  // Filters hide pins from the Grid without unpinning them; a pin the queue
+  // no longer lists stays visible (there is nothing to classify it by).
+  const rows = gridRows();
+  const rowIds = new Set(rows.map((r) => r.id));
+  const shown = new Set(filterGrid(rows, gridProject, gridStatus).map((r) => r.id));
+  const inGrid = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p && (!rowIds.has(p.id) || shown.has(p.id))) : [];
+  const on = inGrid.length > 1 || ((gridProject !== null || gridStatus !== "all") && inGrid.length === 1);
   const cur = stagePane();
-  const big = on ? inGrid.find((p) => p.id === bigId) ?? (cur && inGrid.includes(cur) ? cur : inGrid[0]) : undefined;
+  // The terminal is sticky: it stays where it is while statuses drift, and
+  // only applyGridFilter (an explicit click) moves it for a filter. A dead
+  // bigId falls back to the stage, then the first visible agent.
+  const big = on ? (bigId !== null && pins.includes(bigId) ? paneById(bigId) : undefined) ?? (cur && inGrid.includes(cur) ? cur : inGrid[0]) : undefined;
   bigId = big?.id ?? bigId;
   const cards = big ? inGrid.filter((p) => p !== big) : [];
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
@@ -445,7 +476,7 @@ function cardHtml(t: Task, p: Pane): string {
     const what = a.kind !== "question" && a.detail ? `<code title="${esc(a.detail)}">${esc(a.detail)}</code>` : `<span class="rc-q">${esc(a.prompt)}</span>`;
     body = `<div class="rc-ask"><p><span class="lb">${lead}</span>${what}</p><div class="rc-opts">${askButtons(a).join("")}</div></div>`;
   } else {
-    const doing = t.status.state === "working" && !t.status.limit ? g.doing || (g.asked ? "Working on what you asked" : "Working") : rowLine(t);
+    const doing = t.status.state === "working" && !t.status.limit ? g.doing || (g.asked ? "Working on what you asked" : "Working" + (t.since > 0 ? ` · ${ago(Date.now() - t.since)}` : "")) : rowLine(t);
     const said = g.said ? `<p class="rc-say">${esc(g.said)}</p>` : g.asked ? `<p class="rc-say rc-you"><span>You</span> ${esc(g.asked)}</p>` : "";
     body = `<p class="rc-do">${esc(doing)}${lineCounts(t)}</p>${said}`;
   }
@@ -488,7 +519,7 @@ function renderRail(ws: Workspace, big: Pane | undefined, cards: Pane[], tile: T
   // terminal's project: then there is nothing to tell apart.
   const heads = groups.length > 1 || (groups[0] && groups[0].wsId !== home);
   const html = groups.map((g) => {
-    const head = heads ? `<div class="rc-g" role="none"><b>${esc(g.project)}</b>${g.wsId === home ? "<span>the terminal's project</span>" : ""}</div>` : "";
+    const head = heads ? `<div class="rc-g" role="none"><b>${esc(g.project)}</b></div>` : "";
     return head + g.tasks.map((t) => cardHtml(t, t.pane)).join("");
   }).join("");
   if (railHtml !== html) { railHtml = html; railEl.innerHTML = html; }
@@ -850,10 +881,61 @@ function teach(list: Task[]): void {
   if (list.length >= 2 && !tipSeen("split") && !splitOn) showTip("split");
 }
 
+/** The dock's Grid filter cluster: project dropdown + status chips with counts.
+ *  Rebuilt only when its signature changes, and never while focused, so the
+ *  dropdown never closes under the pointer. */
+let gridFilterSig = "";
+/** Open or close the project menu by patching the live nodes (no rebuild, no focus loss). */
+function setGridMenu(open: boolean): void {
+  if (gridMenuOpen === open) return;
+  gridMenuOpen = open;
+  const btn = dockEl?.querySelector<HTMLButtonElement>("[data-gfp-btn]");
+  const menu = dockEl?.querySelector<HTMLElement>(".id-menu");
+  if (!btn || !menu) return;
+  btn.setAttribute("aria-expanded", String(open));
+  menu.hidden = !open;
+}
+function renderGridFilter(): void {
+  const el = dockEl?.querySelector<HTMLElement>("[data-filter]");
+  if (!el) return;
+  el.hidden = !splitOn;
+  if (!splitOn) { gridMenuOpen = false; return; }
+  const rows = gridRows();
+  const projects = gridProjects(rows);
+  if (gridProject !== null && !projects.includes(gridProject)) gridProject = null;
+  const scoped = rows.filter((r) => gridProject === null || r.project === gridProject);
+  const counts = gridCounts(scoped);
+  const sig = JSON.stringify([projects, counts, gridProject, gridStatus, gridMenuOpen]);
+  if (sig === gridFilterSig || el.contains(document.activeElement)) return;
+  gridFilterSig = sig;
+  const dot = (v: GridStatus) => v === "all" ? "" : `<i class="id-dot" data-s="${v}" aria-hidden="true"></i>`;
+  const chip = (v: GridStatus, label: string, title: string) =>
+    `<button type="button" data-gf="${v}" aria-pressed="${gridStatus === v}" title="${title}">${dot(v)}${label} <b class="id-n">${counts[v]}</b></button>`;
+  const filtered = gridProject !== null || gridStatus !== "all";
+  const projCounts = projectCounts(rows);
+  const projTotal = projCounts.reduce((n, p) => n + p.n, 0);
+  const opt = (value: string | null, label: string, n: number) =>
+    `<button type="button" role="option" data-gfp-opt="${value === null ? "" : esc(value)}" aria-selected="${(value ?? "") === (gridProject ?? "")}"><span class="id-check" aria-hidden="true">✓</span><span class="id-oname">${esc(label)}</span><b class="id-n">${n}</b></button>`;
+  el.innerHTML =
+    `<div class="id-fproj"><button type="button" data-gfp-btn aria-haspopup="listbox" aria-expanded="${gridMenuOpen}" title="Filter by project">` +
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` +
+    `<span class="id-pname">${gridProject === null ? "All projects" : esc(gridProject)}</span>` +
+    `<svg class="id-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>` +
+    `<div class="id-menu" role="listbox" aria-label="Project"${gridMenuOpen ? "" : " hidden"}>` +
+    opt(null, "All projects", projTotal) +
+    projCounts.map((p) => opt(p.project, p.project, p.n)).join("") +
+    `</div></div><span class="id-fdiv" aria-hidden="true"></span>` +
+    `<div class="id-fseg" role="group" aria-label="Status">` +
+    chip("all", "All", "Show every agent in the Grid") + chip("needs", "Needs you", "Show agents waiting on you: needs an answer or ready to review") + chip("working", "Working", "Show working agents in the Grid") + chip("quiet", "Quiet", "Show quiet agents in the Grid") +
+    `</div>` +
+    (filtered ? `<button type="button" data-gf="reset" title="Clear Grid filters">Reset</button>` : "");
+}
+
 function render(): void {
   if (!document.body.classList.contains("inbox-ui")) return;
   ensureStage();
   layoutSplit();
+  renderGridFilter();
   const list = allTasks();
   teach(list);
   const pane = stagePane();
@@ -1161,6 +1243,7 @@ function mount(): void {
   queueEl = document.createElement("aside");
   queueEl.className = "inbox-queue";
   queueSig = ""; // a new, empty list: the first render fills it
+  gridMenuOpen = false; // a fresh dock starts with the project menu closed
   queueEl.setAttribute("aria-label", "Agents");
   app.appendChild(queueEl);
   askEl = document.createElement("section");
@@ -1187,6 +1270,7 @@ function mount(): void {
       <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, full size (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
       <button data-dock="split" aria-pressed="false" title="Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg><span>Grid</span></button>
     </div>
+    <div class="id-filter" data-filter hidden></div>
     <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl+K)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl+K</kbd></button>
@@ -1198,6 +1282,39 @@ function mount(): void {
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
   app.appendChild(dockEl);
   splitBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="split"]');
+  const filterEl = dockEl.querySelector<HTMLElement>("[data-filter]")!;
+  filterEl.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const opt = t.closest<HTMLElement>("[data-gfp-opt]");
+    if (opt) {
+      applyGridFilter(opt.dataset.gfpOpt || null, gridStatus);
+      setGridMenu(false);
+      dockEl?.querySelector<HTMLButtonElement>("[data-gfp-btn]")?.focus();
+      return;
+    }
+    if (t.closest("[data-gfp-btn]")) { setGridMenu(!gridMenuOpen); return; }
+    const b = t.closest<HTMLElement>("[data-gf]");
+    if (!b) return;
+    if (b.dataset.gf === "reset") applyGridFilter(null, "all");
+    else applyGridFilter(gridProject, b.dataset.gf as GridStatus);
+  });
+  filterEl.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && gridMenuOpen) {
+      setGridMenu(false);
+      dockEl?.querySelector<HTMLButtonElement>("[data-gfp-btn]")?.focus();
+      return;
+    }
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && gridMenuOpen) {
+      const opts = Array.from(filterEl.querySelectorAll<HTMLButtonElement>("[data-gfp-opt]"));
+      const at = opts.indexOf(document.activeElement as HTMLButtonElement);
+      const n = e.key === "ArrowDown" ? (at + 1) % opts.length : (at - 1 + opts.length) % opts.length;
+      opts[n]?.focus();
+      e.preventDefault();
+    }
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (gridMenuOpen && !(e.target as HTMLElement).closest?.("[data-filter]")) setGridMenu(false);
+  });
   dockEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-dock]");
     switch (b?.dataset.dock) {
@@ -1298,7 +1415,7 @@ function unmount(): void {
   stopFinishWatch();
   stopSessionFollow();
   if (splitWs) clearSplit(splitWs);
-  splitOn = false; pins = []; splitSig = ""; splitWs = null;
+  splitOn = false; pins = []; splitSig = ""; splitWs = null; gridProject = null; gridStatus = "all"; gridFilterSig = "";
   if (reviewer?.paneId) reviewer.close();
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-ttl")?.remove(); p.el.classList.remove("ib-needs", "ib-has-title"); }
   queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); emptyEl?.remove(); emptyEl = null;
