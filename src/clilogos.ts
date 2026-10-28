@@ -58,8 +58,9 @@ const MARKS: Record<string, [string, string]> = {
 
 const FALLBACK: [string, string] = ["Agent CLI", `<circle cx="8" cy="8" r="5.5" fill="none" stroke="#9AA0A6" stroke-width="1.6"/>`];
 
-/** Inline SVG mark for a CLI badge id. Unknown badges get the generic mark. */
-export function cliLogo(badge: string): string {
-  const [label, inner] = MARKS[badge.trim().toLowerCase()] ?? FALLBACK;
+/** Inline SVG mark for a CLI badge id. Unknown or missing badges get the
+ *  generic mark — panes in tests and old sessions don't always carry one. */
+export function cliLogo(badge: string | null | undefined): string {
+  const [label, inner] = MARKS[(badge ?? "").trim().toLowerCase()] ?? FALLBACK;
   return `${open(label)}${inner}</svg>`;
 }

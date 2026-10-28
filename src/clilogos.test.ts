@@ -22,6 +22,12 @@ describe("cliLogo", () => {
     expect(svg).toContain("<circle");
   });
 
+  it("falls back instead of crashing when the badge is missing", () => {
+    expect(cliLogo(undefined)).toContain("<title>Agent CLI</title>");
+    expect(cliLogo(null)).toContain("<title>Agent CLI</title>");
+    expect(cliLogo("  ")).toContain("<title>Agent CLI</title>");
+  });
+
   it("never interpolates the badge (injection-safe by construction)", () => {
     const svg = cliLogo('"><script>alert(1)</script>');
     expect(svg).not.toContain("<script>");
