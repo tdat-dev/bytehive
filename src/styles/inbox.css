@@ -318,7 +318,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .id-seg button:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.05); }
 .id-seg button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
 /* Grid filters: project dropdown + status chips, only while the Grid is on. */
-.id-filter { position: relative; display: flex; align-items: center; gap: 6px; background: var(--ib-raise); box-shadow: var(--ib-float); border-radius: 999px; padding: 4px 8px 4px 4px; }
+.id-filter { position: relative; display: flex; align-items: center; gap: 6px; background: var(--ib-raise); box-shadow: var(--ib-float); border-radius: 999px; padding: 4px 8px 4px 4px; min-width: 0; }
 .id-filter[hidden] { display: none; }
 [data-gfp-btn]{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:0;border-radius:999px;background:transparent;color:var(--ib-ink);font:500 13px var(--sans);white-space:nowrap;cursor:pointer}
 [data-gfp-btn]:hover{background:rgba(255,255,255,0.06)}
@@ -340,12 +340,13 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .id-dot[data-s="working"]{background:var(--ib-work)}
 .id-dot[data-s="quiet"]{background:var(--ib-ink-3)}
 @media (prefers-reduced-motion:reduce){.id-chev{transition:none}}
-.id-fseg { display: flex; align-items: center; gap: 2px; }
+.id-fseg { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.id-fseg::-webkit-scrollbar { display: none; }
 .id-fseg button { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border: 0; border-radius: 999px; font: 500 13px var(--sans);
   font-variant-numeric: tabular-nums; color: var(--ib-ink-2); background: transparent; }
 .id-fseg button:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.05); }
 .id-fseg button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
-.id-fseg button{white-space:nowrap}
+.id-fseg button{white-space:nowrap;flex:none}
 .id-fseg .id-n{font-weight:600;color:var(--ib-ink-3);margin-left:4px}
 .id-fseg button[aria-pressed="true"] .id-n{color:var(--ib-ink)}
 .id-filter [data-gf="reset"] { height: 32px; padding: 0 12px; border: 0; border-radius: 999px;
@@ -354,7 +355,8 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .id-filter button:focus-visible { outline: 2px solid var(--ib-work); outline-offset: 2px; }
 .id-search {
   display: flex; align-items: center; gap: 10px;
-  width: min(400px, 30vw);
+  min-width: 0;
+  width: min(320px, 24vw);
   height: 40px; padding: 0 8px 0 14px;
   border-radius: 999px;
   background: var(--ib-raise);
@@ -389,6 +391,17 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 }
 .id-gear:hover { color: var(--ib-ink); background: #1d1e23; }
 .inbox-dock button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* Narrow windows: compact the dock so the filter's chips stay visible; the
+ * chip row scrolls internally only once everything else has given way. */
+@media (max-width: 1400px) {
+  .id-pname { max-width: 96px; }
+  .id-fseg button { padding: 0 8px; gap: 5px; }
+  .id-search { width: min(220px, 32vw); }
+  .id-search kbd { display: none; }
+  .id-seg button span { display: none; }
+  .id-seg button { padding: 0 10px; }
+  .id-new { padding: 0 12px; }
+}
 
 /* ---------- the Review chip, floating over the bottom of the stage ---------- */
 .inbox-ask {
