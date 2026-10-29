@@ -781,6 +781,103 @@ fn muse_session_log(root: &Path, id: &str) -> Option<std::path::PathBuf> {
     None
 }
 
+/// A Muse conversation for the History list: its id, opening prompt, last
+/// activity, and message count.
+#[derive(Serialize, Clone)]
+pub struct MuseListedSession {
+    pub id: String,
+    pub title: String,
+    pub modified_ms: u64,
+    pub messages: u64,
+}
+
+/// Muse conversations, newest first, for the History list.
+#[tauri::command]
+pub async fn muse_session_list(limit: usize) -> Result<Vec<MuseListedSession>, CommandError> {
+    run_blocking(move || {
+        let Some(root) = muse_sessions_root() else { return Ok(Vec::new()) };
+        let mut files = muse_session_files(&root);
+        files.sort_by(|a, b| b.1.cmp(&a.1));
+        files.truncate(limit.min(300));
+        let mut out = Vec::new();
+        for (id, ms) in files {
+            let Some(log) = muse_session_log(&root, &id) else { continue };
+            let (title, messages) = muse_session_head(&log);
+            out.push(MuseListedSession { id, title, modified_ms: ms, messages });
+        }
+        Ok(out)
+    })
+    .await
+}
+
+/// A session's title (its first user prompt) and message count, from at most
+/// the first 4 MB: enough for any real head, bounded for giant logs.
+fn muse_session_head(log: &Path) -> (String, u64) {
+    const HEAD: u64 = 4 * 1024 * 1024;
+    let Ok(mut file) = std::fs::File::open(log) else { return (String::new(), 0) };
+    let mut buf = Vec::new();
+    {
+        use std::io::Read;
+        if file.by_ref().take(HEAD).read_to_end(&mut buf).is_err() {
+            return (String::new(), 0);
+        }
+    }
+    let text = String::from_utf8_lossy(&buf);
+    let mut title = String::new();
+    let mut messages = 0u64;
+    for line in text.split('\n') {
+        let Some(k) = line.find("\"event\":{\"kind\":\"") else { continue };
+        let rest = &line[k + 17..];
+        if rest.starts_with("assistant_message_committed\"") {
+            messages += 1;
+        } else if rest.starts_with("started\"") {
+            if let Some(p) = muse_prompt_of(line, false) {
+                if title.is_empty() {
+                    title = p;
+                }
+                messages += 1;
+            }
+        } else if rest.starts_with("inbox_item_queued\"") {
+            if let Some(p) = muse_prompt_of(line, true) {
+                if title.is_empty() {
+                    title = p;
+                }
+                messages += 1;
+            }
+        }
+    }
+    (title, messages)
+}
+
+/// A line's user prompt, if it carries one: a run's opening prompt, or a
+/// message steered in mid-run. Background deliveries are not the user.
+fn muse_prompt_of(line: &str, queued: bool) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    let ev = v.get("payload")?.get("event")?;
+    if queued {
+        if ev.get("source")?.get("source")?.as_str()? != "user_steer" {
+            return None;
+        }
+        let p = ev.get("payload").and_then(|p| p.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
+        let b = ev.get("body").and_then(|b| b.as_str()).unwrap_or("");
+        let t = if !p.trim().is_empty() { p } else { b };
+        return if t.trim().is_empty() { None } else { Some(trim_title(t)) };
+    }
+    let p = ev.get("prompt")?.as_str()?;
+    if p.trim().is_empty() { None } else { Some(trim_title(p)) }
+}
+
+/// A prompt as a list title: one line, at most 80 characters.
+fn trim_title(t: &str) -> String {
+    let one = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one.chars().count() <= 80 {
+        return one;
+    }
+    let mut s: String = one.chars().take(79).collect();
+    s.push('…');
+    s
+}
+
 /// A Claude Code process that is running now, as it describes itself in
 /// `~/.claude/sessions/<pid>.json`. Its session id there follows the
 /// conversation it is in: a /clear or a /resume inside it moves it on.
@@ -1349,6 +1446,28 @@ mod muse_tests {
         // unknown id: nothing yet; a hostile id never reaches the filesystem
         assert_eq!(muse_transcript_in(&root, "00000000-0000-4000-8000-000000000000", 0, None).path, "");
         assert_eq!(muse_session_log(&root, "../../evil"), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn muse_session_list_titles_and_counts() {
+        let root = std::env::temp_dir().join(format!("maestro-muse-list-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let a = root.join("2026").join("10").join("28").join("01a18216-5bd8-7b20-9b10-9f481ee54a74");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::write(a.join("session.jsonl"), concat!(
+            "{\"id\":\"1\",\"payload\":{\"event\":{\"kind\":\"started\",\"prompt\":\"fix the login\"}}}\n",
+            "{\"id\":\"2\",\"payload\":{\"event\":{\"kind\":\"started\",\"task_id\":\"t\"}}}\n",
+            "{\"id\":\"3\",\"payload\":{\"event\":{\"kind\":\"assistant_message_committed\",\"message_id\":\"m\",\"text\":\"ok\"}}}\n",
+            "{\"id\":\"4\",\"payload\":{\"event\":{\"kind\":\"inbox_item_queued\",\"source\":{\"source\":\"cron\"},\"payload\":{\"prompt\":\"tick\"}}}}\n",
+            "{\"id\":\"5\",\"payload\":{\"event\":{\"kind\":\"inbox_item_queued\",\"source\":{\"source\":\"user_steer\"},\"payload\":{\"prompt\":\"wait\"}}}}\n",
+        )).unwrap();
+        let (title, messages) = muse_session_head(&a.join("session.jsonl"));
+        assert_eq!(title, "fix the login");
+        assert_eq!(messages, 3); // prompt + reply + steer; bare started and cron skipped
+        assert_eq!(muse_prompt_of("{\"payload\":{\"event\":{\"kind\":\"started\",\"prompt\":\"  \"}}}", false), None);
+        let long = "w ".repeat(100);
+        assert!(trim_title(&long).chars().count() <= 80);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

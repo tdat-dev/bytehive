@@ -24,4 +24,10 @@ describe("matching", () => {
     expect(matching(list, "docs").map((x) => x.id)).toEqual(["2"]);
     expect(matching(list, "login docs")).toEqual([]);
   });
+
+  it("searches a mixed Claude and Muse list", () => {
+    const rows = [...list.map((s) => ({ ...s, cli: "claude" as const })), { id: "3", title: "Muse resume work", cwd: "", messages: 5, modified_ms: 0, cli: "muse" as const }];
+    expect(matching(rows, "muse").map((x) => x.id)).toEqual(["3"]);
+    expect(matching(rows, "").length).toBe(3);
+  });
 });

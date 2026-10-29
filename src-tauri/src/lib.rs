@@ -147,6 +147,7 @@ pub fn run() {
             commands::muse_sessions,
             commands::muse_session_exists,
             commands::muse_transcript,
+            commands::muse_session_list,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,

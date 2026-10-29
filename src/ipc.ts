@@ -222,6 +222,14 @@ export async function museTranscript(
   return invoke("muse_transcript", { sessionId, offset, tailBytes: tailBytes ?? null });
 }
 
+/** One Muse conversation for the History list: id, opening prompt, last activity, message count. */
+export interface MuseListedSession { id: string; title: string; modified_ms: number; messages: number }
+
+/** Muse conversations, newest first, for the History list. */
+export async function museSessionList(limit: number): Promise<MuseListedSession[]> {
+  return invoke<MuseListedSession[]>("muse_session_list", { limit });
+}
+
 /** A Claude Code process running now and the conversation it is in. */
 export interface LiveSession {
   pid: number;
