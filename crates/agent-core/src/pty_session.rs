@@ -1,4 +1,4 @@
-//! Owns a ConPTY-backed PTY (master + writer). Tauri-free. Returns the output
+﻿//! Owns a ConPTY-backed PTY (master + writer). Tauri-free. Returns the output
 //! reader and the child SEPARATELY so callers run the (blocking) reader on its
 //! own thread and wait on the child on another.
 
@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
-use crate::core::command_spec::CommandSpec;
+use crate::command_spec::CommandSpec;
 
 /// Session-identity markers Claude Code exports into the processes it launches.
 /// `CommandBuilder` inherits our whole environment, so if Maestro itself was

@@ -12,7 +12,9 @@ import { focusPane, renamePane } from "./panelayout";
 import { revealPane } from "./agentbridge";
 import { type Area, type Tile } from "./canvas";
 import { railPlan } from "./gridfit";
-import { glanceFor, keepGlances, refreshGlance } from "./gridcards";
+import { FEED_READ_MS, glanceFor, refreshGlance } from "./gridcards";
+import { riskOfAsk } from "./askparse";
+import { clashShort } from "./clashwatch";
 import { killPty, resizePty, sendInput, sendMessage } from "./ipc";
 import { openMemory } from "./memoryview";
 import { paneFont } from "./zoom";
@@ -31,7 +33,7 @@ import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
 import { tokens } from "./transcript";
 import { sourceOf } from "./chatsource";
-import { agentUsage, onAgentCost } from "./agentcost";
+import { agentUsage, onAgentCost, projectTotals } from "./agentcost";
 import { cliLogo } from "./clilogos";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
@@ -50,9 +52,9 @@ import { hiddenGate } from "./hiddengate";
 
 /* ---------------- pure helpers (tested) ---------------- */
 
-const ORDER: TaskState[] = ["needs", "review", "working", "idle", "stopped", "merged"];
+const ORDER: TaskState[] = ["needs", "blocked", "review", "working", "idle", "stopped", "merged"];
 export const GROUP_LABEL: Record<TaskState, string> = {
-  needs: "Needs you", review: "Ready to review", working: "Working", idle: "Idle", stopped: "Stopped", merged: "Merged",
+  needs: "Needs you", blocked: "Blocked", review: "Ready to review", working: "Working", idle: "Idle", stopped: "Stopped", merged: "Merged",
 };
 
 /** Tasks grouped in queue order; empty groups dropped except "Needs you",
@@ -113,20 +115,21 @@ export function listOrder(): ListOrder {
 /** The top-bar sentence: "2 agents need you. 1 is ready to review, 3 are working." */
 export function headline(list: Task[]): { lead: string; rest: string } {
   const n = (s: TaskState) => list.filter((t) => t.status.state === s).length;
-  const needs = n("needs"), review = n("review"), working = n("working");
+  const needsYou = n("needs") + n("blocked"), review = n("review"), working = n("working");
   const are = (k: number) => (k === 1 ? "is" : "are");
   if (!list.length) return { lead: "No agents yet.", rest: " Start one with New agent." };
-  const lead = needs ? `${needs} agent${needs === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
+  const lead = needsYou ? `${needsYou} agent${needsYou === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
   // Only what is so: the clauses with nobody in them are left out.
   const parts = [
     review ? `${review} ${are(review)} ready to review` : "",
     working ? `${working} ${are(working)} working` : "",
   ].filter(Boolean);
   if (!parts.length) {
-    const idle = n("idle"), stopped = n("stopped"), merged = n("merged");
+    const idle = n("idle"), stopped = n("stopped"), merged = n("merged"), blocked = n("blocked");
     // Idle after working is done; idle before its first job is waiting for one.
     const done = list.filter((t) => t.status.state === "idle" && t.worked).length;
     if (done) parts.push(`${done} ${are(done)} done`);
+    if (blocked) parts.push(`${blocked} ${are(blocked)} blocked`);
     if (idle - done) parts.push(`${idle - done} ${are(idle - done)} waiting for a task`);
     if (stopped) parts.push(`${stopped} ${are(stopped)} stopped`);
     if (merged) parts.push(`${merged} ${are(merged)} merged`);
@@ -136,17 +139,30 @@ export function headline(list: Task[]): { lead: string; rest: string } {
 
 /** Short second line of a queue row, from the agent's side. */
 export function rowLine(t: Task): string {
+  const line = rowBase(t);
+  const c = t.status.clash;
+  return c ? `${line} · ${clashShort(c)}` : line;
+}
+
+function rowBase(t: Task): string {
   const a = t.status.ask;
   const lim = t.status.limit;
   if (lim) return lim.resetsAt ? `Out of usage · back ${clockOf(lim.resetsAt)}` : "Out of usage";
   switch (t.status.state) {
     case "needs":
       if (!a) return "Needs you";
-      if (a.kind === "run") return a.detail ? `Wants to run ${a.detail}` : "Wants to run a command";
-      if (a.kind === "edit") return a.detail ? `Wants to edit ${a.detail}` : "Wants to edit a file";
+      const risk = riskOfAsk(a) === "high" ? " (high risk)" : "";
+      if (a.kind === "run") return (a.detail ? `Wants to run ${a.detail}` : "Wants to run a command") + risk;
+      if (a.kind === "edit") return (a.detail ? `Wants to edit ${a.detail}` : "Wants to edit a file") + risk;
       return `Asks: ${a.prompt}`;
+    case "blocked": {
+      const b = t.status.blocked?.kind;
+      if (b === "captcha") return "Blocked on CAPTCHA";
+      if (b === "key") return "Blocked on API key";
+      return "Blocked on sign-in";
+    }
     case "review": return `${t.changedFiles ?? 0} file${t.changedFiles === 1 ? "" : "s"} changed`;
-    case "working": return "Working";
+    case "working": return t.status.stuck ? `Looks stuck: ${t.status.stuck.text}` : "Working";
     case "stopped": return "Stopped";
     case "merged": return `Merged into ${t.mergedInto ?? "the base branch"}`;
     default: return t.worked ? "Done" : "Waiting for a task";
@@ -462,8 +478,6 @@ let railTimer: number | null = null;
 let railHtml = "";
 /** The agents on cards now, for the reader. */
 let railPanes: Pane[] = [];
-/** How often a card reads what its agent wrote. */
-const RAIL_READ_MS = 2000;
 
 /** One card: who, its state and job, what it is doing and last said, and its
  *  answer buttons while it asks you something. */
@@ -474,9 +488,10 @@ function cardHtml(t: Task, p: Pane): string {
   if (a && miniAnswered.get(p.id) !== askKey(a)) {
     const lead = a.kind === "run" ? "Wants to run" : a.kind === "edit" ? "Wants to edit" : "Asks";
     const what = a.kind !== "question" && a.detail ? `<code title="${esc(a.detail)}">${esc(a.detail)}</code>` : `<span class="rc-q">${esc(a.prompt)}</span>`;
-    body = `<div class="rc-ask"><p><span class="lb">${lead}</span>${what}</p><div class="rc-opts">${askButtons(a).join("")}</div></div>`;
+    const risk = riskOfAsk(a) === "high" ? `<span class="rc-risk">High risk</span>` : "";
+    body = `<div class="rc-ask"><p><span class="lb">${lead}</span>${risk}${what}</p><div class="rc-opts">${askButtons(a).join("")}</div></div>`;
   } else {
-    const doing = t.status.state === "working" && !t.status.limit ? g.doing || (g.asked ? "Working on what you asked" : "Working" + (t.since > 0 ? ` · ${ago(Date.now() - t.since)}` : "")) : rowLine(t);
+    const doing = t.status.state === "working" && !t.status.limit && !t.status.stuck && !t.status.clash ? g.doing || (g.asked ? "Working on what you asked" : "Working" + (t.since > 0 ? ` · ${ago(Date.now() - t.since)}` : "")) : rowLine(t);
     const said = g.said ? `<p class="rc-say">${esc(g.said)}</p>` : g.asked ? `<p class="rc-say rc-you"><span>You</span> ${esc(g.asked)}</p>` : "";
     body = `<p class="rc-do">${esc(doing)}${lineCounts(t)}</p>${said}`;
   }
@@ -493,7 +508,6 @@ function renderRail(ws: Workspace, big: Pane | undefined, cards: Pane[], tile: T
     railEl = null;
     railPanes = [];
     if (railTimer !== null) { window.clearInterval(railTimer); railTimer = null; }
-    keepGlances(new Set());
     return;
   }
   if (!railEl || railEl.parentElement !== ws.gridEl) {
@@ -524,11 +538,10 @@ function renderRail(ws: Workspace, big: Pane | undefined, cards: Pane[], tile: T
   }).join("");
   if (railHtml !== html) { railHtml = html; railEl.innerHTML = html; }
   railPanes = groups.flatMap((g) => g.tasks.map((t) => t.pane));
-  keepGlances(new Set(cards.map((p) => p.id)));
   if (railTimer === null) {
     const read = () => void Promise.all(railPanes.map((p) => refreshGlance(p))).then((ch) => { if (ch.some(Boolean)) render(); });
     read();
-    railTimer = window.setInterval(read, RAIL_READ_MS);
+    railTimer = window.setInterval(read, FEED_READ_MS);
   }
 }
 
@@ -699,6 +712,10 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
   // you is marked where it is, and counted on its project, which folds its
   // stopped agents away and keeps the running ones.
   const groups = projectGroups(list, listOrder());
+  const spend = projectTotals(list.map((t) => {
+    const p = paneOf(t);
+    return { wsId: t.wsId, usd: p ? agentUsage(p)?.usd ?? null : null };
+  }));
   const html = `<div class="iq-list">` +
     (groups.length ? groups.map((g, gi) => {
       const folded = foldedProjects.has(g.wsId);
@@ -706,7 +723,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
       const away = g.tasks.length - rows.length;
       return `<section class="iq-group${folded ? " folded" : ""}${g.needs ? " has-needs" : ""}">
       <h2 class="iq-gt iq-proj"><button type="button" class="iq-ph" data-proj="${esc(g.wsId)}" aria-expanded="${!folded}" aria-controls="iq-r-${gi}" title="${esc(g.name)}${folded ? (away ? ` · show ${away} stopped` : " · unfold") : " · fold the stopped away"}">
-        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 12a1.5 1.5 0 0 1 1.5-1.5h7.5M6.5 5.5h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></h2>
+        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span>${(spend.get(g.wsId) ?? 0) > 0 ? `<span class="iq-cost" title="What this project's agents have used so far">${money(spend.get(g.wsId) ?? 0)}</span>` : ""}</button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 12a1.5 1.5 0 0 1 1.5-1.5h7.5M6.5 5.5h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></h2>
       <ul class="iq-rows" id="iq-r-${gi}"${rows.length ? "" : " hidden"}>${rows.map((t) => {
         const p = paneOf(t);
         const main = t.title ?? t.name;
@@ -778,7 +795,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     const t = p === pane || pinned ? list.find((x) => x.paneId === p.id) : undefined;
     let pill = p.el.querySelector<HTMLElement>(".ib-pill");
     let acts = p.el.querySelector<HTMLElement>(".ib-acts");
-    p.el.classList.toggle("ib-needs", !!t && pinned && t.status.state === "needs");
+    p.el.classList.toggle("ib-needs", !!t && pinned && (t.status.state === "needs" || t.status.state === "blocked"));
     if (!t) { pill?.remove(); acts?.remove(); continue; }
     if (!pill) {
       pill = document.createElement("span");
@@ -958,11 +975,14 @@ const hiddenSince = new Map<string, number>();
 function keepHistory(stage: Pane | undefined, now = Date.now()): void {
   const shown = new Set<string>(splitOn ? pins : []);
   if (stage) shown.add(stage.id);
+  const live = new Set<string>();
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) {
+    live.add(p.id);
     if (shown.has(p.id)) hiddenSince.delete(p.id);
     else if (!hiddenSince.has(p.id)) hiddenSince.set(p.id, now);
     p.term.setScrollback?.(keepLines(shown.has(p.id), now - (hiddenSince.get(p.id) ?? now)));
   }
+  for (const id of [...hiddenSince.keys(), ...miniAnswered.keys(), ...lastState.keys()]) if (!live.has(id)) { hiddenSince.delete(id); miniAnswered.delete(id); lastState.delete(id); }
 }
 
 function move(delta: number): void {

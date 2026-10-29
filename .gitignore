@@ -5,7 +5,7 @@ src-tauri/gen/
 *.log
 .DS_Store
 
-# updater signing key (SECRET — never commit)
+# updater signing key (SECRET â€” never commit)
 .tauri/
 
 # hook logs / local agent data
@@ -25,3 +25,6 @@ __pycache__/
 .venv/
 uv.lock
 .pytest_cache/
+
+# rust crate build outputs
+crates/*/target/

@@ -48,7 +48,7 @@ import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
 import { cliLogo } from "./clilogos";
-import { replayEarlyExit, takeEarlyExit } from "./ptyexit";
+import { forgetHeld, replayEarlyExit, takeEarlyExit } from "./ptyexit";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
  *  the opacity changes, since all three decide the same palette. */
@@ -642,6 +642,7 @@ export async function removeAgent(ws: Workspace, id: string) {
     /* ignore */
   }
   p.term.dispose();
+  forgetHeld(id);
   p.el.remove();
   ws.panes.delete(id);
   layoutGrid(ws);

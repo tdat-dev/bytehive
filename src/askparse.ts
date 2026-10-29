@@ -224,3 +224,33 @@ export function freeTextKeys(ask: Ask | null, text: string): string[] {
   if (ask?.freeTextOption) return [String(ask.freeTextOption), body, "\r"];
   return [body, "\r"];
 }
+
+export type AskRisk = "low" | "mid" | "high";
+
+/** Destructive, privileged, or published-to-the-world commands. */
+const RISKY_RUN = [
+  /\brm\s+-[a-z]*r[a-z]*f/, /\brd\s+\/s/i, /\bdel\s+\/[sf]/i, /\bformat\s+[a-z]:/i,
+  /\bdd\b.*\bof=/, /\bmkfs\b/, /\bfdisk\b/, /\bdiskpart\b/, />\s*\/dev\//,
+  /\bdrop\s+(database|table)\b/i, /\btruncate\s+table\b/i,
+  /git\s+reset\s+--hard/, /git\s+clean\s+-[a-z]*f/, /git\s+push\b.*(--force|-f\b)/,
+  /\bsudo\b/, /(^|\s)su\b/, /\brunas\b/i, /chmod\s+-R/, /chown\s+-R/,
+  /\bcurl\b[^|]*\|\s*(bash|sh)\b/, /\bwget\b[^|]*\|\s*(bash|sh)\b/,
+  /npm\s+publish\b/, /cargo\s+publish\b/, /twine\s+upload\b/,
+  /\b(shutdown|reboot|halt|poweroff)\b/, /kill\s+-9\b/,
+];
+/** A first word that only reads, when the whole line is one command. */
+const READ_ONLY = /^(ls|dir|cat|type|head|tail|less|more|echo|pwd|whoami|which|where|file|stat|tree|wc|grep|rg|find|fd|uname|node\s+--?v|npm\s+--?v|python\s+--?V|git\s+(status|diff|log|show|branch|stash\s+list|remote\s+-v))\b/;
+/** Editing one of these wants a second look. */
+const SENSITIVE_PATH = /(\.env|secret|credential|\.pem$|\.key$|\b(auth|login|session|password|passwd|permission|acl)\b)/i;
+
+/** How much care an approval wants: destructive or privileged runs and edits
+ *  to sensitive files are high, plain reads and questions are low, and
+ *  everything else an agent runs (including compound lines) is mid. */
+export function riskOfAsk(a: Pick<Ask, "kind" | "detail">): AskRisk {
+  const d = (a.detail ?? "").trim();
+  if (RISKY_RUN.some((re) => re.test(d))) return "high";
+  if (a.kind === "question") return "low";
+  if (a.kind === "edit") return SENSITIVE_PATH.test(d) ? "high" : "mid";
+  if (d && !/[&;]/.test(d) && READ_ONLY.test(d)) return "low";
+  return "mid";
+}

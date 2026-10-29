@@ -113,3 +113,19 @@ export function numberHunk(header: string, lines: DiffLine[]): NumberedLine[] {
 export function diffTotals(files: DiffFile[]): { add: number; del: number } {
   return files.reduce((t, f) => ({ add: t.add + f.additions, del: t.del + f.deletions }), { add: 0, del: 0 });
 }
+
+/** Review risk of a path, higher first: secrets and auth before tests and docs. */
+export function riskOf(path: string): number {
+  const p = path.toLowerCase();
+  if (/(^|\/)\.env(\.|$)|\.pem$|\.key$|id_rsa|credentials|secrets?\./.test(p)) return 100;
+  if (/\b(auth|login|session|password|passwd|permission|acl)\b/.test(p)) return 80;
+  if (/package\.json$|-lock\.(json|yaml)$|\.lock$|requirements[^/]*\.txt$|pyproject\.toml$|cargo\.toml$|cargo\.lock$|go\.(mod|sum)$|dockerfile$|migrations?[/_]|schema|\.sql$|\.ya?ml$|\.toml$|\.ini$|\.cfg$/.test(p)) return 60;
+  if (/(^|\/)(test|tests|__tests__|spec|e2e)\/|\.(test|spec)\.|_test\.|test_/.test(p)) return 20;
+  if (/\.(md|mdx|rst|txt)$|(^|\/)docs?\//.test(p)) return 10;
+  return 40;
+}
+
+/** Files riskiest first; a stable sort keeps the diff order inside a tier. */
+export function rankFiles<T extends { path: string }>(files: T[]): T[] {
+  return [...files].sort((a, b) => riskOf(b.path) - riskOf(a.path));
+}

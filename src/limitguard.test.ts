@@ -9,10 +9,12 @@ const io = vi.hoisted(() => ({
   planReset: null as number | null,
   spawned: [] as Array<{ preset: string; task: string }>,
   panes: new Map<string, unknown>(),
+  gitFiles: {} as Record<string, Array<{ path: string }>>,
 }));
 vi.mock("./tasks", () => ({ allTasks: () => io.tasks, onTasksChange: () => () => {} }));
 vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
+  gitChangedFiles: async (root: string) => io.gitFiles[root] ?? [],
   notify: async (title: string) => { io.notes.push(title); },
 }));
 vi.mock("./prefs", () => ({ getPref: (k: string) => io.prefs[k] }));
@@ -44,6 +46,7 @@ vi.mock("./spawnmodal", () => ({
 }));
 
 import { CARRY_ON, checkLimits, handOff, handOverToAgent, handoffTargets, openTargets, stopLimitGuard } from "./limitguard";
+import { agentUsage, forgetCost } from "./agentcost";
 
 const RESET = Date.parse("2026-09-27T12:00:00Z");
 const pane = (over: object = {}) => ({ id: "p1", running: true, spec: { name: "Ana", badge: "claude", ranIn: "D:/app", title: "Fix the header" }, ...over });
@@ -51,7 +54,7 @@ const task = (limit: object | null, state = "idle") => ({ paneId: "p1", wsId: "w
 
 describe("Limit Guard", () => {
   beforeEach(() => {
-    io.sent = []; io.notes = []; io.plans = []; io.planReset = null; io.spawned = [];
+    io.sent = []; io.notes = []; io.plans = []; io.planReset = null; io.spawned = []; io.gitFiles = {};
     io.prefs = { autoResume: true, limitNotify: true };
     io.panes.clear();
     io.panes.set("p1", pane());
@@ -126,6 +129,15 @@ describe("Limit Guard", () => {
     expect((io.panes.get("p2") as { spec: { title: string } }).spec.title).toBe("Carries on Ana's task: Fix the header");
   });
 
+  it("briefs the new agent with the files git says changed", async () => {
+    (io.panes.get("p1") as { spec: Record<string, unknown> }).spec.worktree = "D:/wt/a";
+    io.gitFiles = { "D:/wt/a": [{ path: "src/app.ts" }, { path: "src/lib.ts" }] };
+    io.tasks = [task({ what: "You've hit your limit", resetsAt: RESET })];
+    expect(await handOff("p1", "codex")).toBe("Bob");
+    expect(io.spawned[0].task).toContain("Changed on disk (git, 2 files)");
+    expect(io.spawned[0].task).toContain("- src/app.ts");
+  });
+
   describe("handing over to an agent already open", () => {
     const other = (id: string, name: string, badge: string, over: object = {}) =>
       ({ id, running: true, spec: { name, badge, ranIn: "d:\\APP\\", ...over } });
@@ -187,6 +199,22 @@ describe("Limit Guard", () => {
       checkLimits(RESET - 3600e3);
       await flush();
       expect(io.spawned.map((x) => x.preset)).toEqual(["codex"]);
+    });
+
+    it("hands over to the cheapest open agent with room", async () => {
+      const pricey = pane({ id: "p2", spec: { name: "Bo", badge: "aider", ranIn: "D:/app" }, term: { snapshot: () => "Cost: $0.01 message, $5.00 session." } });
+      const cheap = pane({ id: "p3", spec: { name: "Cy", badge: "aider", ranIn: "D:/app" }, term: { snapshot: () => "Cost: $0.01 message, $1.00 session." } });
+      io.panes.set("p2", pricey);
+      io.panes.set("p3", cheap);
+      io.tasks = [
+        { paneId: "p1", wsId: "w1", name: "Ana", status: { state: "working", ask: null, limit: null } },
+        { paneId: "p2", wsId: "w1", name: "Bo", status: { state: "idle", ask: null, limit: null } },
+        { paneId: "p3", wsId: "w1", name: "Cy", status: { state: "idle", ask: null, limit: null } },
+      ];
+      agentUsage(pricey as never); agentUsage(cheap as never);
+      await flush();
+      expect(openTargets(pane() as never).map((t) => t.paneId)).toEqual(["p3", "p2"]);
+      forgetCost("p2"); forgetCost("p3");
     });
 
     it("waits for the reset when every other plan is out too", () => {

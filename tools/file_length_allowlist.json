@@ -1,0 +1,19 @@
+{
+  "crates/agent-core/src/agent.rs": 503,
+  "src/chatmodel.ts": 602,
+  "src/filetree.ts": 1037,
+  "src/inbox.test.ts": 858,
+  "src/inbox.ts": 1464,
+  "src/inboxreview.ts": 565,
+  "src/ipc.ts": 842,
+  "src/kanban.ts": 1348,
+  "src/main.ts": 525,
+  "src/pane.ts": 789,
+  "src-tauri/src/browser/hub.rs": 937,
+  "src-tauri/src/commands.rs": 880,
+  "src-tauri/src/core/fs.rs": 705,
+  "src-tauri/src/dashboard.rs": 1364,
+  "src-tauri/src/dashauth.rs": 639,
+  "src-tauri/src/land.rs": 682,
+  "src-tauri/src/review.rs": 814
+}

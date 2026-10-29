@@ -238,6 +238,8 @@ function renderAsks(all: Ask[]) {
     told.add(a.id);
     if (!document.hasFocus()) void notify(askLine(a), `${host(a.url) ? `On ${host(a.url)}. ` : ""}Open Maestro to allow it or not.`).catch(() => {});
   }
+  const live = new Set(list.map((x) => x.id));
+  for (const id of told) if (!live.has(id)) told.delete(id);
   // A new ask takes the keyboard only when nothing else has it.
   const first = asksBox.querySelector<HTMLButtonElement>("[data-no]");
   if (first && list.some((a) => !had.has(a.id)) && (document.activeElement === document.body || !document.activeElement)) first.focus();
@@ -249,6 +251,7 @@ function onBlocker(b: Blocker) {
   const key = `${b.agent}|${b.kind}|${b.url}`;
   if (Date.now() - (seenBlockers.get(key) ?? 0) < 120_000) return;
   seenBlockers.set(key, Date.now());
+  for (const [k, at] of seenBlockers) if (Date.now() - at > 3_600_000) seenBlockers.delete(k);
   const what = b.kind === "captcha" ? "a CAPTCHA" : "a login page";
   const where = host(b.url) ? ` on ${host(b.url)}` : "";
   topNote(`<b>${esc(b.agent)}</b> reached ${what}${esc(where)}. Handle it in Chrome, then tell it to carry on.`, 6000);

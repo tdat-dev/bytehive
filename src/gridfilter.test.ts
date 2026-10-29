@@ -13,6 +13,7 @@ describe("statusGroup", () => {
   it("treats review as needs-you and the rest as quiet", () => {
     expect(statusGroup("needs")).toBe("needs");
     expect(statusGroup("review")).toBe("needs");
+    expect(statusGroup("blocked")).toBe("needs");
     expect(statusGroup("working")).toBe("working");
     expect(statusGroup("idle")).toBe("quiet");
     expect(statusGroup("stopped")).toBe("quiet");

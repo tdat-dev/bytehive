@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearComments, commentWhere, commentsOf, conflictText, diffTotals, dropComment, numberHunk, putComment, sendBackText, type LineComment } from "./reviewtext";
+import { clearComments, commentWhere, commentsOf, conflictText, diffTotals, dropComment, numberHunk, putComment, rankFiles, riskOf, sendBackText, type LineComment } from "./reviewtext";
 
 describe("send back", () => {
   const conflict = { base: "main", branch: "maestro/eli-1a2b3c", files: ["src/a.ts", "src/b.ts"] };
@@ -84,5 +84,20 @@ describe("comments on the diff", () => {
     expect(commentsOf("ana")).toEqual([]);
     expect(commentsOf("bo")).toHaveLength(1);
     clearComments("bo");
+  });
+});
+
+describe("review risk order", () => {
+  it("ranks secrets above auth above code above tests above docs", () => {
+    const paths = ["docs/guide.md", "src/app.test.ts", "src/app.ts", "src/auth/login.ts", ".env"];
+    const ranked = [...paths].sort((a, b) => riskOf(b) - riskOf(a));
+    expect(ranked).toEqual([".env", "src/auth/login.ts", "src/app.ts", "src/app.test.ts", "docs/guide.md"]);
+  });
+
+  it("ranks manifests and infra with config, and keeps diff order inside a tier", () => {
+    expect(riskOf("package.json")).toBeGreaterThan(riskOf("src/app.ts"));
+    expect(riskOf("Dockerfile")).toBeGreaterThan(riskOf("src/app.ts"));
+    const files = [{ path: "b.ts" }, { path: "a.ts" }];
+    expect(rankFiles(files).map((f) => f.path)).toEqual(["b.ts", "a.ts"]);
   });
 });

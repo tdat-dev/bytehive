@@ -132,7 +132,7 @@ pub async fn codex_plan_usage() -> Result<Option<PlanUsage>, CommandError> {
 }
 
 fn codex_plan_usage_now() -> Option<PlanUsage> {
-    use crate::transcripts::codex::{sessions_root, sorted_dirs};
+    use agent_core::codex::{sessions_root, sorted_dirs};
     let root = sessions_root()?;
     let mut days = Vec::new();
     for y in sorted_dirs(&root).into_iter().rev() {

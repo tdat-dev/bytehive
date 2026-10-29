@@ -1,4 +1,4 @@
-//! Holds MANY concurrently-running agents keyed by id. Killing an agent simply
+﻿//! Holds MANY concurrently-running agents keyed by id. Killing an agent simply
 //! removes it from the map — its `Drop` performs the (non-blocking) teardown.
 //!
 //! The app shares one registry behind a mutex that every keystroke, resize and
@@ -14,8 +14,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use portable_pty::PtySize;
 
-use crate::core::agent::{Agent, Sink};
-use crate::core::command_spec::CommandSpec;
+use crate::agent::{Agent, Sink};
+use crate::command_spec::CommandSpec;
 
 /// After an agent's process exits, how long its output reader gets to drain the
 /// last bytes (a final error message) before the ConPTY is closed.

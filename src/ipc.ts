@@ -602,6 +602,12 @@ export async function gitChangedFiles(repoRoot: string): Promise<ChangedFile[]> 
   return invoke<ChangedFile[]>("git_changed_files", { repoRoot });
 }
 
+/** Snapshot uncommitted work without touching the tree (stash create+store).
+ *  Returns the stash sha, or null when the tree is clean. */
+export async function gitCheckpoint(worktreePath: string, message: string): Promise<string | null> {
+  return invoke<string | null>("git_checkpoint", { worktreePath, message });
+}
+
 /* ---- AI Code Slice 2: write side (commit / merge / discard) ---- */
 
 export interface RepoInfo {

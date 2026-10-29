@@ -1,12 +1,12 @@
 // Grid filters (pure): which pinned agents the Grid shows. Two independent
 // filters: project (one of the pinned projects, or all) and status group.
-// "Needs you" covers needs + review — both wait on the user; "Quiet" covers
-// idle + stopped + merged — nothing asks for attention. inbox.ts keeps the
-// chosen values and applies them to the pins before laying out.
+// "Needs you" covers needs + blocked + review — all wait on the user; "Quiet"
+// covers idle + stopped + merged — nothing asks for attention. inbox.ts keeps
+// the chosen values and applies them to the pins before laying out.
 
 export type GridStatus = "all" | "needs" | "working" | "quiet";
 
-export type GridState = "needs" | "review" | "working" | "idle" | "stopped" | "merged";
+export type GridState = "needs" | "blocked" | "review" | "working" | "idle" | "stopped" | "merged";
 
 export interface GridRow {
   id: string;
@@ -16,7 +16,7 @@ export interface GridRow {
 
 /** Task state → the status chip it lights up. */
 export function statusGroup(state: GridState): Exclude<GridStatus, "all"> {
-  if (state === "needs" || state === "review") return "needs";
+  if (state === "needs" || state === "blocked" || state === "review") return "needs";
   if (state === "working") return "working";
   return "quiet";
 }

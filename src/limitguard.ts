@@ -13,13 +13,14 @@
 //   - Before any of that: a notification when a plan passes 90% of a limit.
 
 import { allTasks, onTasksChange, type Task } from "./tasks";
-import { notify, sendMessage } from "./ipc";
+import { gitChangedFiles, notify, sendMessage } from "./ipc";
 import { getPref } from "./prefs";
 import { clockOf } from "./taskstate";
 import { limitName, limitResetsAt, planResetFor, planSnapshot } from "./planmeter";
 import { workspaces } from "./appstate";
 import { handoffBrief } from "./handoff";
 import { sourceOf } from "./chatsource";
+import { agentCost } from "./agentcost";
 import { CLI_PRESETS } from "./crew";
 import { loadCrew, presetAvailable, spawnAgents } from "./spawnmodal";
 import type { Chat } from "./chatmodel";
@@ -72,7 +73,8 @@ function checkAgents(now: number): void {
   for (const t of allTasks()) {
     const lim = t.status.limit;
     const found = find(t.paneId);
-    if (!lim || !found) { episodes.delete(t.paneId); continue; }
+    if (!found) { episodes.delete(t.paneId); resumedAt.delete(t.paneId); continue; }
+    if (!lim) { episodes.delete(t.paneId); continue; }
     // one notice is one episode, and keeps the reset first seen for it: the
     // plan only knows a reset until it has passed
     let e = episodes.get(t.paneId);
@@ -165,7 +167,8 @@ export interface OpenTarget { paneId: string; name: string; cli: string; badge: 
 /** Agents already open that could take over this agent's task: running, of
  *  another CLI, not a shell or the Director, free (idle, or done with its
  *  changes waiting), and in the same folder, so they see its changes. The
- *  ones whose plan has room first. */
+ *  ones whose plan has room first, cheapest observed session first (nothing
+ *  recorded reads as nothing spent). */
 export function openTargets(pane: Pane, now = Date.now()): OpenTarget[] {
   const found = find(pane.id);
   const dir = pane.spec.ranIn;
@@ -175,7 +178,7 @@ export function openTargets(pane: Pane, now = Date.now()): OpenTarget[] {
     .filter((p) => p.id !== pane.id && p.running && p.spec.badge !== pane.spec.badge && !presetOf(p.spec.badge)?.shell
       && p.spec.role !== "conductor" && !!p.spec.ranIn && sameFolder(p.spec.ranIn, dir)
       && (state.get(p.id) === "idle" || state.get(p.id) === "review"))
-    .sort((a, b) => Number(full(a.spec.badge, now)) - Number(full(b.spec.badge, now)))
+    .sort((a, b) => Number(full(a.spec.badge, now)) - Number(full(b.spec.badge, now)) || (agentCost(a, now) ?? 0) - (agentCost(b, now) ?? 0))
     .map((p) => ({ paneId: p.id, name: p.spec.name, cli: cliLabel(p.spec.badge), badge: p.spec.badge }));
 }
 
@@ -226,10 +229,16 @@ export function handoffTargets(pane: Pane, now = Date.now()): Array<{ id: string
 
 /** The agent's conversation for a brief, read from its CLI's files (the
  *  start, for the first asks, and the end). */
-async function conversationOf(pane: Pane): Promise<{ chat: Chat | null; firstAsks: string[] }> {
+async function conversationOf(pane: Pane): Promise<{ chat: Chat | null; firstAsks: string[]; gitFiles: string[] }> {
   const src = sourceOf(pane);
   const dir = pane.spec.ranIn;
-  if (!src || !dir) return { chat: null, firstAsks: [] };
+  let gitFiles: string[] = [];
+  if (pane.spec.worktree) {
+    try {
+      gitFiles = (await gitChangedFiles(pane.spec.worktree)).map((f) => f.path).slice(0, 30);
+    } catch { /* folder unreadable: the brief says what the chat says */ }
+  }
+  if (!src || !dir) return { chat: null, firstAsks: [], gitFiles };
   const firstAsks: string[] = [];
   // its first asks, from the start
   try {
@@ -248,7 +257,7 @@ async function conversationOf(pane: Pane): Promise<{ chat: Chat | null; firstAsk
       offset = r.next;
     }
   } catch { /* what it has */ }
-  return { chat: chat.items.length ? chat : null, firstAsks };
+  return { chat: chat.items.length ? chat : null, firstAsks, gitFiles };
 }
 
 /** Start an agent of `presetId` in the same folder on this agent's task,
@@ -258,9 +267,9 @@ export async function handOff(paneId: string, presetId: string, why = "it hit it
   const preset = CLI_PRESETS.find((p) => p.id === presetId);
   if (!found || !preset) return null;
   const { ws, pane } = found;
-  const { chat, firstAsks } = await conversationOf(pane);
+  const { chat, firstAsks, gitFiles } = await conversationOf(pane);
   const cli = CLI_PRESETS.find((p) => p.badge === pane.spec.badge)?.label ?? pane.spec.badge;
-  const brief = handoffBrief({ name: pane.spec.name, cli, why, title: pane.spec.title ?? null, firstAsks }, chat);
+  const brief = handoffBrief({ name: pane.spec.name, cli, why, title: pane.spec.title ?? null, firstAsks, gitFiles }, chat);
   const [name] = await spawnAgents(ws, preset.id, 1, brief, loadCrew().skipPerms);
   // its row says whose task it carries on, not the brief's first words
   const next = [...ws.panes.values()].find((p) => p.spec.name === name);

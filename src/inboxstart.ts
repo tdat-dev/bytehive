@@ -50,7 +50,7 @@ export function greeting(hour: number): string {
 
 /** The one sentence under the greeting: what, if anything, waits on you. */
 export function statusSentence(tasks: Pick<Task, "name" | "status">[], firstRun: boolean): string {
-  const needs = tasks.filter((t) => t.status.state === "needs");
+  const needs = tasks.filter((t) => t.status.state === "needs" || t.status.state === "blocked");
   const working = tasks.filter((t) => t.status.state === "working").length;
   const review = tasks.filter((t) => t.status.state === "review").length;
   if (needs.length === 1) return `${needs[0].name} is waiting on you.`;
@@ -65,7 +65,7 @@ export function statusSentence(tasks: Pick<Task, "name" | "status">[], firstRun:
 export function projectLine(dir: string, tasks: Task[]): { agents: number; needs: number } {
   const ws = [...workspaces.values()].find((w) => sameFolder(w.dir, dir));
   const mine = ws ? tasks.filter((t) => t.wsId === ws.id) : [];
-  return { agents: mine.length, needs: mine.filter((t) => t.status.state === "needs").length };
+  return { agents: mine.length, needs: mine.filter((t) => t.status.state === "needs" || t.status.state === "blocked").length };
 }
 
 /** Switch to a folder's project, opening it when it isn't open yet. */
@@ -195,7 +195,7 @@ export function renderStart(): void {
   const status = el.querySelector<HTMLElement>(".st-status");
   if (status) {
     status.textContent = statusSentence(tasks, firstRun);
-    status.classList.toggle("needs", waiting.length > 0);
+    status.classList.toggle("needs", waiting.length > 0 || tasks.some((t) => t.status.state === "blocked"));
   }
   const live = el.querySelector<HTMLElement>(".st-live");
   if (!live) return;

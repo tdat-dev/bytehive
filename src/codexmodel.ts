@@ -375,5 +375,11 @@ export function createCodexChat(): Chat {
         }
       }
     },
+    trim(keep: number): void {
+      if (items.length <= keep) return;
+      const gone = new Set<ChatItem>(items.slice(0, items.length - keep));
+      for (const [k, c] of calls) if (c.steps.every((s) => gone.has(s))) calls.delete(k);
+      items.splice(0, items.length - keep);
+    },
   };
 }

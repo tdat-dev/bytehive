@@ -158,6 +158,7 @@ pub fn run() {
             review::git_changed_files,
             review::review_repo_info,
             review::review_commit,
+            review::git_checkpoint,
             review::review_merge,
             review::review_discard,
             review::review_remove_worktree,

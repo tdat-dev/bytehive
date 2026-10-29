@@ -269,5 +269,12 @@ export function createMuseChat(): Chat {
         }
       }
     },
+    trim(keep: number): void {
+      if (items.length <= keep) return;
+      const gone = new Set<ChatItem>(items.slice(0, items.length - keep));
+      for (const [k, it] of byId) if (gone.has(it)) byId.delete(k);
+      for (const [k, s] of steps) if (gone.has(s)) { steps.delete(k); qids.delete(k); }
+      items.splice(0, items.length - keep);
+    },
   };
 }

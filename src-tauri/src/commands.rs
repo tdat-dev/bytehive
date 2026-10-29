@@ -6,6 +6,8 @@ use tauri::{AppHandle, Emitter, State};
 use crate::core::command_spec::CommandSpec;
 use crate::core::registry::{self, Registry};
 use crate::error::{run_blocking, CommandError};
+use agent_core::{claude, muse};
+pub use agent_core::transcript::{is_session_id, read_start, TranscriptChunk};
 use crate::state::AppState;
 use portable_pty::PtySize;
 
@@ -228,13 +230,6 @@ pub struct ModelUsage {
     messages: u64,
 }
 
-/// Mangle a workspace path the way Claude Code names its transcript folder:
-/// every non-alphanumeric character becomes '-'. e.g. `D:\maestro` -> `D--maestro`.
-fn claude_project_slug(dir: &str) -> String {
-    dir.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect()
-}
 
 /// Sum Claude Code token usage for a workspace folder by reading the session
 /// transcripts Claude writes under `~/.claude/projects/<slug>/*.jsonl`. These
@@ -247,7 +242,7 @@ pub async fn claude_usage(dir: String) -> Result<Vec<ModelUsage>, CommandError> 
 }
 
 fn claude_usage_impl(dir: &str) -> Vec<ModelUsage> {
-    let Some(proj) = claude_project_dir(dir) else { return Vec::new() };
+    let Some(proj) = claude::project_dir(dir) else { return Vec::new() };
     let entries = match std::fs::read_dir(&proj) {
         Ok(e) => e,
         Err(_) => return Vec::new(), // no transcripts for this folder yet
@@ -278,7 +273,7 @@ pub async fn claude_session_usage(dir: String, session_id: String) -> Result<Vec
         if !is_session_id(&session_id) {
             return Ok(Vec::new());
         }
-        Ok(claude_project_dir(&dir).map(|p| file_usage(&p.join(format!("{session_id}.jsonl")))).unwrap_or_default())
+        Ok(claude::project_dir(&dir).map(|p| file_usage(&p.join(format!("{session_id}.jsonl")))).unwrap_or_default())
     })
     .await
 }
@@ -387,51 +382,6 @@ fn file_usage(path: &Path) -> Vec<ModelUsage> {
     sorted_usage(entry.by_model.values().cloned().collect())
 }
 
-/// New lines of one Claude Code transcript, for the chat view.
-#[derive(Serialize, Default, Clone)]
-pub struct TranscriptChunk {
-    /// The file read, or "" when none was found yet.
-    pub path: String,
-    /// Complete JSONL lines from `offset` on (a half-written last line waits).
-    pub text: String,
-    /// Where to read from next time.
-    pub next: u64,
-    /// Where this text starts in the file: more than 0 on a first read that
-    /// was asked for only the end of a long conversation.
-    pub from: u64,
-}
-
-/// Where reading a transcript starts: at `offset`; or, on a first read
-/// (`offset` 0) asked for only the end, at the first whole line within the
-/// last `tail` bytes, so a long conversation opens without reading all of it.
-pub(crate) fn read_start(file: &mut std::fs::File, size: u64, offset: u64, tail: Option<u64>) -> u64 {
-    use std::io::{Read, Seek, SeekFrom};
-    // the file was replaced or cut: start over
-    if offset > size {
-        return 0;
-    }
-    if offset != 0 {
-        return offset;
-    }
-    let Some(t) = tail.filter(|t| *t > 0 && size > *t) else { return 0 };
-    let mut at = size - t;
-    let mut buf = vec![0u8; 64 * 1024];
-    while at < size {
-        if file.seek(SeekFrom::Start(at)).is_err() {
-            return 0;
-        }
-        let n = match file.read(&mut buf) {
-            Ok(0) | Err(_) => return size,
-            Ok(n) => n,
-        };
-        if let Some(i) = buf[..n].iter().position(|&b| b == b'\n') {
-            return at + i as u64 + 1;
-        }
-        at += n as u64;
-    }
-    size
-}
-
 /// Where pictures pasted into the chat composer are kept, and for how long.
 const PASTE_DIR: &str = "maestro-paste";
 const PASTE_KEEP_SECS: u64 = 7 * 24 * 3600;
@@ -526,8 +476,6 @@ fn save_pasted_image_in(dir: &Path, data: &str, ext: &str) -> Result<String, Com
     Ok(path.to_string_lossy().into_owned())
 }
 
-/// Most bytes one read hands back, so a long session loads in slices.
-const TRANSCRIPT_SLICE: u64 = 2 * 1024 * 1024;
 
 /// Read an agent's transcript under `~/.claude/projects/<slug of dir>/`: the
 /// `<session_id>.jsonl` Maestro started it with, or, when that is unknown, the
@@ -541,190 +489,33 @@ pub async fn claude_transcript(
     offset: u64,
     tail_bytes: Option<u64>,
 ) -> Result<TranscriptChunk, CommandError> {
-    run_blocking(move || Ok(claude_transcript_impl(&dir, session_id.as_deref(), since_ms, offset, tail_bytes))).await
+    run_blocking(move || Ok(claude::transcript(&dir, session_id.as_deref(), since_ms, offset, tail_bytes))).await
 }
 
-fn claude_transcript_impl(dir: &str, session_id: Option<&str>, since_ms: Option<u64>, offset: u64, tail_bytes: Option<u64>) -> TranscriptChunk {
-    use std::io::{Read, Seek, SeekFrom};
-    let home = match std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
-        Ok(h) => h,
-        Err(_) => return TranscriptChunk::default(),
-    };
-    let proj = Path::new(&home).join(".claude").join("projects").join(claude_project_slug(dir));
-    let path = match session_id {
-        // A session id is a UUID; anything else never reaches the filesystem.
-        Some(id) if !id.is_empty() && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') => {
-            proj.join(format!("{id}.jsonl"))
-        }
-        _ => {
-            let since = since_ms.unwrap_or(0);
-            let Ok(entries) = std::fs::read_dir(&proj) else {
-                return TranscriptChunk::default();
-            };
-            let mut best: Option<(u128, std::path::PathBuf)> = None;
-            for ent in entries.flatten() {
-                let p = ent.path();
-                if p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                    continue;
-                }
-                let Ok(meta) = ent.metadata() else { continue };
-                let Ok(modified) = meta.modified() else { continue };
-                let ms = modified
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis())
-                    .unwrap_or(0);
-                if ms < since as u128 {
-                    continue;
-                }
-                if best.as_ref().map_or(true, |(b, _)| ms > *b) {
-                    best = Some((ms, p));
-                }
-            }
-            match best {
-                Some((_, p)) => p,
-                None => return TranscriptChunk::default(),
-            }
-        }
-    };
-    let Ok(mut file) = std::fs::File::open(&path) else {
-        return TranscriptChunk { path: String::new(), text: String::new(), next: offset, from: offset };
-    };
-    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-    let start = read_start(&mut file, size, offset, tail_bytes);
-    let want = (size - start).min(TRANSCRIPT_SLICE);
-    let mut buf = vec![0u8; want as usize];
-    if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut buf).is_err() {
-        return TranscriptChunk { path: path.to_string_lossy().into_owned(), text: String::new(), next: start, from: start };
-    }
-    // Hand back whole lines only; the rest is read next time.
-    let cut = match buf.iter().rposition(|&b| b == b'\n') {
-        Some(i) => i + 1,
-        None => 0,
-    };
-    buf.truncate(cut);
-    TranscriptChunk {
-        path: path.to_string_lossy().into_owned(),
-        text: String::from_utf8_lossy(&buf).into_owned(),
-        next: start + cut as u64,
-        from: start,
-    }
-}
 
-/// Where Claude Code keeps the transcripts of sessions run in `dir`.
-pub(crate) fn claude_project_dir(dir: &str) -> Option<std::path::PathBuf> {
-    let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
-    Some(Path::new(&home).join(".claude").join("projects").join(claude_project_slug(dir)))
-}
-
-/// A session id is a UUID; anything else never reaches the filesystem.
-pub(crate) fn is_session_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-}
 
 /// Whether Claude Code has a transcript for this session in `dir`, i.e.
 /// whether `claude --resume <id>` can pick it up.
 #[tauri::command]
 pub async fn claude_session_exists(dir: String, session_id: String) -> Result<bool, CommandError> {
-    run_blocking(move || {
-        Ok(is_session_id(&session_id)
-            && claude_project_dir(&dir).map_or(false, |p| p.join(format!("{session_id}.jsonl")).is_file()))
-    })
-    .await
+    run_blocking(move || Ok(claude::session_exists(&dir, &session_id))).await
 }
 
-/// Where Muse keeps its session logs:
-/// `<data>/muse/sessions/YYYY/MM/DD/<id>/session.jsonl`. Unlike Claude, a run
-/// can't be given its session id up front, so Maestro learns a new run's id
-/// from what appeared since before it spawned (see pane.ts).
-fn muse_sessions_root() -> Option<std::path::PathBuf> {
-    let data = std::env::var("XDG_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .ok()
-        .filter(|p| p.is_absolute())
-        .or_else(|| {
-            let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
-            Some(Path::new(&home).join(".local").join("share"))
-        })?;
-    Some(data.join("muse").join("sessions"))
-}
 
-/// A Muse session id only ever names a directory we enumerate, never a path
-/// we build from it, so this is just a shape guard: ULID-ish ids like
-/// `01a18216-5bd8-…` (hex and dashes) pass, anything odd stays out.
-fn is_muse_session_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-}
 
-/// Every Muse session under `root`: (id, when its log last changed). Four
-/// levels deep exactly (`YYYY/MM/DD/<id>/session.jsonl`); anything nested
-/// deeper (subagent logs) is not a session of its own.
-fn muse_session_files(root: &Path) -> Vec<(String, u64)> {
-    fn dirs(dir: &Path) -> Vec<std::path::PathBuf> {
-        let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-        entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()
-    }
-    let mut out = Vec::new();
-    for y in dirs(root) {
-        for m in dirs(&y) {
-            for d in dirs(&m) {
-                for id_dir in dirs(&d) {
-                    let Some(id) = id_dir.file_name().and_then(|s| s.to_str()) else { continue };
-                    if id == "subagent" || !is_muse_session_id(id) {
-                        continue;
-                    }
-                    let log = id_dir.join("session.jsonl");
-                    if !log.is_file() {
-                        continue;
-                    }
-                    let ms = std::fs::metadata(&log)
-                        .and_then(|m| m.modified())
-                        .ok()
-                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_millis() as u64)
-                        .unwrap_or(0);
-                    out.push((id.to_string(), ms));
-                }
-            }
-        }
-    }
-    out
-}
 
-/// One Muse conversation: its session id and when its log last changed.
-#[derive(Serialize, Clone)]
-pub struct MuseSession {
-    pub id: String,
-    pub modified_ms: u64,
-}
 
 /// The conversations Muse has, newest first. The frontend diffs this against
 /// before it spawned to learn a new run's session id.
 #[tauri::command]
-pub async fn muse_sessions() -> Result<Vec<MuseSession>, CommandError> {
-    run_blocking(|| {
-        let Some(root) = muse_sessions_root() else { return Ok(Vec::new()) };
-        let mut out: Vec<MuseSession> = muse_session_files(&root)
-            .into_iter()
-            .map(|(id, modified_ms)| MuseSession { id, modified_ms })
-            .collect();
-        out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
-        out.truncate(200);
-        Ok(out)
-    })
-    .await
+pub async fn muse_sessions() -> Result<Vec<muse::MuseSession>, CommandError> {
+    run_blocking(|| Ok(muse::sessions())).await
 }
 
 /// Whether `muse resume <id>` can pick this session up.
 #[tauri::command]
 pub async fn muse_session_exists(session_id: String) -> Result<bool, CommandError> {
-    run_blocking(move || {
-        if !is_muse_session_id(&session_id) {
-            return Ok(false);
-        }
-        let Some(root) = muse_sessions_root() else { return Ok(false) };
-        Ok(muse_session_files(&root).iter().any(|(id, _)| *id == session_id))
-    })
-    .await
+    run_blocking(move || Ok(muse::session_exists(&session_id))).await
 }
 
 /// New complete lines of a Muse agent's session log from `offset`: the
@@ -732,246 +523,51 @@ pub async fn muse_session_exists(session_id: String) -> Result<bool, CommandErro
 /// "" until one is known).
 #[tauri::command]
 pub async fn muse_transcript(session_id: Option<String>, offset: u64, tail_bytes: Option<u64>) -> Result<TranscriptChunk, CommandError> {
-    run_blocking(move || {
-        let Some(id) = session_id.filter(|s| is_muse_session_id(s)) else { return Ok(TranscriptChunk::default()) };
-        let Some(root) = muse_sessions_root() else { return Ok(TranscriptChunk::default()) };
-        Ok(muse_transcript_in(&root, &id, offset, tail_bytes))
-    })
-    .await
+    run_blocking(move || Ok(muse::transcript(session_id.as_deref(), offset, tail_bytes))).await
 }
 
-/// Most bytes one read hands back, so a long session loads in slices.
-const MUSE_SLICE: u64 = 2 * 1024 * 1024;
 
-fn muse_transcript_in(root: &Path, id: &str, offset: u64, tail: Option<u64>) -> TranscriptChunk {
-    use std::io::{Read, Seek, SeekFrom};
-    let Some(log) = muse_session_log(root, id) else { return TranscriptChunk::default() };
-    let Ok(mut file) = std::fs::File::open(&log) else {
-        return TranscriptChunk { path: id.to_string(), text: String::new(), next: offset, from: offset };
-    };
-    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-    let start = read_start(&mut file, size, offset, tail);
-    let want = size.saturating_sub(start).min(MUSE_SLICE);
-    let mut buf = vec![0u8; want as usize];
-    if file.seek(SeekFrom::Start(start)).is_err() || file.read_exact(&mut buf).is_err() {
-        return TranscriptChunk { path: id.to_string(), text: String::new(), next: start, from: start };
-    }
-    // Hand back whole lines only; the rest is read next time.
-    let cut = buf.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
-    buf.truncate(cut);
-    TranscriptChunk { path: id.to_string(), text: String::from_utf8_lossy(&buf).into_owned(), next: start + cut as u64, from: start }
-}
 
-/// A session's log: the `<id>/session.jsonl` under any date shard. The id
-/// never reaches the filesystem unvalidated.
-fn muse_session_log(root: &Path, id: &str) -> Option<std::path::PathBuf> {
-    if !is_muse_session_id(id) {
-        return None;
-    }
-    for y in crate::transcripts::codex::sorted_dirs(root) {
-        for m in crate::transcripts::codex::sorted_dirs(&y) {
-            for d in crate::transcripts::codex::sorted_dirs(&m) {
-                let log = d.join(id).join("session.jsonl");
-                if log.is_file() {
-                    return Some(log);
-                }
-            }
-        }
-    }
-    None
-}
-
-/// A Muse conversation for the History list: its id, opening prompt, last
-/// activity, and message count.
-#[derive(Serialize, Clone)]
-pub struct MuseListedSession {
-    pub id: String,
-    pub title: String,
-    pub modified_ms: u64,
-    pub messages: u64,
-}
 
 /// Muse conversations, newest first, for the History list.
 #[tauri::command]
-pub async fn muse_session_list(limit: usize) -> Result<Vec<MuseListedSession>, CommandError> {
-    run_blocking(move || {
-        let Some(root) = muse_sessions_root() else { return Ok(Vec::new()) };
-        let mut files = muse_session_files(&root);
-        files.sort_by(|a, b| b.1.cmp(&a.1));
-        files.truncate(limit.min(300));
-        let mut out = Vec::new();
-        for (id, ms) in files {
-            let Some(log) = muse_session_log(&root, &id) else { continue };
-            let (title, messages) = muse_session_head(&log);
-            out.push(MuseListedSession { id, title, modified_ms: ms, messages });
-        }
-        Ok(out)
-    })
-    .await
+pub async fn muse_session_list(limit: usize) -> Result<Vec<muse::MuseListedSession>, CommandError> {
+    run_blocking(move || Ok(muse::list(limit))).await
 }
 
-/// A session's title (its first user prompt) and message count, from at most
-/// the first 4 MB: enough for any real head, bounded for giant logs.
-fn muse_session_head(log: &Path) -> (String, u64) {
-    const HEAD: u64 = 4 * 1024 * 1024;
-    let Ok(mut file) = std::fs::File::open(log) else { return (String::new(), 0) };
-    let mut buf = Vec::new();
-    {
-        use std::io::Read;
-        if file.by_ref().take(HEAD).read_to_end(&mut buf).is_err() {
-            return (String::new(), 0);
-        }
-    }
-    let text = String::from_utf8_lossy(&buf);
-    let mut title = String::new();
-    let mut messages = 0u64;
-    for line in text.split('\n') {
-        let Some(k) = line.find("\"event\":{\"kind\":\"") else { continue };
-        let rest = &line[k + 17..];
-        if rest.starts_with("assistant_message_committed\"") {
-            messages += 1;
-        } else if rest.starts_with("started\"") {
-            if let Some(p) = muse_prompt_of(line, false) {
-                if title.is_empty() {
-                    title = p;
-                }
-                messages += 1;
-            }
-        } else if rest.starts_with("inbox_item_queued\"") {
-            if let Some(p) = muse_prompt_of(line, true) {
-                if title.is_empty() {
-                    title = p;
-                }
-                messages += 1;
-            }
-        }
-    }
-    (title, messages)
-}
 
-/// A line's user prompt, if it carries one: a run's opening prompt, or a
-/// message steered in mid-run. Background deliveries are not the user.
-fn muse_prompt_of(line: &str, queued: bool) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_str(line).ok()?;
-    let ev = v.get("payload")?.get("event")?;
-    if queued {
-        if ev.get("source")?.get("source")?.as_str()? != "user_steer" {
-            return None;
-        }
-        let p = ev.get("payload").and_then(|p| p.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
-        let b = ev.get("body").and_then(|b| b.as_str()).unwrap_or("");
-        let t = if !p.trim().is_empty() { p } else { b };
-        return if t.trim().is_empty() { None } else { Some(trim_title(t)) };
-    }
-    let p = ev.get("prompt")?.as_str()?;
-    if p.trim().is_empty() { None } else { Some(trim_title(p)) }
-}
 
-/// A prompt as a list title: one line, at most 80 characters.
-fn trim_title(t: &str) -> String {
-    let one = t.split_whitespace().collect::<Vec<_>>().join(" ");
-    if one.chars().count() <= 80 {
-        return one;
-    }
-    let mut s: String = one.chars().take(79).collect();
-    s.push('…');
-    s
-}
 
-/// A Claude Code process that is running now, as it describes itself in
-/// `~/.claude/sessions/<pid>.json`. Its session id there follows the
-/// conversation it is in: a /clear or a /resume inside it moves it on.
-#[derive(Serialize, Clone)]
-pub struct LiveSession {
-    pub pid: u32,
-    pub session_id: String,
-    pub cwd: String,
-    pub started_ms: u64,
-}
 
 #[tauri::command]
-pub async fn claude_live_sessions() -> Result<Vec<LiveSession>, CommandError> {
-    run_blocking(|| {
-        let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Ok(Vec::new()) };
-        Ok(live_sessions_in(&Path::new(&home).join(".claude").join("sessions")))
-    })
-    .await
+pub async fn claude_live_sessions() -> Result<Vec<claude::LiveSession>, CommandError> {
+    run_blocking(|| Ok(claude::live_sessions())).await
 }
 
-fn live_sessions_in(dir: &Path) -> Vec<LiveSession> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    entries
-        .flatten()
-        .filter(|e| e.path().extension().map_or(false, |x| x == "json"))
-        .filter_map(|e| {
-            let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(e.path()).ok()?).ok()?;
-            let session_id = v.get("sessionId")?.as_str()?.to_string();
-            if !is_session_id(&session_id) {
-                return None;
-            }
-            Some(LiveSession {
-                pid: u32::try_from(v.get("pid")?.as_u64()?).ok()?,
-                session_id,
-                cwd: v.get("cwd").and_then(|c| c.as_str()).unwrap_or("").to_string(),
-                started_ms: v.get("startedAt").and_then(|s| s.as_u64()).unwrap_or(0),
-            })
-        })
-        .collect()
-}
 
-/// One earlier conversation, for "resume a conversation".
-#[derive(Serialize, Clone)]
-pub struct SessionInfo {
-    pub id: String,
-    pub modified_ms: u64,
-    /// Claude's own title for it, else your first message.
-    pub title: String,
-    pub messages: u32,
-    /// The folder it ran in: `claude --resume` only picks it up from there.
-    pub cwd: String,
-}
 
 /// The conversations Claude Code has in `dir`, newest first. Sessions with
 /// nothing you typed (a local /cost, a /model) are left out. Only the start of
 /// each file is read: the title and the first message are near the top.
 #[tauri::command]
-pub async fn claude_sessions(dir: String) -> Result<Vec<SessionInfo>, CommandError> {
-    run_blocking(move || Ok(claude_sessions_impl(&dir))).await
+pub async fn claude_sessions(dir: String) -> Result<Vec<claude::SessionInfo>, CommandError> {
+    run_blocking(move || Ok(claude::sessions(&dir))).await
 }
 
 /// The newest conversations in every folder, so one begun elsewhere can be
 /// carried on (in its own folder).
 #[tauri::command]
-pub async fn claude_sessions_everywhere(limit: usize) -> Result<Vec<SessionInfo>, CommandError> {
-    run_blocking(move || Ok(claude_sessions_everywhere_impl(limit.clamp(1, 200)))).await
+pub async fn claude_sessions_everywhere(limit: usize) -> Result<Vec<claude::SessionInfo>, CommandError> {
+    run_blocking(move || Ok(claude::sessions_everywhere(limit.clamp(1, 200)))).await
 }
 
-fn claude_sessions_impl(dir: &str) -> Vec<SessionInfo> {
-    let Some(proj) = claude_project_dir(dir) else { return Vec::new() };
-    let mut out: Vec<SessionInfo> = session_files(&proj).into_iter().filter_map(|(path, ms)| session_info(&path, ms)).collect();
-    out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
-    out.truncate(40);
-    out
-}
 
-fn claude_sessions_everywhere_impl(limit: usize) -> Vec<SessionInfo> {
-    let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Vec::new() };
-    let root = Path::new(&home).join(".claude").join("projects");
-    let Ok(projects) = std::fs::read_dir(&root) else { return Vec::new() };
-    let mut files: Vec<(std::path::PathBuf, u64)> = projects.flatten().filter(|p| p.path().is_dir()).flat_map(|p| session_files(&p.path())).collect();
-    // Only the newest files are opened: a few extra for the ones with nothing typed.
-    files.sort_by(|a, b| b.1.cmp(&a.1));
-    files.truncate(limit * 2);
-    let mut out: Vec<SessionInfo> = files.into_iter().filter_map(|(path, ms)| session_info(&path, ms)).collect();
-    out.truncate(limit);
-    out
-}
 
 /// Every conversation run in `root` or a folder inside it, or in one of its
 /// agents' worktrees (kept outside the repo, see worktree.rs), newest first,
 /// for reading them back.
 #[tauri::command]
-pub async fn claude_sessions_in(root: String, limit: usize) -> Result<Vec<SessionInfo>, CommandError> {
+pub async fn claude_sessions_in(root: String, limit: usize) -> Result<Vec<claude::SessionInfo>, CommandError> {
     run_blocking(move || {
         let Some(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok() else { return Ok(Vec::new()) };
         // The worktrees' folder is named after a hash of the repo path as it was
@@ -984,138 +580,14 @@ pub async fn claude_sessions_in(root: String, limit: usize) -> Result<Vec<Sessio
             }
         }
         let roots: Vec<&str> = roots.iter().map(String::as_str).collect();
-        Ok(sessions_under(&Path::new(&home).join(".claude").join("projects"), &roots, limit.clamp(1, 500)))
+        Ok(claude::sessions_under(&Path::new(&home).join(".claude").join("projects"), &roots, limit.clamp(1, 500)))
     })
     .await
 }
 
-/// Whether a session that ran in `cwd` belongs to the project at `root`.
-fn path_under(cwd: &str, root: &str) -> bool {
-    let norm = |p: &str| {
-        let p = p.replace('/', "\\");
-        let p = p.trim_end_matches('\\');
-        if cfg!(windows) { p.to_lowercase() } else { p.to_string() }
-    };
-    let (c, r) = (norm(cwd), norm(root));
-    !r.is_empty() && (c == r || c.starts_with(&format!("{r}\\")))
-}
 
-fn sessions_under(projects: &Path, roots: &[&str], limit: usize) -> Vec<SessionInfo> {
-    // Claude names a folder's transcripts after the folder with every other
-    // character a dash, so a folder inside a root is named after it too. That
-    // picks the candidates; the folder each session says it ran in decides.
-    let slugs: Vec<String> = roots
-        .iter()
-        .map(|r| claude_project_slug(r.trim_end_matches(['\\', '/'])).to_ascii_lowercase())
-        .filter(|s| !s.trim_matches('-').is_empty())
-        .collect();
-    let Ok(dirs) = std::fs::read_dir(projects) else { return Vec::new() };
-    let mut files: Vec<(std::path::PathBuf, u64)> = dirs
-        .flatten()
-        .filter(|d| {
-            let name = d.file_name().to_string_lossy().to_ascii_lowercase();
-            d.path().is_dir() && slugs.iter().any(|s| name == *s || name.starts_with(&format!("{s}-")))
-        })
-        .flat_map(|d| session_files(&d.path()))
-        .collect();
-    files.sort_by(|a, b| b.1.cmp(&a.1));
-    let mut out = Vec::new();
-    for (path, ms) in files {
-        if out.len() >= limit {
-            break;
-        }
-        if let Some(s) = session_info(&path, ms) {
-            if roots.iter().any(|r| path_under(&s.cwd, r)) {
-                out.push(s);
-            }
-        }
-    }
-    out
-}
 
-/// The session transcripts in one project folder, with when each last changed.
-fn session_files(proj: &Path) -> Vec<(std::path::PathBuf, u64)> {
-    let Ok(entries) = std::fs::read_dir(proj) else { return Vec::new() };
-    entries
-        .flatten()
-        .filter_map(|ent| {
-            let path = ent.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                return None;
-            }
-            let id = path.file_stem().and_then(|s| s.to_str())?;
-            if !is_session_id(id) {
-                return None;
-            }
-            let ms = ent
-                .metadata()
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            Some((path, ms))
-        })
-        .collect()
-}
 
-/// What the start of a transcript says: its title, how many messages you
-/// typed, the folder it ran in. None when you typed nothing.
-fn session_info(path: &Path, modified_ms: u64) -> Option<SessionInfo> {
-    use std::io::Read;
-    let id = path.file_stem().and_then(|s| s.to_str())?.to_string();
-    let file = std::fs::File::open(path).ok()?;
-    let mut head = Vec::new();
-    let _ = file.take(768 * 1024).read_to_end(&mut head);
-    let text = String::from_utf8_lossy(&head);
-    let mut title: Option<String> = None;
-    let mut first: Option<String> = None;
-    let mut cwd = String::new();
-    let mut messages = 0u32;
-    for line in text.lines() {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-        if cwd.is_empty() {
-            if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
-                cwd = c.to_string();
-            }
-        }
-        match v.get("type").and_then(|t| t.as_str()) {
-            Some("ai-title") => {
-                if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
-                    title = Some(t.to_string());
-                }
-            }
-            Some("user") => {
-                if v.get("isMeta").and_then(|x| x.as_bool()) == Some(true) {
-                    continue;
-                }
-                let human = v.get("origin").and_then(|o| o.get("kind")).and_then(|k| k.as_str()).map_or(true, |k| k == "human");
-                let content = v.get("message").and_then(|m| m.get("content"));
-                let said = match content {
-                    Some(serde_json::Value::String(s)) => Some(s.clone()),
-                    Some(serde_json::Value::Array(parts)) => parts
-                        .iter()
-                        .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
-                        .and_then(|p| p.get("text").and_then(|t| t.as_str()).map(str::to_string)),
-                    _ => None,
-                };
-                let Some(said) = said else { continue };
-                if !human || said.starts_with('<') || said.starts_with("[Request interrupted") {
-                    continue; // commands, their output, caveats, tool results
-                }
-                messages += 1;
-                if first.is_none() {
-                    first = Some(said.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(90).collect());
-                }
-            }
-            _ => {}
-        }
-    }
-    if messages == 0 {
-        return None;
-    }
-    Some(SessionInfo { id, modified_ms, title: title.or(first).unwrap_or_default(), messages, cwd })
-}
 
 /// Most output `run_capture` keeps: a CLI that prints more is cut here.
 const CAPTURE_MAX: usize = 8 * 1024 * 1024;
@@ -1350,12 +822,6 @@ mod tests {
         assert!(!out[2], "a bogus name must not resolve");
     }
 
-    #[test]
-    fn claude_slug_matches_observed_folder() {
-        // Verified against the real folder Claude Code created for D:\maestro.
-        assert_eq!(claude_project_slug("D:\\maestro"), "D--maestro");
-        assert_eq!(claude_project_slug("C:\\Users\\a\\proj"), "C--Users-a-proj");
-    }
 
     #[test]
     fn empty_name_is_not_found() {
@@ -1373,104 +839,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod muse_tests {
-    use super::*;
-
-    fn muse_tree() -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!("maestro-muse-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        for id in [
-            "01a18216-5bd8-7b20-9b10-9f481ee54a74",
-            "01a18217-0000-4000-8000-000000000000",
-        ] {
-            let dir = root.join("2026").join("10").join("28").join(id);
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("session.jsonl"), "{}\n").unwrap();
-        }
-        // A subagent log nested deeper is not a session of its own.
-        let sub = root
-            .join("2026")
-            .join("10")
-            .join("28")
-            .join("01a18216-5bd8-7b20-9b10-9f481ee54a74")
-            .join("subagent")
-            .join("01a18218-1111-4222-8333-444444444444");
-        std::fs::create_dir_all(&sub).unwrap();
-        std::fs::write(sub.join("session.jsonl"), "{}\n").unwrap();
-        // An id dir without a log is a crashed start, not a session.
-        std::fs::create_dir_all(
-            root.join("2026").join("10").join("28").join("01a18219-2222-4333-8444-555555555555"),
-        )
-        .unwrap();
-        root
-    }
-
-    #[test]
-    fn muse_lists_top_level_sessions_only() {
-        let root = muse_tree();
-        let mut ids: Vec<String> = muse_session_files(&root).into_iter().map(|(id, _)| id).collect();
-        ids.sort();
-        assert_eq!(
-            ids,
-            vec![
-                "01a18216-5bd8-7b20-9b10-9f481ee54a74".to_string(),
-                "01a18217-0000-4000-8000-000000000000".to_string(),
-            ]
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn muse_id_shapes() {
-        assert!(is_muse_session_id("01a18216-5bd8-7b20-9b10-9f481ee54a74"));
-        assert!(!is_muse_session_id(""));
-        assert!(!is_muse_session_id("../evil"));
-        assert!(!is_muse_session_id("01a18216 5bd8"));
-    }
-
-    #[test]
-    fn muse_transcript_reads_whole_lines_in_slices() {
-        let root = std::env::temp_dir().join(format!("maestro-muse-tx-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        let dir = root.join("2026").join("10").join("28").join("01a18216-5bd8-7b20-9b10-9f481ee54a74");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("session.jsonl"), "{\"a\":1}\n{\"b\":2}\n{\"half\":").unwrap();
-        let id = "01a18216-5bd8-7b20-9b10-9f481ee54a74";
-        let c = muse_transcript_in(&root, id, 0, None);
-        assert_eq!(c.path, id);
-        assert_eq!(c.text, "{\"a\":1}\n{\"b\":2}\n"); // the half-written last one waits
-        assert_eq!(c.from, 0);
-        let c2 = muse_transcript_in(&root, id, c.next, None);
-        assert_eq!(c2.text, "");
-        // unknown id: nothing yet; a hostile id never reaches the filesystem
-        assert_eq!(muse_transcript_in(&root, "00000000-0000-4000-8000-000000000000", 0, None).path, "");
-        assert_eq!(muse_session_log(&root, "../../evil"), None);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn muse_session_list_titles_and_counts() {
-        let root = std::env::temp_dir().join(format!("maestro-muse-list-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        let a = root.join("2026").join("10").join("28").join("01a18216-5bd8-7b20-9b10-9f481ee54a74");
-        std::fs::create_dir_all(&a).unwrap();
-        std::fs::write(a.join("session.jsonl"), concat!(
-            "{\"id\":\"1\",\"payload\":{\"event\":{\"kind\":\"started\",\"prompt\":\"fix the login\"}}}\n",
-            "{\"id\":\"2\",\"payload\":{\"event\":{\"kind\":\"started\",\"task_id\":\"t\"}}}\n",
-            "{\"id\":\"3\",\"payload\":{\"event\":{\"kind\":\"assistant_message_committed\",\"message_id\":\"m\",\"text\":\"ok\"}}}\n",
-            "{\"id\":\"4\",\"payload\":{\"event\":{\"kind\":\"inbox_item_queued\",\"source\":{\"source\":\"cron\"},\"payload\":{\"prompt\":\"tick\"}}}}\n",
-            "{\"id\":\"5\",\"payload\":{\"event\":{\"kind\":\"inbox_item_queued\",\"source\":{\"source\":\"user_steer\"},\"payload\":{\"prompt\":\"wait\"}}}}\n",
-        )).unwrap();
-        let (title, messages) = muse_session_head(&a.join("session.jsonl"));
-        assert_eq!(title, "fix the login");
-        assert_eq!(messages, 3); // prompt + reply + steer; bare started and cron skipped
-        assert_eq!(muse_prompt_of("{\"payload\":{\"event\":{\"kind\":\"started\",\"prompt\":\"  \"}}}", false), None);
-        let long = "w ".repeat(100);
-        assert!(trim_title(&long).chars().count() <= 80);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-}
 
 #[cfg(test)]
 mod paste_tests {
@@ -1508,75 +876,5 @@ mod paste_tests {
         assert!(save_pasted_image_in(&dir, "iVBORw0KGgo=", "exe").is_err());
         assert!(save_pasted_image_in(&dir, "not base64!", "png").is_err());
         let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
-#[cfg(test)]
-mod session_tests {
-    use super::*;
-
-    #[test]
-    fn live_sessions_are_read_from_claudes_pid_files() {
-        let dir = std::env::temp_dir().join(format!("maestro-live-sessions-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("20916.json"), r#"{"pid":20916,"sessionId":"7f19387c-fc1f-4bc7-af25-0e3ba5fcf7e2","cwd":"D:\\app","startedAt":1792395112932,"status":"busy"}"#).unwrap();
-        std::fs::write(dir.join("1.json"), r#"{"pid":1,"sessionId":"../../etc","cwd":"D:\\app"}"#).unwrap();
-        std::fs::write(dir.join("2.json"), "not json").unwrap();
-        std::fs::write(dir.join("20916.abc.key"), "x").unwrap();
-        let live = live_sessions_in(&dir);
-        assert_eq!(live.len(), 1);
-        assert_eq!((live[0].pid, live[0].session_id.as_str(), live[0].cwd.as_str(), live[0].started_ms), (20916, "7f19387c-fc1f-4bc7-af25-0e3ba5fcf7e2", "D:\\app", 1792395112932));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn a_session_says_its_folder_title_and_what_you_typed() {
-        let dir = std::env::temp_dir().join(format!("maestro-sessions-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let id = "11111111-2222-3333-4444-555555555555";
-        let lines = [
-            r#"{"type":"user","cwd":"D:\\zoldify","origin":{"kind":"human"},"message":{"content":"fix   the build"}}"#,
-            r#"{"type":"user","cwd":"D:\\zoldify","origin":{"kind":"task-notification"},"message":{"content":"done"}}"#,
-            r#"{"type":"ai-title","aiTitle":"Fix the build"}"#,
-        ];
-        let path = dir.join(format!("{id}.jsonl"));
-        std::fs::write(&path, lines.join("\n")).unwrap();
-        let s = session_info(&path, 7).unwrap();
-        assert_eq!((s.id.as_str(), s.title.as_str(), s.messages, s.cwd.as_str(), s.modified_ms), (id, "Fix the build", 1, "D:\\zoldify", 7));
-        // nothing typed: not a conversation to resume
-        let empty = dir.join("22222222-2222-3333-4444-555555555555.jsonl");
-        std::fs::write(&empty, r#"{"type":"user","origin":{"kind":"task-notification"},"message":{"content":"x"}}"#).unwrap();
-        assert!(session_info(&empty, 1).is_none());
-        assert_eq!(session_files(&dir).len(), 2);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn a_projects_sessions_include_its_worktrees_but_not_a_lookalike() {
-        let projects = std::env::temp_dir().join(format!("maestro-sessions-under-{}", std::process::id()));
-        let write = |folder: &str, id: &str, cwd: &str| {
-            let d = projects.join(folder);
-            std::fs::create_dir_all(&d).unwrap();
-            let cwd = cwd.replace('\\', r"\\");
-            std::fs::write(d.join(format!("{id}.jsonl")), format!(r#"{{"type":"user","cwd":"{cwd}","origin":{{"kind":"human"}},"message":{{"content":"hi"}}}}"#)).unwrap();
-        };
-        write("D--app", "11111111-0000-0000-0000-000000000001", r"D:\app");
-        write("D--app--claude-worktrees-x", "11111111-0000-0000-0000-000000000002", r"D:\app\.claude\worktrees\x");
-        write("D--app-two", "11111111-0000-0000-0000-000000000003", r"D:\app-two");
-        write("D---maestro-worktrees-app-abc123-maestro-bob-1-xyz", "11111111-0000-0000-0000-000000000004", r"D:\.maestro-worktrees\app-abc123\maestro-bob-1-xyz");
-        let roots = [r"D:\app\", r"D:\.maestro-worktrees\app-abc123"];
-        let ids: std::collections::BTreeSet<String> = sessions_under(&projects, &roots, 50).into_iter().map(|s| s.id).collect();
-        assert_eq!(ids.len(), 3);
-        assert!(!ids.contains("11111111-0000-0000-0000-000000000003"));
-        assert_eq!(sessions_under(&projects, &[r"D:\app"], 1).len(), 1);
-        let _ = std::fs::remove_dir_all(&projects);
-    }
-
-    #[test]
-    fn a_folder_is_under_itself_and_its_children_only() {
-        assert!(path_under(r"D:\app", r"D:\app\"));
-        assert!(path_under("D:/app/.claude/worktrees/x", r"D:\app"));
-        assert!(!path_under(r"D:\app-two", r"D:\app"));
-        assert!(!path_under(r"D:\app", ""));
     }
 }

@@ -1,11 +1,14 @@
-pub mod agent;
-pub mod command_spec;
 pub mod fs;
 pub mod screenshot;
-#[cfg(windows)]
-pub mod job;
-#[cfg(windows)]
-pub mod pipe_session;
-pub mod pty_session;
-pub mod registry;
 pub mod watch;
+
+// The headless core lives in crates/agent-core now; these re-exports keep the
+// old `crate::core::…` paths working so the Tauri commands move untouched.
+pub use agent_core::agent;
+pub use agent_core::command_spec;
+#[cfg(windows)]
+pub use agent_core::job;
+#[cfg(windows)]
+pub use agent_core::pipe_session;
+pub use agent_core::pty_session;
+pub use agent_core::registry;

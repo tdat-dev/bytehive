@@ -66,6 +66,9 @@ import { workspaces, setActiveWs } from "./appstate";
 import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
+import { forgetFeed, setFeedItems } from "./gridcards";
+import { forgetCost } from "./agentcost";
+import type { ChatItem } from "./chatmodel";
 
 const RUN_ASK: Ask = {
   kind: "run", prompt: "Do you want to proceed?", detail: "npm run build",
@@ -120,6 +123,8 @@ describe("inbox helpers", () => {
   it("groups in queue order and keeps an empty Needs you group", () => {
     const g = groupTasks([task("w", "Eli", "working"), task("r", "Cy", "review")]);
     expect(g.map((x) => [x.state, x.tasks.length])).toEqual([["needs", 0], ["review", 1], ["working", 1]]);
+    const g2 = groupTasks([task("b", "Bo", "blocked"), task("e", "Eli", "working")]);
+    expect(g2.map((x) => [x.state, x.tasks.length])).toEqual([["needs", 0], ["blocked", 1], ["working", 1]]);
   });
 
   it("writes the headline as a sentence", () => {
@@ -131,6 +136,10 @@ describe("inbox helpers", () => {
     expect(headline([task("e", "Eli", "working")]).rest).toBe(" 1 is working.");
     expect(headline([task("a", "Ana", "stopped"), task("b", "Bo", "stopped"), task("h", "Hal", "idle")]).rest).toBe(" 1 is waiting for a task, 2 are stopped.");
     expect(headline([task("h", "Hal", "idle", { worked: true }), task("i", "Ivy", "idle")]).rest).toBe(" 1 is done, 1 is waiting for a task.");
+    // a blocked agent needs you too: counted in the lead, named when nothing else runs
+    expect(headline([task("b", "Bo", "blocked")]).lead).toBe("1 agent needs you.");
+    expect(headline([task("b", "Bo", "blocked")]).rest).toBe(" 1 is blocked.");
+    expect(headline([task("a", "Ana", "needs"), task("b", "Bo", "blocked")]).lead).toBe("2 agents need you.");
   });
 
   it("says what each agent wants on its row", () => {
@@ -140,6 +149,11 @@ describe("inbox helpers", () => {
     expect(rowLine(task("h", "Hal", "idle"))).toBe("Waiting for a task");
     // idle after it worked on something is done, not still waiting for a first task
     expect(rowLine(task("h", "Hal", "idle", { worked: true }))).toBe("Done");
+    // a blocked agent says what unblocks it
+    expect(rowLine(task("b", "Bo", "blocked", { status: { state: "blocked", ask: null, blocked: { kind: "auth", what: "Please sign in" } } }))).toBe("Blocked on sign-in");
+    expect(rowLine(task("w", "Wren", "working", { status: { state: "working", ask: null, stuck: { kind: "loop", text: "same failure 3 times: FAIL x", count: 3, sample: "FAIL x", since: 1 } } }))).toBe("Looks stuck: same failure 3 times: FAIL x");
+    expect(rowLine(task("a", "Ana", "needs", { status: { state: "needs", ask: { kind: "run", prompt: "Run?", detail: "rm -rf /tmp/x", options: [] } } }))).toBe("Wants to run rm -rf /tmp/x (high risk)");
+    expect(rowLine(task("w", "Wren", "working", { status: { state: "working", ask: null, clash: { kind: "file", key: "k", with: ["Bo"], files: ["src/app.ts"] } } }))).toBe("Working · overlaps Bo in src/app.ts");
     expect(ago(90_000)).toBe("2m");
   });
 
@@ -184,6 +198,7 @@ describe("inbox DOM", () => {
     state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = [];
     state.sent = []; state.lands = []; state.discarded = []; state.merged = []; state.killed = [];
     state.diff = DIFF;
+    forgetFeed();
     state.land = { dry: { kind: "ok", base: "main", branch: "maestro/e", sha: "", removed: false, note: null }, real: { kind: "ok", base: "main", branch: "maestro/e", sha: "abc", removed: true, note: null } };
     panes = ["a", "e"].map((id) => ({
       id, el: document.createElement("div"), color: "#f2b27a", running: false,
@@ -380,6 +395,38 @@ describe("inbox DOM", () => {
     expect(panes[0].el.style.getPropertyValue("--sw")).toBe("");
   });
 
+  it("totals what each project agents have used on its header", async () => {
+    forgetCost("a"); forgetCost("e");
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    (panes[0].term as unknown as { snapshot: () => string }).snapshot = () => "session cost $1.20";
+    (panes[1].term as unknown as { snapshot: () => string }).snapshot = () => "total cost $2.30";
+    setInbox(true);
+    await flush();
+    expect(document.querySelector(".iq-group .iq-ph .iq-cost")!.textContent).toBe("$3.50");
+    forgetCost("a"); forgetCost("e");
+  });
+
+  it("shows a stuck agent evidence on its card instead of Working", () => {
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working", { status: { state: "working", ask: null, stuck: { kind: "loop", text: "same failure 3 times: FAIL x", count: 3, sample: "FAIL x", since: 1 } } })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    expect(document.querySelector('.ib-rail [data-card="e"] .rc-do')!.textContent).toContain("Looks stuck: same failure 3 times: FAIL x");
+  });
+
+  it("tags a high-risk approval on its card", () => {
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "needs", { status: { state: "needs", ask: { kind: "run", prompt: "Run this?", detail: "rm -rf /tmp/x", options: [{ n: 1, label: "Yes", key: "y" }] } } })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    expect(document.querySelector('.ib-rail [data-card="e"] .rc-risk')!.textContent).toBe("High risk");
+  });
+
+  it("shows a clash warning on its card instead of Working", () => {
+    state.tasks = [task("a", "Ana", "needs"), task("e", "Eli", "working", { status: { state: "working", ask: null, clash: { kind: "task", key: "k", with: ["Ana"], files: [] } } })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
+    expect(document.querySelector('.ib-rail [data-card="e"] .rc-do')!.textContent).toContain("Working · same task as Ana");
+  });
+
   it("offers Review when an agent is done, and sends it back with feedback", async () => {
     state.tasks = [task("e", "Eli", "review", { changedFiles: 3 })];
     (panes[1] as unknown as { running: boolean }).running = true;
@@ -441,6 +488,80 @@ describe("inbox DOM", () => {
     expect(state.merged).toEqual([["e", "main", "maestro/e"]]);
     expect(panes[1].spec.worktree).toBeUndefined();
     expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("warns about TODOs in the diff and asks once more before merging them", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    state.diff = ["diff --git a/src/a.ts b/src/a.ts", "--- a/src/a.ts", "+++ b/src/a.ts", "@@ -1,2 +1,3 @@", " keep", "-old", "+// TODO: handle the empty case", "+new"].join("\n");
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review .ir-msg")!.textContent).toContain("1 TODO in src/a.ts");
+    state.confirm = { ok: false, value: "" };
+    (document.querySelector('.inbox-review [data-act="merge"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.lands.map((l) => l.dryRun)).toEqual([true, true]);
+    state.confirm = { ok: true, value: "" };
+    (document.querySelector('.inbox-review [data-act="merge"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.lands.map((l) => l.dryRun)).toEqual([true, true, true, false]);
+  });
+
+  it("flags a hardcoded secret and asks before merging it", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    state.diff = ["diff --git a/.env b/.env", "--- a/.env", "+++ b/.env", "@@ -0,0 +1,2 @@", "+AWS_KEY=AKIAIOSFODNN7EXAMPLE", "+ok=1"].join("\n");
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review .ir-msg")!.textContent).toContain("1 secret in .env");
+    state.confirm = { ok: false, value: "" };
+    (document.querySelector('.inbox-review [data-act="merge"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.lands.map((l) => l.dryRun)).toEqual([true, true]);
+    state.confirm = { ok: true, value: "" };
+    (document.querySelector('.inbox-review [data-act="merge"]') as HTMLButtonElement).click();
+    await flush();
+    expect(state.lands.map((l) => l.dryRun)).toEqual([true, true, true, false]);
+  });
+
+  it("offers no Merge when the branch has no changes", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 0 })];
+    state.diff = "";
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review .rempty strong")!.textContent).toBe("Nothing to review");
+    expect(document.querySelector('.inbox-review [data-act="merge"]')).toBeNull();
+  });
+
+  it("lists the riskiest files first in review", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 2 })];
+    state.diff = ["diff --git a/docs/guide.md b/docs/guide.md", "--- a/docs/guide.md", "+++ b/docs/guide.md", "@@ -1 +1 @@", "-old", "+new", "diff --git a/src/auth/login.ts b/src/auth/login.ts", "--- a/src/auth/login.ts", "+++ b/src/auth/login.ts", "@@ -1 +1 @@", "-old", "+new"].join("\n");
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    const names = [...document.querySelectorAll(".inbox-review .files .p")].map((x) => x.textContent);
+    expect(names).toEqual(["src/auth/login.ts", "docs/guide.md"]);
+  });
+
+  it("shows what the agent last said on top of its review", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    const items: ChatItem[] = [{ kind: "user", id: "u1", text: "fix it", images: 0, at: 1 }, { kind: "text", id: "t1", text: "All green, ready to merge", at: 2 }];
+    setFeedItems("e", items);
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review .rsaid")!.textContent).toContain("All green, ready to merge");
+  });
+
+  it("shows the test run the conversation saw", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    const items: ChatItem[] = [{ kind: "step", id: "t1", tool: "Bash", verb: "Ran", target: "npm test", full: "npm test", code: true, done: true, at: 1 }];
+    setFeedItems("e", items);
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review .checks")!.textContent).toContain("Tests ran green (npm test)");
   });
 
   it("on a conflict merges nothing and Send back types what to resolve", async () => {

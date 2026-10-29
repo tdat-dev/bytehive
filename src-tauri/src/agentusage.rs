@@ -15,7 +15,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::{run_blocking, CommandError};
-use crate::transcripts::{codex, opencode};
+use agent_core::{codex, opencode};
 
 #[derive(Serialize, Default, Debug, Clone, PartialEq)]
 pub struct AgentUsage {

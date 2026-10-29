@@ -53,6 +53,10 @@ describe("start screen", () => {
     const t = (name: string, state: string) => ({ name, status: { state } }) as never;
     expect(statusSentence([t("Ana", "needs")], false)).toBe("Ana is waiting on you.");
     expect(statusSentence([t("Ana", "needs"), t("Bo", "needs")], false)).toBe("2 agents are waiting on you.");
+    expect(statusSentence([t("Bo", "blocked")], false)).toBe("Bo is waiting on you.");
+    expect(projectLine("D:\\maestro", [
+      { wsId: "ws-1", status: { state: "blocked" } },
+    ] as never)).toEqual({ agents: 1, needs: 1 });
     expect(statusSentence([t("Bo", "working")], false)).toBe("One agent is working. Nothing needs you yet.");
     expect(statusSentence([], true)).toContain("Pick a folder");
     expect(folderName("D:\\WhaleloSource\\")).toBe("WhaleloSource");

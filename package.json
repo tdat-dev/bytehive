@@ -19,7 +19,8 @@
     "pretauri:dev": "node tools/prune_build_cache.mjs",
     "tauri:dev": "tauri dev -c src-tauri/tauri.dev.conf.json",
     "build:supervisor": "node tools/build-supervisor.mjs",
-    "prune": "node tools/prune_build_cache.mjs --days 0"
+    "prune": "node tools/prune_build_cache.mjs --days 0",
+    "check:length": "node tools/check_file_length.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",

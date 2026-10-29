@@ -125,7 +125,7 @@
   - [ ] Gemini, Qwen, Copilot, Cursor, Goose, Aider: chat sources (not installed on this machine: install first or build from docs untested)
   - [ ] Try a live Codex and opencode agent in the chat (parsers checked on real sessions already)
 
-## Done (59)
+## Done (63)
 
 - [x] Fix copy khi bôi đen trong pane Claude Code (OSC 52)
   Claude Code tự xử lý selection + copy qua escape OSC 52; xterm.js của Maestro không có handler nên clipboard không được ghi. Fix: đăng ký OSC 52 handler trong terminal.ts.
@@ -556,3 +556,11 @@
   Pane agent dừng hiện lớp phủ giữa terminal: tên agent, exit code, nút Resume ở giữa gọi pane.restart(). Driven by class .stopped. Test: pane.veil.test.ts (4) + pane.resume.test.ts (3). Full suite 630 xanh, tsc + build sạch. Đã phát hiện: Muse CLI chưa có trong CLI_PRESETS và không có session-args riêng nên resume Muse vẫn mở phiên mới, cần làm tiếp.
 - [ ] Muse agents resume their conversation
   Agent Muse resume đúng phiên cũ (muse resume id) thay vì mở trắng. Preset muse trong CLI_PRESETS (--yolo), logo M + màu #f472b6. Backend mới muse_sessions/muse_session_exists đọc store sessions/YYYY/MM/DD/id. Boot mới capture id qua snapshot-diff có lock (log xuất hiện ~3s sau spawn). Test: 4 vitest + 2 Rust; full 634 vitest + 149 Rust xanh, tsc + build sạch. Còn lại: user tự bấm thử trong app dev (spawn Muse, chat, stop, Resume).
+- [ ] Codex/opencode resume their session
+  Codex (codex resume id, rollout filename map) và opencode (opencode --session id, sqlite) resume đúng phiên riêng bằng capture newest-since-spawn có lock per-CLI, chung khung với Muse. Bonus: cursor preset có --yolo. Cursor-agent (ls cần TTY, không dò được store), copilot (shim hỏng), gemini/aider/qwen/goose (chưa cài): chỉ document, chưa làm. Test: Rust + vitest args/picks; full 640 vitest + 151 Rust xanh.
+- [ ] Read Muse conversations (cards/handoffs)
+  Chat view đã bị gỡ (fad7120, stage luôn là terminal) nên đổi scope: đọc hội thoại Muse (started/inbox_steer/assistant_message/tool_calls+results/questions/model/todos + unwrap retained_frame) qua backend muse_transcript + musemodel.ts + SOURCES['muse'], phục vụ Grid cards glance, handoff, digest. Validate trên log thật 21.5k dòng: 13 user + ~74 replies + 300+ steps đúng. Full 648 vitest + 152 Rust xanh. History (sessionsview) vẫn chỉ Claude.
+- [ ] Grid filter: narrow viewport + keyboard check
+  Dock gọn dưới 1400px (seg icon-only, search nhỏ, chip padding 8px); hàng chip cuộn trong khi cửa sổ rất hẹp thay vì tràn. Verify bằng trình duyệt thật trên render inbox thật: 1280 đủ 4 chip, 1000 dock nguyên vẹn + menu không bị cắt, Tab order đúng khi menu đóng/mở (Enter/Esc/mũi tên đã có unit test). Live Tab bằng phím thật không chạy được do tab nền, dùng computed order thay thế.
+- [ ] History reads Muse sessions
+  History list trộn phiên Muse theo thời gian (tag Muse hồng, scope project vẫn chỉ Claude vì phiên Muse không gắn folder), đọc bằng muse_transcript + musemodel có sẵn. Backend muse_session_list: title = prompt đầu, count trong 4MB đầu. Test Rust + mixed matching; full 649 vitest + 153 Rust xanh.
