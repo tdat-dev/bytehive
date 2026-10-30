@@ -44,6 +44,33 @@ struct HistoryCache {
     meta: ChatMeta,
 }
 
+/// Whether the selected agent needs a (re)read right now: a forced Refresh
+/// always does; picking an agent reads it once; an empty read retries (the
+/// log shows up seconds after spawn); new output since the last read
+/// re-reads, throttled so an active agent does not spam threads.
+pub fn want_refresh(
+    cached_text: Option<&str>,
+    last_output_ms: u64,
+    now_ms: u64,
+    last_req_ms: u64,
+    changed: bool,
+    force: bool,
+) -> bool {
+    if force {
+        return true;
+    }
+    if changed && cached_text.is_none() {
+        return true;
+    }
+    if now_ms.saturating_sub(last_req_ms) < 3000 {
+        return false;
+    }
+    match cached_text {
+        None => true,
+        Some(t) => t.is_empty() || last_output_ms > last_req_ms,
+    }
+}
+
 enum HistoryMsg {
     Chunk(String, TranscriptChunk),
 }
@@ -51,6 +78,7 @@ enum HistoryMsg {
 pub struct HistoryPanel {
     selected: Option<String>,
     cache: HashMap<String, HistoryCache>,
+    last_req: HashMap<String, u64>,
     loading: bool,
     tx: Sender<HistoryMsg>,
     rx: Receiver<HistoryMsg>,
@@ -59,7 +87,11 @@ pub struct HistoryPanel {
 impl HistoryPanel {
     pub fn new() -> Self {
         let (tx, rx) = channel();
-        HistoryPanel { selected: None, cache: HashMap::new(), loading: false, tx, rx }
+        HistoryPanel { selected: None, cache: HashMap::new(), last_req: HashMap::new(), loading: false, tx, rx }
+    }
+
+    fn now_ms() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
     }
 
     fn request(&mut self, pane: &Pane) {
@@ -81,19 +113,19 @@ impl HistoryPanel {
             ui.label(egui::RichText::new("No agent panes yet. Plain shells have no transcript.").color(FAINT));
             return;
         }
+        let before = self.selected.clone();
         if self.selected.as_ref().is_none_or(|id| agents.iter().all(|p| &p.id != id)) {
             self.selected = Some(agents[0].id.clone());
         }
-        let mut changed = false;
         ui.horizontal_wrapped(|ui| {
             for p in &agents {
                 let sel = self.selected.as_deref() == Some(p.id.as_str());
                 if ui.selectable_label(sel, &p.name).clicked() {
                     self.selected = Some(p.id.clone());
-                    changed = true;
                 }
             }
         });
+        let changed = self.selected != before;
         while let Ok(HistoryMsg::Chunk(id, chunk)) = self.rx.try_recv() {
             self.loading = false;
             let same = self.cache.get(&id).map(|c| c.text == chunk.text).unwrap_or(false);
@@ -109,10 +141,11 @@ impl HistoryPanel {
         }
         let pane_id = self.selected.clone().unwrap_or_default();
         let pane = panes.iter().find(|p| p.id == pane_id);
+        let mut force = false;
         ui.horizontal(|ui| {
             if ui.small_button("Refresh").clicked() {
                 if pane.is_some() {
-                    changed = true;
+                    force = true;
                 }
             }
             if self.loading {
@@ -120,8 +153,18 @@ impl HistoryPanel {
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
             }
         });
-        if changed {
+        if !self.loading
+            && want_refresh(
+                self.cache.get(&pane_id).map(|c| c.text.as_str()),
+                pane.map(|p| p.last_output_ms).unwrap_or(0),
+                Self::now_ms(),
+                self.last_req.get(&pane_id).copied().unwrap_or(0),
+                changed,
+                force,
+            )
+        {
             if let Some(p) = pane {
+                self.last_req.insert(pane_id.clone(), Self::now_ms());
                 self.request(p);
             }
         }
@@ -194,5 +237,21 @@ mod tests {
     fn unknown_text_yields_nothing() {
         let (items, _) = parse_history(Cli::Opencode, "not json\n");
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn refresh_fires_on_pick_retry_stale_and_force() {
+        // first pick, nothing cached
+        assert!(want_refresh(None, 0, 10_000, 0, true, false));
+        // same agent again, cache hit, quiet: no re-read
+        assert!(!want_refresh(Some("hi"), 5_000, 10_000, 9_000, false, false));
+        // empty read retries once the throttle passes (log shows up late)
+        assert!(!want_refresh(Some(""), 0, 10_000, 9_500, false, false));
+        assert!(want_refresh(Some(""), 0, 10_000, 6_000, false, false));
+        // new output since the last read re-reads, throttled
+        assert!(want_refresh(Some("hi"), 9_500, 10_000, 6_000, false, false));
+        assert!(!want_refresh(Some("hi"), 9_500, 10_000, 9_500, false, false));
+        // Refresh button always forces
+        assert!(want_refresh(Some("hi"), 0, 10_000, 9_999, false, true));
     }
 }
