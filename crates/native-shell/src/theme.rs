@@ -7,6 +7,10 @@
 //! Fonts (also mirroring the web app, which loads Geist + Geist Mono):
 //! install_fonts() embeds the vendored TTFs (assets/fonts) and makes them
 //! the Proportional/Monospace families plus named weights for strong text.
+//!
+//! Some palette entries are reserved for surfaces still being ported
+//! (Native 2/3); they mirror tokens.css 1:1 on purpose.
+#![allow(dead_code)]
 
 use eframe::egui::{self, Color32, FontData, FontDefinitions, FontFamily};
 use supervise::task_state::TaskState;
