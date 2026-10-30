@@ -241,7 +241,8 @@ impl ReviewPanel {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for f in &snap.files {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(&f.path).monospace().strong());
+                    ui.add(egui::Label::new(egui::RichText::new(&f.path).monospace().strong()).truncate())
+                        .on_hover_text(&f.path);
                     if f.additions > 0 {
                         ui.label(egui::RichText::new(format!("+{}", f.additions)).monospace().small().color(ADD));
                     }
