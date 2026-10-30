@@ -28,3 +28,8 @@ uv.lock
 
 # rust crate build outputs
 crates/*/target/
+
+# unrelated local projects living in this checkout (keep on disk, out of git)
+/HeavyweightFishingHub/
+/dist-supervisor/
+/portfolio-caoxuanminh/

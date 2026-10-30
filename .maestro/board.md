@@ -1,6 +1,6 @@
 # Board
 
-## Proposed (24)
+## Proposed (25)
 
 - [ ] Login: Gate dashboard web (Rust)
   Bắt session cookie cho dashboard server; đóng lỗ hổng /api/send gõ lệnh vào agent không cần auth.
@@ -84,6 +84,11 @@
   Soát các *.test.ts hiện có, chỉ ra module thiếu test và rủi ro
 - [ ] Tổng hợp báo cáo phân tích
   Viết docs/feature-analysis.md: bảng feature, điểm mạnh/yếu, đề xuất cải thiện
+- [ ] Land feat/agent-inbox
+  Day branch feat/agent-inbox len origin, don dep untracked, mo merge khi user duyet.
+  - [ ] git status sach, chi giu 5 file src da commit 4f39a09
+  - [ ] Xu ly HeavyweightFishingHub/dist-supervisor/portfolio-caoxuanminh (giuxoa/roi gitignore)
+  - [ ] git push origin feat/agent-inbox, bao cao truoc khi merge
 
 ## To do (1)
 
@@ -100,7 +105,7 @@
   - [ ] Settings → Browser: bật/tắt, profile nào dùng, Mở Maestro Chrome (đăng nhập/thêm extension), cho phép JS, hỏi trước khi gửi/đăng/thanh toán
   - [ ] Test: unit tool với Chrome headless + chạy thật với GravityCare; README
 
-## Doing (3)
+## Doing (4)
 
 - [ ] Login: Auth core (Rust)
   Kho credential nguồn-chân-lý trong Rust: 1 username + 1 password hash (argon2id), lưu auth.json trong app-config dir.
@@ -124,8 +129,16 @@
   Done so far (af3e677, 4ea3209, a1488a1, 8acd601): effort + permission chips, Background list, Files changed New/Edited/latest-reply/inline diff; chat for Claude, Codex (rollout JSONL) and opencode (SQLite). Left: the CLIs not installed here.
   - [ ] Gemini, Qwen, Copilot, Cursor, Goose, Aider: chat sources (not installed on this machine: install first or build from docs untested)
   - [ ] Try a live Codex and opencode agent in the chat (parsers checked on real sessions already)
+- [ ] Upwork: làm lại profile + tìm job đầu tiên (Backend - Dang Tien Dat)
+  Điền lại profile Upwork từ D:\CV-2026\cv.html (Backend Developer, WhaleLO), rồi tìm job backend đầu tiên phù hợp.
+  - [ ] Đọc CV D:\CV-2026 và chốt nội dung profile (title, overview, skills, employment, education, portfolio)
+  - [ ] Mở Chrome vào Upwork, kiểm tra trạng thái profile hiện tại / mức hoàn thiện
+  - [ ] Điền lại profile: title, overview, skills, employment WhaleLO + Zoldify, education VTC Academy, link GitHub/LinkedIn/portfolio
+  - [ ] Hỏi user các mục CV không có: hourly rate, availability, ảnh, địa chỉ/ngày sinh nếu Upwork bắt buộc
+  - [ ] Tìm job đầu tiên: lọc Node.js/PostgreSQL/Stripe, ít proposal, client verified, ngân sách hợp fresher
+  - [ ] Soạn proposal mẫu cho job chọn (chưa gửi khi user chưa duyệt)
 
-## Done (63)
+## Done (64)
 
 - [x] Fix copy khi bôi đen trong pane Claude Code (OSC 52)
   Claude Code tự xử lý selection + copy qua escape OSC 52; xterm.js của Maestro không có handler nên clipboard không được ghi. Fix: đăng ký OSC 52 handler trong terminal.ts.
@@ -564,3 +577,9 @@
   Dock gọn dưới 1400px (seg icon-only, search nhỏ, chip padding 8px); hàng chip cuộn trong khi cửa sổ rất hẹp thay vì tràn. Verify bằng trình duyệt thật trên render inbox thật: 1280 đủ 4 chip, 1000 dock nguyên vẹn + menu không bị cắt, Tab order đúng khi menu đóng/mở (Enter/Esc/mũi tên đã có unit test). Live Tab bằng phím thật không chạy được do tab nền, dùng computed order thay thế.
 - [ ] History reads Muse sessions
   History list trộn phiên Muse theo thời gian (tag Muse hồng, scope project vẫn chỉ Claude vì phiên Muse không gắn folder), đọc bằng muse_transcript + musemodel có sẵn. Backend muse_session_list: title = prompt đầu, count trong 4MB đầu. Test Rust + mixed matching; full 649 vitest + 153 Rust xanh.
+- [x] Native-shell Review/Queue live verify
+  Chay native-shell that voi MAESTRO_TAB=review/queue, spawn vai pane, chup Review + Queue, sua follow-up.
+  - [ ] cargo build native-shell xanh + npm run check:length
+  - [ ] Chay MAESTRO_TAB=review va queue, spawn 2-4 pane co git changes that
+  - [ ] Chup Review (+A/-B, first 200 of N) va Queue (state word, attention card, ago)
+  - [ ] Sua follow-up tim thay, test + commit
