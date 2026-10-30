@@ -46,6 +46,17 @@ impl SideTab {
     }
 }
 
+/// The header label cut to fit what's left of the badge + buttons on the
+/// right: ~340px reserved, ~7px a char, never less than 8 chars.
+pub(crate) fn fit_header(label: &str, head_width: f32) -> String {
+    let max_chars = ((head_width - 340.0) / 7.0).floor().max(8.0) as usize;
+    if label.chars().count() > max_chars {
+        format!("{}…", label.chars().take(max_chars.saturating_sub(1)).collect::<String>())
+    } else {
+        label.to_string()
+    }
+}
+
 pub struct ShellApp {
     pub(crate) registry: Registry,
     pub(crate) panes: Vec<Pane>,
@@ -260,12 +271,7 @@ impl eframe::App for ShellApp {
                 }
                 // The badge and buttons own the right side: cut the label to
                 // fit what's left, never under them.
-                let max_chars = ((head.width() - 340.0) / 7.0).floor().max(8.0) as usize;
-                let label: String = if label.chars().count() > max_chars {
-                    format!("{}…", label.chars().take(max_chars.saturating_sub(1)).collect::<String>())
-                } else {
-                    label
-                };
+                let label = fit_header(&label, head.width());
                 ui.painter().text(
                     Pos2::new(head.left() + 8.0, head.top() + 4.0),
                     egui::Align2::LEFT_TOP,
@@ -389,5 +395,15 @@ mod tests {
         app.registry.write_input(&id, b"echo back-again\r").unwrap();
         let grid = feed_until(&mut app, 0, "back-again", 15);
         assert!(grid.iter().any(|r| r.contains("back-again")), "respawned shell answers: {grid:?}");
+    }
+
+    #[test]
+    fn header_label_fits_beside_badge_and_buttons() {
+        assert_eq!(fit_header("shell 1", 700.0), "shell 1");
+        let long = "agent-with-a-long-name · feat/branch · abcdef12 · exited (1)";
+        let cut = fit_header(long, 700.0);
+        assert!(cut.ends_with('…') && cut.chars().count() == 51, "{cut}");
+        // Narrow cells never squeeze below 8 chars.
+        assert_eq!(fit_header(long, 200.0).chars().count(), 8);
     }
 }
