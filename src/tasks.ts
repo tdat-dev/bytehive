@@ -2,14 +2,19 @@
 //
 // Runs next to the existing pane bookkeeping without changing it: every tick it
 // reads each running pane's screen, asks git (throttled) whether the agent's
-// branch has changes, and derives needs / review / working / idle / stopped.
+// branch has changes, and derives needs / blocked / review / working / idle / stopped.
 // The new Queue UI renders from here; for now the old UI only borrows the
 // status line for notifications.
 
 import { workspaces } from "./appstate";
-import { gitChangedFiles, sendInput } from "./ipc";
-import { freeTextKeys, type AskOption } from "./askparse";
+import { gitChangedFiles, gitCheckpoint, sendInput } from "./ipc";
+import { freeTextKeys, riskOfAsk, type AskOption } from "./askparse";
 import { deriveTaskState, statusLine, type TaskState, type TaskStatus } from "./taskstate";
+import { clashHistory, clashNotes, type ClashInput } from "./clashwatch";
+import { FEED_READ_MS, forgetFeed, itemsFor, refreshGlance } from "./gridcards";
+import { forgetCost } from "./agentcost";
+import { forgetConversation } from "./chatsource";
+import { StuckWatch } from "./stuckwatch";
 import type { Pane, Workspace } from "./panetypes";
 
 export interface Task {
@@ -45,7 +50,7 @@ export const DIFF_EVERY_MS = 5000;
 /** One line in an agent's History: what happened and when. */
 export interface HistoryEvent {
   at: number;
-  kind: TaskState | "answer";
+  kind: TaskState | "answer" | "stuck" | "clash";
   text: string;
 }
 /** Enough to scroll back through a long session without growing forever. */
@@ -53,8 +58,12 @@ const HISTORY_MAX = 200;
 
 const tasks = new Map<string, Task>();
 const history = new Map<string, HistoryEvent[]>();
-const diffs = new Map<string, { n: number | null; add: number | null; del: number | null; at: number; pending: boolean; wasRunning: boolean }>();
+const diffs = new Map<string, { n: number | null; add: number | null; del: number | null; paths: string[]; at: number; pending: boolean; wasRunning: boolean }>();
 const listeners = new Set<(list: Task[]) => void>();
+/** Per-agent stuck trails: loop and stall evidence from its conversation. */
+const stuckWatch = new StuckWatch();
+/** Last transcript read per agent; the tick re-reads on the shared cadence. */
+const feedAt = new Map<string, number>();
 
 /** Agents whose branch Review merged, until they start again. */
 const merged = new Map<string, { at: number; base: string; branch: string }>();
@@ -74,10 +83,10 @@ export function mergedInfo(paneId: string): { base: string; branch: string } | n
  *  agents sharing a checkout share one diff, so for them it stays unknown.
  *  A stopped agent's tree doesn't change on its own: it is looked at once
  *  (first sight, or once more right after it stops), not every tick. */
-function changesFor(pane: Pane, now: number): { n: number | null; add: number | null; del: number | null } {
+function changesFor(pane: Pane, now: number): { n: number | null; add: number | null; del: number | null; paths: string[] } {
   const wt = pane.spec.worktree;
-  if (!wt) return { n: null, add: null, del: null };
-  const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, at: 0, pending: false, wasRunning: false };
+  if (!wt) return { n: null, add: null, del: null, paths: [] };
+  const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, paths: [], at: 0, pending: false, wasRunning: false };
   const due = pane.running || d.at === 0 || d.wasRunning;
   if (due && !d.pending && now - d.at >= DIFF_EVERY_MS) {
     d.pending = true;
@@ -85,11 +94,12 @@ function changesFor(pane: Pane, now: number): { n: number | null; add: number | 
     gitChangedFiles(wt)
       .then((files) => {
         d.n = files.length;
+        d.paths = files.map((f) => f.path);
         let add = 0, del = 0;
         for (const f of files) { add += f.added ?? 0; del += f.removed ?? 0; }
         d.add = add; d.del = del;
       })
-      .catch(() => { d.n = d.add = d.del = null; })
+      .catch(() => { d.n = d.add = d.del = null; d.paths = []; })
       .finally(() => { d.at = Date.now(); d.pending = false; });
   }
   diffs.set(pane.id, d);
@@ -103,6 +113,8 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
   const done = merged.get(pane.id);
   const changes = changesFor(pane, now);
   const changedFiles = changes.n;
+  const prev = tasks.get(pane.id);
+  const hadWorked = !!prev?.worked || (history.get(pane.id) ?? []).some((e) => e.kind === "working");
   const status = deriveTaskState(
     {
       running: pane.running,
@@ -110,10 +122,17 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
       screen: pane.running ? pane.term.snapshot(SCREEN_LINES) : "",
       changedFiles,
       merged: !!done,
+      worked: hadWorked,
     },
     now,
   );
-  const prev = tasks.get(pane.id);
+  status.stuck = stuckWatch.step(pane.id, {
+    run: pane.spawnedAt ?? 0,
+    state: status.state,
+    items: itemsFor(pane.id),
+    diff: changedFiles === null ? null : { n: changedFiles, add: changes.add ?? 0, del: changes.del ?? 0 },
+    now,
+  });
   // "resets 7pm" read after 7pm would be tomorrow's: the same notice keeps the
   // time it was first read with
   const was = prev?.status.limit;
@@ -132,7 +151,7 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
     removed: changes.del,
     mergedInto: done?.base ?? null,
     since: prev && prev.status.state === status.state ? prev.since : now,
-    worked: !!prev?.worked || status.state === "working" || (history.get(pane.id) ?? []).some((e) => e.kind === "working"),
+    worked: hadWorked || status.state === "working",
   };
 }
 
@@ -145,6 +164,12 @@ export function describe(t: Pick<Task, "status" | "changedFiles">): string | nul
       if (a?.kind === "run") return a.detail ? `Asked to run ${a.detail}` : "Asked to run a command";
       if (a?.kind === "edit") return a.detail ? `Asked to edit ${a.detail}` : "Asked to edit a file";
       return a ? `Asked: ${a.prompt}` : "Waited for you";
+    case "blocked": {
+      const b = t.status.blocked?.kind;
+      if (b === "captcha") return "Blocked on a CAPTCHA";
+      if (b === "key") return "Blocked on an API key";
+      return "Blocked on sign-in";
+    }
     case "idle":
       return t.status.limit ? "Hit its usage limit" : null;
     case "review": {
@@ -178,29 +203,62 @@ export function historyOf(paneId: string): HistoryEvent[] {
 export function updateTasks(now: number = Date.now()): void {
   let changed = false;
   const seen = new Set<string>();
+  const prevClash = new Map<string, string | null>();
+  for (const [id, t] of tasks) prevClash.set(id, t.status.clash?.key ?? null);
   for (const ws of workspaces.values())
     for (const pane of ws.panes.values()) {
       seen.add(pane.id);
       const next = toTask(ws, pane, now);
       const prev = tasks.get(pane.id);
       const moved = !prev || prev.status.state !== next.status.state || prev.status.ask?.prompt !== next.status.ask?.prompt ||
-        prev.status.ask?.detail !== next.status.ask?.detail || !!prev.status.limit !== !!next.status.limit;
+        prev.status.ask?.detail !== next.status.ask?.detail || !!prev.status.limit !== !!next.status.limit || (prev.status.stuck?.text ?? null) !== (next.status.stuck?.text ?? null);
       if (moved) {
         changed = true;
         const text = describe(next);
         if (text) log(pane.id, { at: now, kind: next.status.state, text });
+        if (next.status.stuck && !prev?.status.stuck) log(pane.id, { at: now, kind: "stuck", text: `Looks stuck: ${next.status.stuck.text}` });
       }
       tasks.set(pane.id, next);
     }
+  // Early clash warnings need every agent's files: a second pass once all
+  // states are in.
+  const clashInputs: ClashInput[] = [];
+  for (const ws of workspaces.values())
+    for (const pane of ws.panes.values()) {
+      const t = tasks.get(pane.id);
+      if (!t) continue;
+      clashInputs.push({
+        paneId: pane.id, name: t.name, wsId: ws.id, state: t.status.state, running: pane.running,
+        title: t.title, race: pane.spec.race?.id ?? null, paths: diffs.get(pane.id)?.paths ?? [],
+      });
+    }
+  const clashMap = clashNotes(clashInputs);
+  for (const [id, t] of tasks) {
+    const note = clashMap.get(id) ?? null;
+    t.status.clash = note;
+    if ((note?.key ?? null) !== (prevClash.get(id) ?? null)) {
+      changed = true;
+      if (note && !prevClash.get(id)) log(id, { at: now, kind: "clash", text: clashHistory(note) });
+    }
+  }
+  // Transcripts feed detection, not just cards: re-read running agents'
+  // conversations on the shared cadence; the rail reads its own as well.
+  for (const ws of workspaces.values())
+    for (const pane of ws.panes.values()) {
+      if (!pane.running || !pane.spawnedAt) continue;
+      if (now - (feedAt.get(pane.id) ?? 0) < FEED_READ_MS) continue;
+      feedAt.set(pane.id, now);
+      void refreshGlance(pane);
+    }
   for (const id of [...tasks.keys()])
-    if (!seen.has(id)) { tasks.delete(id); diffs.delete(id); history.delete(id); merged.delete(id); changed = true; }
+    if (!seen.has(id)) { tasks.delete(id); diffs.delete(id); history.delete(id); merged.delete(id); feedAt.delete(id); forgetFeed(id); forgetCost(id); forgetConversation(id); stuckWatch.forget(id); changed = true; }
   if (changed && listeners.size) {
     const list = allTasks();
     for (const cb of listeners) cb(list);
   }
 }
 
-const RANK: Record<TaskState, number> = { needs: 0, review: 1, working: 2, idle: 3, stopped: 4, merged: 5 };
+const RANK: Record<TaskState, number> = { needs: 0, blocked: 1, review: 2, working: 3, idle: 4, stopped: 5, merged: 6 };
 
 /** Every task, the queue's order: what needs you first, longest waiting first. */
 export function allTasks(): Task[] {
@@ -223,15 +281,33 @@ export function onTasksChange(cb: (list: Task[]) => void): () => void {
   return () => listeners.delete(cb);
 }
 
+/** Snapshot the worktree before a high-risk approval lands, so a disaster
+ *  restores from `git stash list`. Best-effort: a failure never blocks you. */
+async function checkpointFor(paneId: string): Promise<string> {
+  const t = tasks.get(paneId);
+  const ask = t?.status.ask;
+  if (!ask || riskOfAsk(ask) !== "high") return "";
+  const dir = t ? workspaces.get(t.wsId)?.panes.get(paneId)?.spec.worktree ?? workspaces.get(t.wsId)?.panes.get(paneId)?.spec.cwd ?? null : null;
+  if (!dir) return "";
+  try {
+    const sha = await gitCheckpoint(dir, `maestro checkpoint before approving: ${(ask.detail ?? ask.prompt).slice(0, 80)}`);
+    return sha ? ` (checkpoint ${sha.slice(0, 7)})` : "";
+  } catch {
+    return "";
+  }
+}
+
 /** Pick an option of the prompt currently on the agent's screen. */
 export async function answerOption(paneId: string, option: AskOption): Promise<void> {
-  log(paneId, { at: Date.now(), kind: "answer", text: `You picked “${option.label}”` });
+  const note = await checkpointFor(paneId);
+  log(paneId, { at: Date.now(), kind: "answer", text: `You picked “${option.label}”${note}` });
   await sendInput(paneId, option.key);
 }
 
 /** Answer in free text, through the CLI's "type something" row when it has one. */
 export async function answerText(paneId: string, text: string): Promise<void> {
   const ask = tasks.get(paneId)?.status.ask ?? null;
-  log(paneId, { at: Date.now(), kind: "answer", text: `You said “${text.trim()}”` });
+  const note = await checkpointFor(paneId);
+  log(paneId, { at: Date.now(), kind: "answer", text: `You said “${text.trim()}”${note}` });
   for (const part of freeTextKeys(ask, text)) await sendInput(paneId, part);
 }

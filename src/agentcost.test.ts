@@ -6,7 +6,7 @@ vi.mock("./ipc", () => ({
   agentUsage: async (badge: string, dir: string, since: number | null) => { io.other.push([badge, dir, since]); return io.answer; },
 }));
 
-import { agentCost, agentUsage, forgetCost, onAgentCost, usageOnScreen } from "./agentcost";
+import { agentCost, agentUsage, forgetCost, onAgentCost, projectTotals, usageOnScreen } from "./agentcost";
 import type { Pane } from "./panetypes";
 
 const flush = async () => { for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0)); };
@@ -79,5 +79,22 @@ describe("usage a CLI shows on its screen", () => {
   it("reads how full the context is from what is left", () => {
     expect(usageOnScreen("› \n  ⏎ send   42% context left").contextPct).toBe(58);
     expect(usageOnScreen("Context left until auto-compact: 12%").contextPct).toBe(88);
+  });
+});
+
+describe("project totals", () => {
+  it("sums what each project's agents have used, skipping unknowns", () => {
+    const totals = projectTotals([
+      { wsId: "ws-1", usd: 1.2 },
+      { wsId: "ws-1", usd: 2.3 },
+      { wsId: "ws-1", usd: null },
+      { wsId: "ws-2", usd: 5 },
+    ]);
+    expect(totals.get("ws-1")).toBeCloseTo(3.5);
+    expect(totals.get("ws-2")).toBe(5);
+  });
+
+  it("keeps nothing for a project with no priced usage", () => {
+    expect(projectTotals([{ wsId: "ws-1", usd: null }]).size).toBe(0);
   });
 });

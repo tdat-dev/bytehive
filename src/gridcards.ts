@@ -4,9 +4,12 @@
 // terminal of the same size would be mush. It says what the agent last said
 // and the step it is on, read from its CLI's own conversation file (the same
 // reading History uses, chatsource.ts), a little at a time: the first read
-// takes the end of the file, later ones only what was added.
+// takes the end of the file, later ones only what was added. The same feed
+// serves stuck detection and the review drawer, so feeds live with their
+// panes and are forgotten when panes close, not when cards go away.
 
 import { sourceOf } from "./chatsource";
+import { createChat } from "./chatmodel";
 import type { Chat, ChatItem } from "./chatmodel";
 import type { Pane } from "./panetypes";
 
@@ -24,6 +27,11 @@ const EMPTY: Glance = { said: "", doing: "", asked: "" };
 export const SAID_MAX = 360;
 /** The first read of a long conversation starts this far from its end. */
 const FIRST_READ = 256 * 1024;
+/** Most conversation a card feed keeps: the tail is all the card, the
+ *  stuck watch and the digest ever read (the head survives as firstAsks). */
+export const FEED_KEEP = 600;
+/** How often running agents' conversations are re-read (cards and the task tick share it). */
+export const FEED_READ_MS = 2000;
 
 /** Markdown to the words it shows: no fences, stars, backticks or heading marks. */
 export function plain(md: string): string {
@@ -84,6 +92,31 @@ export function glanceFor(paneId: string): Glance {
   return feeds.get(paneId)?.glance ?? EMPTY;
 }
 
+/** The conversation the card feed has read for this agent (empty until its first read). */
+export function itemsFor(paneId: string): ChatItem[] {
+  return feeds.get(paneId)?.chat.items ?? [];
+}
+
+/** The conversation object behind the feed (for digests), or null before its first read. */
+export function chatFor(paneId: string): Chat | null {
+  return feeds.get(paneId)?.chat ?? null;
+}
+
+/** Tests: seed what the card feed last read for an agent. */
+export function setFeedItems(paneId: string, items: ChatItem[]): void {
+  const f = feeds.get(paneId);
+  if (f) { f.chat.items.length = 0; f.chat.items.push(...items); return; }
+  const chat = createChat();
+  chat.items.push(...items);
+  feeds.set(paneId, { run: 0, chat, offset: 0, path: "", busy: false, glance: EMPTY });
+}
+
+/** Forget what the card feed read (closed panes; tests clear all). */
+export function forgetFeed(paneId?: string): void {
+  if (paneId === undefined) feeds.clear();
+  else feeds.delete(paneId);
+}
+
 /** Read what the agent wrote since the last look. True when its card changes. */
 export async function refreshGlance(pane: Pane): Promise<boolean> {
   const src = sourceOf(pane);
@@ -107,6 +140,7 @@ export async function refreshGlance(pane: Pane): Promise<boolean> {
     }
     if (r.path) f.path = r.path;
     if (r.text) f.chat.feed(r.text);
+    f.chat.trim(FEED_KEEP);
     f.offset = r.next;
     const g = glanceOf(f.chat.items);
     const changed = g.said !== f.glance.said || g.doing !== f.glance.doing || g.asked !== f.glance.asked;
@@ -119,7 +153,4 @@ export async function refreshGlance(pane: Pane): Promise<boolean> {
   }
 }
 
-/** Forget the agents that have no card any more. */
-export function keepGlances(ids: Set<string>): void {
-  for (const id of [...feeds.keys()]) if (!ids.has(id)) feeds.delete(id);
-}
+

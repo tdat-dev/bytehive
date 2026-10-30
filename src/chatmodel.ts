@@ -387,6 +387,8 @@ export interface Chat {
   meta: ChatMeta;
   /** Feed complete JSONL lines (one chunk from the transcript). */
   feed(text: string): void;
+  /** Keep only the newest `keep` items, forgetting the rest (long sessions). */
+  trim(keep: number): void;
 }
 
 export function createChat(): Chat {
@@ -589,6 +591,12 @@ export function createChat(): Chat {
         }
         else if (v.type === "system" && v.subtype === "compact_boundary") items.push({ kind: "note", id: id(), text: "Conversation compacted", at });
       }
+    },
+    trim(keep: number): void {
+      if (items.length <= keep) return;
+      const gone = new Set<ChatItem>(items.slice(0, items.length - keep));
+      for (const [k, s] of steps) if (gone.has(s)) steps.delete(k);
+      items.splice(0, items.length - keep);
     },
   };
 }

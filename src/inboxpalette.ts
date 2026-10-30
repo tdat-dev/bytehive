@@ -2,7 +2,7 @@
 // Generic on purpose: inbox.ts hands it the items, so it knows nothing about
 // panes or tasks and can be tested on its own.
 
-import { faceSvg } from "./agentface";
+import { cliLogo } from "./clilogos";
 
 export interface PaletteItem {
   group: string;
@@ -11,8 +11,8 @@ export interface PaletteItem {
   sub?: string;
   /** Shortcut shown on the right ("Alt+S"). */
   keys?: string;
-  /** For agents: their pixel face for the name in `face`, else a letter, on their colour. */
-  mark?: { color: string; letter: string; face?: string };
+  /** For agents: their CLI's mark from the badge in `logo`, else a letter, on their colour. */
+  mark?: { color: string; letter: string; logo?: string };
   run: () => void;
 }
 
@@ -75,7 +75,7 @@ export function openPalette(items: PaletteItem[], opts: { placeholder?: string }
       ? shown.map((it, i) => {
           const head = it.group !== group ? `<div class="pal-g" role="presentation">${esc((group = it.group))}</div>` : "";
           return `${head}<div class="pal-it${i === at ? " on" : ""}" role="option" id="palIt${i}" data-i="${i}" aria-selected="${i === at}">
-            ${it.mark ? (it.mark.face ? `<span class="pal-mk" style="--mk:${esc(it.mark.color)}" aria-hidden="true">${faceSvg(it.mark.face, it.mark.color)}</span>` : `<span class="pal-mk letter" style="background:${esc(it.mark.color)}" aria-hidden="true">${esc(it.mark.letter)}</span>`) : `<span class="pal-mk blank" aria-hidden="true"></span>`}
+            ${it.mark ? (it.mark.logo ? `<span class="pal-mk" style="--mk:${esc(it.mark.color)}" aria-hidden="true">${cliLogo(it.mark.logo)}</span>` : `<span class="pal-mk letter" style="background:${esc(it.mark.color)}" aria-hidden="true">${esc(it.mark.letter)}</span>`) : `<span class="pal-mk blank" aria-hidden="true"></span>`}
             <span class="pal-t">${esc(it.label)}${it.sub ? `<span class="pal-s">${esc(it.sub)}</span>` : ""}</span>
             ${it.keys ? `<kbd>${esc(it.keys)}</kbd>` : ""}</div>`;
         }).join("")

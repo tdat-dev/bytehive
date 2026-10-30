@@ -176,6 +176,60 @@ export async function claudeSessionExists(dir: string, sessionId: string): Promi
   return invoke<boolean>("claude_session_exists", { dir, sessionId });
 }
 
+/** One Muse conversation: its session id and when its log last changed. */
+export interface MuseSession { id: string; modified_ms: number }
+
+/** The conversations Muse has, newest first. */
+export async function museSessions(): Promise<MuseSession[]> {
+  return invoke<MuseSession[]>("muse_sessions", {});
+}
+
+/** Whether `muse resume <sessionId>` can pick this session up. */
+export async function museSessionExists(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("muse_session_exists", { sessionId });
+}
+
+/** The newest Codex session begun in `dir` at or after `sinceMs`, for
+ *  learning a fresh run's session id. Null when there is none yet. */
+export async function codexLatestSession(dir: string, sinceMs: number): Promise<string | null> {
+  return invoke<string | null>("codex_latest_session", { dir, sinceMs });
+}
+
+/** Whether `codex resume <sessionId>` can pick this session up. */
+export async function codexSessionExists(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("codex_session_exists", { sessionId });
+}
+
+/** The newest opencode session begun in `dir` at or after `sinceMs`, for
+ *  learning a fresh run's session id. Null when there is none yet. */
+export async function opencodeLatestSession(dir: string, sinceMs: number): Promise<string | null> {
+  return invoke<string | null>("opencode_latest_session", { dir, sinceMs });
+}
+
+/** Whether `opencode --session <sessionId>` can pick this session up. */
+export async function opencodeSessionExists(sessionId: string): Promise<boolean> {
+  return invoke<boolean>("opencode_session_exists", { sessionId });
+}
+
+/** New complete lines of a Muse agent's session log from `offset`: the
+ *  agent's own session when `sessionId` names one, else nothing (`path` ""
+ *  until one is known). */
+export async function museTranscript(
+  sessionId: string | null,
+  offset: number,
+  tailBytes?: number,
+): Promise<{ path: string; text: string; next: number; from?: number }> {
+  return invoke("muse_transcript", { sessionId, offset, tailBytes: tailBytes ?? null });
+}
+
+/** One Muse conversation for the History list: id, opening prompt, last activity, message count. */
+export interface MuseListedSession { id: string; title: string; modified_ms: number; messages: number }
+
+/** Muse conversations, newest first, for the History list. */
+export async function museSessionList(limit: number): Promise<MuseListedSession[]> {
+  return invoke<MuseListedSession[]>("muse_session_list", { limit });
+}
+
 /** A Claude Code process running now and the conversation it is in. */
 export interface LiveSession {
   pid: number;
@@ -477,6 +531,11 @@ export async function focusThisWindow(): Promise<void> {
   await w.setFocus();
 }
 
+/** Rename this window (the Supervisor build wears its own name). */
+export async function setWindowTitle(title: string): Promise<void> {
+  await getCurrentWindow().setTitle(title);
+}
+
 /* ---- custom title-bar window controls (frameless) ---- */
 export async function minimizeWindow(): Promise<void> {
   await getCurrentWindow().minimize();
@@ -541,6 +600,12 @@ export interface ChangedFile { path: string; status: string; added: number | nul
 /** Files changed vs HEAD (incl. untracked), with their line counts. Read-only. */
 export async function gitChangedFiles(repoRoot: string): Promise<ChangedFile[]> {
   return invoke<ChangedFile[]>("git_changed_files", { repoRoot });
+}
+
+/** Snapshot uncommitted work without touching the tree (stash create+store).
+ *  Returns the stash sha, or null when the tree is clean. */
+export async function gitCheckpoint(worktreePath: string, message: string): Promise<string | null> {
+  return invoke<string | null>("git_checkpoint", { worktreePath, message });
 }
 
 /* ---- AI Code Slice 2: write side (commit / merge / discard) ---- */

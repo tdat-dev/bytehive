@@ -240,8 +240,7 @@ export function mountTerminal(
         // was in flight — attaching now would black the pane out.
         if (!wantsWebgl()) {
           webgl.dispose();
-          usedWebgl = false;
-          liveWebgl--;
+          if (usedWebgl) { usedWebgl = false; liveWebgl--; }
           return;
         }
         webglAddon = webgl;
@@ -387,7 +386,7 @@ export function mountTerminal(
       pacer.dispose();
       ro.disconnect();
       term.dispose();
-      if (usedWebgl) liveWebgl--;
+      if (usedWebgl) { usedWebgl = false; liveWebgl--; }
     },
     focus: () => term.focus(),
     setScrollback: (n) => { if (term.options.scrollback !== n) term.options.scrollback = n; },

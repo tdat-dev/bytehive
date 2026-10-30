@@ -1,4 +1,4 @@
-#![cfg(windows)]
+﻿#![cfg(windows)]
 //! A child on plain pipes, no terminal: for agents that talk in JSON lines
 //! (Claude Code's stream-json mode) instead of drawing a screen.
 //!
@@ -30,8 +30,8 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-use crate::core::command_spec::CommandSpec;
-use crate::core::pty_session::INHERITED_SESSION_MARKERS;
+use crate::command_spec::CommandSpec;
+use crate::pty_session::INHERITED_SESSION_MARKERS;
 
 /// What the agent reads: each line written here is one message to it.
 pub struct PipeSession {

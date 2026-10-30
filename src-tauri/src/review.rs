@@ -423,6 +423,32 @@ fn review_discard_impl(worktree_path: String) -> Result<(), CommandError> {
     Ok(())
 }
 
+/// Snapshot uncommitted work WITHOUT touching the tree: `git stash create`
+/// builds the stash commit (untracked files included), `git stash store`
+/// lists it for a later restore. Returns the sha, or None when the tree is
+/// clean. Used before approving a high-risk prompt.
+#[tauri::command]
+pub async fn git_checkpoint(worktree_path: String, message: String) -> Result<Option<String>, CommandError> {
+    run_blocking(move || git_checkpoint_impl(worktree_path, message)).await
+}
+
+fn git_checkpoint_impl(worktree_path: String, message: String) -> Result<Option<String>, CommandError> {
+    ensure_work_tree(&worktree_path)?;
+    let status = git(&["status", "--porcelain"], &worktree_path)?;
+    if status.trim().is_empty() {
+        return Ok(None);
+    }
+    let sha = git(&["stash", "create", "-u"], &worktree_path)?;
+    let sha = sha.trim();
+    if sha.is_empty() {
+        return Ok(None);
+    }
+    let msg = message.trim();
+    let msg = if msg.is_empty() { "maestro checkpoint" } else { msg };
+    git(&["stash", "store", "-m", msg, sha], &worktree_path)?;
+    Ok(Some(sha.to_string()))
+}
+
 /// Remove a linked worktree and (optionally) delete its branch. Used after a
 /// successful merge or an explicit discard to clean up. NOT forced: a dirty
 /// worktree makes `git worktree remove` fail, which surfaces as an error so the
@@ -745,5 +771,44 @@ mod tests {
         review_remove_worktree_impl(main.clone(), wt_str.clone(), Some("agent-x".into()))
             .expect("remove worktree + branch");
         assert!(!wt.exists(), "worktree dir should be gone");
+    }
+
+    #[test]
+    fn git_checkpoint_snapshots_without_touching_the_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("r");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        std::fs::write(repo.join("a.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(repo.join("new.txt"), "untracked\n").unwrap();
+        let d = repo.to_string_lossy().to_string();
+        let sha = git_checkpoint_impl(d.clone(), "maestro checkpoint before approving: rm -rf x".into())
+            .unwrap()
+            .expect("dirty tree snapshots");
+        assert_eq!(sha.len(), 40);
+        assert_eq!(git(&["cat-file", "-t", &sha], &d).unwrap(), "commit");
+        // tree untouched: the changes are still there, uncommitted
+        let status = git(&["status", "--porcelain"], &d).unwrap();
+        assert!(status.contains("a.txt") && status.contains("new.txt"), "tree must stay dirty: {status}");
+        // ... and the stash entry lists the message
+        let list = git(&["stash", "list"], &d).unwrap();
+        assert!(list.contains("maestro checkpoint"), "stash lists it: {list}");
+    }
+
+    #[test]
+    fn git_checkpoint_clean_tree_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("r");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let d = repo.to_string_lossy().to_string();
+        assert!(git_checkpoint_impl(d, "x".into()).unwrap().is_none());
+    }
+
+    #[test]
+    fn git_checkpoint_rejects_non_repos() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path().to_string_lossy().to_string();
+        assert!(git_checkpoint_impl(d, "x".into()).is_err());
     }
 }

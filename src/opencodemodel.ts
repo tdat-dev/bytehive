@@ -327,5 +327,15 @@ export function createOpencodeChat(): Chat {
       }
       if (changed) redraw();
     },
+    trim(keep: number): void {
+      if (shown.size <= keep) return;
+      const byTime = [...shown.keys()].sort((a, b) => (keys.get(a) ?? "") < (keys.get(b) ?? "") ? -1 : 1);
+      const drop = byTime.slice(0, byTime.length - keep);
+      const keptMsgs = new Set<string>();
+      for (const k of byTime.slice(byTime.length - keep)) keptMsgs.add(k.split(":")[0]);
+      for (const k of drop) { shown.delete(k); keys.delete(k); }
+      for (const id of [...msgs.keys()]) if (!keptMsgs.has(id)) msgs.delete(id);
+      redraw();
+    },
   };
 }

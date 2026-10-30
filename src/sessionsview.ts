@@ -1,9 +1,10 @@
-// Sessions: every earlier Claude conversation of a project (its agents'
-// worktrees included), read back as a conversation (transcript.ts). Only to read: nothing
-// here starts, resumes or types into an agent.
+// Sessions: every earlier agent conversation of a project (its agents'
+// worktrees included), Claude and Muse alike, read back as a conversation
+// (transcript.ts). Only to read: nothing here starts, resumes or types into an agent.
 
-import { claudeSessionsEverywhere, claudeSessionsIn, claudeTranscript, type ClaudeSession } from "./ipc";
+import { claudeSessionsEverywhere, claudeSessionsIn, claudeTranscript, museSessionList, museTranscript, type ClaudeSession } from "./ipc";
 import { createChat, turnsOf, type Chat, type ChatItem } from "./chatmodel";
+import { createMuseChat } from "./musemodel";
 import { ago, drawTranscript, forgetImages, openImage, samePath } from "./transcript";
 import { dayLabel, clock } from "./inboxhistory";
 
@@ -18,6 +19,9 @@ const WINDOW = 200;
 const MAX_SLICES = 600;
 
 type Scope = "project" | "all";
+
+/** One row of the list, whichever CLI ran it. Muse sessions have no folder. */
+export interface SessionRow { id: string; title: string; cwd: string; modified_ms: number; messages: number; cli: "claude" | "muse" }
 
 /** Where a session ran, said for the list: the project itself, an agent's
  *  worktree by its name, or the folder's last two parts. */
@@ -34,7 +38,7 @@ export function placeOf(cwd: string, root: string | null): string {
 }
 
 /** The sessions whose title or folder has every word of `q`. */
-export function matching(list: ClaudeSession[], q: string): ClaudeSession[] {
+export function matching<T extends { title: string; cwd: string }>(list: T[], q: string): T[] {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return list;
   return list.filter((s) => {
@@ -44,7 +48,7 @@ export function matching(list: ClaudeSession[], q: string): ClaudeSession[] {
 }
 
 interface Reading {
-  s: ClaudeSession;
+  s: SessionRow;
   chat: Chat;
   /** Only the end of it was read. */
   partial: boolean;
@@ -59,7 +63,7 @@ export function createSessionsView() {
   let back: HTMLElement | null = null;
   let root: string | null = null;
   let scope: Scope = "project";
-  let list: ClaudeSession[] = [];
+  let list: SessionRow[] = [];
   let listing = false;
   let query = "";
   let reading: Reading | null = null;
@@ -84,9 +88,21 @@ export function createSessionsView() {
     const no = ++listNo;
     listing = true;
     drawList();
-    let got: ClaudeSession[] = [];
+    let got: SessionRow[] = [];
     try {
-      got = scope === "project" && root ? await claudeSessionsIn(root, 300) : await claudeSessionsEverywhere(200);
+      if (scope === "project" && root) {
+        got = (await claudeSessionsIn(root, 300)).map((s) => ({ ...s, cli: "claude" as const }));
+      } else {
+        // Muse sessions aren't filed by folder: they join the "all" list only.
+        const [claude, muse] = await Promise.all([
+          claudeSessionsEverywhere(200).catch((): ClaudeSession[] => []),
+          museSessionList(200).catch(() => []),
+        ]);
+        got = [
+          ...claude.map((s) => ({ ...s, cli: "claude" as const })),
+          ...muse.map((s) => ({ id: s.id, title: s.title, cwd: "", modified_ms: s.modified_ms, messages: s.messages, cli: "muse" as const })),
+        ].sort((a, b) => b.modified_ms - a.modified_ms);
+      }
     } catch {
       got = [];
     }
@@ -104,7 +120,7 @@ export function createSessionsView() {
     if (count) count.textContent = listing ? "" : query ? `${shown.length} of ${list.length}` : `${list.length} session${list.length === 1 ? "" : "s"}`;
     if (listing && !list.length) { ul.innerHTML = `<p class="sv-empty">Looking for sessions…</p>`; return; }
     if (!shown.length) {
-      ul.innerHTML = `<p class="sv-empty">${query ? "No session matches that." : scope === "project" ? "No Claude sessions in this project yet." : "No Claude sessions yet."}</p>`;
+      ul.innerHTML = `<p class="sv-empty">${query ? "No session matches that." : scope === "project" ? "No sessions in this project yet." : "No sessions yet."}</p>`;
       return;
     }
     let day = "";
@@ -116,7 +132,7 @@ export function createSessionsView() {
       const on = reading?.s.id === s.id;
       return `${head}<button type="button" class="sv-item${on ? " on" : ""}" data-sid="${esc(s.id)}" aria-current="${on}">
         <span class="sv-t">${esc(s.title || "Untitled")}</span>
-        <span class="sv-m"><time>${clock(s.modified_ms)}</time><span>${s.messages} message${s.messages === 1 ? "" : "s"}</span>${place ? `<span class="sv-where">${esc(place)}</span>` : ""}</span>
+        <span class="sv-m"><time>${clock(s.modified_ms)}</time>${s.cli === "muse" ? `<span class="sv-cli">Muse</span>` : ""}<span>${s.messages} message${s.messages === 1 ? "" : "s"}</span>${place ? `<span class="sv-where">${esc(place)}</span>` : ""}</span>
       </button>`;
     }).join("");
   }
@@ -165,24 +181,26 @@ export function createSessionsView() {
   }
 
   /** Read a session: its end first, then on to its last line. `whole` reads it from the start. */
-  async function read(s: ClaudeSession, whole = false): Promise<void> {
+  async function read(s: SessionRow, whole = false): Promise<void> {
     const no = ++readNo;
     if (reading) forgetImages(reading.chat.items);
-    reading = { s, chat: createChat(), partial: false, loading: true, window: WINDOW, open: new Set(), expanded: new Set() };
+    reading = { s, chat: s.cli === "muse" ? createMuseChat() : createChat(), partial: false, loading: true, window: WINDOW, open: new Set(), expanded: new Set() };
     const r = reading;
     back?.classList.add("reading");
     drawList();
     drawReader();
     const scroller = () => $<HTMLElement>(".sv-scroll");
     try {
-      if (!s.cwd) throw new Error("This session doesn't say which folder it ran in, so it can't be found.");
-      let c = await claudeTranscript(s.cwd, s.id, null, 0, whole ? undefined : TAIL_BYTES);
+      if (s.cli !== "muse" && !s.cwd) throw new Error("This session doesn't say which folder it ran in, so it can't be found.");
+      const pull = (off: number, tail?: number) =>
+        s.cli === "muse" ? museTranscript(s.id, off, tail) : claudeTranscript(s.cwd, s.id, null, off, tail);
+      let c = await pull(0, whole ? undefined : TAIL_BYTES);
       if (no !== readNo) return;
       if (!c.path) throw new Error("This session's file is gone.");
       r.partial = (c.from ?? 0) > 0;
       r.chat.feed(c.text);
       for (let k = 0; c.text && k < MAX_SLICES; k += 1) {
-        c = await claudeTranscript(s.cwd, s.id, null, c.next);
+        c = await pull(c.next);
         if (no !== readNo) return;
         if (!c.text) break;
         r.chat.feed(c.text);
@@ -331,7 +349,7 @@ export function createSessionsView() {
           </div>
           <input type="search" class="sv-q" placeholder="Search by title or folder" aria-label="Search sessions" spellcheck="false">
           <div class="sv-list" role="list"></div>
-          <p class="sv-foot">Claude Code sessions, read only. Nothing here starts or resumes an agent.</p>
+          <p class="sv-foot">Past agent sessions, read only. Nothing here starts or resumes an agent.</p>
         </aside>
         <section class="sv-read" aria-label="Session"></section>
       </div>`;

@@ -13,8 +13,11 @@ import { topNote } from "./hint";
 import { killPty, repoDiff, reposUnder, reviewBranchDiff, reviewDiscardBranch, reviewLand, sendMessage, type LandResult } from "./ipc";
 import { markMerged, taskOf } from "./tasks";
 import { promptShown } from "./working";
-import { clearComments, commentWhere, commentsOf, diffTotals, dropComment, numberHunk, putComment, sendBackText, type Conflict, type LineComment } from "./reviewtext";
+import { clearComments, commentWhere, commentsOf, diffTotals, dropComment, numberHunk, putComment, rankFiles, sendBackText, type Conflict, type LineComment } from "./reviewtext";
 import type { Pane } from "./panetypes";
+import { describeDone, describeSecrets, scanDoneDiff, scanSecrets, testRuns, testSummary, type DoneFinding, type SecretFinding } from "./donecheck";
+import { chatFor, itemsFor } from "./gridcards";
+import { digestOf, planProgress } from "./convdigest";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -82,6 +85,8 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
   /** The dry run's answer: merges cleanly, conflicts, or can't merge (why). */
   let check: LandResult | null = null;
   let conflict: Conflict | null = null;
+  let doneFindings: DoneFinding[] = [];
+  let secretFindings: SecretFinding[] = [];
   let busy = false;
   let msg: { text: string; kind: "" | "err" | "busy" } = { text: "", kind: "" };
   /** The lines of the file on screen, by the index their number button carries. */
@@ -107,7 +112,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const my = ++gen;
     files = null; loadError = ""; fileIdx = 0; showAll = false;
     own = !!pane.spec.worktree; base = ""; branch = pane.spec.branch ?? "";
-    check = null; conflict = null; busy = false; msg = { text: "", kind: "" };
+    check = null; conflict = null; busy = false; msg = { text: "", kind: "" }; doneFindings = []; secretFindings = [];
     rows = []; editing = null; anchor = null; lnFocus = 0;
     el = document.createElement("aside");
     el.className = "inbox-review";
@@ -148,12 +153,14 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
         if (!repo) loadError = dir ? "This folder is not a git repository, so there is no diff to show." : "This agent has no folder.";
       }
       if (my !== gen) return;
-      files = parseDiff(raw);
+      files = rankFiles(parseDiff(raw));
     } catch (e) {
       if (my !== gen) return;
       files = [];
       loadError = `Couldn't read the changes: ${String(e)}`;
     }
+    doneFindings = scanDoneDiff(files ?? []);
+    secretFindings = scanSecrets(files ?? []);
     render();
   }
 
@@ -167,11 +174,18 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     let chip = "";
     if (own && check?.kind === "ok") chip = `<span class="check"><span class="a" aria-hidden="true">✓</span>Merges cleanly into ${esc(check.base)}</span>`;
     else if (own && conflict) chip = `<span class="check"><span class="d" aria-hidden="true">!</span>Conflicts with ${esc(conflict.base)} in ${conflict.files.length} file${conflict.files.length === 1 ? "" : "s"}</span>`;
+    const seen = testSummary(testRuns(itemsFor(pane.id)));
+    if (seen) chip += `<span class="check"><span class="${seen.ok ? "a" : "d"}" aria-hidden="true">${seen.ok ? "✓" : "!"}</span>${esc(seen.text)}</span>`;
+    const digest = digestOf(chatFor(pane.id));
+    const prog = planProgress(digest.todos);
+    const words = digest.lastWords.replace(/\s+/g, " ").trim().slice(-160);
+    const digestLine = prog || words ? `<p class="rsaid" title="What ${esc(pane.spec.name)} last said">${esc(prog && words ? `${prog}: ${words}` : prog || words)}</p>` : "";
     return `<div class="rhead">
       <button class="hbtn ir-close" type="button" data-act="close" title="Close (Esc)">Close</button>
       <p class="lbl">${own ? "Changes on this branch" : "Changes in the project folder"}</p>
       <h2>${esc(count)}${files?.length ? ` <span class="num a">+${t.add}</span><span class="num d">−${t.del}</span>` : ""}</h2>
       ${where ? `<p class="br" title="${esc(where)}">${esc(where)}</p>` : ""}
+      ${digestLine}
       ${chip ? `<div class="checks">${chip}</div>` : ""}
     </div>`;
   }
@@ -241,6 +255,10 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const into = esc(base || "main");
     const note = notes.get(pane.id) ?? "";
     let line = msg.text ? `<p class="ir-msg ${msg.kind}" role="status">${esc(msg.text)}</p>` : "";
+    const flagText = [describeDone(doneFindings), describeSecrets(secretFindings)].filter(Boolean).join("; ");
+    if (!msg.text && !conflict && (doneFindings.length || secretFindings.length)) {
+      line = `<p class="ir-msg warn" role="status">This diff adds ${esc(flagText)}. Merge asks once more; Send back asks ${name} to finish them first.</p>`;
+    }
     if (!msg.text && conflict) {
       line = `<p class="ir-msg warn" role="status">Merging into ${esc(conflict.base)} would conflict in ${esc(fileList(conflict.files))}. Nothing was merged. Send back asks ${name} to merge ${esc(conflict.base)} in and resolve them.</p>`;
     } else if (!msg.text && own && check?.kind === "error") {
@@ -316,6 +334,15 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const dry = await reviewLand(wt, { title, dryRun: true }).catch((e) => ({ kind: "error", message: String(e) }) as LandResult);
     if (pane !== current) return;
     if (dry.kind !== "ok") return fail(dry);
+    const flags = [describeDone(doneFindings), describeSecrets(secretFindings)].filter(Boolean).join("; ");
+    if (doneFindings.length || secretFindings.length) {
+      const gate = await confirmModal({
+        title: `Merge with ${flags}?`,
+        message: `This branch adds ${flags}. Merging anyway is one click; cancel and Send back to have ${pane.spec.name} finish them first.`,
+        okLabel: "Merge anyway", danger: secretFindings.some((f) => f.kind === "secret"),
+      });
+      if (!gate.ok || pane !== current) { busy = false; say(""); return; }
+    }
     say(`Merging into ${dry.base}…`, "busy");
     const wasRunning = pane.running;
     if (wasRunning) await killPty(pane.id).catch(() => {});

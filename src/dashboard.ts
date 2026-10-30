@@ -28,7 +28,8 @@ import { passwordNotes, passwordProblem } from "./dashpw";
 // The remote page reads each agent's on-screen text from its xterm buffer; the
 // emulator has already collapsed in-place repaints to the current screen.
 const DASH_OUTPUT_ROWS = 40;
-const DASH_PORT = 8477;
+// The Supervisor build listens beside regular Maestro (8477 → 8577).
+const DASH_PORT = Number(import.meta.env.VITE_DASH_PORT) || 8477;
 
 let onErrMsg: (e: unknown) => string = (e) => String(e);
 export function configureDashboard(deps: { errMsg: (e: unknown) => string }): void {

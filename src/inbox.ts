@@ -12,7 +12,9 @@ import { focusPane, renamePane } from "./panelayout";
 import { revealPane } from "./agentbridge";
 import { type Area, type Tile } from "./canvas";
 import { railPlan } from "./gridfit";
-import { glanceFor, keepGlances, refreshGlance } from "./gridcards";
+import { FEED_READ_MS, glanceFor, refreshGlance } from "./gridcards";
+import { riskOfAsk } from "./askparse";
+import { clashShort } from "./clashwatch";
 import { killPty, resizePty, sendInput, sendMessage } from "./ipc";
 import { openMemory } from "./memoryview";
 import { paneFont } from "./zoom";
@@ -31,8 +33,8 @@ import { openHelpPage, openTool, isHelpKey } from "./inboxhelp";
 import { showTip, tipSeen } from "./tips";
 import { tokens } from "./transcript";
 import { sourceOf } from "./chatsource";
-import { agentUsage, onAgentCost } from "./agentcost";
-import { faceSvg } from "./agentface";
+import { agentUsage, onAgentCost, projectTotals } from "./agentcost";
+import { cliLogo } from "./clilogos";
 import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
 import { handOff, handOverToAgent, handoffTargets, openTargets, startLimitGuard, stopLimitGuard } from "./limitguard";
@@ -42,6 +44,7 @@ import { money } from "./pricing";
 import { topNote } from "./hint";
 import { profileOf } from "./cliprofile";
 import { allTasks, answerOption, onTasksChange, taskOf, type Task } from "./tasks";
+import { filterGrid, gridCounts, gridProjects, projectCounts, type GridRow, type GridStatus } from "./gridfilter";
 import type { AskOption } from "./askparse";
 import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
@@ -49,9 +52,9 @@ import { hiddenGate } from "./hiddengate";
 
 /* ---------------- pure helpers (tested) ---------------- */
 
-const ORDER: TaskState[] = ["needs", "review", "working", "idle", "stopped", "merged"];
+const ORDER: TaskState[] = ["needs", "blocked", "review", "working", "idle", "stopped", "merged"];
 export const GROUP_LABEL: Record<TaskState, string> = {
-  needs: "Needs you", review: "Ready to review", working: "Working", idle: "Idle", stopped: "Stopped", merged: "Merged",
+  needs: "Needs you", blocked: "Blocked", review: "Ready to review", working: "Working", idle: "Idle", stopped: "Stopped", merged: "Merged",
 };
 
 /** Tasks grouped in queue order; empty groups dropped except "Needs you",
@@ -112,20 +115,21 @@ export function listOrder(): ListOrder {
 /** The top-bar sentence: "2 agents need you. 1 is ready to review, 3 are working." */
 export function headline(list: Task[]): { lead: string; rest: string } {
   const n = (s: TaskState) => list.filter((t) => t.status.state === s).length;
-  const needs = n("needs"), review = n("review"), working = n("working");
+  const needsYou = n("needs") + n("blocked"), review = n("review"), working = n("working");
   const are = (k: number) => (k === 1 ? "is" : "are");
   if (!list.length) return { lead: "No agents yet.", rest: " Start one with New agent." };
-  const lead = needs ? `${needs} agent${needs === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
+  const lead = needsYou ? `${needsYou} agent${needsYou === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
   // Only what is so: the clauses with nobody in them are left out.
   const parts = [
     review ? `${review} ${are(review)} ready to review` : "",
     working ? `${working} ${are(working)} working` : "",
   ].filter(Boolean);
   if (!parts.length) {
-    const idle = n("idle"), stopped = n("stopped"), merged = n("merged");
+    const idle = n("idle"), stopped = n("stopped"), merged = n("merged"), blocked = n("blocked");
     // Idle after working is done; idle before its first job is waiting for one.
     const done = list.filter((t) => t.status.state === "idle" && t.worked).length;
     if (done) parts.push(`${done} ${are(done)} done`);
+    if (blocked) parts.push(`${blocked} ${are(blocked)} blocked`);
     if (idle - done) parts.push(`${idle - done} ${are(idle - done)} waiting for a task`);
     if (stopped) parts.push(`${stopped} ${are(stopped)} stopped`);
     if (merged) parts.push(`${merged} ${are(merged)} merged`);
@@ -135,17 +139,30 @@ export function headline(list: Task[]): { lead: string; rest: string } {
 
 /** Short second line of a queue row, from the agent's side. */
 export function rowLine(t: Task): string {
+  const line = rowBase(t);
+  const c = t.status.clash;
+  return c ? `${line} · ${clashShort(c)}` : line;
+}
+
+function rowBase(t: Task): string {
   const a = t.status.ask;
   const lim = t.status.limit;
   if (lim) return lim.resetsAt ? `Out of usage · back ${clockOf(lim.resetsAt)}` : "Out of usage";
   switch (t.status.state) {
     case "needs":
       if (!a) return "Needs you";
-      if (a.kind === "run") return a.detail ? `Wants to run ${a.detail}` : "Wants to run a command";
-      if (a.kind === "edit") return a.detail ? `Wants to edit ${a.detail}` : "Wants to edit a file";
+      const risk = riskOfAsk(a) === "high" ? " (high risk)" : "";
+      if (a.kind === "run") return (a.detail ? `Wants to run ${a.detail}` : "Wants to run a command") + risk;
+      if (a.kind === "edit") return (a.detail ? `Wants to edit ${a.detail}` : "Wants to edit a file") + risk;
       return `Asks: ${a.prompt}`;
+    case "blocked": {
+      const b = t.status.blocked?.kind;
+      if (b === "captcha") return "Blocked on CAPTCHA";
+      if (b === "key") return "Blocked on API key";
+      return "Blocked on sign-in";
+    }
     case "review": return `${t.changedFiles ?? 0} file${t.changedFiles === 1 ? "" : "s"} changed`;
-    case "working": return "Working";
+    case "working": return t.status.stuck ? `Looks stuck: ${t.status.stuck.text}` : "Working";
     case "stopped": return "Stopped";
     case "merged": return `Merged into ${t.mergedInto ?? "the base branch"}`;
     default: return t.worked ? "Done" : "Waiting for a task";
@@ -248,6 +265,28 @@ let bigId: string | null = null;
 const borrowed = new Map<string, Workspace>();
 /** Agents closed out of Split with ✕; they stay out until Split is turned off. */
 const splitClosed = new Set<string>();
+/** Pins as filter rows (project + state come from the queue). */
+function gridRows(): GridRow[] {
+  const byId = new Map(allTasks().map((t) => [t.paneId, t]));
+  return pins.flatMap((id) => {
+    const t = byId.get(id);
+    return t ? [{ id, project: t.project, state: t.status.state }] : [];
+  });
+}
+/** Set the Grid filters from the dock: the terminal follows the first
+ *  visible agent when its own is filtered out. The only place a filter
+ *  change moves the terminal — status drift never yanks it mid-typing. */
+function applyGridFilter(project: string | null, status: GridStatus): void {
+  gridProject = project;
+  gridStatus = status;
+  const vis = filterGrid(gridRows(), project, status).map((r) => r.id);
+  if (bigId === null || !vis.includes(bigId)) bigId = vis[0] ?? bigId;
+  render();
+}
+/** Grid filters (dock cluster): one project, one status group, or everything. */
+let gridProject: string | null = null;
+let gridStatus: GridStatus = "all";
+let gridMenuOpen = false;
 /** Grid cards answered from a button: which question, so its buttons go. */
 const miniAnswered = new Map<string, string>();
 let splitBtn: HTMLButtonElement | null = null;
@@ -378,10 +417,18 @@ function layoutSplit(): void {
   const ws = activeWs;
   if (!ws) return;
   if (splitOn) pins = fillPins(pins, gridOrder(allTasks()), splitClosed, getPref("splitMax"));
-  const inGrid = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p) : [];
-  const on = inGrid.length > 1;
+  // Filters hide pins from the Grid without unpinning them; a pin the queue
+  // no longer lists stays visible (there is nothing to classify it by).
+  const rows = gridRows();
+  const rowIds = new Set(rows.map((r) => r.id));
+  const shown = new Set(filterGrid(rows, gridProject, gridStatus).map((r) => r.id));
+  const inGrid = splitOn ? pins.map(paneById).filter((p): p is Pane => !!p && (!rowIds.has(p.id) || shown.has(p.id))) : [];
+  const on = inGrid.length > 1 || ((gridProject !== null || gridStatus !== "all") && inGrid.length === 1);
   const cur = stagePane();
-  const big = on ? inGrid.find((p) => p.id === bigId) ?? (cur && inGrid.includes(cur) ? cur : inGrid[0]) : undefined;
+  // The terminal is sticky: it stays where it is while statuses drift, and
+  // only applyGridFilter (an explicit click) moves it for a filter. A dead
+  // bigId falls back to the stage, then the first visible agent.
+  const big = on ? (bigId !== null && pins.includes(bigId) ? paneById(bigId) : undefined) ?? (cur && inGrid.includes(cur) ? cur : inGrid[0]) : undefined;
   bigId = big?.id ?? bigId;
   const cards = big ? inGrid.filter((p) => p !== big) : [];
   const area = { width: ws.gridEl.clientWidth, height: ws.gridEl.clientHeight };
@@ -431,8 +478,6 @@ let railTimer: number | null = null;
 let railHtml = "";
 /** The agents on cards now, for the reader. */
 let railPanes: Pane[] = [];
-/** How often a card reads what its agent wrote. */
-const RAIL_READ_MS = 2000;
 
 /** One card: who, its state and job, what it is doing and last said, and its
  *  answer buttons while it asks you something. */
@@ -443,15 +488,16 @@ function cardHtml(t: Task, p: Pane): string {
   if (a && miniAnswered.get(p.id) !== askKey(a)) {
     const lead = a.kind === "run" ? "Wants to run" : a.kind === "edit" ? "Wants to edit" : "Asks";
     const what = a.kind !== "question" && a.detail ? `<code title="${esc(a.detail)}">${esc(a.detail)}</code>` : `<span class="rc-q">${esc(a.prompt)}</span>`;
-    body = `<div class="rc-ask"><p><span class="lb">${lead}</span>${what}</p><div class="rc-opts">${askButtons(a).join("")}</div></div>`;
+    const risk = riskOfAsk(a) === "high" ? `<span class="rc-risk">High risk</span>` : "";
+    body = `<div class="rc-ask"><p><span class="lb">${lead}</span>${risk}${what}</p><div class="rc-opts">${askButtons(a).join("")}</div></div>`;
   } else {
-    const doing = t.status.state === "working" && !t.status.limit ? g.doing || (g.asked ? "Working on what you asked" : "Working") : rowLine(t);
+    const doing = t.status.state === "working" && !t.status.limit && !t.status.stuck && !t.status.clash ? g.doing || (g.asked ? "Working on what you asked" : "Working" + (t.since > 0 ? ` · ${ago(Date.now() - t.since)}` : "")) : rowLine(t);
     const said = g.said ? `<p class="rc-say">${esc(g.said)}</p>` : g.asked ? `<p class="rc-say rc-you"><span>You</span> ${esc(g.asked)}</p>` : "";
     body = `<p class="rc-do">${esc(doing)}${lineCounts(t)}</p>${said}`;
   }
   const color = p.color ?? "#888";
   return `<div class="rc st-${t.status.state}${t.status.limit ? " limited" : ""}" role="listitem" tabindex="0" data-card="${esc(p.id)}" aria-label="${esc(t.name)}, in ${esc(t.project)}" title="${esc(t.name)} in ${esc(t.project)} · click to work with it in the terminal, right-click for more">
-    <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${faceSvg(t.name, color)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+    <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${cliLogo(p.spec.badge)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
     ${t.title ? `<p class="rc-t" title="${esc(t.title)}">${esc(t.title)}</p>` : ""}${body}
   </div>`;
 }
@@ -462,7 +508,6 @@ function renderRail(ws: Workspace, big: Pane | undefined, cards: Pane[], tile: T
     railEl = null;
     railPanes = [];
     if (railTimer !== null) { window.clearInterval(railTimer); railTimer = null; }
-    keepGlances(new Set());
     return;
   }
   if (!railEl || railEl.parentElement !== ws.gridEl) {
@@ -488,16 +533,15 @@ function renderRail(ws: Workspace, big: Pane | undefined, cards: Pane[], tile: T
   // terminal's project: then there is nothing to tell apart.
   const heads = groups.length > 1 || (groups[0] && groups[0].wsId !== home);
   const html = groups.map((g) => {
-    const head = heads ? `<div class="rc-g" role="none"><b>${esc(g.project)}</b>${g.wsId === home ? "<span>the terminal's project</span>" : ""}</div>` : "";
+    const head = heads ? `<div class="rc-g" role="none"><b>${esc(g.project)}</b></div>` : "";
     return head + g.tasks.map((t) => cardHtml(t, t.pane)).join("");
   }).join("");
   if (railHtml !== html) { railHtml = html; railEl.innerHTML = html; }
   railPanes = groups.flatMap((g) => g.tasks.map((t) => t.pane));
-  keepGlances(new Set(cards.map((p) => p.id)));
   if (railTimer === null) {
     const read = () => void Promise.all(railPanes.map((p) => refreshGlance(p))).then((ch) => { if (ch.some(Boolean)) render(); });
     read();
-    railTimer = window.setInterval(read, RAIL_READ_MS);
+    railTimer = window.setInterval(read, FEED_READ_MS);
   }
 }
 
@@ -668,6 +712,10 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
   // you is marked where it is, and counted on its project, which folds its
   // stopped agents away and keeps the running ones.
   const groups = projectGroups(list, listOrder());
+  const spend = projectTotals(list.map((t) => {
+    const p = paneOf(t);
+    return { wsId: t.wsId, usd: p ? agentUsage(p)?.usd ?? null : null };
+  }));
   const html = `<div class="iq-list">` +
     (groups.length ? groups.map((g, gi) => {
       const folded = foldedProjects.has(g.wsId);
@@ -675,7 +723,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
       const away = g.tasks.length - rows.length;
       return `<section class="iq-group${folded ? " folded" : ""}${g.needs ? " has-needs" : ""}">
       <h2 class="iq-gt iq-proj"><button type="button" class="iq-ph" data-proj="${esc(g.wsId)}" aria-expanded="${!folded}" aria-controls="iq-r-${gi}" title="${esc(g.name)}${folded ? (away ? ` · show ${away} stopped` : " · unfold") : " · fold the stopped away"}">
-        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 12a1.5 1.5 0 0 1 1.5-1.5h7.5M6.5 5.5h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></h2>
+        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}<span class="iq-n">${g.tasks.length}</span>${(spend.get(g.wsId) ?? 0) > 0 ? `<span class="iq-cost" title="What this project's agents have used so far">${money(spend.get(g.wsId) ?? 0)}</span>` : ""}</button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 12a1.5 1.5 0 0 1 1.5-1.5h7.5M6.5 5.5h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></h2>
       <ul class="iq-rows" id="iq-r-${gi}"${rows.length ? "" : " hidden"}>${rows.map((t) => {
         const p = paneOf(t);
         const main = t.title ?? t.name;
@@ -689,7 +737,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
           : use?.tokens ? `<span class="iq-cost" title="Tokens its conversation has used so far">${tokens(use.tokens)} tokens</span>` : "";
         const full = use?.contextPct != null && use.contextPct >= 80 ? `<span class="iq-full" title="Its context is nearly full: it will soon sum up the conversation and lose detail">${Math.round(use.contextPct)}% context</span>` : "";
         return `<li><button class="iq-row st-${t.status.state}${t.status.limit ? " limited" : ""}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
-          <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${faceSvg(t.name, p?.color ?? "#888")}</span>
+          <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliLogo(p?.spec.badge ?? "")}</span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
           ${t.status.state === "stopped" ? `<span class="iq-resume" data-resume aria-hidden="true" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</span>` : ""}
@@ -747,7 +795,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
     const t = p === pane || pinned ? list.find((x) => x.paneId === p.id) : undefined;
     let pill = p.el.querySelector<HTMLElement>(".ib-pill");
     let acts = p.el.querySelector<HTMLElement>(".ib-acts");
-    p.el.classList.toggle("ib-needs", !!t && pinned && t.status.state === "needs");
+    p.el.classList.toggle("ib-needs", !!t && pinned && (t.status.state === "needs" || t.status.state === "blocked"));
     if (!t) { pill?.remove(); acts?.remove(); continue; }
     if (!pill) {
       pill = document.createElement("span");
@@ -850,10 +898,61 @@ function teach(list: Task[]): void {
   if (list.length >= 2 && !tipSeen("split") && !splitOn) showTip("split");
 }
 
+/** The dock's Grid filter cluster: project dropdown + status chips with counts.
+ *  Rebuilt only when its signature changes, and never while focused, so the
+ *  dropdown never closes under the pointer. */
+let gridFilterSig = "";
+/** Open or close the project menu by patching the live nodes (no rebuild, no focus loss). */
+function setGridMenu(open: boolean): void {
+  if (gridMenuOpen === open) return;
+  gridMenuOpen = open;
+  const btn = dockEl?.querySelector<HTMLButtonElement>("[data-gfp-btn]");
+  const menu = dockEl?.querySelector<HTMLElement>(".id-menu");
+  if (!btn || !menu) return;
+  btn.setAttribute("aria-expanded", String(open));
+  menu.hidden = !open;
+}
+function renderGridFilter(): void {
+  const el = dockEl?.querySelector<HTMLElement>("[data-filter]");
+  if (!el) return;
+  el.hidden = !splitOn;
+  if (!splitOn) { gridMenuOpen = false; return; }
+  const rows = gridRows();
+  const projects = gridProjects(rows);
+  if (gridProject !== null && !projects.includes(gridProject)) gridProject = null;
+  const scoped = rows.filter((r) => gridProject === null || r.project === gridProject);
+  const counts = gridCounts(scoped);
+  const sig = JSON.stringify([projects, counts, gridProject, gridStatus, gridMenuOpen]);
+  if (sig === gridFilterSig || el.contains(document.activeElement)) return;
+  gridFilterSig = sig;
+  const dot = (v: GridStatus) => v === "all" ? "" : `<i class="id-dot" data-s="${v}" aria-hidden="true"></i>`;
+  const chip = (v: GridStatus, label: string, title: string) =>
+    `<button type="button" data-gf="${v}" aria-pressed="${gridStatus === v}" title="${title}">${dot(v)}${label} <b class="id-n">${counts[v]}</b></button>`;
+  const filtered = gridProject !== null || gridStatus !== "all";
+  const projCounts = projectCounts(rows);
+  const projTotal = projCounts.reduce((n, p) => n + p.n, 0);
+  const opt = (value: string | null, label: string, n: number) =>
+    `<button type="button" role="option" data-gfp-opt="${value === null ? "" : esc(value)}" aria-selected="${(value ?? "") === (gridProject ?? "")}"><span class="id-check" aria-hidden="true">✓</span><span class="id-oname">${esc(label)}</span><b class="id-n">${n}</b></button>`;
+  el.innerHTML =
+    `<div class="id-fproj"><button type="button" data-gfp-btn aria-haspopup="listbox" aria-expanded="${gridMenuOpen}" title="Filter by project">` +
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` +
+    `<span class="id-pname">${gridProject === null ? "All projects" : esc(gridProject)}</span>` +
+    `<svg class="id-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>` +
+    `<div class="id-menu" role="listbox" aria-label="Project"${gridMenuOpen ? "" : " hidden"}>` +
+    opt(null, "All projects", projTotal) +
+    projCounts.map((p) => opt(p.project, p.project, p.n)).join("") +
+    `</div></div><span class="id-fdiv" aria-hidden="true"></span>` +
+    `<div class="id-fseg" role="group" aria-label="Status">` +
+    chip("all", "All", "Show every agent in the Grid") + chip("needs", "Needs you", "Show agents waiting on you: needs an answer or ready to review") + chip("working", "Working", "Show working agents in the Grid") + chip("quiet", "Quiet", "Show quiet agents in the Grid") +
+    `</div>` +
+    (filtered ? `<button type="button" data-gf="reset" title="Clear Grid filters">Reset</button>` : "");
+}
+
 function render(): void {
   if (!document.body.classList.contains("inbox-ui")) return;
   ensureStage();
   layoutSplit();
+  renderGridFilter();
   const list = allTasks();
   teach(list);
   const pane = stagePane();
@@ -876,11 +975,14 @@ const hiddenSince = new Map<string, number>();
 function keepHistory(stage: Pane | undefined, now = Date.now()): void {
   const shown = new Set<string>(splitOn ? pins : []);
   if (stage) shown.add(stage.id);
+  const live = new Set<string>();
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) {
+    live.add(p.id);
     if (shown.has(p.id)) hiddenSince.delete(p.id);
     else if (!hiddenSince.has(p.id)) hiddenSince.set(p.id, now);
     p.term.setScrollback?.(keepLines(shown.has(p.id), now - (hiddenSince.get(p.id) ?? now)));
   }
+  for (const id of [...hiddenSince.keys(), ...miniAnswered.keys(), ...lastState.keys()]) if (!live.has(id)) { hiddenSince.delete(id); miniAnswered.delete(id); lastState.delete(id); }
 }
 
 function move(delta: number): void {
@@ -953,7 +1055,7 @@ function openCompare(raceId: string): void {
     <div class="cmp-grid">${racers.map((t) => {
       const p = paneOf(t);
       return `<section class="cmp-col">
-        <div class="cmp-h"><span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${faceSvg(t.name, p?.color ?? "#888")}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+        <div class="cmp-h"><span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliLogo(p?.spec.badge ?? "")}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
         <p class="cmp-n">${t.changedFiles == null ? "Changes unknown" : `${t.changedFiles} file${t.changedFiles === 1 ? "" : "s"} changed`}${lineCounts(t)}</p>
         <p class="cmp-l">${esc(rowLine(t))}</p>
         <button class="im-btn${t.status.state === "review" ? " primary" : ""}" data-review="${esc(t.paneId)}">Review</button>
@@ -985,7 +1087,7 @@ export function paletteItems(): PaletteItem[] {
       group: GROUP_LABEL[t.status.state],
       label: t.name,
       sub: `${t.title ? `${t.title} · ` : ""}${t.project} · ${rowLine(t)}`,
-      mark: { color: p?.color ?? "#888", letter: (t.name.trim()[0] ?? "?").toUpperCase(), face: t.name },
+      mark: { color: p?.color ?? "#888", letter: (t.name.trim()[0] ?? "?").toUpperCase(), logo: p?.spec.badge },
       run: () => openTask(t),
     };
   });
@@ -1161,6 +1263,7 @@ function mount(): void {
   queueEl = document.createElement("aside");
   queueEl.className = "inbox-queue";
   queueSig = ""; // a new, empty list: the first render fills it
+  gridMenuOpen = false; // a fresh dock starts with the project menu closed
   queueEl.setAttribute("aria-label", "Agents");
   app.appendChild(queueEl);
   askEl = document.createElement("section");
@@ -1187,6 +1290,7 @@ function mount(): void {
       <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, full size (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
       <button data-dock="split" aria-pressed="false" title="Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg><span>Grid</span></button>
     </div>
+    <div class="id-filter" data-filter hidden></div>
     <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl+K)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl+K</kbd></button>
@@ -1198,6 +1302,39 @@ function mount(): void {
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
   app.appendChild(dockEl);
   splitBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="split"]');
+  const filterEl = dockEl.querySelector<HTMLElement>("[data-filter]")!;
+  filterEl.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    const opt = t.closest<HTMLElement>("[data-gfp-opt]");
+    if (opt) {
+      applyGridFilter(opt.dataset.gfpOpt || null, gridStatus);
+      setGridMenu(false);
+      dockEl?.querySelector<HTMLButtonElement>("[data-gfp-btn]")?.focus();
+      return;
+    }
+    if (t.closest("[data-gfp-btn]")) { setGridMenu(!gridMenuOpen); return; }
+    const b = t.closest<HTMLElement>("[data-gf]");
+    if (!b) return;
+    if (b.dataset.gf === "reset") applyGridFilter(null, "all");
+    else applyGridFilter(gridProject, b.dataset.gf as GridStatus);
+  });
+  filterEl.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && gridMenuOpen) {
+      setGridMenu(false);
+      dockEl?.querySelector<HTMLButtonElement>("[data-gfp-btn]")?.focus();
+      return;
+    }
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && gridMenuOpen) {
+      const opts = Array.from(filterEl.querySelectorAll<HTMLButtonElement>("[data-gfp-opt]"));
+      const at = opts.indexOf(document.activeElement as HTMLButtonElement);
+      const n = e.key === "ArrowDown" ? (at + 1) % opts.length : (at - 1 + opts.length) % opts.length;
+      opts[n]?.focus();
+      e.preventDefault();
+    }
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (gridMenuOpen && !(e.target as HTMLElement).closest?.("[data-filter]")) setGridMenu(false);
+  });
   dockEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-dock]");
     switch (b?.dataset.dock) {
@@ -1298,7 +1435,7 @@ function unmount(): void {
   stopFinishWatch();
   stopSessionFollow();
   if (splitWs) clearSplit(splitWs);
-  splitOn = false; pins = []; splitSig = ""; splitWs = null;
+  splitOn = false; pins = []; splitSig = ""; splitWs = null; gridProject = null; gridStatus = "all"; gridFilterSig = "";
   if (reviewer?.paneId) reviewer.close();
   for (const ws of workspaces.values()) for (const p of ws.panes.values()) { p.el.querySelector(".ib-pill")?.remove(); p.el.querySelector(".ib-acts")?.remove(); p.el.querySelector(".ib-ttl")?.remove(); p.el.classList.remove("ib-needs", "ib-has-title"); }
   queueEl?.remove(); askEl?.remove(); headEl?.remove(); dockEl?.remove(); emptyEl?.remove(); emptyEl = null;

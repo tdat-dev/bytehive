@@ -9,12 +9,12 @@
 import { workspaces } from "./appstate";
 import { roomNote } from "./planmeter";
 import { activateWorkspace, createWorkspace } from "./workspace";
-import { pickFolder } from "./ipc";
+import { messageDialog, pickFolder } from "./ipc";
 import { addRecent, getRecents } from "./recents";
 import { allTasks, type Task } from "./tasks";
 import { openNewAgent } from "./inboxnew";
 import { loadCrew, presetAvailable, quickTerminal, spawnAgents } from "./spawnmodal";
-import { CLI_PRESETS } from "./crew";
+import { CLI_PRESETS, CUSTOM_PREFIX } from "./crew";
 import { getPref } from "./prefs";
 import { sameFolder } from "./workspaces";
 import { revealPane } from "./agentbridge";
@@ -26,7 +26,10 @@ import type { Workspace } from "./panetypes";
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const FOLDER_SVG = `<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`;
 const LAST_CLI = "maestro.inbox.lastCli";
+const LAST_CUSTOM = "maestro.inbox.lastCustom";
 const CHOOSE = "__choose__";
+/** Agent select value for the free-text command row. */
+const CUSTOM_OPT = "__custom__";
 
 import { STARTERS } from "./starters";
 export { STARTERS };
@@ -47,7 +50,7 @@ export function greeting(hour: number): string {
 
 /** The one sentence under the greeting: what, if anything, waits on you. */
 export function statusSentence(tasks: Pick<Task, "name" | "status">[], firstRun: boolean): string {
-  const needs = tasks.filter((t) => t.status.state === "needs");
+  const needs = tasks.filter((t) => t.status.state === "needs" || t.status.state === "blocked");
   const working = tasks.filter((t) => t.status.state === "working").length;
   const review = tasks.filter((t) => t.status.state === "review").length;
   if (needs.length === 1) return `${needs[0].name} is waiting on you.`;
@@ -62,7 +65,7 @@ export function statusSentence(tasks: Pick<Task, "name" | "status">[], firstRun:
 export function projectLine(dir: string, tasks: Task[]): { agents: number; needs: number } {
   const ws = [...workspaces.values()].find((w) => sameFolder(w.dir, dir));
   const mine = ws ? tasks.filter((t) => t.wsId === ws.id) : [];
-  return { agents: mine.length, needs: mine.filter((t) => t.status.state === "needs").length };
+  return { agents: mine.length, needs: mine.filter((t) => t.status.state === "needs" || t.status.state === "blocked").length };
 }
 
 /** Switch to a folder's project, opening it when it isn't open yet. */
@@ -80,8 +83,40 @@ export function openProject(dir: string, count?: number): void {
   if (!ws.panes.size || count) openNewAgent({ count });
 }
 
+/** The native picker, with every failure mode shown instead of swallowed: a
+ *  silent throw, a hang, or an instant-null all read as "the button does
+ *  nothing". */
+async function pickFolderShown(): Promise<string | null> {
+  const t0 = Date.now();
+  let picked: string | null;
+  try {
+    picked = await Promise.race([
+      pickFolder(),
+      new Promise<never>((_, reject) =>
+        window.setTimeout(() => reject(new Error("timed out after 10s (the window never answered)")), 10_000),
+      ),
+    ]);
+  } catch (e) {
+    console.error("[maestro] folder picker failed:", e);
+    void messageDialog(
+      `Couldn't open the folder picker:\n${e instanceof Error ? e.message : String(e)}`,
+      "Choose a folder",
+      "error",
+    );
+    return null;
+  }
+  if (picked === null && Date.now() - t0 < 500) {
+    void messageDialog(
+      "The folder window closed at once without a choice.\nIf you saw no window at all, it may be hidden behind Maestro — check the taskbar.",
+      "Choose a folder",
+      "warning",
+    );
+  }
+  return picked;
+}
+
 async function chooseFolder(count?: number): Promise<void> {
-  const dir = await pickFolder();
+  const dir = await pickFolderShown();
   if (dir) openProject(dir, count);
 }
 
@@ -110,7 +145,13 @@ function dirOptions(recents: string[]): string {
 
 function composerHTML(): string {
   const recents = getRecents();
-  const cli = lastCli();
+  const last = lastCli();
+  const isCustom = last.startsWith(CUSTOM_PREFIX);
+  const cli = isCustom ? CUSTOM_OPT : last;
+  let customCmd = "";
+  try {
+    customCmd = isCustom ? last.slice(CUSTOM_PREFIX.length) : localStorage.getItem(LAST_CUSTOM) || "";
+  } catch { /* private window */ }
   const count = getPref("defaultCount");
   const clis = CLI_PRESETS.filter((p) => !p.shell);
   return `
@@ -120,9 +161,10 @@ function composerHTML(): string {
       <div class="st-bar">
         <label class="st-chip" title="The folder it works in">${FOLDER_SVG}
           <span class="ia-sr">Project</span>
-          <select id="stDir">${dirOptions(recents)}</select></label>
+          <select id="stDir" data-reselect>${dirOptions(recents)}</select></label>
         <label class="st-chip"><span class="ia-sr">Agent</span>
-          <select id="stCli">${clis.map((p) => `<option value="${esc(p.id)}"${p.id === cli ? " selected" : ""}${presetAvailable(p.program) ? "" : ` disabled data-note="${NOT_INSTALLED}"`}>${esc(p.label)}</option>`).join("")}</select></label>
+          <select id="stCli">${clis.map((p) => `<option value="${esc(p.id)}"${p.id === cli ? " selected" : ""}${presetAvailable(p.program) ? "" : ` disabled data-note="${NOT_INSTALLED}"`}>${esc(p.label)}</option>`).join("")}<option value="${CUSTOM_OPT}"${isCustom ? " selected" : ""}>Custom…</option></select></label>
+        <input id="stCustom" class="st-custom" placeholder="Command, e.g. ollama run llama3.1" value="${esc(customCmd)}" aria-label="Custom command"${isCustom ? "" : " hidden"}>
         <label class="st-chip"><span class="ia-sr">How many agents</span>
           <select id="stCount">${[1, 2, 3].map((n) => `<option value="${n}"${n === count ? " selected" : ""}>${n === 1 ? "1 agent" : `${n} agents, same job`}</option>`).join("")}</select></label>
         <span class="st-sp"></span>
@@ -153,7 +195,7 @@ export function renderStart(): void {
   const status = el.querySelector<HTMLElement>(".st-status");
   if (status) {
     status.textContent = statusSentence(tasks, firstRun);
-    status.classList.toggle("needs", waiting.length > 0);
+    status.classList.toggle("needs", waiting.length > 0 || tasks.some((t) => t.status.state === "blocked"));
   }
   const live = el.querySelector<HTMLElement>(".st-live");
   if (!live) return;
@@ -163,7 +205,7 @@ export function renderStart(): void {
         <i class="st-dia" aria-hidden="true"></i><b>${esc(t.name)}</b><span class="st-wp">${esc(t.project)}</span>
         <span class="st-wl">${esc(askLine(t))}</span><span class="st-open">Answer</span></button>`).join("")}</div></section>` : "") +
     (firstRun ? `<section class="st-sec" aria-label="Getting started"><h2>Getting started</h2><ol class="st-steps">
-        <li><b>Choose a folder</b><span>Any project on your disk. Each agent gets its own git branch there, so your checkout stays clean.</span></li>
+        <li><button type="button" class="st-choose" data-st="choose"><b>Choose a folder</b></button><span>Any project on your disk. Each agent gets its own git branch there, so your checkout stays clean.</span></li>
         <li><b>Say what you want done</b><span>In plain words, in the box above. Pick Claude Code, Codex, Gemini or another CLI you have installed.</span></li>
         <li><b>Answer when it asks</b><span>When an agent wants to run a command or has a question, it moves to the top of the list. Answer it in its terminal.</span></li>
       </ol></section>`
@@ -199,6 +241,12 @@ function syncChoices(recents: string[]): void {
   });
 }
 
+/** Show the custom command box only while Custom is the chosen CLI. */
+function syncCustomInput(): void {
+  const sel = el?.querySelector<HTMLSelectElement>("#stCli");
+  el?.querySelector<HTMLElement>("#stCustom")?.toggleAttribute("hidden", sel?.value !== CUSTOM_OPT);
+}
+
 /** How much of the chosen CLI's plan is left, when little. */
 function syncRoom(): void {
   const n = el?.querySelector<HTMLElement>("[data-room]");
@@ -219,14 +267,20 @@ function askLine(t: Task): string {
   return a.prompt;
 }
 
-async function start(form: HTMLFormElement): Promise<void> {
+async function startInner(form: HTMLFormElement): Promise<void> {
   const job = form.querySelector<HTMLTextAreaElement>("#stJob")!;
   const dirSel = form.querySelector<HTMLSelectElement>("#stDir")!;
-  const cli = form.querySelector<HTMLSelectElement>("#stCli")!.value;
+  let cli = form.querySelector<HTMLSelectElement>("#stCli")!.value;
   const n = Number(form.querySelector<HTMLSelectElement>("#stCount")!.value) || 1;
+  if (cli === CUSTOM_OPT) {
+    const cmd = form.querySelector<HTMLInputElement>("#stCustom")?.value.trim() ?? "";
+    if (!cmd) { form.querySelector<HTMLInputElement>("#stCustom")?.focus(); return; }
+    cli = CUSTOM_PREFIX + cmd;
+    try { localStorage.setItem(LAST_CUSTOM, cmd); } catch { /* private window */ }
+  }
   let dir = dirSel.value;
   if (dir === CHOOSE) {
-    const picked = await pickFolder();
+    const picked = await pickFolderShown();
     if (!picked) return;
     dir = picked;
   }
@@ -235,6 +289,21 @@ async function start(form: HTMLFormElement): Promise<void> {
   job.value = "";
   const ws = projectFor(dir);
   void spawnAgents(ws, cli, n, task, loadCrew().skipPerms);
+}
+
+/** startInner, with any surprise shown: an unhandled rejection here also
+ *  reads as "the button does nothing". */
+async function start(form: HTMLFormElement): Promise<void> {
+  try {
+    await startInner(form);
+  } catch (e) {
+    console.error("[maestro] start failed:", e);
+    void messageDialog(
+      `Couldn't start:\n${e instanceof Error ? e.message : String(e)}`,
+      "Start",
+      "error",
+    );
+  }
 }
 
 export function mountStart(): void {
@@ -256,8 +325,33 @@ export function mountStart(): void {
   sig = "";
   const form = el.querySelector<HTMLFormElement>(".st-compose")!;
   const job = el.querySelector<HTMLTextAreaElement>("#stJob")!;
+  const dirSel = el.querySelector<HTMLSelectElement>("#stDir")!;
+  // Picking "Choose a folder…" opens the picker at once — choosing it must
+  // not silently wait for Start. The picked folder joins the recents and
+  // becomes the choice; a cancel falls back to the previous one.
+  let prevDir = dirSel.value;
+  let picking = false;
+  dirSel.addEventListener("change", async () => {
+    if (dirSel.value !== CHOOSE) { prevDir = dirSel.value; return; }
+    if (picking) return;
+    picking = true;
+    try {
+      const picked = await pickFolderShown();
+      if (picked) {
+        addRecent(picked);
+        dirSel.innerHTML = dirOptions(getRecents());
+        dirSel.value = picked;
+        prevDir = picked;
+      } else {
+        dirSel.value = prevDir;
+      }
+      dirSel.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      picking = false;
+    }
+  });
   form.addEventListener("submit", (e) => { e.preventDefault(); void start(form); });
-  form.addEventListener("change", syncRoom);
+  form.addEventListener("change", () => { syncRoom(); syncCustomInput(); });
   // Enter starts, Shift+Enter is a new line, as in a chat box.
   job.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }

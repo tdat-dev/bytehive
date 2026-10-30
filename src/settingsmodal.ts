@@ -17,6 +17,7 @@ import { topNote } from "./hint";
 import { paneFont } from "./zoom";
 import { checkForUpdates } from "./updater";
 import { getVersion } from "@tauri-apps/api/app";
+import { APP_NAME } from "./edition";
 import { workspaces } from "./appstate";
 import { initPrefsView, resetPrefsView, syncPrefsView } from "./prefsview";
 import { initBrowserPrefs, refreshBrowserPrefs } from "./browserprefs";
@@ -95,7 +96,7 @@ export function initSettingsModal(): void {
   initBrowserPrefs();
   // Show the running version in the Settings "Updates" row.
   void getVersion()
-    .then((v) => { if (setVersion) setVersion.textContent = `Maestro · v${v}`; })
+    .then((v) => { if (setVersion) setVersion.textContent = `${APP_NAME} · v${v}`; })
     .catch(() => {});
 
   // Manual update check. Unlike the silent startup check, this one always reports

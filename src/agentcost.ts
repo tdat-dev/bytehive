@@ -110,3 +110,14 @@ export function agentCost(pane: Pane, now = Date.now()): number | null {
 export function forgetCost(paneId: string): void {
   known.delete(paneId);
 }
+
+/** USD totals per project, from each agent's last read. Projects with no
+ *  priced usage stay out, so callers show nothing instead of $0.00. */
+export function projectTotals(rows: Array<{ wsId: string; usd: number | null }>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    if (r.usd === null) continue;
+    out.set(r.wsId, (out.get(r.wsId) ?? 0) + r.usd);
+  }
+  return out;
+}

@@ -5,7 +5,8 @@
 import { createChat, type Chat } from "./chatmodel";
 import { createCodexChat } from "./codexmodel";
 import { createOpencodeChat } from "./opencodemodel";
-import { claudeTranscript, codexTranscript, opencodeTranscript } from "./ipc";
+import { createMuseChat } from "./musemodel";
+import { claudeTranscript, codexTranscript, museTranscript, opencodeTranscript } from "./ipc";
 import type { Pane } from "./panetypes";
 
 /** `from`: where the text starts in the conversation's file; more than 0 when
@@ -82,6 +83,17 @@ export const SOURCES: Record<string, ChatSource> = {
   opencode: {
     createChat: createOpencodeChat,
     read: (pane, dir, offset) => remembered(pane, (session) => opencodeTranscript(dir, since(pane), session, offset)),
+  },
+  muse: {
+    createChat: createMuseChat,
+    // Its own session id, learned at boot; nothing until the capture lands it.
+    read: (pane, _dir, offset, tail) => {
+      const id = pane.spec.sessionId ?? null;
+      if (!id) return Promise.resolve({ path: "", text: "", next: offset });
+      return museTranscript(id, offset, tail);
+    },
+    needsSession: true,
+    tails: true,
   },
 };
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.10] - 2026-10-26
+
+### Added
+
+- **Run any AI with a custom command.** New agent and the Home composer
+  grew a Custom row: type any command on your PATH (e.g.
+  `ollama run llama3.1`) and Maestro starts it like any other agent,
+  with its own worktree and handover support. The last command is
+  remembered, and custom setups save as presets for scheduled agents.
+
 ## [0.10.9] - 2026-10-26
 
 ### Changed

@@ -10,6 +10,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  length:
+    name: File length gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check file lengths
+        run: node tools/check_file_length.mjs
+
   frontend:
     name: Frontend (tsc / vitest / build)
     runs-on: windows-latest

@@ -22,11 +22,12 @@ export const CLI_PRESETS: CliPreset[] = [
   { id: "codex", label: "Codex", program: "codex", args: [], badge: "codex", skipPermsArgs: ["--yolo"] },
   { id: "gemini", label: "Gemini", program: "gemini", args: [], badge: "gemini", skipPermsArgs: ["--yolo"] },
   { id: "aider", label: "Aider", program: "aider", args: [], badge: "aider", skipPermsArgs: ["--yes-always"] },
-  { id: "cursor", label: "Cursor Agent", program: "cursor-agent", args: [], badge: "cursor" },
+  { id: "cursor", label: "Cursor Agent", program: "cursor-agent", args: [], badge: "cursor", skipPermsArgs: ["--yolo"] },
   { id: "opencode", label: "opencode", program: "opencode", args: [], badge: "opencode" },
   { id: "qwen", label: "Qwen Code", program: "qwen", args: [], badge: "qwen", skipPermsArgs: ["--yolo"] },
   { id: "copilot", label: "GitHub Copilot", program: "copilot", args: [], badge: "copilot", skipPermsArgs: ["--allow-all-tools"] },
   { id: "goose", label: "Goose", program: "goose", args: [], badge: "goose" },
+  { id: "muse", label: "Muse", program: "muse", args: [], badge: "muse", skipPermsArgs: ["--yolo"] },
   { id: "powershell", label: "PowerShell", program: "powershell.exe", args: ["-NoLogo"], badge: "shell", shell: true },
   { id: "cmd", label: "CMD", program: "cmd.exe", args: [], badge: "cmd", shell: true },
 ];
@@ -57,6 +58,25 @@ export interface CrewState {
 export function parseCommand(cmd: string): { program: string; args: string[] } {
   const tokens = cmd.trim().split(/\s+/).filter(Boolean);
   return { program: tokens[0] ?? "", args: tokens.slice(1) };
+}
+
+/** Prefix that marks a spawn id as a free-text command, not a preset id. */
+export const CUSTOM_PREFIX = "custom:";
+
+/** Build a launchable preset from a free-text command ("ollama run llama3",
+ *  "my-agent --model x"). Null when there is no program to run. */
+export function customPreset(cmd: string): CliPreset | null {
+  const raw = cmd.startsWith(CUSTOM_PREFIX) ? cmd.slice(CUSTOM_PREFIX.length) : cmd;
+  const { program, args } = parseCommand(raw);
+  if (!program) return null;
+  const label = raw.trim();
+  return { id: "custom", label, program, args, badge: "custom" };
+}
+
+/** Resolve a spawn id to a preset: a built-in id first, else a free-text
+ *  custom command (with or without the "custom:" prefix). */
+export function resolvePreset(id: string): CliPreset | null {
+  return CLI_PRESETS.find((p) => p.id === id) ?? customPreset(id);
 }
 
 /** Expand a crew into a flat, ordered list of presets to spawn. */

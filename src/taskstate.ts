@@ -3,14 +3,17 @@
 // what is on its screen, and has it changed files on its branch.
 //
 // This replaces the single "went quiet ⇒ needs you" guess. A quiet agent can be
-// asking to run a command, asking a question, finished with changes to review,
-// or simply waiting for work; only the first two need you, and the queue sorts
+// asking to run a command, asking a question, stuck on sign-in, finished with
+// changes to review, or simply waiting for work; the first three need you, and the queue sorts
 // on the difference.
 
-import { parseAsk, type Ask } from "./askparse";
+import { parseAsk, riskOfAsk, type Ask } from "./askparse";
+import { blockedOnScreen, type BlockedHit } from "./blocked";
+import { type StuckEvidence } from "./stuckwatch";
+import { type ClashNote } from "./clashwatch";
 import { limitOnScreen, type LimitHit } from "./limits";
 
-export type TaskState = "needs" | "review" | "working" | "idle" | "stopped" | "merged";
+export type TaskState = "needs" | "blocked" | "review" | "working" | "idle" | "stopped" | "merged";
 
 export interface TaskFacts {
   running: boolean;
@@ -22,6 +25,8 @@ export interface TaskFacts {
   changedFiles: number | null;
   /** Its branch was merged into the base (and its worktree removed) from Review. */
   merged?: boolean;
+  /** It has worked on something since Maestro started (from task history). */
+  worked?: boolean;
 }
 
 export interface TaskStatus {
@@ -30,6 +35,14 @@ export interface TaskStatus {
   ask: Ask | null;
   /** It stopped at its plan's usage limit (and when that lifts). */
   limit?: LimitHit | null;
+  /** Present when state is "blocked": what only you can clear. */
+  blocked?: BlockedHit | null;
+  /** Idle after working, not before its first task. */
+  spent?: boolean;
+  /** A working agent looping or stalled, with the evidence. */
+  stuck?: StuckEvidence | null;
+  /** Overlaps another agent's files or task, with the evidence. */
+  clash?: ClashNote | null;
 }
 
 /** Spinners and streaming redraw several times a second; this long without a
@@ -37,7 +50,7 @@ export interface TaskStatus {
 export const WORKING_MS = 2500;
 
 /** Order the queue uses: what needs you first, then what's ready for you. */
-export const STATE_RANK: Record<TaskState, number> = { needs: 0, review: 1, working: 2, idle: 3, stopped: 4, merged: 5 };
+export const STATE_RANK: Record<TaskState, number> = { needs: 0, blocked: 1, review: 2, working: 3, idle: 4, stopped: 5, merged: 6 };
 
 export function deriveTaskState(f: TaskFacts, now: number): TaskStatus {
   // A merged agent was stopped to land its branch: its job is done, not cut short.
@@ -46,11 +59,14 @@ export function deriveTaskState(f: TaskFacts, now: number): TaskStatus {
   // cursor, and a question is still a question the moment it appears.
   const ask = parseAsk(f.screen);
   if (ask) return { state: "needs", ask };
+  // A login page is not working, even while it redraws: a block notice wins over recency.
+  const blocked = blockedOnScreen(f.screen);
+  if (blocked) return { state: "blocked", ask: null, blocked };
   if (now - f.lastOutputAt <= WORKING_MS) return { state: "working", ask: null };
   // quiet after hitting its plan's limit: not done, waiting for the limit to lift
   const limit = limitOnScreen(f.screen, now);
   if (f.changedFiles !== null && f.changedFiles > 0) return { state: "review", ask: null, limit };
-  return { state: "idle", ask: null, limit };
+  return { state: "idle", ask: null, limit, spent: f.worked ?? false };
 }
 
 /** "7:09 PM" today, "Thu 1:00 AM" later. */
@@ -64,14 +80,23 @@ export function clockOf(at: number, now = Date.now()): string {
 export function statusLine(name: string, s: TaskStatus): string {
   const a = s.ask;
   if (s.state === "needs" && a) {
-    if (a.kind === "run") return a.detail ? `${name} wants to run ${a.detail}` : `${name} wants to run a command`;
-    if (a.kind === "edit") return a.detail ? `${name} wants to edit ${a.detail}` : `${name} wants to edit a file`;
+    const risk = riskOfAsk(a) === "high" ? " (high risk)" : "";
+    if (a.kind === "run") return (a.detail ? `${name} wants to run ${a.detail}` : `${name} wants to run a command`) + risk;
+    if (a.kind === "edit") return (a.detail ? `${name} wants to edit ${a.detail}` : `${name} wants to edit a file`) + risk;
     return `${name} asks: ${a.prompt}`;
+  }
+
+  const b = s.blocked;
+  if (s.state === "blocked") {
+    if (b?.kind === "captcha") return `${name} needs you to solve a CAPTCHA`;
+    if (b?.kind === "key") return `${name} needs a valid API key`;
+    return `${name} is waiting on you to sign in`;
   }
   if (s.limit) return s.limit.resetsAt ? `${name} is out of usage until ${clockOf(s.limit.resetsAt)}` : `${name} is out of usage`;
   if (s.state === "review") return `${name} is done, changes ready to review`;
-  if (s.state === "working") return `${name} is working`;
+  if (s.state === "working") return s.stuck ? `${name} looks stuck: ${s.stuck.text}` : `${name} is working`;
   if (s.state === "stopped") return `${name} stopped`;
   if (s.state === "merged") return `${name}'s work is merged`;
+  if (s.state === "idle" && s.spent) return `${name} is done, with no changes to review`;
   return `${name} is waiting for a task`;
 }

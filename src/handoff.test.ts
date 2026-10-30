@@ -45,4 +45,13 @@ describe("a handoff brief", () => {
     expect(brief).toContain("Its task: Fix the login redirect");
     expect(brief).toContain("look at the folder first");
   });
+
+  it("adds the files git says changed, capped", () => {
+    const brief = handoffBrief({ name: "Ana", cli: "Claude Code", why: "it stopped", title: "T", gitFiles: ["a.ts", "b.ts"] }, null);
+    expect(brief).toContain("Changed on disk (git, 2 files)");
+    expect(brief).toContain("- a.ts");
+    const many = handoffBrief({ name: "A", cli: "C", why: "x", gitFiles: Array.from({ length: 40 }, (_, i) => `f${i}.ts`) }, null);
+    expect(many).toContain("and 10 more");
+    expect(many).not.toContain("f39.ts");
+  });
 });

@@ -1,4 +1,4 @@
-//! One running agent: a ConPTY child (or, for agents that talk in JSON lines,
+﻿//! One running agent: a ConPTY child (or, for agents that talk in JSON lines,
 //! a child on plain pipes) assigned to a kill-on-close Job, with a reader
 //! thread streaming output and a wait thread reporting exit.
 //!
@@ -13,7 +13,7 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write as IoWrite};
 use std::path::Path;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
@@ -21,12 +21,12 @@ use std::time::Instant;
 use anyhow::{anyhow, Result};
 use portable_pty::PtySize;
 
-use crate::core::command_spec::CommandSpec;
+use crate::command_spec::CommandSpec;
 #[cfg(windows)]
-use crate::core::job::Job;
+use crate::job::Job;
 #[cfg(windows)]
-use crate::core::pipe_session::{self, PipeSession};
-use crate::core::pty_session::PtySession;
+use crate::pipe_session::{self, PipeSession};
+use crate::pty_session::PtySession;
 
 /// How the agent is reached: a terminal, or pipes carrying JSON lines.
 enum Session {
@@ -38,7 +38,15 @@ enum Session {
 /// Where PTY output goes (e.g. a window's IPC channel). Swappable via `attach`.
 pub type Sink = Box<dyn FnMut(&[u8]) + Send>;
 
-/// Recent output kept for replay when a new window attaches (tab detach).
+/// Most chunks a live tap (a remote terminal) may lag: past this the tap is
+/// dropped instead of queueing forever (it re-taps and replays on return).
+const TAP_CAP: usize = 256;
+
+fn tap_channel() -> (SyncSender<Vec<u8>>, Receiver<Vec<u8>>) {
+    sync_channel(TAP_CAP)
+}
+
+/// Recent output kept for replay when a new window attaches (tab detach).ch).
 const SCROLLBACK_CAP: usize = 512 * 1024;
 
 /// An in-progress session recording: raw output frames appended to a JSONL file
@@ -56,7 +64,7 @@ struct Output {
     // Extra live subscribers (the remote web terminal). Each gets every output
     // chunk; a closed channel is pruned. The single `sink` above is the owning
     // window; taps are additional read-only mirrors.
-    taps: Vec<Sender<Vec<u8>>>,
+    taps: Vec<SyncSender<Vec<u8>>>,
     // When Some, every output chunk is also appended to this recording.
     rec: Option<Rec>,
     // A pipe agent's output is JSON lines: its window reads them as they are,
@@ -200,9 +208,9 @@ impl Agent {
 
     /// Subscribe to this agent's live output. The current scrollback is replayed
     /// into the channel first (so a fresh terminal paints immediately), then
-    /// every new chunk arrives until the receiver is dropped or the agent exits.
+    /// every new chunk arrives until the receiver is dropped, lags past TAP_CAP, or the agent exits.
     pub fn tap(&self) -> Receiver<Vec<u8>> {
-        let (tx, rx) = channel::<Vec<u8>>();
+        let (tx, rx) = tap_channel();
         let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
         let (a, b) = o.buf.as_slices();
         if !a.is_empty() || !b.is_empty() {
@@ -296,9 +304,9 @@ fn emit(output: &Arc<Mutex<Output>>, bytes: &[u8]) {
     if shown.is_empty() {
         return;
     }
-    // Mirror to live taps (remote terminals); drop closed ones.
+    // Mirror to live taps (remote terminals); drop closed or lagging ones.
     if !o.taps.is_empty() {
-        o.taps.retain(|t| t.send(shown.clone()).is_ok());
+        o.taps.retain(|t| t.try_send(shown.clone()).is_ok());
     }
     // Append to the session recording, if one is running.
     if let Some(rec) = o.rec.as_mut() {
@@ -473,5 +481,23 @@ mod line_tests {
         let mut p = b"Error: \"bad\"\r\n\n".to_vec();
         let out = String::from_utf8(take_lines(&mut p, false, true)).unwrap();
         assert_eq!(out, "{\"text\":\"Error: \\\"bad\\\"\",\"type\":\"maestro_stderr\"}\n");
+    }
+    #[test]
+    fn a_tap_that_never_reads_is_dropped_instead_of_queueing_forever() {
+        use super::{emit, tap_channel, Output, TAP_CAP};
+        use std::collections::VecDeque;
+        use std::sync::{Arc, Mutex};
+        let (tx, _rx) = tap_channel(); // held open, never read: a stuck remote
+        let output = Arc::new(Mutex::new(Output {
+            buf: VecDeque::new(),
+            sink: Box::new(|_: &[u8]| {}),
+            taps: vec![tx],
+            rec: None,
+            pipe: false,
+        }));
+        for _ in 0..TAP_CAP + 10 {
+            emit(&output, b"x");
+        }
+        assert!(output.lock().unwrap().taps.is_empty());
     }
 }

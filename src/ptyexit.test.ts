@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { exitVerdict, holdExit, replayEarlyExit, setExitHandler, takeEarlyExit, type ExitSubject } from "./ptyexit";
+import { exitVerdict, forgetHeld, holdExit, replayEarlyExit, setExitHandler, takeEarlyExit, type ExitSubject } from "./ptyexit";
 
 /** The race as it happens: a pane booting, its CLI dying before spawnPty resolves. */
 function simulate(pane: ExitSubject & { running: boolean }, id: string, newRun: number, exitFirst: boolean) {
@@ -66,5 +66,10 @@ describe("pty exits racing the spawn", () => {
     holdExit("a", 20, 1);
     expect(replayEarlyExit("a", 21)).toBe(false);
     expect(takeEarlyExit("a", 20)).toBeUndefined(); // cleared with the replay
+  });
+it("forgetting a removed pane drops its held exits", () => {
+    holdExit("gone", 3, 1);
+    forgetHeld("gone");
+    expect(takeEarlyExit("gone", 3)).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+pub use agent_core::git::{worktree_path_for, worktrees_of};
 use crate::error::{run_blocking, CommandError};
 use std::process::Command;
 #[cfg(windows)]
@@ -19,74 +20,12 @@ static ADD_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// A short, stable, filesystem-safe slug for an arbitrary string.
-fn slug(s: &str) -> String {
-    let mut out = String::new();
-    let mut prev_dash = false;
-    for c in s.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_lowercase());
-            prev_dash = false;
-        } else if !prev_dash && !out.is_empty() {
-            out.push('-');
-            prev_dash = true;
-        }
-    }
-    out.trim_matches('-').to_string()
-}
-
-/// djb2 hash → 6-char base36, so two repos with the same folder name don't collide.
-fn short_hash(s: &str) -> String {
-    let mut h: u64 = 5381;
-    for b in s.bytes() {
-        h = h.wrapping_mul(33).wrapping_add(b as u64);
-    }
-    let mut n = h;
-    let digits = b"0123456789abcdefghijklmnopqrstuvwxyz";
-    let mut buf = [b'0'; 6];
-    for i in (0..6).rev() {
-        buf[i] = digits[(n % 36) as usize];
-        n /= 36;
-    }
-    String::from_utf8(buf.to_vec()).unwrap()
-}
-
 /// Validate that a branch name is safe to pass to git and the filesystem.
 fn valid_branch(b: &str) -> bool {
     !b.is_empty()
         && !b.starts_with('-')
         && !b.contains("..")
         && b.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'/' | b'-' | b'_' | b'.'))
-}
-
-/// Compute the worktree directory for a repo + branch:
-/// `<drive>:\.maestro-worktrees\<repo-slug>-<hash>\<branch-slug>-<branch-hash>`.
-/// The root sits on the repo's own drive (never C:/profile) and out of the repo tree.
-/// NOTE: UNC paths (\\server\share) are unsupported — Windows-local repos only.
-pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
-    let root = Path::new(repo_root);
-    let repo_name = root
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "repo".into());
-    // Drive prefix on Windows (e.g. "D:"); fall back to the path root otherwise.
-    let drive = repo_root.get(0..2).filter(|d| d.ends_with(':')).unwrap_or("");
-    let folder = format!("{}-{}", slug(&repo_name), short_hash(repo_root));
-    let leaf = format!("{}-{}", slug(branch), short_hash(branch));
-    let mut p = PathBuf::new();
-    p.push(format!("{}\\", drive));
-    p.push(".maestro-worktrees");
-    p.push(folder);
-    p.push(leaf);
-    p
-}
-
-/// The folder that holds every worktree of a repo (the parent of
-/// `worktree_path_for`'s), where its agents' sessions ran.
-pub fn worktrees_of(repo_root: &str) -> PathBuf {
-    let mut p = worktree_path_for(repo_root, "x");
-    p.pop();
-    p
 }
 
 /// Drop a `.cargo/config.toml` in the worktree-parent folder so all worktrees of
@@ -170,7 +109,7 @@ fn worktree_leave_impl(path: &str, session: Option<&str>) -> Result<Option<Strin
         return Ok(None);
     }
     if let Some(id) = session.filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')) {
-        if let (Some(from), Some(to)) = (crate::commands::claude_project_dir(path), crate::commands::claude_project_dir(&main)) {
+        if let (Some(from), Some(to)) = (agent_core::claude::project_dir(path), agent_core::claude::project_dir(&main)) {
             let src = from.join(format!("{id}.jsonl"));
             let dst = to.join(format!("{id}.jsonl"));
             if src.is_file() && !dst.exists() {
@@ -310,24 +249,6 @@ fn worktree_remove_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn path_lives_on_repo_drive_under_hidden_root() {
-        let p = worktree_path_for("D:\\WhaleloSource\\payments-svc", "maestro/claude-a1b2")
-            .to_string_lossy()
-            .to_string();
-        assert!(p.starts_with("D:\\.maestro-worktrees\\"), "got {p}");
-        assert!(p.contains("payments-svc-"), "got {p}");
-        assert!(p.contains("maestro-claude-a1b2-"), "got {p}");
-    }
-
-    #[test]
-    fn same_name_different_path_differ() {
-        let a = worktree_path_for("D:\\a\\app", "maestro/x");
-        let b = worktree_path_for("D:\\b\\app", "maestro/x");
-        assert_ne!(a, b);
-    }
-
     #[test]
     fn worktree_add_rejects_bad_branch() {
         let result = worktree_add_impl("D:\\whatever".into(), "../evil".into());

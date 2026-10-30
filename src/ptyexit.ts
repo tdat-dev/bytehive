@@ -42,6 +42,11 @@ export function takeEarlyExit(id: string, run: number | undefined): number | und
   held.delete(id);
   return list?.find((x) => x.run === run)?.code;
 }
+/** Drop everything held for a removed pane (its spawn never resolves). */
+export function forgetHeld(id: string): void {
+  held.delete(id);
+}
+
 
 let applyExit: ((id: string, code: number, run: number) => void) | null = null;
 

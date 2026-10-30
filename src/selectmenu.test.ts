@@ -58,6 +58,18 @@ describe("selectmenu", () => {
     expect(document.activeElement).toBe(btn);
   });
 
+  it("stays silent when you re-pick the current row, unless it opts into reselect", () => {
+    const onChange = vi.fn();
+    sel.addEventListener("change", onChange);
+    btn.click();
+    (pop()!.querySelectorAll(".sm-opt")[0] as HTMLElement).click(); // Alpha again
+    expect(onChange).not.toHaveBeenCalled();
+    sel.setAttribute("data-reselect", "");
+    btn.click();
+    (pop()!.querySelectorAll(".sm-opt")[0] as HTMLElement).click();
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores clicks on disabled rows and closes on Escape without a change", () => {
     const onChange = vi.fn();
     sel.addEventListener("change", onChange);

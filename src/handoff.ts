@@ -19,6 +19,8 @@ export interface HandoffFrom {
   title?: string | null;
   /** Its first asks, when `chat` holds only the end of a long conversation. */
   firstAsks?: string[];
+  /** Files git says changed in its worktree: ground truth beside the chat's claims. */
+  gitFiles?: string[];
 }
 
 /** The brief a new agent starts with. `chat` is the first agent's
@@ -32,6 +34,10 @@ export function handoffBrief(from: HandoffFrom, chat: Chat | null): string {
   else if (from.title) parts.push(`Its task: ${from.title}`);
   parts.push(planSection(d.todos, "Its plan when it stopped:"));
   parts.push(filesSection(d.files, "Files it changed"));
+  if (from.gitFiles?.length) {
+    const shown = from.gitFiles.slice(0, 30);
+    parts.push(`Changed on disk (git, ${from.gitFiles.length} file${from.gitFiles.length === 1 ? "" : "s"}):\n${shown.map((f) => `- ${f}`).join("\n")}${from.gitFiles.length > shown.length ? `\nand ${from.gitFiles.length - shown.length} more` : ""}`);
+  }
   parts.push(lastWordsSection(d.lastWords, "Its last words:"));
   parts.push(
     chat && (d.asks.length || d.files.length)
