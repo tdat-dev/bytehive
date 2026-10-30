@@ -1,6 +1,6 @@
 # Board
 
-## Proposed (24)
+## Proposed (25)
 
 - [ ] Login: Gate dashboard web (Rust)
   Bắt session cookie cho dashboard server; đóng lỗ hổng /api/send gõ lệnh vào agent không cần auth.
@@ -84,6 +84,11 @@
   Soát các *.test.ts hiện có, chỉ ra module thiếu test và rủi ro
 - [ ] Tổng hợp báo cáo phân tích
   Viết docs/feature-analysis.md: bảng feature, điểm mạnh/yếu, đề xuất cải thiện
+- [ ] Native-shell vong 3: cho user che roi sua
+  Vong feedback nhu cu: user soi app dang chay, che cho nao xau/thieu, sua ke test + commit + push.
+  - [ ] User Alt+Tab vao app, note cho che
+  - [ ] Sua + test hoi quy (cargo test, length gate)
+  - [ ] Commit + push feat/agent-inbox, screenshot neu can
 
 ## To do (1)
 
@@ -132,13 +137,16 @@
   - [ ] Hỏi user các mục CV không có: hourly rate, availability, ảnh, địa chỉ/ngày sinh nếu Upwork bắt buộc
   - [ ] Tìm job đầu tiên: lọc Node.js/PostgreSQL/Stripe, ít proposal, client verified, ngân sách hợp fresher
   - [ ] Soạn proposal mẫu cho job chọn (chưa gửi khi user chưa duyệt)
-- [ ] Native-shell vong 2 tiep: Enter-to-send + giu tin checkpoint
-  Soat code thay 2 loi nho: o tra loi tu do phai click Send (Enter khong gui), nhan Refresh lam mat tin Checkpoint vua giu.
-  - [ ] Queue: Enter trong o free-text thi gui nhu nut Send
-  - [ ] Review: Refresh khong xoa tin checkpoint/merge, chi doi pane moi xoa
-  - [ ] cargo test + length gate xanh, commit + push
+- [ ] Vanta Studio: Remotion executor — slice dọc đầu tiên (code-motion)
+  Theo plan đã duyệt (Giai đoạn 2): render motion bằng code từ timeline có cấu trúc tới mp4 thật + preview chỉnh được trong Studio. Chi tiết: docs/plans/2026-10-30-skill-powered-website.md
+  - [ ] Timeline schema (Zod) cho motion: cues text/timing/fps/logo + validate; planner trả timeline khi workflow dùng executor code
+  - [ ] Bộ composition cố định (title / kinetic text / logo end-card) + font self-hosted; chỉ nhận data, không chạy code do model sinh
+  - [ ] Preview Remotion Player trong Studio: sửa text/logo/timing, lưu vào project, reload giữ nguyên
+  - [ ] Render worker riêng (child process): bundle + renderMedia → mp4 vào media dir; receipt (fps, frames, hash, output path)
+  - [ ] Test: unit schema + 1 render thật ngắn; screenshot Playwright 1440/390 cho preview
+  - [ ] typecheck + tests xanh, commit local; chưa đụng slice model-video (cần quota)
 
-## Done (65)
+## Done (67)
 
 - [x] Fix copy khi bôi đen trong pane Claude Code (OSC 52)
   Claude Code tự xử lý selection + copy qua escape OSC 52; xterm.js của Maestro không có handler nên clipboard không được ghi. Fix: đăng ký OSC 52 handler trong terminal.ts.
@@ -588,3 +596,14 @@
   - [ ] git status sach, chi giu 5 file src da commit 4f39a09
   - [ ] Xu ly HeavyweightFishingHub/dist-supervisor/portfolio-caoxuanminh (giuxoa/roi gitignore)
   - [ ] git push origin feat/agent-inbox, bao cao truoc khi merge
+- [x] Native-shell vong 2 tiep: Enter-to-send + giu tin checkpoint
+  Soat code thay 2 loi nho: o tra loi tu do phai click Send (Enter khong gui), nhan Refresh lam mat tin Checkpoint vua giu.
+  - [ ] Queue: Enter trong o free-text thi gui nhu nut Send
+  - [ ] Review: Refresh khong xoa tin checkpoint/merge, chi doi pane moi xoa
+  - [ ] cargo test + length gate xanh, commit + push
+- [x] Merge feat/agent-inbox vao master
+  Nhanh dang truoc master 267 commit (master da len v0.5.4 + maestro-mcp). Do muc do lech, thu merge local, bao cao truoc khi chot.
+  - [ ] Do diff stat feat/agent-inbox vs master theo tung muc (src, src-tauri, crates)
+  - [ ] Thu merge local vao nhanh tam, liet ke conflict that
+  - [ ] Chay test suite + length gate tren ket qua merge
+  - [ ] Bao cao 2 phuong an: merge that vs giu prototype rieng, cho user chot
