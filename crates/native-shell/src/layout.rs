@@ -50,7 +50,15 @@ pub fn tidy_tiles(n: usize, width: f32, height: f32) -> Vec<Tile> {
     tile_to_fit(n, width, height, 0.0, 10.0, 10.0, 10.0)
 }
 
+/// Density zoom bounds: never smaller than a readable floor, never so big
+/// one pane eats the stage.
+pub fn clamp_zoom(z: f32) -> f32 {
+    z.clamp(0.6, 2.0)
+}
+
 /// First row-major grid position not colliding with `existing` top-lefts.
+/// Reserved for free-drag pane placement (Native 2 follow-up).
+#[allow(dead_code)]
 pub fn next_slot(existing: &[(f32, f32)], cell_w: f32, cell_h: f32, gap: f32, area_w: f32) -> (f32, f32) {
     let step_x = cell_w + gap;
     let step_y = cell_h + gap;
@@ -129,5 +137,12 @@ mod tests {
     fn slots_pack_row_major_and_skip_taken_cells() {
         assert_eq!(next_slot(&[], 300.0, 200.0, 12.0, 1000.0), (0.0, 0.0));
         assert_eq!(next_slot(&[(0.0, 0.0)], 300.0, 200.0, 12.0, 1000.0), (312.0, 0.0));
+    }
+
+    #[test]
+    fn zoom_clamps_to_sane_bounds() {
+        assert_eq!(clamp_zoom(1.0), 1.0);
+        assert_eq!(clamp_zoom(5.0), 2.0);
+        assert_eq!(clamp_zoom(0.1), 0.6);
     }
 }

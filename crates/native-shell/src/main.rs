@@ -2,6 +2,7 @@
 
 mod app;
 mod color;
+mod grid;
 mod history_ui;
 mod keys;
 mod layout;

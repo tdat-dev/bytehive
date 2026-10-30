@@ -5,24 +5,22 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_core::{launch::launch_spec, Registry};
-use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
+use eframe::egui::{self, FontId};
 use supervise::stuck::{StuckEvidence, StuckWatch};
 
-use crate::color::{c32, BG_DEFAULT};
 use crate::history_ui::HistoryPanel;
-use crate::layout::tidy_tiles;
+use crate::layout::clamp_zoom;
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
 use crate::polls::StuckRead;
 use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
 use crate::spawn::PendingCapture;
-use crate::states::{pane_cwd, pane_status, state_badge};
 use crate::term_pane::Pane;
-use crate::theme::{BORDER, DIM, SURFACE, TEXT, UI_BASE};
+use crate::theme::DIM;
 
-const HEADER_H: f32 = 24.0;
+pub(crate) const HEADER_H: f32 = 24.0;
 /// Avatar rail width when a pane owns the stage.
-const RAIL_W: f32 = 76.0;
+pub(crate) const RAIL_W: f32 = 76.0;
 
 pub(crate) fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -65,6 +63,8 @@ pub struct ShellApp {
     pub(crate) panes: Vec<Pane>,
     pub(crate) next_id: usize,
     pub(crate) font: FontId,
+    /// Density zoom multiplier for terminal glyphs (Ctrl+= / Ctrl+- / Ctrl+0).
+    pub(crate) zoom: f32,
     pub(crate) focused_once: bool,
     pub(crate) sessions: SessionsPanel,
     pub(crate) captures: Vec<PendingCapture>,
@@ -106,6 +106,7 @@ impl ShellApp {
             last_poll: Instant::now(),
             side_tab: SideTab::from_env(),
             focus_pane: None,
+            zoom: 1.0,
             stage: None,
             queue: QueuePanel::default(),
             review: ReviewPanel::new(),
@@ -141,6 +142,12 @@ impl ShellApp {
                     self.spawn_fresh(cli);
                 }
             }
+            ui.label(
+                egui::RichText::new(format!("{}%", (self.zoom * 100.0) as u32))
+                    .small()
+                    .color(DIM),
+            )
+            .on_hover_text("Density zoom: Ctrl+= bigger, Ctrl+- smaller, Ctrl+0 reset");
         });
     }
 }
@@ -167,6 +174,23 @@ impl eframe::App for ShellApp {
         self.poll_captures();
         self.poll_git();
         self.poll_stuck();
+        // Density zoom: Ctrl+= / Ctrl+- step the terminal glyphs, Ctrl+0
+        // resets. Keyboard only on purpose: the wheel already scrolls back.
+        let mut zoom = self.zoom;
+        ui.ctx().input(|i| {
+            if !i.modifiers.ctrl {
+                return;
+            }
+            if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
+                zoom = clamp_zoom(zoom + 0.1);
+            } else if i.key_pressed(egui::Key::Minus) {
+                zoom = clamp_zoom(zoom - 0.1);
+            } else if i.key_pressed(egui::Key::Num0) {
+                zoom = 1.0;
+            }
+        });
+        self.zoom = zoom;
+        self.font = FontId::monospace(crate::theme::TERM_SIZE * self.zoom);
         if self.panes.iter().any(|p| p.exit_code.is_none()) {
             // Poll the PTYs at ~30fps; try_recv is cheap when idle.
             ui.ctx().request_repaint_after(Duration::from_millis(33));
@@ -231,161 +255,9 @@ impl eframe::App for ShellApp {
             self.focus_pane = focus;
         }
 
-        let mut kill: Vec<String> = Vec::new();
-        let mut restart: Option<usize> = None;
-        let mut toggle_stage: Option<String> = None;
-        let mut rail_pick: Option<String> = None;
-        // A killed stage pane drops back to the grid on its own.
-        if self.stage.as_ref().is_some_and(|id| !self.panes.iter().any(|p| &p.id == id)) {
-            self.stage = None;
-        }
-        let staged = self.stage.clone();
-        // The rail is a real side panel so the central area shrinks by
-        // itself; the stage pane below simply fills what's left.
-        if let Some(ref sid) = staged {
-            if self.panes.len() > 1 && self.panes.iter().any(|p| &p.id == sid) {
-                egui::Panel::right("stage-rail").resizable(false).exact_size(RAIL_W).show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        for p in &self.panes {
-                            if Some(p.id.as_str()) == staged.as_deref() {
-                                continue;
-                            }
-                            let initial: String = p.name.chars().take(1).collect();
-                            if ui.small_button(initial).on_hover_text(&p.name).clicked() {
-                                rail_pick = Some(p.id.clone());
-                            }
-                        }
-                    });
-                });
-            }
-        }
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(c32(BG_DEFAULT))).show(ui, |ui| {
-            // Cell metrics from one measured run of glyphs.
-            let (cell_w, cell_h) = {
-                let g = ui.painter().layout_no_wrap("MMMMMMMMMM".to_string(), self.font.clone(), TEXT);
-                (g.rect.width() / 10.0, g.rect.height())
-            };
-            let avail = ui.available_rect_before_wrap();
-            ui.allocate_rect(avail, egui::Sense::hover());
-
-            let n = self.panes.len().max(1);
-            let tiles = tidy_tiles(n, avail.width(), avail.height());
-
-            let font = self.font.clone();
-            let want_focus = self.focus_pane.clone();
-            let git_changed = self.git_changed.clone();
-            let staged_id = staged.clone();
-            let ShellApp { panes, registry, focused_once, focus_pane, .. } = self;
-            let multi = panes.len() > 1;
-            for (i, pane) in panes.iter_mut().enumerate() {
-                let staged = staged_id.as_deref() == Some(pane.id.as_str());
-                if staged_id.is_some() && !staged {
-                    continue;
-                }
-                let cell_rect = if staged {
-                    Rect::from_min_max(avail.min, avail.max)
-                } else {
-                    let t = tiles.get(i).copied().unwrap_or(crate::layout::Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
-                    Rect::from_min_size(
-                        Pos2::new(avail.left() + t.x, avail.top() + t.y),
-                        Vec2::new(t.w, t.h),
-                    )
-                };
-                let head = Rect::from_min_size(cell_rect.min, Vec2::new(cell_rect.width(), HEADER_H));
-                let body = Rect::from_min_max(Pos2::new(cell_rect.left(), cell_rect.top() + HEADER_H), cell_rect.max);
-                ui.painter().rect_filled(head, 0.0, SURFACE);
-                ui.painter().line_segment([head.left_bottom(), head.right_bottom()], egui::Stroke::new(1.0, BORDER));
-                let mut label = pane.name.clone();
-                if let Some(w) = pane.worktree.as_ref() {
-                    label.push_str(&format!(" · {}", w.branch));
-                    if pane.merged {
-                        label.push_str(" · merged");
-                    }
-                }
-                if let Some(sid) = pane.session_id.as_deref() {
-                    label.push_str(&format!(" · {}", sid.chars().take(8).collect::<String>()));
-                }
-                if let Some(code) = pane.exit_code {
-                    label.push_str(&format!(" · exited ({code})"));
-                }
-                // Right-side chrome, laid out from the edge inward so no
-                // label ever wraps: Kill, then Restart, then Focus.
-                let focus_text = if staged { "Unfocus" } else { "Focus" };
-                let mut btn_texts: Vec<&str> = vec!["Kill"];
-                if pane.exit_code.is_some() {
-                    btn_texts.push("Restart");
-                }
-                if multi {
-                    btn_texts.push(focus_text);
-                }
-                let btn_font = FontId::proportional(UI_BASE);
-                let btn_ws: Vec<f32> = btn_texts
-                    .iter()
-                    .map(|t| ui.painter().layout_no_wrap((*t).to_string(), btn_font.clone(), TEXT).rect.width() + 18.0)
-                    .collect();
-                let chrome: f32 = btn_ws.iter().sum::<f32>() + 4.0 * btn_ws.len() as f32;
-                let label = fit_header(&label, head.width(), chrome + 78.0);
-                ui.painter().text(
-                    Pos2::new(head.left() + 8.0, head.top() + 4.0),
-                    egui::Align2::LEFT_TOP,
-                    label,
-                    FontId::proportional(12.0),
-                    TEXT,
-                );
-                let changed = git_changed.get(&pane_cwd(pane)).map(|f| f.len() as u32);
-                let (dot, word) = state_badge(pane_status(pane, now_ms(), changed).state);
-                let word_w = ui.painter().layout_no_wrap(word.to_string(), FontId::proportional(12.0), DIM).rect.width();
-                let word_x = (head.right() - chrome - 8.0 - word_w).max(head.left() + 8.0);
-                ui.painter().circle_filled(Pos2::new(word_x - 8.0, head.top() + 12.0), 4.0, dot);
-                ui.painter().text(
-                    Pos2::new(word_x, head.top() + 4.0),
-                    egui::Align2::LEFT_TOP,
-                    word,
-                    FontId::proportional(12.0),
-                    DIM,
-                );
-                let mut bx = head.right();
-                for (text, w) in btn_texts.iter().zip(btn_ws.iter()) {
-                    bx -= w + 4.0;
-                    let resp = ui.put(
-                        Rect::from_min_size(Pos2::new(bx, head.top() + 2.0), Vec2::new(*w, 20.0)),
-                        egui::Button::new(egui::RichText::new(*text).size(UI_BASE)),
-                    );
-                    if resp.clicked() {
-                        if *text == "Kill" {
-                            kill.push(pane.id.clone());
-                        } else if *text == "Restart" {
-                            restart = Some(i);
-                        } else {
-                            toggle_stage = Some(pane.id.clone());
-                        }
-                    }
-                }
-                pane.paint(ui, body, registry, &font, (cell_w, cell_h));
-                if !*focused_once {
-                    *focused_once = true;
-                    ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
-                }
-                if want_focus.as_deref() == Some(pane.id.as_str()) {
-                    ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
-                    *focus_pane = None;
-                }
-            }
-        });
-
-        if let Some(id) = toggle_stage {
-            if self.stage.as_deref() == Some(id.as_str()) {
-                self.stage = None;
-            } else {
-                self.stage = Some(id);
-            }
-        }
-        if let Some(id) = rail_pick {
-            self.stage = Some(id);
-        }
-        if self.stage.as_ref().is_some_and(|id| !self.panes.iter().any(|p| &p.id == id)) {
-            self.stage = None;
-        }
+        let grid_out = crate::grid::show_grid(self, ui);
+        let kill = grid_out.kill;
+        let restart = grid_out.restart;
 
         if let Some(i) = restart {
             self.restart_pane(i);
