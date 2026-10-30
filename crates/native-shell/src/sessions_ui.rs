@@ -192,7 +192,8 @@ impl SessionsPanel {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         let title: String = if s.title.is_empty() { s.id.chars().take(8).collect() } else { s.title.chars().take(32).collect() };
-                        ui.label(title).on_hover_text(&s.id);
+                        let hover = if s.title.is_empty() { s.id.clone() } else { format!("{}\n{}", s.title, s.id) };
+                        ui.add(egui::Label::new(title).truncate()).on_hover_text(hover);
                         let mut sub = ago(s.modified_ms, now);
                         if !s.cwd.is_empty() {
                             sub.push_str(&format!(" · {}", s.cwd.chars().take(28).collect::<String>()));
