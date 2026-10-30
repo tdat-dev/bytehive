@@ -44,6 +44,12 @@ struct HistoryCache {
     meta: ChatMeta,
 }
 
+/// Whether picking this agent should kick off a transcript read: a forced
+/// Refresh always does; otherwise only when nothing is cached yet.
+pub fn needs_load(has_cache: bool, changed: bool, force: bool) -> bool {
+    force || (changed && !has_cache)
+}
+
 enum HistoryMsg {
     Chunk(String, TranscriptChunk),
 }
@@ -81,19 +87,19 @@ impl HistoryPanel {
             ui.label(egui::RichText::new("No agent panes yet. Plain shells have no transcript.").color(FAINT));
             return;
         }
+        let before = self.selected.clone();
         if self.selected.as_ref().is_none_or(|id| agents.iter().all(|p| &p.id != id)) {
             self.selected = Some(agents[0].id.clone());
         }
-        let mut changed = false;
         ui.horizontal_wrapped(|ui| {
             for p in &agents {
                 let sel = self.selected.as_deref() == Some(p.id.as_str());
                 if ui.selectable_label(sel, &p.name).clicked() {
                     self.selected = Some(p.id.clone());
-                    changed = true;
                 }
             }
         });
+        let changed = self.selected != before;
         while let Ok(HistoryMsg::Chunk(id, chunk)) = self.rx.try_recv() {
             self.loading = false;
             let same = self.cache.get(&id).map(|c| c.text == chunk.text).unwrap_or(false);
@@ -109,10 +115,11 @@ impl HistoryPanel {
         }
         let pane_id = self.selected.clone().unwrap_or_default();
         let pane = panes.iter().find(|p| p.id == pane_id);
+        let mut force = false;
         ui.horizontal(|ui| {
             if ui.small_button("Refresh").clicked() {
                 if pane.is_some() {
-                    changed = true;
+                    force = true;
                 }
             }
             if self.loading {
@@ -120,7 +127,7 @@ impl HistoryPanel {
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
             }
         });
-        if changed {
+        if needs_load(self.cache.contains_key(&pane_id), changed, force) {
             if let Some(p) = pane {
                 self.request(p);
             }
@@ -194,5 +201,13 @@ mod tests {
     fn unknown_text_yields_nothing() {
         let (items, _) = parse_history(Cli::Opencode, "not json\n");
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn load_fires_on_first_pick_or_forced_refresh() {
+        assert!(needs_load(false, true, false)); // first open, nothing cached
+        assert!(!needs_load(true, true, false)); // switching back, cache hit
+        assert!(needs_load(true, false, true)); // Refresh forces re-read
+        assert!(!needs_load(false, false, false));
     }
 }
