@@ -10,6 +10,7 @@ use supervise::stuck::{StuckEvidence, StuckWatch};
 
 use crate::color::{c32, BG_DEFAULT};
 use crate::history_ui::HistoryPanel;
+use crate::layout::tidy_tiles;
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
 use crate::polls::StuckRead;
@@ -236,21 +237,17 @@ impl eframe::App for ShellApp {
             ui.allocate_rect(avail, egui::Sense::hover());
 
             let n = self.panes.len().max(1);
-            let cols = (n as f32).sqrt().ceil() as usize;
-            let rows = n.div_ceil(cols);
-            let cw = avail.width() / cols as f32;
-            let ch = avail.height() / rows as f32;
+            let tiles = tidy_tiles(n, avail.width(), avail.height());
 
             let font = self.font.clone();
             let want_focus = self.focus_pane.clone();
             let git_changed = self.git_changed.clone();
             let ShellApp { panes, registry, focused_once, focus_pane, .. } = self;
             for (i, pane) in panes.iter_mut().enumerate() {
-                let r = i / cols;
-                let c = i % cols;
+                let t = tiles.get(i).copied().unwrap_or(crate::layout::Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
                 let cell_rect = Rect::from_min_size(
-                    Pos2::new(avail.left() + c as f32 * cw, avail.top() + r as f32 * ch),
-                    Vec2::new(cw, ch),
+                    Pos2::new(avail.left() + t.x, avail.top() + t.y),
+                    Vec2::new(t.w, t.h),
                 );
                 let head = Rect::from_min_size(cell_rect.min, Vec2::new(cell_rect.width(), HEADER_H));
                 let body = Rect::from_min_max(Pos2::new(cell_rect.left(), cell_rect.top() + HEADER_H), cell_rect.max);

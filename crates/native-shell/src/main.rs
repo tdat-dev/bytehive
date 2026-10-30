@@ -4,6 +4,7 @@ mod app;
 mod color;
 mod history_ui;
 mod keys;
+mod layout;
 mod polls;
 mod queue_ui;
 mod review_ui;
