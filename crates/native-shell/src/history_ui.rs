@@ -75,7 +75,7 @@ impl HistoryPanel {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, panes: &[Pane]) {
-        ui.heading("History");
+        ui.label(egui::RichText::new("History").strong().size(15.0));
         let agents: Vec<&Pane> = panes.iter().filter(|p| p.cli.is_some()).collect();
         if agents.is_empty() {
             ui.label(egui::RichText::new("No agent panes yet. Plain shells have no transcript.").color(FAINT));

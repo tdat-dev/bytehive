@@ -115,6 +115,20 @@ fn unreachable_id() -> String {
     unreachable!("a session that exists never needs a fresh id")
 }
 
+/// A session's age as one short phrase: just now, 5m ago, 3h ago, 2d ago.
+pub fn ago(modified_ms: u64, now_ms: u64) -> String {
+    let secs = now_ms.saturating_sub(modified_ms) / 1000;
+    if secs < 60 {
+        "just now".to_string()
+    } else if secs < 3600 {
+        format!("{}m ago", secs / 60)
+    } else if secs < 86400 {
+        format!("{}h ago", secs / 3600)
+    } else {
+        format!("{}d ago", secs / 86400)
+    }
+}
+
 pub struct ResumeRequest {
     pub cli: Cli,
     pub session: SessionItem,
@@ -147,7 +161,7 @@ impl SessionsPanel {
 
     pub fn show(&mut self, ui: &mut egui::Ui) -> Option<ResumeRequest> {
         let mut out = None;
-        ui.heading("Sessions");
+        ui.label(egui::RichText::new("Sessions").strong().size(15.0));
         ui.horizontal(|ui| {
             for cli in Cli::all() {
                 if ui.selectable_label(self.cli == cli, cli.name()).clicked() {
@@ -172,14 +186,19 @@ impl SessionsPanel {
         if self.items.is_empty() {
             ui.label(egui::RichText::new("No sessions yet.").color(FAINT));
         }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
         egui::ScrollArea::vertical().show(ui, |ui| {
             for s in &self.items {
                 ui.horizontal(|ui| {
-                    let title: String = if s.title.is_empty() { s.id.chars().take(8).collect() } else { s.title.chars().take(32).collect() };
-                    ui.label(title).on_hover_text(&s.id);
-                    if !s.cwd.is_empty() {
-                        ui.label(egui::RichText::new(s.cwd.chars().take(28).collect::<String>()).color(DIM));
-                    }
+                    ui.vertical(|ui| {
+                        let title: String = if s.title.is_empty() { s.id.chars().take(8).collect() } else { s.title.chars().take(32).collect() };
+                        ui.label(title).on_hover_text(&s.id);
+                        let mut sub = ago(s.modified_ms, now);
+                        if !s.cwd.is_empty() {
+                            sub.push_str(&format!(" · {}", s.cwd.chars().take(28).collect::<String>()));
+                        }
+                        ui.label(egui::RichText::new(sub).small().color(DIM));
+                    });
                     if ui.small_button("Resume").clicked() {
                         out = Some(ResumeRequest { cli: self.cli, session: s.clone() });
                     }
@@ -249,5 +268,15 @@ mod tests {
         let (spec, kept) = fresh_spec(Cli::Codex, "D:/app", || "x".to_string());
         assert_eq!(spec.args, ["/c", "codex"]);
         assert_eq!(kept, None);
+    }
+
+    #[test]
+    fn ago_reads_relative() {
+        let now = 100_000_000_000;
+        assert_eq!(ago(now, now), "just now");
+        assert_eq!(ago(now - 30_000, now), "just now");
+        assert_eq!(ago(now - 5 * 60_000, now), "5m ago");
+        assert_eq!(ago(now - 3 * 3_600_000, now), "3h ago");
+        assert_eq!(ago(now - 2 * 86_400_000, now), "2d ago");
     }
 }

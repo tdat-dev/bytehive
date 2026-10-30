@@ -10,7 +10,7 @@ use supervise::stuck::{StuckEvidence, StuckWatch};
 
 use crate::color::{c32, BG_DEFAULT};
 use crate::history_ui::HistoryPanel;
-use crate::queue_ui::{QueueAction, QueuePanel};
+use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
 use crate::polls::StuckRead;
 use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
@@ -32,6 +32,18 @@ pub(crate) enum SideTab {
     Review,
     History,
     Sessions,
+}
+
+impl SideTab {
+    /// Starting tab override for screenshots and debugging: MAESTRO_TAB=review.
+    fn from_env() -> SideTab {
+        match std::env::var("MAESTRO_TAB").unwrap_or_default().to_lowercase().as_str() {
+            "review" => SideTab::Review,
+            "history" => SideTab::History,
+            "sessions" => SideTab::Sessions,
+            _ => SideTab::Queue,
+        }
+    }
 }
 
 pub struct ShellApp {
@@ -75,7 +87,7 @@ impl ShellApp {
             sessions: SessionsPanel::new(),
             captures: Vec::new(),
             last_poll: Instant::now(),
-            side_tab: SideTab::Queue,
+            side_tab: SideTab::from_env(),
             focus_pane: None,
             queue: QueuePanel::default(),
             review: ReviewPanel::new(),
@@ -128,7 +140,10 @@ impl eframe::App for ShellApp {
         }
         for pane in &mut self.panes {
             if let Some(t) = pane.pending_title.take() {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(format!("{} - Maestro Native", t)));
+                // Shells report their exe path; show the pane name instead.
+                let boring = t.contains('\\') || t.contains('/') || t.ends_with(".exe");
+                let title = if boring { pane.name.clone() } else { t.chars().take(48).collect() };
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(format!("{title} - Maestro Native")));
             }
         }
         self.poll_captures();
@@ -145,9 +160,14 @@ impl eframe::App for ShellApp {
         let mut worktree: Option<WorktreeRequest> = None;
         let mut focus: Option<String> = None;
         let clashes = self.clash_map();
+        let needs = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes)
+            .iter()
+            .filter(|r| is_attention(r.status.state))
+            .count();
+        let queue_tab = if needs > 0 { format!("Queue ({needs})") } else { "Queue".to_string() };
         egui::Panel::left("side").default_size(280.0).show(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui.selectable_label(self.side_tab == SideTab::Queue, "Queue").clicked() {
+                if ui.selectable_label(self.side_tab == SideTab::Queue, queue_tab).clicked() {
                     self.side_tab = SideTab::Queue;
                 }
                 if ui.selectable_label(self.side_tab == SideTab::Review, "Review").clicked() {

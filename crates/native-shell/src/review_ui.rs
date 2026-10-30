@@ -117,7 +117,7 @@ impl ReviewPanel {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, panes: &mut [Pane]) {
-        ui.heading("Review");
+        ui.label(egui::RichText::new("Review").strong().size(15.0));
         if panes.is_empty() {
             ui.label(egui::RichText::new("No agents yet.").color(FAINT));
             return;
@@ -239,7 +239,15 @@ impl ReviewPanel {
         ui.separator();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for f in &snap.files {
-                ui.label(egui::RichText::new(&f.path).monospace().strong());
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(&f.path).monospace().strong());
+                    if f.additions > 0 {
+                        ui.label(egui::RichText::new(format!("+{}", f.additions)).monospace().small().color(ADD));
+                    }
+                    if f.deletions > 0 {
+                        ui.label(egui::RichText::new(format!("-{}", f.deletions)).monospace().small().color(DEL));
+                    }
+                });
                 if f.binary {
                     ui.label(egui::RichText::new("(binary)").small().color(FAINT));
                     continue;
@@ -260,7 +268,8 @@ impl ReviewPanel {
                     }
                 }
                 if shown >= 200 {
-                    ui.label(egui::RichText::new("…").small().color(FAINT));
+                    let all: usize = f.hunks.iter().map(|h| h.lines.len()).sum();
+                    ui.label(egui::RichText::new(format!("… first 200 of {all}")).small().color(FAINT));
                 }
             }
             let untracked: Vec<&String> = snap.changed.iter().filter(|c| !snap.files.iter().any(|f| &f.path == *c)).collect();
@@ -289,6 +298,13 @@ mod tests {
         assert_eq!(snap.done[0].text, "// TODO: handle empty");
         assert!(snap.secrets.is_empty());
         assert_eq!(describe_done(&snap.done), "1 TODO in src/a.ts");
+    }
+
+    #[test]
+    fn headers_read_adds_and_dels_off_the_parse() {
+        let snap = ReviewSnapshot::from_parts(Some("feat/x".to_string()), vec!["src/a.ts".to_string()], DIFF);
+        assert_eq!(snap.files[0].additions, 1);
+        assert_eq!(snap.files[0].deletions, 0);
     }
 
     #[test]
