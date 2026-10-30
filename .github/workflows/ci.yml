@@ -66,7 +66,11 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "src-tauri"
+          workspaces: |
+            src-tauri
+            crates/agent-core
+            crates/supervise
+            crates/native-shell
 
       # dashboard.rs include_str!s xterm's js/css straight out of node_modules,
       # so the crate does not compile until the npm tree is on disk.
@@ -80,3 +84,15 @@ jobs:
       - name: Cargo test
         run: cargo test
         working-directory: src-tauri
+
+      # crates/* (agent-core, supervise, native-shell) live outside the
+      # src-tauri workspace, so each gets its own check + test.
+      - name: Cargo check/test crates
+        shell: pwsh
+        run: |
+          foreach ($d in @('crates/agent-core', 'crates/supervise', 'crates/native-shell')) {
+            cargo check --manifest-path "$d/Cargo.toml"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            cargo test --manifest-path "$d/Cargo.toml"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
