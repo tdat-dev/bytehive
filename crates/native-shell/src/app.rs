@@ -18,7 +18,7 @@ use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
 use crate::spawn::PendingCapture;
 use crate::states::{pane_cwd, pane_status, state_badge};
 use crate::term_pane::Pane;
-use crate::theme::{BORDER, DIM, SURFACE, TEXT};
+use crate::theme::{BORDER, DIM, SURFACE, TEXT, UI_BASE};
 
 const HEADER_H: f32 = 24.0;
 /// Avatar rail width when a pane owns the stage.
@@ -49,10 +49,10 @@ impl SideTab {
     }
 }
 
-/// The header label cut to fit what's left of the badge + buttons on the
-/// right: ~340px reserved, ~7px a char, never less than 8 chars.
-pub(crate) fn fit_header(label: &str, head_width: f32) -> String {
-    let max_chars = ((head_width - 340.0) / 7.0).floor().max(8.0) as usize;
+/// The header label cut to fit what's left of the chrome on the right: the
+/// badge word (~78px with its dot and gaps) plus every button's width.
+pub(crate) fn fit_header(label: &str, head_width: f32, reserve_right: f32) -> String {
+    let max_chars = ((head_width - reserve_right) / 7.0).floor().max(8.0) as usize;
     if label.chars().count() > max_chars {
         format!("{}…", label.chars().take(max_chars.saturating_sub(1)).collect::<String>())
     } else {
@@ -308,11 +308,23 @@ impl eframe::App for ShellApp {
                 if let Some(code) = pane.exit_code {
                     label.push_str(&format!(" · exited ({code})"));
                 }
-                // The badge and buttons own the right side: cut the label to
-                // fit what's left, never under them. The Focus button takes
-                // another 58px when several panes share the grid.
-                let chrome = if multi { 58.0 } else { 0.0 };
-                let label = fit_header(&label, head.width() - chrome);
+                // Right-side chrome, laid out from the edge inward so no
+                // label ever wraps: Kill, then Restart, then Focus.
+                let focus_text = if staged { "Unfocus" } else { "Focus" };
+                let mut btn_texts: Vec<&str> = vec!["Kill"];
+                if pane.exit_code.is_some() {
+                    btn_texts.push("Restart");
+                }
+                if multi {
+                    btn_texts.push(focus_text);
+                }
+                let btn_font = FontId::proportional(UI_BASE);
+                let btn_ws: Vec<f32> = btn_texts
+                    .iter()
+                    .map(|t| ui.painter().layout_no_wrap((*t).to_string(), btn_font.clone(), TEXT).rect.width() + 18.0)
+                    .collect();
+                let chrome: f32 = btn_ws.iter().sum::<f32>() + 4.0 * btn_ws.len() as f32;
+                let label = fit_header(&label, head.width(), chrome + 78.0);
                 ui.painter().text(
                     Pos2::new(head.left() + 8.0, head.top() + 4.0),
                     egui::Align2::LEFT_TOP,
@@ -323,8 +335,7 @@ impl eframe::App for ShellApp {
                 let changed = git_changed.get(&pane_cwd(pane)).map(|f| f.len() as u32);
                 let (dot, word) = state_badge(pane_status(pane, now_ms(), changed).state);
                 let word_w = ui.painter().layout_no_wrap(word.to_string(), FontId::proportional(12.0), DIM).rect.width();
-                let word_right = head.right() - 124.0 - chrome;
-                let word_x = (word_right - word_w).max(head.left() + 8.0);
+                let word_x = (head.right() - chrome - 8.0 - word_w).max(head.left() + 8.0);
                 ui.painter().circle_filled(Pos2::new(word_x - 8.0, head.top() + 12.0), 4.0, dot);
                 ui.painter().text(
                     Pos2::new(word_x, head.top() + 4.0),
@@ -333,15 +344,22 @@ impl eframe::App for ShellApp {
                     FontId::proportional(12.0),
                     DIM,
                 );
-                let btn = |ui: &mut egui::Ui, x: f32, text: &str| ui.put(Rect::from_min_size(Pos2::new(x, head.top() + 2.0), Vec2::new(52.0, 20.0)), egui::Button::new(text));
-                if multi && btn(ui, head.right() - 174.0, if staged { "Unfocus" } else { "Focus" }).clicked() {
-                    toggle_stage = Some(pane.id.clone());
-                }
-                if pane.exit_code.is_some() && btn(ui, head.right() - 116.0, "Restart").clicked() {
-                    restart = Some(i);
-                }
-                if btn(ui, head.right() - 58.0, "Kill").clicked() {
-                    kill.push(pane.id.clone());
+                let mut bx = head.right();
+                for (text, w) in btn_texts.iter().zip(btn_ws.iter()) {
+                    bx -= w + 4.0;
+                    let resp = ui.put(
+                        Rect::from_min_size(Pos2::new(bx, head.top() + 2.0), Vec2::new(*w, 20.0)),
+                        egui::Button::new(egui::RichText::new(*text).size(UI_BASE)),
+                    );
+                    if resp.clicked() {
+                        if *text == "Kill" {
+                            kill.push(pane.id.clone());
+                        } else if *text == "Restart" {
+                            restart = Some(i);
+                        } else {
+                            toggle_stage = Some(pane.id.clone());
+                        }
+                    }
                 }
                 pane.paint(ui, body, registry, &font, (cell_w, cell_h));
                 if !*focused_once {
@@ -458,11 +476,13 @@ mod tests {
 
     #[test]
     fn header_label_fits_beside_badge_and_buttons() {
-        assert_eq!(fit_header("shell 1", 700.0), "shell 1");
+        // 340px of right-side chrome on a 700px header leaves 51 chars.
+        assert_eq!(fit_header("shell 1", 700.0, 340.0), "shell 1");
         let long = "agent-with-a-long-name · feat/branch · abcdef12 · exited (1)";
-        let cut = fit_header(long, 700.0);
+        let cut = fit_header(long, 700.0, 340.0);
         assert!(cut.ends_with('…') && cut.chars().count() == 51, "{cut}");
-        // Narrow cells never squeeze below 8 chars.
-        assert_eq!(fit_header(long, 200.0).chars().count(), 8);
+        // Narrow cells never squeeze below 8 chars, whatever the reserve.
+        assert_eq!(fit_header(long, 200.0, 340.0).chars().count(), 8);
+        assert_eq!(fit_header(long, 900.0, 0.0), long);
     }
 }
