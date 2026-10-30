@@ -104,7 +104,6 @@ impl ReviewPanel {
         let Some(cwd) = Self::cwd_of(panes, pane_id) else { return };
         let wt = panes.iter().find(|p| p.id == pane_id).and_then(|p| p.worktree.clone());
         self.loading = true;
-        self.checkpoint_msg = None;
         let tx = self.tx.clone();
         let id = pane_id.to_string();
         std::thread::spawn(move || {
@@ -133,6 +132,8 @@ impl ReviewPanel {
                 if ui.selectable_label(sel, &p.name).clicked() {
                     self.selected = Some(p.id.clone());
                     self.snapshot = None;
+                    self.checkpoint_msg = None;
+                    self.merge_msg = None;
                     changed = true;
                 }
             }

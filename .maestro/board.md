@@ -1,6 +1,6 @@
 # Board
 
-## Proposed (25)
+## Proposed (24)
 
 - [ ] Login: Gate dashboard web (Rust)
   Bắt session cookie cho dashboard server; đóng lỗ hổng /api/send gõ lệnh vào agent không cần auth.
@@ -84,11 +84,6 @@
   Soát các *.test.ts hiện có, chỉ ra module thiếu test và rủi ro
 - [ ] Tổng hợp báo cáo phân tích
   Viết docs/feature-analysis.md: bảng feature, điểm mạnh/yếu, đề xuất cải thiện
-- [ ] Land feat/agent-inbox
-  Day branch feat/agent-inbox len origin, don dep untracked, mo merge khi user duyet.
-  - [ ] git status sach, chi giu 5 file src da commit 4f39a09
-  - [ ] Xu ly HeavyweightFishingHub/dist-supervisor/portfolio-caoxuanminh (giuxoa/roi gitignore)
-  - [ ] git push origin feat/agent-inbox, bao cao truoc khi merge
 
 ## To do (1)
 
@@ -105,7 +100,7 @@
   - [ ] Settings → Browser: bật/tắt, profile nào dùng, Mở Maestro Chrome (đăng nhập/thêm extension), cho phép JS, hỏi trước khi gửi/đăng/thanh toán
   - [ ] Test: unit tool với Chrome headless + chạy thật với GravityCare; README
 
-## Doing (4)
+## Doing (5)
 
 - [ ] Login: Auth core (Rust)
   Kho credential nguồn-chân-lý trong Rust: 1 username + 1 password hash (argon2id), lưu auth.json trong app-config dir.
@@ -137,8 +132,13 @@
   - [ ] Hỏi user các mục CV không có: hourly rate, availability, ảnh, địa chỉ/ngày sinh nếu Upwork bắt buộc
   - [ ] Tìm job đầu tiên: lọc Node.js/PostgreSQL/Stripe, ít proposal, client verified, ngân sách hợp fresher
   - [ ] Soạn proposal mẫu cho job chọn (chưa gửi khi user chưa duyệt)
+- [ ] Native-shell vong 2 tiep: Enter-to-send + giu tin checkpoint
+  Soat code thay 2 loi nho: o tra loi tu do phai click Send (Enter khong gui), nhan Refresh lam mat tin Checkpoint vua giu.
+  - [ ] Queue: Enter trong o free-text thi gui nhu nut Send
+  - [ ] Review: Refresh khong xoa tin checkpoint/merge, chi doi pane moi xoa
+  - [ ] cargo test + length gate xanh, commit + push
 
-## Done (64)
+## Done (65)
 
 - [x] Fix copy khi bôi đen trong pane Claude Code (OSC 52)
   Claude Code tự xử lý selection + copy qua escape OSC 52; xterm.js của Maestro không có handler nên clipboard không được ghi. Fix: đăng ký OSC 52 handler trong terminal.ts.
@@ -583,3 +583,8 @@
   - [ ] Chay MAESTRO_TAB=review va queue, spawn 2-4 pane co git changes that
   - [ ] Chup Review (+A/-B, first 200 of N) va Queue (state word, attention card, ago)
   - [ ] Sua follow-up tim thay, test + commit
+- [x] Land feat/agent-inbox
+  Day branch feat/agent-inbox len origin, don dep untracked, mo merge khi user duyet.
+  - [ ] git status sach, chi giu 5 file src da commit 4f39a09
+  - [ ] Xu ly HeavyweightFishingHub/dist-supervisor/portfolio-caoxuanminh (giuxoa/roi gitignore)
+  - [ ] git push origin feat/agent-inbox, bao cao truoc khi merge

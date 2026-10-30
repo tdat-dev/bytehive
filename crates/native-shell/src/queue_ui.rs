@@ -163,8 +163,10 @@ impl QueuePanel {
             if ask.free_text_option.is_some() {
                 let entry = self.free_text.entry(pane_id.to_string()).or_default();
                 ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(entry).hint_text("Type an answer…").desired_width(160.0));
-                    if ui.small_button("Send").clicked() && !entry.trim().is_empty() {
+                    let resp = ui.add(egui::TextEdit::singleline(entry).hint_text("Type an answer…").desired_width(160.0));
+                    let send = ui.small_button("Send").clicked()
+                        || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+                    if send && !entry.trim().is_empty() {
                         out = Some(QueueAction::Answer { pane_id: pane_id.to_string(), bytes: free_answer_bytes(Some(ask), entry) });
                         entry.clear();
                     }
