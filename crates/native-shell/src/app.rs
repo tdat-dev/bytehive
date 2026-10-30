@@ -93,7 +93,7 @@ impl ShellApp {
             registry: Registry::new(),
             panes: Vec::new(),
             next_id: 1,
-            font: FontId::monospace(13.0),
+            font: FontId::monospace(crate::theme::TERM_SIZE),
             focused_once: false,
             sessions: SessionsPanel::new(),
             captures: Vec::new(),
