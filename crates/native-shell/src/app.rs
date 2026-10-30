@@ -21,6 +21,8 @@ use crate::term_pane::Pane;
 use crate::theme::{BORDER, DIM, SURFACE, TEXT};
 
 const HEADER_H: f32 = 24.0;
+/// Avatar rail width when a pane owns the stage.
+const RAIL_W: f32 = 76.0;
 
 pub(crate) fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -69,6 +71,9 @@ pub struct ShellApp {
     pub(crate) last_poll: Instant,
     pub(crate) side_tab: SideTab,
     pub(crate) focus_pane: Option<String>,
+    /// The pane filling the stage; the rest collapse into the right rail.
+    /// None means the plain tidy grid. Toggled by the header Focus button.
+    pub(crate) stage: Option<String>,
     pub(crate) queue: QueuePanel,
     pub(crate) review: ReviewPanel,
     pub(crate) history: HistoryPanel,
@@ -101,6 +106,7 @@ impl ShellApp {
             last_poll: Instant::now(),
             side_tab: SideTab::from_env(),
             focus_pane: None,
+            stage: None,
             queue: QueuePanel::default(),
             review: ReviewPanel::new(),
             history: HistoryPanel::new(),
@@ -227,6 +233,32 @@ impl eframe::App for ShellApp {
 
         let mut kill: Vec<String> = Vec::new();
         let mut restart: Option<usize> = None;
+        let mut toggle_stage: Option<String> = None;
+        let mut rail_pick: Option<String> = None;
+        // A killed stage pane drops back to the grid on its own.
+        if self.stage.as_ref().is_some_and(|id| !self.panes.iter().any(|p| &p.id == id)) {
+            self.stage = None;
+        }
+        let staged = self.stage.clone();
+        // The rail is a real side panel so the central area shrinks by
+        // itself; the stage pane below simply fills what's left.
+        if let Some(ref sid) = staged {
+            if self.panes.len() > 1 && self.panes.iter().any(|p| &p.id == sid) {
+                egui::Panel::right("stage-rail").resizable(false).exact_size(RAIL_W).show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        for p in &self.panes {
+                            if Some(p.id.as_str()) == staged.as_deref() {
+                                continue;
+                            }
+                            let initial: String = p.name.chars().take(1).collect();
+                            if ui.small_button(initial).on_hover_text(&p.name).clicked() {
+                                rail_pick = Some(p.id.clone());
+                            }
+                        }
+                    });
+                });
+            }
+        }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(c32(BG_DEFAULT))).show(ui, |ui| {
             // Cell metrics from one measured run of glyphs.
             let (cell_w, cell_h) = {
@@ -242,13 +274,23 @@ impl eframe::App for ShellApp {
             let font = self.font.clone();
             let want_focus = self.focus_pane.clone();
             let git_changed = self.git_changed.clone();
+            let staged_id = staged.clone();
             let ShellApp { panes, registry, focused_once, focus_pane, .. } = self;
+            let multi = panes.len() > 1;
             for (i, pane) in panes.iter_mut().enumerate() {
-                let t = tiles.get(i).copied().unwrap_or(crate::layout::Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
-                let cell_rect = Rect::from_min_size(
-                    Pos2::new(avail.left() + t.x, avail.top() + t.y),
-                    Vec2::new(t.w, t.h),
-                );
+                let staged = staged_id.as_deref() == Some(pane.id.as_str());
+                if staged_id.is_some() && !staged {
+                    continue;
+                }
+                let cell_rect = if staged {
+                    Rect::from_min_max(avail.min, avail.max)
+                } else {
+                    let t = tiles.get(i).copied().unwrap_or(crate::layout::Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
+                    Rect::from_min_size(
+                        Pos2::new(avail.left() + t.x, avail.top() + t.y),
+                        Vec2::new(t.w, t.h),
+                    )
+                };
                 let head = Rect::from_min_size(cell_rect.min, Vec2::new(cell_rect.width(), HEADER_H));
                 let body = Rect::from_min_max(Pos2::new(cell_rect.left(), cell_rect.top() + HEADER_H), cell_rect.max);
                 ui.painter().rect_filled(head, 0.0, SURFACE);
@@ -267,8 +309,10 @@ impl eframe::App for ShellApp {
                     label.push_str(&format!(" · exited ({code})"));
                 }
                 // The badge and buttons own the right side: cut the label to
-                // fit what's left, never under them.
-                let label = fit_header(&label, head.width());
+                // fit what's left, never under them. The Focus button takes
+                // another 58px when several panes share the grid.
+                let chrome = if multi { 58.0 } else { 0.0 };
+                let label = fit_header(&label, head.width() - chrome);
                 ui.painter().text(
                     Pos2::new(head.left() + 8.0, head.top() + 4.0),
                     egui::Align2::LEFT_TOP,
@@ -279,7 +323,8 @@ impl eframe::App for ShellApp {
                 let changed = git_changed.get(&pane_cwd(pane)).map(|f| f.len() as u32);
                 let (dot, word) = state_badge(pane_status(pane, now_ms(), changed).state);
                 let word_w = ui.painter().layout_no_wrap(word.to_string(), FontId::proportional(12.0), DIM).rect.width();
-                let word_x = (head.right() - 124.0 - word_w).max(head.left() + 8.0);
+                let word_right = head.right() - 124.0 - chrome;
+                let word_x = (word_right - word_w).max(head.left() + 8.0);
                 ui.painter().circle_filled(Pos2::new(word_x - 8.0, head.top() + 12.0), 4.0, dot);
                 ui.painter().text(
                     Pos2::new(word_x, head.top() + 4.0),
@@ -289,6 +334,9 @@ impl eframe::App for ShellApp {
                     DIM,
                 );
                 let btn = |ui: &mut egui::Ui, x: f32, text: &str| ui.put(Rect::from_min_size(Pos2::new(x, head.top() + 2.0), Vec2::new(52.0, 20.0)), egui::Button::new(text));
+                if multi && btn(ui, head.right() - 174.0, if staged { "Unfocus" } else { "Focus" }).clicked() {
+                    toggle_stage = Some(pane.id.clone());
+                }
                 if pane.exit_code.is_some() && btn(ui, head.right() - 116.0, "Restart").clicked() {
                     restart = Some(i);
                 }
@@ -306,6 +354,20 @@ impl eframe::App for ShellApp {
                 }
             }
         });
+
+        if let Some(id) = toggle_stage {
+            if self.stage.as_deref() == Some(id.as_str()) {
+                self.stage = None;
+            } else {
+                self.stage = Some(id);
+            }
+        }
+        if let Some(id) = rail_pick {
+            self.stage = Some(id);
+        }
+        if self.stage.as_ref().is_some_and(|id| !self.panes.iter().any(|p| &p.id == id)) {
+            self.stage = None;
+        }
 
         if let Some(i) = restart {
             self.restart_pane(i);
