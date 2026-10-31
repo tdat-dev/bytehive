@@ -11,6 +11,7 @@ use supervise::stuck::{StuckEvidence, StuckWatch};
 use crate::flow_ui::FlowPanel;
 use crate::history_ui::HistoryPanel;
 use crate::layout::clamp_zoom;
+use crate::palette::{Palette, PaletteItem};
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
 use crate::send_ui::SendPanel;
@@ -72,6 +73,7 @@ pub struct ShellApp {
     pub(crate) history: HistoryPanel,
     pub(crate) send: SendPanel,
     pub(crate) flow: FlowPanel,
+    pub(crate) palette: Palette,
     /// Changed-file paths per folder, read off the UI thread.
     pub(crate) git_changed: HashMap<String, Vec<String>>,
     pub(crate) git_pending: HashSet<String>,
@@ -108,6 +110,7 @@ impl ShellApp {
             history: HistoryPanel::new(),
             send: SendPanel::default(),
             flow: FlowPanel::default(),
+            palette: Palette::default(),
             git_changed: HashMap::new(),
             git_pending: HashSet::new(),
             git_tx,
@@ -210,11 +213,23 @@ impl eframe::App for ShellApp {
         let mut resume: Option<ResumeRequest> = None;
         let mut worktree: Option<WorktreeRequest> = None;
         let mut focus: Option<String> = None;
+        // Ctrl/Cmd+K toggles the command palette. Consuming the key here keeps
+        // it from reaching a focused terminal pane as a raw control byte.
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
+            self.palette.toggle();
+        }
+
         let clashes = self.clash_map();
-        let needs = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes)
+        let rows = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
+        let needs = rows.iter().filter(|r| is_attention(r.status.state)).count();
+        let palette_items: Vec<PaletteItem> = rows
             .iter()
-            .filter(|r| is_attention(r.status.state))
-            .count();
+            .map(|r| PaletteItem {
+                pane_id: r.pane_id.clone(),
+                name: r.name.clone(),
+                word: crate::theme::state_word(r.status.state).to_string(),
+            })
+            .collect();
         let queue_tab = if needs > 0 { format!("Queue ({needs})") } else { "Queue".to_string() };
         egui::Panel::left("side").default_size(280.0).show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -282,6 +297,11 @@ impl eframe::App for ShellApp {
             self.registry.kill(id);
         }
         self.panes.retain(|p| !kill.contains(&p.id));
+
+        // The palette floats over everything; a pick focuses that pane.
+        if let Some(id) = self.palette.show(ui, &palette_items) {
+            self.focus_pane = Some(id);
+        }
     }
 }
 

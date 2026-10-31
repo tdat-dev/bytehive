@@ -7,6 +7,7 @@ mod grid;
 mod history_ui;
 mod keys;
 mod layout;
+mod palette;
 mod polls;
 mod queue_ui;
 mod review_ui;
