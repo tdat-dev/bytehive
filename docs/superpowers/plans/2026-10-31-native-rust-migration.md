@@ -99,8 +99,14 @@ không Inter/Roboto mặc định, chỉ dùng màu cho state.
 Thứ tự theo giá trị dùng hằng ngày và phụ thuộc.
 
 ### Phase A: Spawn + workspace cho dùng thật được
-- [ ] Spawn wizard đầy đủ (web `spawnmodal`): chọn số lượng, grid 1..12, chọn
-      nhiều model một lần, preset; thay cụm nút `+ CLI` hiện tại.
+- [x] Spawn: làm theo sheet "New task" của bản đã duyệt (`maestro-inbox.html`
+      gộp wizard/spawn modal vào Ctrl+K + New task), không phải wizard grid
+      1..12 cũ. Ctrl+N / nút New task / palette "New task", "Race 3 agents":
+      prompt, folder, CLI, 1..4 agent (đua), own worktree (tạo ngoài UI
+      thread, nhánh trùng thì `-2`), full access; tên persona Ana/Bob...; gõ
+      việc vào agent khi tới prompt, chờ khi đang có câu hỏi
+      (`supervise/typing.rs` port `typing.ts`). Commit `64977b3`. Còn thiếu so
+      với web: preset/template crew đã lưu, Flow (relay/plan first).
 - [ ] Workspaces nhiều tab (web `workspace`, `workspaces`): mở nhiều thư mục
       dự án, nhớ trạng thái per-workspace.
 - [ ] Settings/Preferences đầy màn (web `settingsmodal`, `prefs`, `prefsview`,
