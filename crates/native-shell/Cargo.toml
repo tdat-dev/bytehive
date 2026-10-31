@@ -7,8 +7,10 @@ edition = "2024"
 agent-core = { version = "0.1.0", path = "../agent-core" }
 alacritty_terminal = "0.26.0"
 anyhow = "1.0.104"
+chrono = "0.4"
 eframe = "0.37.0"
 portable-pty = "0.9"
+serde_json = "1"
 supervise = { version = "0.1.0", path = "../supervise" }
 uuid = { version = "1.29.0", features = ["v4"] }
 vte = "0.15"

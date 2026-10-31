@@ -5,21 +5,23 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_core::{launch::launch_spec, Registry};
-use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
+use eframe::egui::{self, FontId};
 use supervise::stuck::{StuckEvidence, StuckWatch};
 
-use crate::color::{c32, BG_DEFAULT};
+use crate::flow_ui::FlowPanel;
 use crate::history_ui::HistoryPanel;
+use crate::layout::clamp_zoom;
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
 use crate::polls::StuckRead;
 use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
 use crate::spawn::PendingCapture;
-use crate::states::{pane_cwd, pane_status, state_badge};
 use crate::term_pane::Pane;
-use crate::theme::{BORDER, DIM, SURFACE, TEXT};
+use crate::theme::DIM;
 
-const HEADER_H: f32 = 24.0;
+pub(crate) const HEADER_H: f32 = 24.0;
+/// Avatar rail width when a pane owns the stage.
+pub(crate) const RAIL_W: f32 = 76.0;
 
 pub(crate) fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -32,6 +34,7 @@ pub(crate) enum SideTab {
     Review,
     History,
     Sessions,
+    Flow,
 }
 
 impl SideTab {
@@ -41,19 +44,9 @@ impl SideTab {
             "review" => SideTab::Review,
             "history" => SideTab::History,
             "sessions" => SideTab::Sessions,
+            "flow" => SideTab::Flow,
             _ => SideTab::Queue,
         }
-    }
-}
-
-/// The header label cut to fit what's left of the badge + buttons on the
-/// right: ~340px reserved, ~7px a char, never less than 8 chars.
-pub(crate) fn fit_header(label: &str, head_width: f32) -> String {
-    let max_chars = ((head_width - 340.0) / 7.0).floor().max(8.0) as usize;
-    if label.chars().count() > max_chars {
-        format!("{}…", label.chars().take(max_chars.saturating_sub(1)).collect::<String>())
-    } else {
-        label.to_string()
     }
 }
 
@@ -62,15 +55,21 @@ pub struct ShellApp {
     pub(crate) panes: Vec<Pane>,
     pub(crate) next_id: usize,
     pub(crate) font: FontId,
+    /// Density zoom multiplier for terminal glyphs (Ctrl+= / Ctrl+- / Ctrl+0).
+    pub(crate) zoom: f32,
     pub(crate) focused_once: bool,
     pub(crate) sessions: SessionsPanel,
     pub(crate) captures: Vec<PendingCapture>,
     pub(crate) last_poll: Instant,
     pub(crate) side_tab: SideTab,
     pub(crate) focus_pane: Option<String>,
+    /// The pane filling the stage; the rest collapse into the right rail.
+    /// None means the plain tidy grid. Toggled by the header Focus button.
+    pub(crate) stage: Option<String>,
     pub(crate) queue: QueuePanel,
     pub(crate) review: ReviewPanel,
     pub(crate) history: HistoryPanel,
+    pub(crate) flow: FlowPanel,
     /// Changed-file paths per folder, read off the UI thread.
     pub(crate) git_changed: HashMap<String, Vec<String>>,
     pub(crate) git_pending: HashSet<String>,
@@ -93,16 +92,19 @@ impl ShellApp {
             registry: Registry::new(),
             panes: Vec::new(),
             next_id: 1,
-            font: FontId::monospace(13.0),
+            font: FontId::monospace(crate::theme::TERM_SIZE),
             focused_once: false,
             sessions: SessionsPanel::new(),
             captures: Vec::new(),
             last_poll: Instant::now(),
             side_tab: SideTab::from_env(),
             focus_pane: None,
+            zoom: 1.0,
+            stage: None,
             queue: QueuePanel::default(),
             review: ReviewPanel::new(),
             history: HistoryPanel::new(),
+            flow: FlowPanel::default(),
             git_changed: HashMap::new(),
             git_pending: HashSet::new(),
             git_tx,
@@ -117,6 +119,18 @@ impl ShellApp {
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
+        // Debug hooks for screenshots without clicking: MAESTRO_PANES=N
+        // boots with N shells, MAESTRO_STAGE=1 puts the first on stage.
+        let extra: usize = std::env::var("MAESTRO_PANES").ok().and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, 6);
+        for _ in 1..extra {
+            let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
+            let _ = app.spawn_pane("shell", spec, None, None);
+        }
+        if std::env::var("MAESTRO_STAGE").is_ok() {
+            if let Some(p) = app.panes.first() {
+                app.stage = Some(p.id.clone());
+            }
+        }
         Ok(app)
     }
 
@@ -134,6 +148,12 @@ impl ShellApp {
                     self.spawn_fresh(cli);
                 }
             }
+            ui.label(
+                egui::RichText::new(format!("{}%", (self.zoom * 100.0) as u32))
+                    .small()
+                    .color(DIM),
+            )
+            .on_hover_text("Density zoom: Ctrl+= bigger, Ctrl+- smaller, Ctrl+0 reset");
         });
     }
 }
@@ -160,6 +180,23 @@ impl eframe::App for ShellApp {
         self.poll_captures();
         self.poll_git();
         self.poll_stuck();
+        // Density zoom: Ctrl+= / Ctrl+- step the terminal glyphs, Ctrl+0
+        // resets. Keyboard only on purpose: the wheel already scrolls back.
+        let mut zoom = self.zoom;
+        ui.ctx().input(|i| {
+            if !i.modifiers.ctrl {
+                return;
+            }
+            if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
+                zoom = clamp_zoom(zoom + 0.1);
+            } else if i.key_pressed(egui::Key::Minus) {
+                zoom = clamp_zoom(zoom - 0.1);
+            } else if i.key_pressed(egui::Key::Num0) {
+                zoom = 1.0;
+            }
+        });
+        self.zoom = zoom;
+        self.font = FontId::monospace(crate::theme::TERM_SIZE * self.zoom);
         if self.panes.iter().any(|p| p.exit_code.is_none()) {
             // Poll the PTYs at ~30fps; try_recv is cheap when idle.
             ui.ctx().request_repaint_after(Duration::from_millis(33));
@@ -190,6 +227,9 @@ impl eframe::App for ShellApp {
                 if ui.selectable_label(self.side_tab == SideTab::Sessions, "Sessions").clicked() {
                     self.side_tab = SideTab::Sessions;
                 }
+                if ui.selectable_label(self.side_tab == SideTab::Flow, "Flow").clicked() {
+                    self.side_tab = SideTab::Flow;
+                }
             });
             ui.separator();
             match self.side_tab {
@@ -210,6 +250,9 @@ impl eframe::App for ShellApp {
                     resume = self.sessions.show(ui);
                     worktree = self.sessions.show_worktree(ui);
                 }
+                SideTab::Flow => {
+                    self.flow.show(ui);
+                }
             }
         });
         if let Some(req) = resume {
@@ -224,91 +267,9 @@ impl eframe::App for ShellApp {
             self.focus_pane = focus;
         }
 
-        let mut kill: Vec<String> = Vec::new();
-        let mut restart: Option<usize> = None;
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(c32(BG_DEFAULT))).show(ui, |ui| {
-            // Cell metrics from one measured run of glyphs.
-            let (cell_w, cell_h) = {
-                let g = ui.painter().layout_no_wrap("MMMMMMMMMM".to_string(), self.font.clone(), TEXT);
-                (g.rect.width() / 10.0, g.rect.height())
-            };
-            let avail = ui.available_rect_before_wrap();
-            ui.allocate_rect(avail, egui::Sense::hover());
-
-            let n = self.panes.len().max(1);
-            let cols = (n as f32).sqrt().ceil() as usize;
-            let rows = n.div_ceil(cols);
-            let cw = avail.width() / cols as f32;
-            let ch = avail.height() / rows as f32;
-
-            let font = self.font.clone();
-            let want_focus = self.focus_pane.clone();
-            let git_changed = self.git_changed.clone();
-            let ShellApp { panes, registry, focused_once, focus_pane, .. } = self;
-            for (i, pane) in panes.iter_mut().enumerate() {
-                let r = i / cols;
-                let c = i % cols;
-                let cell_rect = Rect::from_min_size(
-                    Pos2::new(avail.left() + c as f32 * cw, avail.top() + r as f32 * ch),
-                    Vec2::new(cw, ch),
-                );
-                let head = Rect::from_min_size(cell_rect.min, Vec2::new(cell_rect.width(), HEADER_H));
-                let body = Rect::from_min_max(Pos2::new(cell_rect.left(), cell_rect.top() + HEADER_H), cell_rect.max);
-                ui.painter().rect_filled(head, 0.0, SURFACE);
-                ui.painter().line_segment([head.left_bottom(), head.right_bottom()], egui::Stroke::new(1.0, BORDER));
-                let mut label = pane.name.clone();
-                if let Some(w) = pane.worktree.as_ref() {
-                    label.push_str(&format!(" · {}", w.branch));
-                    if pane.merged {
-                        label.push_str(" · merged");
-                    }
-                }
-                if let Some(sid) = pane.session_id.as_deref() {
-                    label.push_str(&format!(" · {}", sid.chars().take(8).collect::<String>()));
-                }
-                if let Some(code) = pane.exit_code {
-                    label.push_str(&format!(" · exited ({code})"));
-                }
-                // The badge and buttons own the right side: cut the label to
-                // fit what's left, never under them.
-                let label = fit_header(&label, head.width());
-                ui.painter().text(
-                    Pos2::new(head.left() + 8.0, head.top() + 4.0),
-                    egui::Align2::LEFT_TOP,
-                    label,
-                    FontId::proportional(12.0),
-                    TEXT,
-                );
-                let changed = git_changed.get(&pane_cwd(pane)).map(|f| f.len() as u32);
-                let (dot, word) = state_badge(pane_status(pane, now_ms(), changed).state);
-                let word_w = ui.painter().layout_no_wrap(word.to_string(), FontId::proportional(12.0), DIM).rect.width();
-                let word_x = (head.right() - 124.0 - word_w).max(head.left() + 8.0);
-                ui.painter().circle_filled(Pos2::new(word_x - 8.0, head.top() + 12.0), 4.0, dot);
-                ui.painter().text(
-                    Pos2::new(word_x, head.top() + 4.0),
-                    egui::Align2::LEFT_TOP,
-                    word,
-                    FontId::proportional(12.0),
-                    DIM,
-                );
-                let btn = |ui: &mut egui::Ui, x: f32, text: &str| ui.put(Rect::from_min_size(Pos2::new(x, head.top() + 2.0), Vec2::new(52.0, 20.0)), egui::Button::new(text));
-                if pane.exit_code.is_some() && btn(ui, head.right() - 116.0, "Restart").clicked() {
-                    restart = Some(i);
-                }
-                if btn(ui, head.right() - 58.0, "Kill").clicked() {
-                    kill.push(pane.id.clone());
-                }
-                pane.paint(ui, body, registry, &font, (cell_w, cell_h));
-                if !*focused_once {
-                    *focused_once = true;
-                    ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
-                }
-                if want_focus.as_deref() == Some(pane.id.as_str()) {
-                    ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
-                    *focus_pane = None;
-                }
-            }
-        });
+        let grid_out = crate::grid::show_grid(self, ui);
+        let kill = grid_out.kill;
+        let restart = grid_out.restart;
 
         if let Some(i) = restart {
             self.restart_pane(i);
@@ -395,15 +356,5 @@ mod tests {
         app.registry.write_input(&id, b"echo back-again\r").unwrap();
         let grid = feed_until(&mut app, 0, "back-again", 15);
         assert!(grid.iter().any(|r| r.contains("back-again")), "respawned shell answers: {grid:?}");
-    }
-
-    #[test]
-    fn header_label_fits_beside_badge_and_buttons() {
-        assert_eq!(fit_header("shell 1", 700.0), "shell 1");
-        let long = "agent-with-a-long-name · feat/branch · abcdef12 · exited (1)";
-        let cut = fit_header(long, 700.0);
-        assert!(cut.ends_with('…') && cut.chars().count() == 51, "{cut}");
-        // Narrow cells never squeeze below 8 chars.
-        assert_eq!(fit_header(long, 200.0).chars().count(), 8);
     }
 }
