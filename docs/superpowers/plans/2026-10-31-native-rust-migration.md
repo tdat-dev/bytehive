@@ -107,8 +107,13 @@ Thứ tự theo giá trị dùng hằng ngày và phụ thuộc.
       việc vào agent khi tới prompt, chờ khi đang có câu hỏi
       (`supervise/typing.rs` port `typing.ts`). Commit `64977b3`. Còn thiếu so
       với web: preset/template crew đã lưu, Flow (relay/plan first).
-- [ ] Workspaces nhiều tab (web `workspace`, `workspaces`): mở nhiều thư mục
-      dự án, nhớ trạng thái per-workspace.
+- [x] Workspaces: theo bản đã duyệt là nhiều project mở cùng lúc + chip lọc
+      (không phải tab). Chip "All projects / tên · số needs-you", "+" mở thư
+      mục (rfd), chuột phải đóng project; lọc grid + Queue, Sessions và New
+      task đi theo; lưu ở `~/.maestro/native-projects.json`. Commit `faa6779`.
+      Sửa kèm: panel trái egui 0.37 không có max width nên đè mất grid
+      (`97709b5`). Còn thiếu: màn "Start in a folder" khi chưa có project,
+      nhớ layout/stage riêng từng project.
 - [ ] Settings/Preferences đầy màn (web `settingsmodal`, `prefs`, `prefsview`,
       `termtheme`, `ansibg`): Appearance / Fleet / Sessions / System + background
       picker; mọi thứ hiện có trong app web.
