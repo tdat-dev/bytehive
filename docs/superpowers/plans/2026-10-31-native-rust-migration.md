@@ -105,18 +105,22 @@ Thứ tự theo giá trị dùng hằng ngày và phụ thuộc.
       prompt, folder, CLI, 1..4 agent (đua), own worktree (tạo ngoài UI
       thread, nhánh trùng thì `-2`), full access; tên persona Ana/Bob...; gõ
       việc vào agent khi tới prompt, chờ khi đang có câu hỏi
-      (`supervise/typing.rs` port `typing.ts`). Commit `64977b3`. Còn thiếu so
-      với web: preset/template crew đã lưu, Flow (relay/plan first).
+      (`supervise/typing.rs` port `typing.ts`). Commit `64977b3`. Bổ sung ở
+      `8ad7370`: chế độ quyền (Ask / Accept edits / Bypass), Flow (Just do it /
+      Build→Test→Review / Plan first, ghép vào nội dung task), crew đã lưu.
 - [x] Workspaces: theo bản đã duyệt là nhiều project mở cùng lúc + chip lọc
       (không phải tab). Chip "All projects / tên · số needs-you", "+" mở thư
       mục (rfd), chuột phải đóng project; lọc grid + Queue, Sessions và New
       task đi theo; lưu ở `~/.maestro/native-projects.json`. Commit `faa6779`.
       Sửa kèm: panel trái egui 0.37 không có max width nên đè mất grid
-      (`97709b5`). Còn thiếu: màn "Start in a folder" khi chưa có project,
-      nhớ layout/stage riêng từng project.
-- [ ] Settings/Preferences đầy màn (web `settingsmodal`, `prefs`, `prefsview`,
-      `termtheme`, `ansibg`): Appearance / Fleet / Sessions / System + background
-      picker; mọi thứ hiện có trong app web.
+      (`97709b5`). Bổ sung ở `8ad7370`: màn "Start in a folder" khi chưa mở
+      project (project gần đây + crew), nhớ stage theo từng project.
+- [x] Settings (Ctrl+,) theo bản đã duyệt: Appearance (cỡ chữ terminal, nền
+      4 preset), Agents (CLI/số agent/worktree/quyền/flow mặc định, thời gian
+      chờ CLI, crew đã lưu), System (mở lại project). Lưu ở
+      `~/.maestro/native-prefs.json`. Chỉ đưa vào setting native thật sự dùng;
+      Remote/tray/updates/notify chờ Phase E (cần dashboard, tray, updater
+      native). Ảnh nền tùy chọn và theme màu terminal chưa làm. Commit `8ad7370`.
 
 ### Phase B: Review code sâu như bản web
 - [ ] File explorer / tree (web `filetree`): multi-select, phím, context menu,
