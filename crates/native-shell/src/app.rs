@@ -125,6 +125,18 @@ impl ShellApp {
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
+        // Debug hooks for screenshots without clicking: MAESTRO_PANES=N
+        // boots with N shells, MAESTRO_STAGE=1 puts the first on stage.
+        let extra: usize = std::env::var("MAESTRO_PANES").ok().and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, 6);
+        for _ in 1..extra {
+            let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
+            let _ = app.spawn_pane("shell", spec, None, None);
+        }
+        if std::env::var("MAESTRO_STAGE").is_ok() {
+            if let Some(p) = app.panes.first() {
+                app.stage = Some(p.id.clone());
+            }
+        }
         Ok(app)
     }
 

@@ -61,6 +61,12 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
         let want_focus = app.focus_pane.clone();
         let git_changed = app.git_changed.clone();
         let staged_id = staged.clone();
+        {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| {
+                eprintln!("DBG panes={} avail={:?} tiles={:?}", n, avail, tiles);
+            });
+        }
         let ShellApp { panes, registry, focused_once, focus_pane, .. } = app;
         let multi = panes.len() > 1;
         for (i, pane) in panes.iter_mut().enumerate() {
