@@ -5,9 +5,9 @@
 
 use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
 
-use crate::app::{fit_header, now_ms, ShellApp, HEADER_H, RAIL_W};
+use crate::app::{now_ms, ShellApp, HEADER_H, RAIL_W};
 use crate::color::{c32, BG_DEFAULT};
-use crate::layout::{tidy_tiles, Tile};
+use crate::layout::{header_layout, tidy_tiles, Tile};
 use crate::states::{pane_cwd, pane_status, state_badge};
 use crate::theme::{BORDER, DIM, SURFACE, TEXT, UI_BASE};
 
@@ -109,32 +109,28 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
                 .iter()
                 .map(|t| ui.painter().layout_no_wrap((*t).to_string(), btn_font.clone(), TEXT).rect.width() + 18.0)
                 .collect();
-            let chrome: f32 = btn_ws.iter().sum::<f32>() + 4.0 * btn_ws.len() as f32;
-            let label = fit_header(&label, head.width(), chrome + 78.0);
-            ui.painter().text(
-                Pos2::new(head.left() + 8.0, head.top() + 4.0),
-                egui::Align2::LEFT_TOP,
-                label,
-                FontId::proportional(12.0),
-                TEXT,
-            );
             let changed = git_changed.get(&pane_cwd(pane)).map(|f| f.len() as u32);
             let (dot, word) = state_badge(pane_status(pane, now_ms(), changed).state);
             let word_w = ui.painter().layout_no_wrap(word.to_string(), FontId::proportional(12.0), DIM).rect.width();
-            let word_x = (head.right() - chrome - 8.0 - word_w).max(head.left() + 8.0);
-            ui.painter().circle_filled(Pos2::new(word_x - 8.0, head.top() + 12.0), 4.0, dot);
+            let laid = header_layout(&label, head.left(), head.width(), word_w, &btn_ws);
             ui.painter().text(
-                Pos2::new(word_x, head.top() + 4.0),
+                Pos2::new(head.left() + 8.0, head.top() + 4.0),
+                egui::Align2::LEFT_TOP,
+                laid.label,
+                FontId::proportional(12.0),
+                TEXT,
+            );
+            ui.painter().circle_filled(Pos2::new(laid.word_x - 8.0, head.top() + 12.0), 4.0, dot);
+            ui.painter().text(
+                Pos2::new(laid.word_x, head.top() + 4.0),
                 egui::Align2::LEFT_TOP,
                 word,
                 FontId::proportional(12.0),
                 DIM,
             );
-            let mut bx = head.right();
-            for (text, w) in btn_texts.iter().zip(btn_ws.iter()) {
-                bx -= w + 4.0;
+            for (text, b) in btn_texts.iter().zip(laid.buttons.iter()) {
                 let resp = ui.put(
-                    Rect::from_min_size(Pos2::new(bx, head.top() + 2.0), Vec2::new(*w, 20.0)),
+                    Rect::from_min_size(Pos2::new(b.x, head.top() + 2.0), Vec2::new(b.w, 20.0)),
                     egui::Button::new(egui::RichText::new(*text).size(UI_BASE)),
                 );
                 if resp.clicked() {

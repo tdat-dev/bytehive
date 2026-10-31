@@ -50,17 +50,6 @@ impl SideTab {
     }
 }
 
-/// The header label cut to fit what's left of the chrome on the right: the
-/// badge word (~78px with its dot and gaps) plus every button's width.
-pub(crate) fn fit_header(label: &str, head_width: f32, reserve_right: f32) -> String {
-    let max_chars = ((head_width - reserve_right) / 7.0).floor().max(8.0) as usize;
-    if label.chars().count() > max_chars {
-        format!("{}…", label.chars().take(max_chars.saturating_sub(1)).collect::<String>())
-    } else {
-        label.to_string()
-    }
-}
-
 pub struct ShellApp {
     pub(crate) registry: Registry,
     pub(crate) panes: Vec<Pane>,
@@ -367,17 +356,5 @@ mod tests {
         app.registry.write_input(&id, b"echo back-again\r").unwrap();
         let grid = feed_until(&mut app, 0, "back-again", 15);
         assert!(grid.iter().any(|r| r.contains("back-again")), "respawned shell answers: {grid:?}");
-    }
-
-    #[test]
-    fn header_label_fits_beside_badge_and_buttons() {
-        // 340px of right-side chrome on a 700px header leaves 51 chars.
-        assert_eq!(fit_header("shell 1", 700.0, 340.0), "shell 1");
-        let long = "agent-with-a-long-name · feat/branch · abcdef12 · exited (1)";
-        let cut = fit_header(long, 700.0, 340.0);
-        assert!(cut.ends_with('…') && cut.chars().count() == 51, "{cut}");
-        // Narrow cells never squeeze below 8 chars, whatever the reserve.
-        assert_eq!(fit_header(long, 200.0, 340.0).chars().count(), 8);
-        assert_eq!(fit_header(long, 900.0, 0.0), long);
     }
 }
