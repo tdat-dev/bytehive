@@ -25,6 +25,7 @@ pub mod screens;
 pub mod stuck;
 pub mod task_state;
 pub mod text;
+pub mod typing;
 pub mod types;
 
 pub use types::Chat;
