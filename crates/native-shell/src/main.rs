@@ -10,6 +10,7 @@ mod layout;
 mod polls;
 mod queue_ui;
 mod review_ui;
+mod send_ui;
 mod sessions_ui;
 mod spawn;
 mod states;
