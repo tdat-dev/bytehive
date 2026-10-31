@@ -8,6 +8,7 @@ use agent_core::{launch::launch_spec, Registry};
 use eframe::egui::{self, FontId};
 use supervise::stuck::{StuckEvidence, StuckWatch};
 
+use crate::flow_ui::FlowPanel;
 use crate::history_ui::HistoryPanel;
 use crate::layout::clamp_zoom;
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
@@ -33,6 +34,7 @@ pub(crate) enum SideTab {
     Review,
     History,
     Sessions,
+    Flow,
 }
 
 impl SideTab {
@@ -42,6 +44,7 @@ impl SideTab {
             "review" => SideTab::Review,
             "history" => SideTab::History,
             "sessions" => SideTab::Sessions,
+            "flow" => SideTab::Flow,
             _ => SideTab::Queue,
         }
     }
@@ -77,6 +80,7 @@ pub struct ShellApp {
     pub(crate) queue: QueuePanel,
     pub(crate) review: ReviewPanel,
     pub(crate) history: HistoryPanel,
+    pub(crate) flow: FlowPanel,
     /// Changed-file paths per folder, read off the UI thread.
     pub(crate) git_changed: HashMap<String, Vec<String>>,
     pub(crate) git_pending: HashSet<String>,
@@ -111,6 +115,7 @@ impl ShellApp {
             queue: QueuePanel::default(),
             review: ReviewPanel::new(),
             history: HistoryPanel::new(),
+            flow: FlowPanel::default(),
             git_changed: HashMap::new(),
             git_pending: HashSet::new(),
             git_tx,
@@ -233,6 +238,9 @@ impl eframe::App for ShellApp {
                 if ui.selectable_label(self.side_tab == SideTab::Sessions, "Sessions").clicked() {
                     self.side_tab = SideTab::Sessions;
                 }
+                if ui.selectable_label(self.side_tab == SideTab::Flow, "Flow").clicked() {
+                    self.side_tab = SideTab::Flow;
+                }
             });
             ui.separator();
             match self.side_tab {
@@ -252,6 +260,9 @@ impl eframe::App for ShellApp {
                 SideTab::Sessions => {
                     resume = self.sessions.show(ui);
                     worktree = self.sessions.show_worktree(ui);
+                }
+                SideTab::Flow => {
+                    self.flow.show(ui);
                 }
             }
         });
