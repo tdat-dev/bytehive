@@ -174,3 +174,24 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::ShellApp;
+    use agent_core::launch::launch_spec;
+
+    /// The whole stage path — rail panel, staged paint, header buttons —
+    /// must run without panicking, even though clicks only happen live.
+    #[test]
+    fn stage_with_two_panes_paints_without_panic() {
+        let mut app = ShellApp::new().unwrap();
+        let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
+        let id2 = app.spawn_pane("shell", spec, None, None).unwrap();
+        app.stage = Some(id2);
+        egui::__run_test_ui(|ui| {
+            show_grid(&mut app, ui);
+        });
+        assert!(app.stage.is_some());
+    }
+}
