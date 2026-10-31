@@ -13,6 +13,7 @@ use crate::history_ui::HistoryPanel;
 use crate::layout::clamp_zoom;
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
+use crate::send_ui::SendPanel;
 use crate::polls::StuckRead;
 use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
 use crate::spawn::PendingCapture;
@@ -69,6 +70,7 @@ pub struct ShellApp {
     pub(crate) queue: QueuePanel,
     pub(crate) review: ReviewPanel,
     pub(crate) history: HistoryPanel,
+    pub(crate) send: SendPanel,
     pub(crate) flow: FlowPanel,
     /// Changed-file paths per folder, read off the UI thread.
     pub(crate) git_changed: HashMap<String, Vec<String>>,
@@ -104,6 +106,7 @@ impl ShellApp {
             queue: QueuePanel::default(),
             review: ReviewPanel::new(),
             history: HistoryPanel::new(),
+            send: SendPanel::default(),
             flow: FlowPanel::default(),
             git_changed: HashMap::new(),
             git_pending: HashSet::new(),
@@ -254,6 +257,7 @@ impl eframe::App for ShellApp {
                     self.flow.show(ui);
                 }
             }
+            self.send.show(ui, &self.panes, &mut self.registry);
         });
         if let Some(req) = resume {
             self.spawn_resume(req);
