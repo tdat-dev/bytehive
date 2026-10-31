@@ -276,7 +276,7 @@ impl eframe::App for ShellApp {
         // Agents first (needs-you ranked), then the commands.
         palette_items.extend(command_catalog());
         let queue_tab = if needs > 0 { format!("Queue ({needs})") } else { "Queue".to_string() };
-        egui::Panel::left("side").default_size(280.0).show(ui, |ui| {
+        egui::Panel::left("side").default_size(280.0).size_range(220.0..=480.0).show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.selectable_label(self.side_tab == SideTab::Queue, queue_tab).clicked() {
                     self.side_tab = SideTab::Queue;
