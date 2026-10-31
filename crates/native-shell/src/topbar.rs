@@ -43,6 +43,9 @@ impl ShellApp {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new(egui::RichText::new("Settings").small().color(DIM)).frame(false)).on_hover_text("Settings (Ctrl+,)").clicked() {
+                    self.run_command("settings");
+                }
                 ui.label(egui::RichText::new(format!("{}%", (self.zoom * 100.0) as u32)).small().color(DIM))
                     .on_hover_text("Density zoom: Ctrl+= bigger, Ctrl+- smaller, Ctrl+0 reset");
             });
@@ -53,6 +56,7 @@ impl ShellApp {
     }
 
     pub(crate) fn apply_project(&mut self, action: ProjectAction) {
+        self.stash_stage();
         match action {
             ProjectAction::Filter(f) => self.projects.filter = f,
             ProjectAction::Open(dir) => {
@@ -65,6 +69,7 @@ impl ShellApp {
         if let Some(f) = self.projects.filter.clone() {
             self.sessions.set_dir(&f);
         }
+        self.restore_stage();
         self.save_projects();
     }
 

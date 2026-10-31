@@ -75,7 +75,7 @@ impl ShellApp {
 
     fn boot_launch(&mut self, l: Launch, dir: &str, worktree: Option<WorktreeInfo>, reveal: bool) -> Result<(), String> {
         let id = self.boot_agent(l.cli, dir, l.name, l.extra_args, worktree)?;
-        self.deliveries.push(Delivery::new(id.clone(), l.task, now_ms()));
+        self.deliveries.push(Delivery::new(id.clone(), l.task, now_ms(), self.prefs.job_delay_ms()));
         if reveal {
             // The agent just started is the one on screen.
             self.focus_pane = Some(id);
@@ -188,7 +188,7 @@ mod tests {
     fn a_task_is_typed_into_its_pane_once_it_is_up() {
         let mut app = ShellApp::new().unwrap();
         let id = app.panes[0].id.clone();
-        app.deliveries.push(Delivery::new(id.clone(), "echo task-landed-42".to_string(), now_ms()));
+        app.deliveries.push(Delivery::new(id.clone(), "echo task-landed-42".to_string(), now_ms(), crate::deliver::JOB_DELAY_MS));
         let end = std::time::Instant::now() + std::time::Duration::from_secs(30);
         let mut seen = false;
         while std::time::Instant::now() < end && !seen {

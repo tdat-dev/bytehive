@@ -6,7 +6,6 @@
 use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
 
 use crate::app::{now_ms, ShellApp, HEADER_H, RAIL_W};
-use crate::color::{c32, BG_DEFAULT};
 use crate::layout::{header_layout, tidy_tiles, Tile};
 use crate::states::{pane_cwd, pane_status, state_badge};
 use crate::theme::{BORDER, DIM, SURFACE, TEXT, UI_BASE};
@@ -46,7 +45,8 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             });
         }
     }
-    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(c32(BG_DEFAULT))).show(ui, |ui| {
+    let backdrop = app.prefs.backdrop.color();
+    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
         // Cell metrics from one measured run of glyphs.
         let (cell_w, cell_h) = {
             let g = ui.painter().layout_no_wrap("MMMMMMMMMM".to_string(), app.font.clone(), TEXT);

@@ -5,6 +5,7 @@
 //! names, branches and the help line are checked without a window.
 
 use crate::sessions_ui::Cli;
+use crate::taskopts::{Flow, Perm};
 
 /// The most agents one task starts: a race of four is already a lot to review.
 pub const MAX_AGENTS: usize = 4;
@@ -13,17 +14,6 @@ pub const MAX_AGENTS: usize = 4;
 pub const PERSONAS: [&str; 20] = [
     "Ana", "Bob", "Cid", "Dot", "Eve", "Fin", "Gio", "Hux", "Ivy", "Jax", "Kim", "Lux", "Mei", "Nix", "Oz", "Pia", "Rue", "Sol", "Tao", "Uma",
 ];
-
-/// The flag that lets a CLI skip its permission prompts (full access), as the
-/// web app's presets have them. Opencode only configures this in a file.
-pub fn skip_perms_args(cli: Cli) -> Vec<String> {
-    let flag = match cli {
-        Cli::Claude => "--dangerously-skip-permissions",
-        Cli::Codex | Cli::Muse => "--yolo",
-        Cli::Opencode => return Vec::new(),
-    };
-    vec![flag.to_string()]
-}
 
 /// The next persona nobody here uses yet; past the list, "Agent N".
 pub fn persona(taken: &[String]) -> String {
@@ -59,7 +49,7 @@ pub fn branch_for(name: &str, task: &str) -> String {
 }
 
 /// The sheet's one-line explanation of what Start will do.
-pub fn help_line(count: usize, worktree: bool) -> String {
+pub fn help_line(count: usize, worktree: bool, flow: Flow) -> String {
     if count > 1 && !worktree {
         return format!("{count} agents in one checkout will overwrite each other. Turn on Own worktree.");
     }
@@ -69,7 +59,7 @@ pub fn help_line(count: usize, worktree: bool) -> String {
         (true, false) => "on separate branches, then you compare the diffs and keep one",
         (false, _) => "in your checkout (no isolation)",
     };
-    format!("{who} {place}.")
+    format!("{who} {place}.{}", flow.help())
 }
 
 /// What the sheet holds.
@@ -80,7 +70,8 @@ pub struct NewTask {
     pub cli: Cli,
     pub count: usize,
     pub worktree: bool,
-    pub skip_perms: bool,
+    pub perm: Perm,
+    pub flow: Flow,
 }
 
 /// One agent to start for a task.
@@ -96,7 +87,7 @@ pub struct Launch {
 
 impl NewTask {
     pub fn new(dir: String) -> NewTask {
-        NewTask { prompt: String::new(), dir, cli: Cli::Claude, count: 1, worktree: true, skip_perms: false }
+        NewTask { prompt: String::new(), dir, cli: Cli::Claude, count: 1, worktree: true, perm: Perm::Ask, flow: Flow::Direct }
     }
 
     pub fn set_count(&mut self, n: usize) {
@@ -112,7 +103,7 @@ impl NewTask {
             return Some("Pick a project folder.".to_string());
         }
         if self.count > 1 && !self.worktree {
-            return Some(help_line(self.count, false));
+            return Some(help_line(self.count, false, Flow::Direct));
         }
         None
     }
@@ -120,13 +111,14 @@ impl NewTask {
     /// The agents to start, named after nobody in `taken`.
     pub fn launches(&self, taken: &[String]) -> Vec<Launch> {
         let mut taken = taken.to_vec();
-        let task = self.prompt.trim().to_string();
-        let extra = if self.skip_perms { skip_perms_args(self.cli) } else { Vec::new() };
+        let words = self.prompt.trim().to_string();
+        let task = self.flow.shape(&words);
+        let extra = self.perm.args(self.cli);
         (0..self.count)
             .map(|_| {
                 let name = persona(&taken);
                 taken.push(name.clone());
-                let branch = self.worktree.then(|| branch_for(&name, &task));
+                let branch = self.worktree.then(|| branch_for(&name, &words));
                 Launch { name, cli: self.cli, branch, extra_args: extra.clone(), task: task.clone() }
             })
             .collect()
@@ -158,10 +150,11 @@ mod tests {
 
     #[test]
     fn help_line_warns_a_race_without_worktrees() {
-        assert_eq!(help_line(1, true), "One agent on its own branch. Nothing touches your checkout until you merge.");
-        assert!(help_line(3, true).starts_with("3 agents race on separate branches"));
-        assert_eq!(help_line(1, false), "One agent in your checkout (no isolation).");
-        assert!(help_line(2, false).contains("Turn on Own worktree"));
+        assert_eq!(help_line(1, true, Flow::Direct), "One agent on its own branch. Nothing touches your checkout until you merge.");
+        assert!(help_line(3, true, Flow::Direct).starts_with("3 agents race on separate branches"));
+        assert_eq!(help_line(1, false, Flow::Direct), "One agent in your checkout (no isolation).");
+        assert!(help_line(2, false, Flow::Plan).contains("Turn on Own worktree"));
+        assert!(help_line(1, true, Flow::Plan).ends_with("waits for your go-ahead."));
     }
 
     #[test]
@@ -182,12 +175,14 @@ mod tests {
         let mut t = NewTask::new("D:/app".to_string());
         t.prompt = "Fix the flaky upload test".to_string();
         t.set_count(3);
-        t.skip_perms = true;
+        t.perm = Perm::Bypass;
+        t.flow = Flow::Plan;
         let l = t.launches(&taken(&["Ana"]));
         let names: Vec<&str> = l.iter().map(|x| x.name.as_str()).collect();
         assert_eq!(names, ["Bob", "Cid", "Dot"]);
         assert_eq!(l[0].branch.as_deref(), Some("bob/fix-the-flaky-upload"));
         assert_eq!(l[0].extra_args, ["--dangerously-skip-permissions"]);
+        assert!(l[0].task.contains("write a short plan"), "flow shapes the task, not the branch");
         t.worktree = false;
         t.set_count(1);
         t.cli = Cli::Opencode;

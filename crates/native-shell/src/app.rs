@@ -23,7 +23,9 @@ use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
 use crate::spawn::PendingCapture;
 use crate::tasks::LaunchMsg;
 use crate::term_pane::Pane;
+use crate::prefs::{prefs_path, Prefs};
 use crate::projects::{store_path, Projects};
+use crate::settings_ui::SettingsSheet;
 
 pub(crate) const HEADER_H: f32 = 24.0;
 /// Avatar rail width when a pane owns the stage.
@@ -80,6 +82,11 @@ pub struct ShellApp {
     /// Open project folders and which one is shown.
     pub(crate) projects: Projects,
     pub(crate) projects_path: Option<std::path::PathBuf>,
+    pub(crate) prefs: Prefs,
+    pub(crate) prefs_path: Option<std::path::PathBuf>,
+    pub(crate) settings: SettingsSheet,
+    /// The pane on stage per project filter ("*" for all projects).
+    pub(crate) stages: HashMap<String, String>,
 }
 
 impl ShellApp {
@@ -90,8 +97,11 @@ impl ShellApp {
         let mut sessions = SessionsPanel::new();
         let projects_path = store_path();
         let mut projects = projects_path.as_deref().map(Projects::load).unwrap_or_default();
-        if projects.dirs.is_empty() {
-            projects.open(&sessions.dir);
+        let prefs_path = prefs_path();
+        let prefs = prefs_path.as_deref().map(Prefs::load).unwrap_or_default();
+        if !prefs.reopen_projects {
+            // Nothing open: the start screen offers last run's as recent.
+            projects.close_all();
         }
         if let Some(f) = projects.filter.clone() {
             sessions.set_dir(&f);
@@ -101,7 +111,7 @@ impl ShellApp {
             registry: Registry::new(),
             panes: Vec::new(),
             next_id: 1,
-            font: FontId::monospace(crate::theme::TERM_SIZE),
+            font: FontId::monospace(prefs.term_size),
             focused_once: false,
             sessions,
             captures: Vec::new(),
@@ -135,6 +145,10 @@ impl ShellApp {
             notice: None,
             projects,
             projects_path,
+            prefs,
+            prefs_path,
+            settings: SettingsSheet::default(),
+            stages: HashMap::new(),
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
@@ -163,7 +177,9 @@ impl ShellApp {
     pub(crate) fn run_command(&mut self, key: &str) {
         if key == "new" || key == "race" {
             let dir = self.projects.filter.clone().unwrap_or_else(|| self.sessions.dir.clone());
-            self.new_task.open_with(&dir, if key == "race" { 3 } else { 1 });
+            self.new_task.open_with(&dir, (key == "race").then_some(3), &self.prefs);
+        } else if key == "settings" {
+            self.settings.toggle();
         } else if key == "shell" {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = self.spawn_pane("shell", spec, None, None);
@@ -217,7 +233,7 @@ impl eframe::App for ShellApp {
             }
         });
         self.zoom = zoom;
-        self.font = FontId::monospace(crate::theme::TERM_SIZE * self.zoom);
+        self.font = FontId::monospace(self.prefs.term_size * self.zoom);
         if self.panes.iter().any(|p| p.exit_code.is_none()) {
             // Poll the PTYs at ~30fps; try_recv is cheap when idle.
             ui.ctx().request_repaint_after(Duration::from_millis(33));
@@ -235,6 +251,9 @@ impl eframe::App for ShellApp {
         }
         if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::N)) {
             self.run_command("new");
+        }
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Comma)) {
+            self.run_command("settings");
         }
 
         let clashes = self.clash_map();
@@ -331,7 +350,7 @@ impl eframe::App for ShellApp {
             self.focus_pane = focus;
         }
 
-        let grid_out = crate::grid::show_grid(self, ui, &hidden);
+        let grid_out = self.central(ui, &hidden);
         let kill = grid_out.kill;
         let restart = grid_out.restart;
 
@@ -351,20 +370,7 @@ impl eframe::App for ShellApp {
                 PaletteKind::Command => self.run_command(&pick.key),
             }
         }
-        if let Some(form) = self.new_task.show(ui.ctx(), &self.projects.dirs) {
-            match self.start_task(&form) {
-                Ok(()) => {
-                    self.projects.open(&form.dir);
-                    self.save_projects();
-                    if self.new_task.more {
-                        // Keep typing in the sheet, not in the new pane.
-                        self.focus_pane = None;
-                    }
-                    self.new_task.started();
-                }
-                Err(e) => self.new_task.error = Some(e),
-            }
-        }
+        self.sheets(ui.ctx());
     }
 }
 

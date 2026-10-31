@@ -47,6 +47,7 @@ pub(crate) fn command_catalog() -> Vec<PaletteItem> {
         cmd("new", "New task", "Ctrl N"),
         cmd("race", "Race 3 agents on one task", "run"),
         cmd("shell", "New Shell", "run"),
+        cmd("settings", "Settings", "Ctrl ,"),
     ];
     for cli in Cli::all() {
         v.push(cmd(&format!("spawn:{}", cli.program()), &format!("Spawn {}", cli.name()), "run"));

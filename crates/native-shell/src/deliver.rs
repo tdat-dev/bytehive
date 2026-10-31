@@ -11,7 +11,8 @@
 use supervise::ask::parse_ask;
 use supervise::typing::{TypeStep, Typer};
 
-/// How long a fresh CLI gets to reach its prompt (the web app's default).
+/// How long a fresh CLI gets to reach its prompt (the web app's default;
+/// Settings changes it).
 pub const JOB_DELAY_MS: u64 = 4000;
 /// A question nobody answers for this long drops the task; it is never
 /// answered on your behalf.
@@ -21,6 +22,7 @@ pub struct Delivery {
     pub pane_id: String,
     text: String,
     start_ms: u64,
+    delay_ms: u64,
     /// Set once a question showed: when it went away (None while it shows).
     answered: Option<Option<u64>>,
     typer: Option<Typer>,
@@ -36,8 +38,8 @@ pub enum Tick {
 }
 
 impl Delivery {
-    pub fn new(pane_id: String, text: String, now_ms: u64) -> Delivery {
-        Delivery { pane_id, text, start_ms: now_ms + JOB_DELAY_MS, answered: None, typer: None }
+    pub fn new(pane_id: String, text: String, now_ms: u64, delay_ms: u64) -> Delivery {
+        Delivery { pane_id, text, start_ms: now_ms + delay_ms, delay_ms, answered: None, typer: None }
     }
 
     /// `paste`: the pane's program turned bracketed paste on.
@@ -62,7 +64,7 @@ impl Delivery {
         if let Some(at) = self.answered {
             let at = at.unwrap_or(now_ms);
             self.answered = Some(Some(at));
-            if now_ms - at < JOB_DELAY_MS {
+            if now_ms - at < self.delay_ms {
                 return Tick::Wait;
             }
         }
@@ -89,7 +91,7 @@ mod tests {
 
     #[test]
     fn waits_for_the_cli_to_boot_then_types() {
-        let mut d = Delivery::new("p".into(), "fix it".into(), 0);
+        let mut d = Delivery::new("p".into(), "fix it".into(), 0, JOB_DELAY_MS);
         let (at, b) = first_write(&mut d, 0, "> ");
         assert!(at >= JOB_DELAY_MS);
         assert_eq!(b, b"fix it");
@@ -98,7 +100,7 @@ mod tests {
     #[test]
     fn never_types_into_an_open_question() {
         assert!(parse_ask(TRUST).is_some(), "fixture reads as a question");
-        let mut d = Delivery::new("p".into(), "fix it".into(), 0);
+        let mut d = Delivery::new("p".into(), "fix it".into(), 0, JOB_DELAY_MS);
         for now in (0..20_000).step_by(100) {
             assert_eq!(d.tick(now, true, TRUST, false), Tick::Wait);
         }
@@ -109,7 +111,7 @@ mod tests {
 
     #[test]
     fn a_stopped_pane_drops_the_task() {
-        let mut d = Delivery::new("p".into(), "fix it".into(), 0);
+        let mut d = Delivery::new("p".into(), "fix it".into(), 0, JOB_DELAY_MS);
         assert_eq!(d.tick(10_000, false, "", false), Tick::Finished);
     }
 }

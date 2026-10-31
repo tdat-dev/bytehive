@@ -16,7 +16,12 @@ pub struct Projects {
     pub dirs: Vec<String>,
     /// The project shown, or none for all of them.
     pub filter: Option<String>,
+    /// Closed projects, newest first, for the start screen.
+    pub recent: Vec<String>,
 }
+
+/// How many closed projects the start screen remembers.
+const RECENT_MAX: usize = 8;
 
 /// One spelling per folder: no trailing separator, Windows separators on
 /// Windows, so `D:/x/` and `D:\x` are the same project.
@@ -68,11 +73,17 @@ impl Projects {
         if !d.is_empty() && !self.dirs.iter().any(|x| same(x, &d)) {
             self.dirs.push(d.clone());
         }
+        self.recent.retain(|x| !same(x, &d));
         d
     }
 
     /// Close a project. Its agents keep running and show under all projects.
     pub fn close(&mut self, dir: &str) {
+        if self.dirs.iter().any(|x| same(x, dir)) {
+            self.recent.retain(|x| !same(x, dir));
+            self.recent.insert(0, normalize(dir));
+            self.recent.truncate(RECENT_MAX);
+        }
         self.dirs.retain(|x| !same(x, dir));
         if self.filter.as_deref().is_some_and(|f| same(f, dir)) {
             self.filter = None;
@@ -93,7 +104,7 @@ impl Projects {
     }
 
     pub fn to_json(&self) -> Value {
-        json!({ "projects": self.dirs, "filter": self.filter })
+        json!({ "projects": self.dirs, "filter": self.filter, "recent": self.recent })
     }
 
     pub fn from_json(v: &Value) -> Projects {
@@ -101,8 +112,21 @@ impl Projects {
         for d in v["projects"].as_array().into_iter().flatten().filter_map(Value::as_str) {
             p.open(d);
         }
+        for d in v["recent"].as_array().into_iter().flatten().filter_map(Value::as_str).take(RECENT_MAX) {
+            let d = normalize(d);
+            if !p.dirs.iter().chain(&p.recent).any(|x| same(x, &d)) {
+                p.recent.push(d);
+            }
+        }
         p.filter = v["filter"].as_str().map(normalize).filter(|f| p.dirs.iter().any(|d| same(d, f)));
         p
+    }
+
+    /// Start with nothing open: last run's projects become recent ones.
+    pub fn close_all(&mut self) {
+        for d in self.dirs.clone().into_iter().rev() {
+            self.close(&d);
+        }
     }
 
     /// Read the saved list; a missing or broken file is an empty list.
@@ -163,6 +187,12 @@ mod tests {
         assert!(!p.shows("E:\\elsewhere"), "unowned agents only show under all");
         p.close("D:\\a");
         assert_eq!(p.filter, None, "closing the shown project shows all");
+        assert_eq!(p.recent, [r"D:\a"], "a closed project is recent");
+        p.open(r"D:\a");
+        assert!(p.recent.is_empty(), "reopened, no longer recent");
+        p.close_all();
+        assert!(p.dirs.is_empty());
+        assert_eq!(p.recent.len(), 2);
     }
 
     #[test]

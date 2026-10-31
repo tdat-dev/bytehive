@@ -1,17 +1,23 @@
 //! The New task sheet (Ctrl+N), painted after the approved Agent Inbox
 //! design: a floating sheet with the folder crumb on top, a large borderless
-//! prompt, a row of pill properties (project, agent, count, worktree, full
-//! access), one help line saying what Start will do, and a footer with the
+//! prompt, a row of pill properties (project, agent, count, worktree,
+//! permissions, flow, crew), one help line saying what Start will do, and a
+//! footer with the
 //! keys, "Create more" and the white Start button. Esc or a click outside
 //! closes it; Ctrl+Enter starts.
 
 use eframe::egui::{self, Color32, FontFamily, FontId, Key, Modifiers, RichText, Stroke};
 
-use crate::newtask::{help_line, NewTask, MAX_AGENTS};
-use crate::projects::{normalize, project_name};
-use crate::projects_ui::pick_folder;
-use crate::sessions_ui::Cli;
-use crate::theme::{DEL, DIM, INK3, PILL, PILL_HOVER, PRIMARY, PRIMARY_INK, R_XL, SHEET, TEXT};
+use crate::newtask::{help_line, NewTask};
+use crate::prefs::{Crew, Prefs};
+use crate::theme::{DEL, DIM, INK3, PRIMARY, PRIMARY_INK, R_XL, SHEET, TEXT};
+
+/// What the sheet hands back.
+pub enum SheetOut {
+    Start(NewTask),
+    /// Remember the sheet's settings as a named crew.
+    SaveCrew(Crew),
+}
 
 pub struct NewTaskSheet {
     pub open: bool,
@@ -20,19 +26,27 @@ pub struct NewTaskSheet {
     pub more: bool,
     pub error: Option<String>,
     just_opened: bool,
+    /// The name typed for a crew to save.
+    pub(crate) crew_name: String,
+    pub(crate) out: Option<SheetOut>,
 }
 
 impl NewTaskSheet {
     pub fn new(dir: String) -> NewTaskSheet {
-        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false }
+        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None }
     }
 
-    /// Open on `dir` with `count` agents (the palette's race opens with 3).
-    pub fn open_with(&mut self, dir: &str, count: usize) {
+    /// Open on `dir` with the settings' defaults; `count` overrides theirs
+    /// (the palette's race opens with 3).
+    pub fn open_with(&mut self, dir: &str, count: Option<usize>, prefs: &Prefs) {
         if self.form.dir.trim().is_empty() || !self.open {
             self.form.dir = dir.to_string();
         }
-        self.form.set_count(count);
+        self.form.cli = prefs.start_cli();
+        self.form.worktree = prefs.worktree;
+        self.form.perm = prefs.perm;
+        self.form.flow = prefs.flow;
+        self.form.set_count(count.unwrap_or(prefs.default_count));
         self.error = None;
         self.open = true;
         self.just_opened = true;
@@ -51,8 +65,9 @@ impl NewTaskSheet {
     }
 
     /// Paint the sheet; hands back the form when Start is pressed.
-    /// `projects`: the open project folders the Project pill offers.
-    pub fn show(&mut self, ctx: &egui::Context, projects: &[String]) -> Option<NewTask> {
+    /// `projects`: the open project folders the Project pill offers;
+    /// `crews`: the saved crews the Crew pill applies.
+    pub fn show(&mut self, ctx: &egui::Context, projects: &[String], crews: &[Crew]) -> Option<SheetOut> {
         if !self.open {
             return None;
         }
@@ -97,11 +112,11 @@ impl NewTaskSheet {
                 }
             });
             egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 4, bottom: 10 }).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| self.props(ui, projects));
+                ui.horizontal_wrapped(|ui| self.props(ui, projects, crews));
             });
             egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 0, bottom: 12 }).show(ui, |ui| {
                 let race_clash = self.form.count > 1 && !self.form.worktree;
-                let help = help_line(self.form.count, self.form.worktree);
+                let help = help_line(self.form.count, self.form.worktree, self.form.flow);
                 ui.label(RichText::new(help).size(12.5).color(if race_clash { DEL } else { INK3 }));
                 if let Some(e) = &self.error {
                     ui.label(RichText::new(e).size(12.5).color(DEL));
@@ -131,77 +146,11 @@ impl NewTaskSheet {
             self.open = false;
             return None;
         }
-        start.then(|| self.form.clone())
+        if start {
+            return Some(SheetOut::Start(self.form.clone()));
+        }
+        self.out.take()
     }
-
-    /// The pill row: project folder, agent CLI, how many, worktree, access.
-    fn props(&mut self, ui: &mut egui::Ui, projects: &[String]) {
-        pill(ui, |ui| {
-            ui.label(RichText::new("Project").size(12.5).color(INK3));
-            let shown = RichText::new(project_name(&self.form.dir)).size(12.5);
-            let r = egui::ComboBox::from_id_salt("nt-project").selected_text(shown).show_ui(ui, |ui| {
-                for dir in projects {
-                    let on = same_dir(&self.form.dir, dir);
-                    if ui.selectable_label(on, project_name(dir)).on_hover_text(dir).clicked() {
-                        self.form.dir = dir.clone();
-                    }
-                }
-                ui.separator();
-                if ui.button("Choose folder\u{2026}").clicked() {
-                    if let Some(dir) = pick_folder(&self.form.dir) {
-                        self.form.dir = dir;
-                    }
-                }
-            });
-            r.response.on_hover_text(&self.form.dir);
-        });
-        pill(ui, |ui| {
-            ui.label(RichText::new("Agent").size(12.5).color(INK3));
-            egui::ComboBox::from_id_salt("nt-cli").selected_text(RichText::new(self.form.cli.name()).size(12.5)).show_ui(ui, |ui| {
-                for cli in Cli::all() {
-                    ui.selectable_value(&mut self.form.cli, cli, cli.name());
-                }
-            });
-        });
-        pill(ui, |ui| {
-            let n = self.form.count;
-            if ui.add_enabled(n > 1, egui::Button::new("\u{2212}").frame(false)).on_hover_text("Fewer agents").clicked() {
-                self.form.set_count(n - 1);
-            }
-            ui.label(RichText::new(n.to_string()).monospace().strong().size(12.5).color(TEXT));
-            if ui.add_enabled(n < MAX_AGENTS, egui::Button::new("+").frame(false)).on_hover_text("More agents: a race").clicked() {
-                self.form.set_count(n + 1);
-            }
-            ui.label(RichText::new(if self.form.count == 1 { "agent" } else { "agents" }).size(12.5).color(INK3));
-        });
-        pill(ui, |ui| {
-            ui.checkbox(&mut self.form.worktree, RichText::new("Own worktree").size(12.5).color(DIM));
-        });
-        pill(ui, |ui| {
-            ui.checkbox(&mut self.form.skip_perms, RichText::new("Full access").size(12.5).color(DIM))
-                .on_hover_text("Start without permission prompts (--dangerously-skip-permissions, --yolo). Opencode sets this in its own config.");
-        });
-    }
-}
-
-/// A rounded property pill; brighter while hovered.
-fn pill(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    let id = ui.next_auto_id();
-    let hovered = ui.ctx().read_response(id).is_some_and(|r| r.contains_pointer());
-    let r = egui::Frame::NONE
-        .fill(if hovered { PILL_HOVER } else { PILL })
-        .corner_radius(999.0)
-        .inner_margin(egui::Margin { left: 12, right: 12, top: 4, bottom: 4 })
-        .show(ui, |ui| {
-            ui.set_min_height(24.0);
-            ui.horizontal_centered(add);
-        })
-        .response;
-    ui.interact(r.rect, id, egui::Sense::hover());
-}
-
-fn same_dir(a: &str, b: &str) -> bool {
-    normalize(a).eq_ignore_ascii_case(&normalize(b))
 }
 
 /// The folder's last name for the crumb, or the whole path when it has none.
@@ -224,17 +173,18 @@ mod tests {
     #[test]
     fn sheet_paints_and_starts_on_ctrl_enter() {
         let mut sheet = NewTaskSheet::new("D:\\maestro".to_string());
-        sheet.open_with("D:\\maestro", 1);
+        let prefs = Prefs::default();
+        sheet.open_with("D:\\maestro", Some(1), &prefs);
         sheet.form.prompt = "Fix the login form".to_string();
         let ctx = egui::Context::default();
         let mut got = None;
         let mut input = egui::RawInput::default();
         input.events.push(egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
         ctx.run_ui(input, |ui| {
-            got = sheet.show(ui.ctx(), &[r"D:\maestro".to_string()]);
+            got = sheet.show(ui.ctx(), &[r"D:\maestro".to_string()], &[]);
         })
         .drop_without_applying_deltas();
-        let form = got.expect("Ctrl+Enter starts");
+        let Some(SheetOut::Start(form)) = got else { panic!("Ctrl+Enter starts") };
         assert_eq!(form.prompt, "Fix the login form");
         sheet.started();
         assert!(!sheet.open, "closes unless Create more");
