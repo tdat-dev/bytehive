@@ -222,6 +222,28 @@ impl eframe::App for ShellApp {
         let clashes = self.clash_map();
         let rows = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
         let needs = rows.iter().filter(|r| is_attention(r.status.state)).count();
+
+        // Ctrl/Cmd+1..9 jumps straight to that Queue row's pane, no palette.
+        for n in 1..=9u32 {
+            let key = match n {
+                1 => egui::Key::Num1,
+                2 => egui::Key::Num2,
+                3 => egui::Key::Num3,
+                4 => egui::Key::Num4,
+                5 => egui::Key::Num5,
+                6 => egui::Key::Num6,
+                7 => egui::Key::Num7,
+                8 => egui::Key::Num8,
+                _ => egui::Key::Num9,
+            };
+            if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, key)) {
+                if let Some(idx) = crate::palette::quickjump_index(key) {
+                    if let Some(r) = rows.get(idx) {
+                        self.focus_pane = Some(r.pane_id.clone());
+                    }
+                }
+            }
+        }
         let palette_items: Vec<PaletteItem> = rows
             .iter()
             .map(|r| PaletteItem {

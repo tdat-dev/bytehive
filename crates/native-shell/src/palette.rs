@@ -31,6 +31,23 @@ pub fn palette_filter<'a>(items: &'a [PaletteItem], query: &str) -> Vec<&'a Pale
         .collect()
 }
 
+/// The 0-based pane index a `Ctrl+<digit>` quick-jump points at, or none for
+/// a key that is not 1..=9. `Num1` jumps to the first row, `Num9` to the ninth.
+pub fn quickjump_index(key: Key) -> Option<usize> {
+    match key {
+        Key::Num1 => Some(0),
+        Key::Num2 => Some(1),
+        Key::Num3 => Some(2),
+        Key::Num4 => Some(3),
+        Key::Num5 => Some(4),
+        Key::Num6 => Some(5),
+        Key::Num7 => Some(6),
+        Key::Num8 => Some(7),
+        Key::Num9 => Some(8),
+        _ => None,
+    }
+}
+
 /// Keep a selection index inside `[0, len)`; an empty list pins it at 0.
 pub fn clamp_sel(len: usize, sel: usize) -> usize {
     if len == 0 {
@@ -196,6 +213,14 @@ mod tests {
     fn no_match_returns_empty() {
         let it = items();
         assert!(palette_filter(&it, "zzz").is_empty());
+    }
+
+    #[test]
+    fn quickjump_maps_digits_to_zero_based() {
+        assert_eq!(quickjump_index(Key::Num1), Some(0));
+        assert_eq!(quickjump_index(Key::Num9), Some(8));
+        assert_eq!(quickjump_index(Key::Num0), None);
+        assert_eq!(quickjump_index(Key::A), None);
     }
 
     #[test]
