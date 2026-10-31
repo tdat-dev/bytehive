@@ -81,6 +81,7 @@ impl QueuePanel {
         &mut self,
         ui: &mut egui::Ui,
         panes: &[Pane],
+        hidden: &std::collections::HashSet<String>,
         now: u64,
         git: &HashMap<String, Vec<String>>,
         stuck: &HashMap<String, StuckEvidence>,
@@ -88,7 +89,8 @@ impl QueuePanel {
     ) -> Option<QueueAction> {
         let mut out = None;
         ui.label(egui::RichText::new("Queue").strong().size(15.0));
-        let rows = queue_rows(panes, now, git, stuck, clash);
+        let mut rows = queue_rows(panes, now, git, stuck, clash);
+        rows.retain(|r| !hidden.contains(&r.pane_id));
         if rows.is_empty() {
             ui.label(egui::RichText::new("No agents yet.").color(FAINT));
             return None;

@@ -13,6 +13,8 @@ mod newtask;
 mod newtask_ui;
 mod palette;
 mod polls;
+mod projects;
+mod projects_ui;
 mod queue_ui;
 mod review_ui;
 mod send_ui;
@@ -22,6 +24,7 @@ mod states;
 mod tasks;
 mod term_pane;
 mod theme;
+mod topbar;
 
 use app::ShellApp;
 use theme::install_fonts;

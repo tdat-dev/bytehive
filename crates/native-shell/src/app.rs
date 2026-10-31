@@ -23,7 +23,7 @@ use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
 use crate::spawn::PendingCapture;
 use crate::tasks::LaunchMsg;
 use crate::term_pane::Pane;
-use crate::theme::{DEL, DIM, PRIMARY, PRIMARY_INK};
+use crate::projects::{store_path, Projects};
 
 pub(crate) const HEADER_H: f32 = 24.0;
 /// Avatar rail width when a pane owns the stage.
@@ -77,6 +77,9 @@ pub struct ShellApp {
     pub(crate) deliveries: Vec<Delivery>,
     /// A launch that failed after the sheet closed; shown on the top bar.
     pub(crate) notice: Option<String>,
+    /// Open project folders and which one is shown.
+    pub(crate) projects: Projects,
+    pub(crate) projects_path: Option<std::path::PathBuf>,
 }
 
 impl ShellApp {
@@ -84,7 +87,15 @@ impl ShellApp {
         let (git_tx, git_rx) = channel();
         let (stuck_tx, stuck_rx) = channel();
         let (launch_tx, launch_rx) = channel();
-        let sessions = SessionsPanel::new();
+        let mut sessions = SessionsPanel::new();
+        let projects_path = store_path();
+        let mut projects = projects_path.as_deref().map(Projects::load).unwrap_or_default();
+        if projects.dirs.is_empty() {
+            projects.open(&sessions.dir);
+        }
+        if let Some(f) = projects.filter.clone() {
+            sessions.set_dir(&f);
+        }
         let new_task = NewTaskSheet::new(sessions.dir.clone());
         let mut app = ShellApp {
             registry: Registry::new(),
@@ -122,6 +133,8 @@ impl ShellApp {
             launch_rx,
             deliveries: Vec::new(),
             notice: None,
+            projects,
+            projects_path,
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
@@ -149,7 +162,7 @@ impl ShellApp {
     /// `tab:<name>`. Unknown keys are ignored.
     pub(crate) fn run_command(&mut self, key: &str) {
         if key == "new" || key == "race" {
-            let dir = self.sessions.dir.clone();
+            let dir = self.projects.filter.clone().unwrap_or_else(|| self.sessions.dir.clone());
             self.new_task.open_with(&dir, if key == "race" { 3 } else { 1 });
         } else if key == "shell" {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
@@ -161,35 +174,6 @@ impl ShellApp {
         } else if let Some(tab) = key.strip_prefix("tab:") {
             self.side_tab = SideTab::from_key(tab);
         }
-    }
-
-    /// Spawn presets on the top bar: a shell plus fresh agent boots.
-    fn top_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("native shell").strong());
-            if ui.button("+ Shell").clicked() {
-                let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
-                let _ = self.spawn_pane("shell", spec, None, None);
-            }
-            let new = egui::Button::new(egui::RichText::new("New task").strong().color(PRIMARY_INK)).fill(PRIMARY).corner_radius(999.0);
-            if ui.add(new).on_hover_text("Start agents on a task (Ctrl+N). Spawn a bare CLI from Ctrl+K.").clicked() {
-                self.run_command("new");
-            }
-            if !self.launching.is_empty() {
-                ui.label(egui::RichText::new(format!("Making worktrees for {}\u{2026}", self.launching.join(", "))).small().color(DIM));
-            }
-            if let Some(n) = self.notice.clone() {
-                if ui.add(egui::Label::new(egui::RichText::new(n).small().color(DEL)).sense(egui::Sense::click())).on_hover_text("Click to dismiss").clicked() {
-                    self.notice = None;
-                }
-            }
-            ui.label(
-                egui::RichText::new(format!("{}%", (self.zoom * 100.0) as u32))
-                    .small()
-                    .color(DIM),
-            )
-            .on_hover_text("Density zoom: Ctrl+= bigger, Ctrl+- smaller, Ctrl+0 reset");
-        });
     }
 }
 
@@ -254,7 +238,9 @@ impl eframe::App for ShellApp {
         }
 
         let clashes = self.clash_map();
-        let rows = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
+        let hidden = self.hidden_panes();
+        let mut rows = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
+        rows.retain(|r| !hidden.contains(&r.pane_id));
         let needs = rows.iter().filter(|r| is_attention(r.status.state)).count();
 
         // Ctrl/Cmd+1..9 jumps straight to that Queue row's pane, no palette.
@@ -310,7 +296,7 @@ impl eframe::App for ShellApp {
             });
             ui.separator();
             match self.side_tab {
-                SideTab::Queue => match QueuePanel::show(&mut self.queue, ui, &self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes) {
+                SideTab::Queue => match QueuePanel::show(&mut self.queue, ui, &self.panes, &hidden, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes) {
                     Some(QueueAction::Focus(id)) => focus = Some(id),
                     Some(QueueAction::Answer { pane_id, bytes }) => {
                         let _ = self.registry.write_input(&pane_id, &bytes);
@@ -345,7 +331,7 @@ impl eframe::App for ShellApp {
             self.focus_pane = focus;
         }
 
-        let grid_out = crate::grid::show_grid(self, ui);
+        let grid_out = crate::grid::show_grid(self, ui, &hidden);
         let kill = grid_out.kill;
         let restart = grid_out.restart;
 
@@ -365,9 +351,11 @@ impl eframe::App for ShellApp {
                 PaletteKind::Command => self.run_command(&pick.key),
             }
         }
-        if let Some(form) = self.new_task.show(ui.ctx()) {
+        if let Some(form) = self.new_task.show(ui.ctx(), &self.projects.dirs) {
             match self.start_task(&form) {
                 Ok(()) => {
+                    self.projects.open(&form.dir);
+                    self.save_projects();
                     if self.new_task.more {
                         // Keep typing in the sheet, not in the new pane.
                         self.focus_pane = None;

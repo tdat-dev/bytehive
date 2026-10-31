@@ -17,23 +17,24 @@ pub(crate) struct GridOut {
     pub kill: Vec<String>,
 }
 
-pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
+/// `hidden`: panes the project filter keeps off the grid (they keep running).
+pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::collections::HashSet<String>) -> GridOut {
     let mut out = GridOut::default();
     let mut toggle_stage: Option<String> = None;
     let mut rail_pick: Option<String> = None;
     // A killed stage pane drops back to the grid on its own.
-    if app.stage.as_ref().is_some_and(|id| !app.panes.iter().any(|p| &p.id == id)) {
+    if app.stage.as_ref().is_some_and(|id| hidden.contains(id) || !app.panes.iter().any(|p| &p.id == id)) {
         app.stage = None;
     }
     let staged = app.stage.clone();
     // The rail is a real side panel so the central area shrinks by itself;
     // the stage pane below simply fills what's left.
     if let Some(ref sid) = staged {
-        if app.panes.len() > 1 && app.panes.iter().any(|p| &p.id == sid) {
+        if app.panes.len() - hidden.len() > 1 && app.panes.iter().any(|p| &p.id == sid) {
             egui::Panel::right("stage-rail").resizable(false).exact_size(RAIL_W).show(ui, |ui| {
                 ui.vertical(|ui| {
                     for p in &app.panes {
-                        if Some(p.id.as_str()) == staged.as_deref() {
+                        if Some(p.id.as_str()) == staged.as_deref() || hidden.contains(&p.id) {
                             continue;
                         }
                         let initial: String = p.name.chars().take(1).collect();
@@ -54,7 +55,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
         let avail = ui.available_rect_before_wrap();
         ui.allocate_rect(avail, egui::Sense::hover());
 
-        let n = app.panes.len().max(1);
+        let n = (app.panes.len() - hidden.len()).max(1);
         let tiles = tidy_tiles(n, avail.width(), avail.height());
 
         let font = app.font.clone();
@@ -62,8 +63,14 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
         let git_changed = app.git_changed.clone();
         let staged_id = staged.clone();
         let ShellApp { panes, registry, focused_once, focus_pane, .. } = app;
-        let multi = panes.len() > 1;
-        for (i, pane) in panes.iter_mut().enumerate() {
+        let multi = n > 1;
+        let mut i = 0;
+        for (idx, pane) in panes.iter_mut().enumerate() {
+            if hidden.contains(&pane.id) {
+                continue;
+            }
+            let slot = i;
+            i += 1;
             let staged = staged_id.as_deref() == Some(pane.id.as_str());
             if staged_id.is_some() && !staged {
                 continue;
@@ -71,7 +78,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
             let cell_rect = if staged {
                 Rect::from_min_max(avail.min, avail.max)
             } else {
-                let t = tiles.get(i).copied().unwrap_or(Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
+                let t = tiles.get(slot).copied().unwrap_or(Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
                 Rect::from_min_size(
                     Pos2::new(avail.left() + t.x, avail.top() + t.y),
                     Vec2::new(t.w, t.h),
@@ -137,7 +144,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui) -> GridOut {
                     if *text == "Kill" {
                         out.kill.push(pane.id.clone());
                     } else if *text == "Restart" {
-                        out.restart = Some(i);
+                        out.restart = Some(idx);
                     } else {
                         toggle_stage = Some(pane.id.clone());
                     }
@@ -186,7 +193,7 @@ mod tests {
         let id2 = app.spawn_pane("shell", spec, None, None).unwrap();
         app.stage = Some(id2);
         egui::__run_test_ui(|ui| {
-            show_grid(&mut app, ui);
+            show_grid(&mut app, ui, &Default::default());
         });
         assert!(app.stage.is_some());
     }

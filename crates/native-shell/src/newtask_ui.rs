@@ -8,6 +8,8 @@
 use eframe::egui::{self, Color32, FontFamily, FontId, Key, Modifiers, RichText, Stroke};
 
 use crate::newtask::{help_line, NewTask, MAX_AGENTS};
+use crate::projects::{normalize, project_name};
+use crate::projects_ui::pick_folder;
 use crate::sessions_ui::Cli;
 use crate::theme::{DEL, DIM, INK3, PILL, PILL_HOVER, PRIMARY, PRIMARY_INK, R_XL, SHEET, TEXT};
 
@@ -49,7 +51,8 @@ impl NewTaskSheet {
     }
 
     /// Paint the sheet; hands back the form when Start is pressed.
-    pub fn show(&mut self, ctx: &egui::Context) -> Option<NewTask> {
+    /// `projects`: the open project folders the Project pill offers.
+    pub fn show(&mut self, ctx: &egui::Context, projects: &[String]) -> Option<NewTask> {
         if !self.open {
             return None;
         }
@@ -94,7 +97,7 @@ impl NewTaskSheet {
                 }
             });
             egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 4, bottom: 10 }).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| self.props(ui));
+                ui.horizontal_wrapped(|ui| self.props(ui, projects));
             });
             egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 0, bottom: 12 }).show(ui, |ui| {
                 let race_clash = self.form.count > 1 && !self.form.worktree;
@@ -132,10 +135,25 @@ impl NewTaskSheet {
     }
 
     /// The pill row: project folder, agent CLI, how many, worktree, access.
-    fn props(&mut self, ui: &mut egui::Ui) {
+    fn props(&mut self, ui: &mut egui::Ui, projects: &[String]) {
         pill(ui, |ui| {
             ui.label(RichText::new("Project").size(12.5).color(INK3));
-            ui.add(egui::TextEdit::singleline(&mut self.form.dir).frame(egui::Frame::NONE).desired_width(200.0).font(FontId::proportional(12.5)));
+            let shown = RichText::new(project_name(&self.form.dir)).size(12.5);
+            let r = egui::ComboBox::from_id_salt("nt-project").selected_text(shown).show_ui(ui, |ui| {
+                for dir in projects {
+                    let on = same_dir(&self.form.dir, dir);
+                    if ui.selectable_label(on, project_name(dir)).on_hover_text(dir).clicked() {
+                        self.form.dir = dir.clone();
+                    }
+                }
+                ui.separator();
+                if ui.button("Choose folder\u{2026}").clicked() {
+                    if let Some(dir) = pick_folder(&self.form.dir) {
+                        self.form.dir = dir;
+                    }
+                }
+            });
+            r.response.on_hover_text(&self.form.dir);
         });
         pill(ui, |ui| {
             ui.label(RichText::new("Agent").size(12.5).color(INK3));
@@ -182,6 +200,10 @@ fn pill(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     ui.interact(r.rect, id, egui::Sense::hover());
 }
 
+fn same_dir(a: &str, b: &str) -> bool {
+    normalize(a).eq_ignore_ascii_case(&normalize(b))
+}
+
 /// The folder's last name for the crumb, or the whole path when it has none.
 fn crumb(dir: &str) -> String {
     let t = dir.trim().trim_end_matches(['\\', '/']);
@@ -209,7 +231,7 @@ mod tests {
         let mut input = egui::RawInput::default();
         input.events.push(egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
         ctx.run_ui(input, |ui| {
-            got = sheet.show(ui.ctx());
+            got = sheet.show(ui.ctx(), &[r"D:\maestro".to_string()]);
         })
         .drop_without_applying_deltas();
         let form = got.expect("Ctrl+Enter starts");

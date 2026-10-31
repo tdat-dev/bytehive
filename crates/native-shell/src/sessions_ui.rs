@@ -163,6 +163,14 @@ impl SessionsPanel {
         SessionsPanel { cli: Cli::Claude, dir, items: Vec::new(), loaded: false, wt_branch: String::new(), wt_base: "HEAD".to_string(), wt_error: None }
     }
 
+    /// Read sessions from another folder (the project on show).
+    pub fn set_dir(&mut self, dir: &str) {
+        if self.dir != dir {
+            self.dir = dir.to_string();
+            self.loaded = false;
+        }
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui) -> Option<ResumeRequest> {
         let mut out = None;
         ui.label(egui::RichText::new("Sessions").strong().size(15.0));
