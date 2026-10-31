@@ -1,19 +1,48 @@
-//! Command palette (Ctrl/Cmd+K): one overlay that lists every agent, filtered
-//! as you type, ordered the way the Queue is (needs-you first). Enter focuses
-//! the picked pane in the grid; Esc closes. The matching and selection math
-//! live in pure helpers so they can be tested without a window.
+//! Command palette (Ctrl/Cmd+K): one overlay that lists every agent AND every
+//! command (spawn a shell or agent, jump to a side tab), filtered as you type.
+//! Agents come first, ordered the way the Queue is (needs-you first), then the
+//! commands. Enter runs the highlighted row; Esc closes. The matching and
+//! selection math live in pure helpers so they can be tested without a window.
 
 use eframe::egui::{self, Align2, Color32, Key, Modifiers, Order};
 
 use crate::theme::{BORDER, DIM, SURFACE};
 
-/// One row the palette can show: a pane, its name, and its state word.
-/// Built from the already-ranked queue rows, so input order is the order.
+/// What a palette row does when chosen: focus an existing agent pane, or run a
+/// command. The row's `key` is read against this: a pane id for `Agent`, a
+/// command id (`shell`, `spawn:<program>`, `tab:<name>`) for `Command`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PaletteKind {
+    Agent,
+    Command,
+}
+
+/// One row the palette can show: its action key, a name to match and show, and
+/// a trailing word (the agent's state, or a verb like "run" for a command).
 #[derive(Clone)]
 pub struct PaletteItem {
-    pub pane_id: String,
+    pub key: String,
     pub name: String,
     pub word: String,
+    pub kind: PaletteKind,
+}
+
+/// What the palette hands back when a row is chosen: the row's action key and
+/// which kind of action it is, so the caller knows whether to focus a pane or
+/// run a command.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PalettePick {
+    pub key: String,
+    pub kind: PaletteKind,
+}
+
+impl std::fmt::Debug for PaletteKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            PaletteKind::Agent => "Agent",
+            PaletteKind::Command => "Command",
+        })
+    }
 }
 
 /// Rows whose name matches `query`: case-insensitive, every whitespace token
@@ -78,9 +107,9 @@ impl Palette {
         }
     }
 
-    /// Draw the overlay. Returns the pane id to focus when a row is chosen.
+    /// Draw the overlay. Returns the chosen row's pick when a row is run.
     /// No-op (returns None) while closed.
-    pub fn show(&mut self, ui: &mut egui::Ui, items: &[PaletteItem]) -> Option<String> {
+    pub fn show(&mut self, ui: &mut egui::Ui, items: &[PaletteItem]) -> Option<PalettePick> {
         if !self.open {
             return None;
         }
@@ -110,14 +139,13 @@ impl Palette {
         self.sel = clamp_sel(filtered.len(), self.sel);
 
         if enter {
-            let picked = filtered.get(self.sel).map(|it| it.pane_id.clone());
-            if picked.is_some() {
+            if let Some(it) = filtered.get(self.sel) {
                 self.open = false;
-                return picked;
+                return Some(PalettePick { key: it.key.clone(), kind: it.kind });
             }
         }
 
-        let mut chosen = None;
+        let mut chosen: Option<PalettePick> = None;
         let frame = egui::Frame::NONE
             .fill(SURFACE)
             .stroke(egui::Stroke::new(1.0, BORDER))
@@ -130,7 +158,7 @@ impl Palette {
                 frame.show(ui, |ui| {
                     ui.set_width(460.0);
                     let edit = egui::TextEdit::singleline(&mut self.query)
-                        .hint_text("Jump to agent…")
+                        .hint_text("Jump to agent or run a command…")
                         .desired_width(f32::INFINITY);
                     let resp = ui.add(edit);
                     if self.just_opened {
@@ -139,7 +167,7 @@ impl Palette {
                     }
                     ui.add_space(6.0);
                     if filtered.is_empty() {
-                        ui.label(egui::RichText::new("No agents match").color(DIM));
+                        ui.label(egui::RichText::new("Nothing matches").color(DIM));
                     }
                     for (row, it) in filtered.iter().enumerate() {
                         let on = row == self.sel;
@@ -158,15 +186,15 @@ impl Palette {
                             .response
                             .interact(egui::Sense::click());
                         if r.clicked() {
-                            chosen = Some(it.pane_id.clone());
+                            chosen = Some(PalettePick { key: it.key.clone(), kind: it.kind });
                         }
                     }
                 });
             });
 
-        if let Some(id) = chosen {
+        if let Some(pick) = chosen {
             self.open = false;
-            return Some(id);
+            return Some(pick);
         }
         None
     }
@@ -176,11 +204,15 @@ impl Palette {
 mod tests {
     use super::*;
 
+    fn agent(key: &str, name: &str, word: &str) -> PaletteItem {
+        PaletteItem { key: key.into(), name: name.into(), word: word.into(), kind: PaletteKind::Agent }
+    }
+
     fn items() -> Vec<PaletteItem> {
         vec![
-            PaletteItem { pane_id: "p1".into(), name: "claude main".into(), word: "needs".into() },
-            PaletteItem { pane_id: "p2".into(), name: "codex api".into(), word: "working".into() },
-            PaletteItem { pane_id: "p3".into(), name: "shell 1".into(), word: "idle".into() },
+            agent("p1", "claude main", "needs"),
+            agent("p2", "codex api", "working"),
+            agent("p3", "shell 1", "idle"),
         ]
     }
 
@@ -189,8 +221,8 @@ mod tests {
         let it = items();
         let got = palette_filter(&it, "");
         assert_eq!(got.len(), 3);
-        assert_eq!(got[0].pane_id, "p1");
-        assert_eq!(got[2].pane_id, "p3");
+        assert_eq!(got[0].key, "p1");
+        assert_eq!(got[2].key, "p3");
     }
 
     #[test]
@@ -198,7 +230,7 @@ mod tests {
         let it = items();
         let got = palette_filter(&it, "CODE");
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].pane_id, "p2");
+        assert_eq!(got[0].key, "p2");
     }
 
     #[test]
@@ -206,7 +238,23 @@ mod tests {
         let it = items();
         let got = palette_filter(&it, "main claude");
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].pane_id, "p1");
+        assert_eq!(got[0].key, "p1");
+    }
+
+    #[test]
+    fn commands_filter_alongside_agents() {
+        let mut it = items();
+        it.push(PaletteItem {
+            key: "spawn:claude".into(),
+            name: "Spawn Claude".into(),
+            word: "run".into(),
+            kind: PaletteKind::Command,
+        });
+        // "spawn" only matches the command; "claude" matches both.
+        let spawn = palette_filter(&it, "spawn");
+        assert_eq!(spawn.len(), 1);
+        assert_eq!(spawn[0].kind, PaletteKind::Command);
+        assert_eq!(palette_filter(&it, "claude").len(), 2);
     }
 
     #[test]

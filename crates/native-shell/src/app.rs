@@ -11,7 +11,7 @@ use supervise::stuck::{StuckEvidence, StuckWatch};
 use crate::flow_ui::FlowPanel;
 use crate::history_ui::HistoryPanel;
 use crate::layout::clamp_zoom;
-use crate::palette::{Palette, PaletteItem};
+use crate::palette::{Palette, PaletteItem, PaletteKind};
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
 use crate::send_ui::SendPanel;
@@ -42,7 +42,13 @@ pub(crate) enum SideTab {
 impl SideTab {
     /// Starting tab override for screenshots and debugging: MAESTRO_TAB=review.
     fn from_env() -> SideTab {
-        match std::env::var("MAESTRO_TAB").unwrap_or_default().to_lowercase().as_str() {
+        Self::from_key(&std::env::var("MAESTRO_TAB").unwrap_or_default().to_lowercase())
+    }
+
+    /// The tab a `tab:<name>` command (or `MAESTRO_TAB`) names. Unknown names
+    /// fall back to the Queue.
+    fn from_key(key: &str) -> SideTab {
+        match key {
             "review" => SideTab::Review,
             "history" => SideTab::History,
             "sessions" => SideTab::Sessions,
@@ -50,6 +56,35 @@ impl SideTab {
             _ => SideTab::Queue,
         }
     }
+}
+
+/// The palette's command rows: spawn a shell or an agent, or jump to a side
+/// tab. Pure so the catalog can be checked without a window. Keys are read back
+/// by [`ShellApp::run_command`]: `shell`, `spawn:<program>`, `tab:<name>`.
+pub(crate) fn command_catalog() -> Vec<PaletteItem> {
+    let mut v = vec![PaletteItem {
+        key: "shell".into(),
+        name: "New Shell".into(),
+        word: "run".into(),
+        kind: PaletteKind::Command,
+    }];
+    for cli in Cli::all() {
+        v.push(PaletteItem {
+            key: format!("spawn:{}", cli.program()),
+            name: format!("Spawn {}", cli.name()),
+            word: "run".into(),
+            kind: PaletteKind::Command,
+        });
+    }
+    for (key, label) in [("queue", "Queue"), ("review", "Review"), ("history", "History"), ("sessions", "Sessions"), ("flow", "Flow")] {
+        v.push(PaletteItem {
+            key: format!("tab:{key}"),
+            name: format!("Go to {label}"),
+            word: "view".into(),
+            kind: PaletteKind::Command,
+        });
+    }
+    v
 }
 
 pub struct ShellApp {
@@ -140,6 +175,21 @@ impl ShellApp {
         Ok(app)
     }
 
+
+    /// Run a palette command by its key: `shell`, `spawn:<program>`, or
+    /// `tab:<name>`. Unknown keys are ignored.
+    pub(crate) fn run_command(&mut self, key: &str) {
+        if key == "shell" {
+            let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
+            let _ = self.spawn_pane("shell", spec, None, None);
+        } else if let Some(program) = key.strip_prefix("spawn:") {
+            if let Some(cli) = Cli::all().into_iter().find(|c| c.program() == program) {
+                self.spawn_fresh(cli);
+            }
+        } else if let Some(tab) = key.strip_prefix("tab:") {
+            self.side_tab = SideTab::from_key(tab);
+        }
+    }
 
     /// Spawn presets on the top bar: a shell plus fresh agent boots.
     fn top_bar(&mut self, ui: &mut egui::Ui) {
@@ -244,14 +294,17 @@ impl eframe::App for ShellApp {
                 }
             }
         }
-        let palette_items: Vec<PaletteItem> = rows
+        let mut palette_items: Vec<PaletteItem> = rows
             .iter()
             .map(|r| PaletteItem {
-                pane_id: r.pane_id.clone(),
+                key: r.pane_id.clone(),
                 name: r.name.clone(),
                 word: crate::theme::state_word(r.status.state).to_string(),
+                kind: PaletteKind::Agent,
             })
             .collect();
+        // Agents first (needs-you ranked), then the commands.
+        palette_items.extend(command_catalog());
         let queue_tab = if needs > 0 { format!("Queue ({needs})") } else { "Queue".to_string() };
         egui::Panel::left("side").default_size(280.0).show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -320,9 +373,13 @@ impl eframe::App for ShellApp {
         }
         self.panes.retain(|p| !kill.contains(&p.id));
 
-        // The palette floats over everything; a pick focuses that pane.
-        if let Some(id) = self.palette.show(ui, &palette_items) {
-            self.focus_pane = Some(id);
+        // The palette floats over everything; a pick focuses a pane or runs a
+        // command.
+        if let Some(pick) = self.palette.show(ui, &palette_items) {
+            match pick.kind {
+                PaletteKind::Agent => self.focus_pane = Some(pick.key),
+                PaletteKind::Command => self.run_command(&pick.key),
+            }
         }
     }
 }
@@ -353,6 +410,31 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         }
         grid
+    }
+
+    #[test]
+    fn command_catalog_covers_shell_agents_and_tabs() {
+        let cat = command_catalog();
+        let keys: Vec<&str> = cat.iter().map(|i| i.key.as_str()).collect();
+        assert!(keys.contains(&"shell"), "has New Shell: {keys:?}");
+        // One spawn command per CLI, keyed by program name.
+        for cli in Cli::all() {
+            let k = format!("spawn:{}", cli.program());
+            assert!(keys.contains(&k.as_str()), "missing {k}: {keys:?}");
+        }
+        // One jump command per side tab.
+        for t in ["tab:queue", "tab:review", "tab:history", "tab:sessions", "tab:flow"] {
+            assert!(keys.contains(&t), "missing {t}: {keys:?}");
+        }
+        assert!(cat.iter().all(|i| i.kind == PaletteKind::Command));
+    }
+
+    #[test]
+    fn tab_key_maps_to_side_tab() {
+        assert!(SideTab::from_key("review") == SideTab::Review);
+        assert!(SideTab::from_key("flow") == SideTab::Flow);
+        // Unknown names fall back to the Queue.
+        assert!(SideTab::from_key("nope") == SideTab::Queue);
     }
 
     #[test]
