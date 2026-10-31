@@ -44,11 +44,24 @@ pub const FOCUS: Color32 = Color32::from_rgb(154, 184, 238);
 /// Needs-you dots.
 pub const AMBER: Color32 = Color32::from_rgb(240, 191, 106);
 
+/// Floating sheets (New task): the design's rgba(20,21,24,.98).
+pub const SHEET: Color32 = Color32::from_rgb(20, 21, 24);
+/// Pills on a sheet: white 6% over it; hover is white 10%.
+pub const PILL: Color32 = Color32::from_rgb(34, 35, 38);
+pub const PILL_HOVER: Color32 = Color32::from_rgb(43, 44, 47);
+/// The sheet design's third text tier (--ink-3): labels, hints, placeholders.
+pub const INK3: Color32 = Color32::from_rgb(140, 140, 150);
+/// Primary action: white pill, black words.
+pub const PRIMARY: Color32 = Color32::from_rgb(255, 255, 255);
+pub const PRIMARY_INK: Color32 = Color32::from_rgb(0, 0, 0);
+
 /// Corner radii, same scale as the web app's --r1..r4.
 pub const R1: f32 = 8.0;
 pub const R2: f32 = 10.0;
 pub const R3: f32 = 12.0;
 pub const R4: f32 = 16.0;
+/// Sheets and dialogs (--r-xl).
+pub const R_XL: f32 = 18.0;
 
 /// UI chrome text: the web app's 13.5px body.
 pub const UI_BASE: f32 = 13.5;

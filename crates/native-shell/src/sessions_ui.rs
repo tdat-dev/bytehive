@@ -10,7 +10,7 @@ use eframe::egui::{self};
 
 use crate::theme::{DEL, DIM, FAINT};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Cli {
     Claude,
     Codex,
@@ -83,27 +83,31 @@ impl Cli {
 
 /// A fresh boot's spawn spec: Claude gets a named session up front, the rest
 /// boot blank and the capture after spawning learns their id.
-pub fn fresh_spec(cli: Cli, dir: &str, fresh_id: impl Fn() -> String) -> (CommandSpec, Option<String>) {
-    let (args, kept) = match cli {
+/// `extra` rides along after the session args (a skip-permissions flag).
+pub fn fresh_spec(cli: Cli, dir: &str, extra: &[String], fresh_id: impl Fn() -> String) -> (CommandSpec, Option<String>) {
+    let (mut args, kept) = match cli {
         Cli::Claude => claude_session_args(&[], None, dir, |_, _| false, fresh_id),
         Cli::Codex => codex_session_args(&[], None, |_| false),
         Cli::Muse => muse_session_args(&[], None, |_| false),
         Cli::Opencode => opencode_session_args(&[], None, |_| false),
     };
+    args.extend(extra.iter().cloned());
     let mut spec = launch_spec(cli.program(), &args);
     spec.cwd = Some(dir.to_string());
     (spec, kept)
 }
 
 /// A resume's spawn spec: carry on `session` in the folder it ran in.
-pub fn resume_spec(cli: Cli, session: &SessionItem) -> (CommandSpec, Option<String>) {
+/// `extra` rides along after the session args, as on the fresh boot.
+pub fn resume_spec(cli: Cli, session: &SessionItem, extra: &[String]) -> (CommandSpec, Option<String>) {
     let id = Some(session.id.clone());
-    let (args, kept) = match cli {
+    let (mut args, kept) = match cli {
         Cli::Claude => claude_session_args(&[], id, &session.cwd, |_, _| true, || unreachable_id()),
         Cli::Codex => codex_session_args(&[], id, |_| true),
         Cli::Muse => muse_session_args(&[], id, |_| true),
         Cli::Opencode => opencode_session_args(&[], id, |_| true),
     };
+    args.extend(extra.iter().cloned());
     let mut spec = launch_spec(cli.program(), &args);
     if !session.cwd.is_empty() {
         spec.cwd = Some(session.cwd.clone());
@@ -247,26 +251,26 @@ mod tests {
     #[test]
     fn resume_specs_carry_the_session_in_its_folder() {
         let s = SessionItem { id: "abc-123".into(), title: "t".into(), cwd: "D:/app".into(), modified_ms: 9 };
-        let (spec, kept) = resume_spec(Cli::Claude, &s);
+        let (spec, kept) = resume_spec(Cli::Claude, &s, &[]);
         assert_eq!(spec.program, "cmd.exe");
         assert_eq!(spec.args, ["/c", "claude", "--resume", "abc-123"]);
         assert_eq!(spec.cwd.as_deref(), Some("D:/app"));
         assert_eq!(kept.as_deref(), Some("abc-123"));
-        let (spec, _) = resume_spec(Cli::Codex, &s);
+        let (spec, _) = resume_spec(Cli::Codex, &s, &[]);
         assert_eq!(spec.args[2], "resume");
-        let (spec, _) = resume_spec(Cli::Muse, &s);
+        let (spec, _) = resume_spec(Cli::Muse, &s, &[]);
         assert_eq!(spec.args[2], "resume");
-        let (spec, _) = resume_spec(Cli::Opencode, &s);
+        let (spec, _) = resume_spec(Cli::Opencode, &s, &[]);
         assert_eq!(spec.args[2..], ["--session".to_string(), "abc-123".to_string()]);
     }
 
     #[test]
     fn fresh_specs_boot_named_for_claude_blank_for_the_rest() {
-        let (spec, kept) = fresh_spec(Cli::Claude, "D:/app", || "fresh-1".to_string());
+        let (spec, kept) = fresh_spec(Cli::Claude, "D:/app", &[], || "fresh-1".to_string());
         assert_eq!(spec.args[2..], ["--session-id".to_string(), "fresh-1".to_string()]);
         assert_eq!(kept.as_deref(), Some("fresh-1"));
         assert_eq!(spec.cwd.as_deref(), Some("D:/app"));
-        let (spec, kept) = fresh_spec(Cli::Codex, "D:/app", || "x".to_string());
+        let (spec, kept) = fresh_spec(Cli::Codex, "D:/app", &[], || "x".to_string());
         assert_eq!(spec.args, ["/c", "codex"]);
         assert_eq!(kept, None);
     }

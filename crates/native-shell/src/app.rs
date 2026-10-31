@@ -9,8 +9,11 @@ use eframe::egui::{self, FontId};
 use supervise::stuck::{StuckEvidence, StuckWatch};
 
 use crate::flow_ui::FlowPanel;
+use crate::deliver::Delivery;
 use crate::history_ui::HistoryPanel;
 use crate::layout::clamp_zoom;
+use crate::newtask_ui::NewTaskSheet;
+use crate::commands::{command_catalog, SideTab};
 use crate::palette::{Palette, PaletteItem, PaletteKind};
 use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
 use crate::review_ui::ReviewPanel;
@@ -18,8 +21,9 @@ use crate::send_ui::SendPanel;
 use crate::polls::StuckRead;
 use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
 use crate::spawn::PendingCapture;
+use crate::tasks::LaunchMsg;
 use crate::term_pane::Pane;
-use crate::theme::DIM;
+use crate::theme::{DEL, DIM, PRIMARY, PRIMARY_INK};
 
 pub(crate) const HEADER_H: f32 = 24.0;
 /// Avatar rail width when a pane owns the stage.
@@ -29,63 +33,6 @@ pub(crate) fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SideTab {
-    Queue,
-    Review,
-    History,
-    Sessions,
-    Flow,
-}
-
-impl SideTab {
-    /// Starting tab override for screenshots and debugging: MAESTRO_TAB=review.
-    fn from_env() -> SideTab {
-        Self::from_key(&std::env::var("MAESTRO_TAB").unwrap_or_default().to_lowercase())
-    }
-
-    /// The tab a `tab:<name>` command (or `MAESTRO_TAB`) names. Unknown names
-    /// fall back to the Queue.
-    fn from_key(key: &str) -> SideTab {
-        match key {
-            "review" => SideTab::Review,
-            "history" => SideTab::History,
-            "sessions" => SideTab::Sessions,
-            "flow" => SideTab::Flow,
-            _ => SideTab::Queue,
-        }
-    }
-}
-
-/// The palette's command rows: spawn a shell or an agent, or jump to a side
-/// tab. Pure so the catalog can be checked without a window. Keys are read back
-/// by [`ShellApp::run_command`]: `shell`, `spawn:<program>`, `tab:<name>`.
-pub(crate) fn command_catalog() -> Vec<PaletteItem> {
-    let mut v = vec![PaletteItem {
-        key: "shell".into(),
-        name: "New Shell".into(),
-        word: "run".into(),
-        kind: PaletteKind::Command,
-    }];
-    for cli in Cli::all() {
-        v.push(PaletteItem {
-            key: format!("spawn:{}", cli.program()),
-            name: format!("Spawn {}", cli.name()),
-            word: "run".into(),
-            kind: PaletteKind::Command,
-        });
-    }
-    for (key, label) in [("queue", "Queue"), ("review", "Review"), ("history", "History"), ("sessions", "Sessions"), ("flow", "Flow")] {
-        v.push(PaletteItem {
-            key: format!("tab:{key}"),
-            name: format!("Go to {label}"),
-            word: "view".into(),
-            kind: PaletteKind::Command,
-        });
-    }
-    v
-}
 
 pub struct ShellApp {
     pub(crate) registry: Registry,
@@ -121,19 +68,31 @@ pub struct ShellApp {
     pub(crate) stuck_tx: Sender<StuckRead>,
     pub(crate) stuck_rx: Receiver<StuckRead>,
     pub(crate) stuck_last: Instant,
+    pub(crate) new_task: NewTaskSheet,
+    /// Agents whose worktree is still being made, by name.
+    pub(crate) launching: Vec<String>,
+    pub(crate) launch_tx: Sender<LaunchMsg>,
+    pub(crate) launch_rx: Receiver<LaunchMsg>,
+    /// Tasks waiting to be typed into their new agent.
+    pub(crate) deliveries: Vec<Delivery>,
+    /// A launch that failed after the sheet closed; shown on the top bar.
+    pub(crate) notice: Option<String>,
 }
 
 impl ShellApp {
     pub fn new() -> anyhow::Result<Self> {
         let (git_tx, git_rx) = channel();
         let (stuck_tx, stuck_rx) = channel();
+        let (launch_tx, launch_rx) = channel();
+        let sessions = SessionsPanel::new();
+        let new_task = NewTaskSheet::new(sessions.dir.clone());
         let mut app = ShellApp {
             registry: Registry::new(),
             panes: Vec::new(),
             next_id: 1,
             font: FontId::monospace(crate::theme::TERM_SIZE),
             focused_once: false,
-            sessions: SessionsPanel::new(),
+            sessions,
             captures: Vec::new(),
             last_poll: Instant::now(),
             side_tab: SideTab::from_env(),
@@ -157,6 +116,12 @@ impl ShellApp {
             stuck_tx,
             stuck_rx,
             stuck_last: Instant::now() - Duration::from_secs(60),
+            new_task,
+            launching: Vec::new(),
+            launch_tx,
+            launch_rx,
+            deliveries: Vec::new(),
+            notice: None,
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
@@ -166,6 +131,10 @@ impl ShellApp {
         for _ in 1..extra {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = app.spawn_pane("shell", spec, None, None);
+        }
+        // MAESTRO_SHEET=new (or race) boots with the New task sheet open.
+        if let Ok(key) = std::env::var("MAESTRO_SHEET") {
+            app.run_command(&key);
         }
         if std::env::var("MAESTRO_STAGE").is_ok() {
             if let Some(p) = app.panes.first() {
@@ -179,7 +148,10 @@ impl ShellApp {
     /// Run a palette command by its key: `shell`, `spawn:<program>`, or
     /// `tab:<name>`. Unknown keys are ignored.
     pub(crate) fn run_command(&mut self, key: &str) {
-        if key == "shell" {
+        if key == "new" || key == "race" {
+            let dir = self.sessions.dir.clone();
+            self.new_task.open_with(&dir, if key == "race" { 3 } else { 1 });
+        } else if key == "shell" {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = self.spawn_pane("shell", spec, None, None);
         } else if let Some(program) = key.strip_prefix("spawn:") {
@@ -199,9 +171,16 @@ impl ShellApp {
                 let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
                 let _ = self.spawn_pane("shell", spec, None, None);
             }
-            for cli in Cli::all() {
-                if ui.button(format!("+ {}", cli.name())).clicked() {
-                    self.spawn_fresh(cli);
+            let new = egui::Button::new(egui::RichText::new("New task").strong().color(PRIMARY_INK)).fill(PRIMARY).corner_radius(999.0);
+            if ui.add(new).on_hover_text("Start agents on a task (Ctrl+N). Spawn a bare CLI from Ctrl+K.").clicked() {
+                self.run_command("new");
+            }
+            if !self.launching.is_empty() {
+                ui.label(egui::RichText::new(format!("Making worktrees for {}\u{2026}", self.launching.join(", "))).small().color(DIM));
+            }
+            if let Some(n) = self.notice.clone() {
+                if ui.add(egui::Label::new(egui::RichText::new(n).small().color(DEL)).sense(egui::Sense::click())).on_hover_text("Click to dismiss").clicked() {
+                    self.notice = None;
                 }
             }
             ui.label(
@@ -236,6 +215,8 @@ impl eframe::App for ShellApp {
         self.poll_captures();
         self.poll_git();
         self.poll_stuck();
+        self.poll_launches();
+        self.poll_deliveries();
         // Density zoom: Ctrl+= / Ctrl+- step the terminal glyphs, Ctrl+0
         // resets. Keyboard only on purpose: the wheel already scrolls back.
         let mut zoom = self.zoom;
@@ -267,6 +248,9 @@ impl eframe::App for ShellApp {
         // it from reaching a focused terminal pane as a raw control byte.
         if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
             self.palette.toggle();
+        }
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::N)) {
+            self.run_command("new");
         }
 
         let clashes = self.clash_map();
@@ -381,6 +365,18 @@ impl eframe::App for ShellApp {
                 PaletteKind::Command => self.run_command(&pick.key),
             }
         }
+        if let Some(form) = self.new_task.show(ui.ctx()) {
+            match self.start_task(&form) {
+                Ok(()) => {
+                    if self.new_task.more {
+                        // Keep typing in the sheet, not in the new pane.
+                        self.focus_pane = None;
+                    }
+                    self.new_task.started();
+                }
+                Err(e) => self.new_task.error = Some(e),
+            }
+        }
     }
 }
 
@@ -410,31 +406,6 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         }
         grid
-    }
-
-    #[test]
-    fn command_catalog_covers_shell_agents_and_tabs() {
-        let cat = command_catalog();
-        let keys: Vec<&str> = cat.iter().map(|i| i.key.as_str()).collect();
-        assert!(keys.contains(&"shell"), "has New Shell: {keys:?}");
-        // One spawn command per CLI, keyed by program name.
-        for cli in Cli::all() {
-            let k = format!("spawn:{}", cli.program());
-            assert!(keys.contains(&k.as_str()), "missing {k}: {keys:?}");
-        }
-        // One jump command per side tab.
-        for t in ["tab:queue", "tab:review", "tab:history", "tab:sessions", "tab:flow"] {
-            assert!(keys.contains(&t), "missing {t}: {keys:?}");
-        }
-        assert!(cat.iter().all(|i| i.kind == PaletteKind::Command));
-    }
-
-    #[test]
-    fn tab_key_maps_to_side_tab() {
-        assert!(SideTab::from_key("review") == SideTab::Review);
-        assert!(SideTab::from_key("flow") == SideTab::Flow);
-        // Unknown names fall back to the Queue.
-        assert!(SideTab::from_key("nope") == SideTab::Queue);
     }
 
     #[test]

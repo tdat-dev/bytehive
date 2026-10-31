@@ -24,6 +24,20 @@ pub fn current_branch(cwd: &Path) -> Option<String> {
     }
 }
 
+/// The top of the repo a folder sits in, with Windows separators (the form
+/// `worktree_path_for` hashes, so D:/x and D:\x land in one place), or none
+/// when the folder is not in a repo.
+pub fn repo_root(cwd: &Path) -> Option<String> {
+    let top = git(cwd, &["rev-parse", "--show-toplevel"])?.trim().to_string();
+    if top.is_empty() {
+        None
+    } else if cfg!(windows) {
+        Some(top.replace('/', "\\"))
+    } else {
+        Some(top)
+    }
+}
+
 /// Paths changed in the working tree (staged, unstaged, untracked), relative
 /// to the repo root, or empty when nothing is known.
 pub fn changed_files(cwd: &Path) -> Vec<String> {
@@ -338,6 +352,21 @@ mod tests {
         assert_eq!(current_branch(&wt).as_deref(), Some("agent/one"));
         assert!(remove_worktree(&dir, &wt));
         assert!(!wt.exists());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn repo_root_finds_the_top_from_a_subfolder() {
+        let Some(dir) = fresh_repo() else { return };
+        let sub = dir.join("deep").join("er");
+        std::fs::create_dir_all(&sub).unwrap();
+        let top = repo_root(&sub).expect("inside a repo");
+        let want = std::fs::canonicalize(&dir).unwrap();
+        assert_eq!(std::fs::canonicalize(&top).unwrap(), want);
+        if cfg!(windows) {
+            assert!(!top.contains('/'), "Windows separators: {top}");
+        }
+        assert_eq!(repo_root(&std::env::temp_dir().join("maestro-surely-no-repo-here")), None);
         std::fs::remove_dir_all(&dir).ok();
     }
 

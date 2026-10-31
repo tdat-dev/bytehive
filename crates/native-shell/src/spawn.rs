@@ -23,10 +23,17 @@ pub(crate) struct PendingCapture {
 }
 
 impl ShellApp {
+    /// A pane named `<name> <n>`, the shell and quick-spawn style.
     pub(crate) fn spawn_pane(&mut self, name: &str, spec: CommandSpec, cli: Option<Cli>, session_id: Option<String>) -> anyhow::Result<String> {
+        let full = format!("{name} {}", self.panes.len() + 1);
+        self.spawn_named(full, spec, cli, session_id)
+    }
+
+    /// A pane under exactly this name (a persona like Ana).
+    pub(crate) fn spawn_named(&mut self, name: String, spec: CommandSpec, cli: Option<Cli>, session_id: Option<String>) -> anyhow::Result<String> {
         let id = format!("pane-{}", self.next_id);
         self.next_id += 1;
-        let mut pane = Pane::new(id.clone(), format!("{name} {}", self.panes.len() + 1), spec.clone(), 80, 24);
+        let mut pane = Pane::new(id.clone(), name, spec.clone(), 80, 24);
         pane.cli = cli;
         pane.session_id = session_id;
         let tx = pane.sender();
@@ -50,22 +57,32 @@ impl ShellApp {
     /// captured after spawning.
     pub(crate) fn spawn_fresh(&mut self, cli: Cli) {
         let dir = self.sessions.dir.clone();
-        let (spec, kept) = fresh_spec(cli, &dir, || uuid::Uuid::new_v4().to_string());
-        let since = now_ms();
-        match self.spawn_pane(cli.name().to_lowercase().as_str(), spec, Some(cli), kept) {
-            Ok(id) => {
-                if self.panes.iter().any(|p| p.id == id && p.session_id.is_none()) {
-                    self.captures.push(PendingCapture { pane_id: id, cli, dir, since_ms: since, tries: 0 });
-                }
-            }
-            Err(e) => eprintln!("spawn {} failed: {e:?}", cli.name()),
+        let name = format!("{} {}", cli.name().to_lowercase(), self.panes.len() + 1);
+        if let Err(e) = self.boot_agent(cli, &dir, name, Vec::new(), None) {
+            eprintln!("spawn {} failed: {e}", cli.name());
         }
+    }
+
+    /// Boot a fresh agent in `dir` under `name`, with `extra` launch flags,
+    /// learning its session id afterwards when the CLI can't be told one.
+    pub(crate) fn boot_agent(&mut self, cli: Cli, dir: &str, name: String, extra: Vec<String>, worktree: Option<WorktreeInfo>) -> Result<String, String> {
+        let (spec, kept) = fresh_spec(cli, dir, &extra, || uuid::Uuid::new_v4().to_string());
+        let since = now_ms();
+        let id = self.spawn_named(name, spec, Some(cli), kept).map_err(|e| format!("Spawn failed: {e:?}"))?;
+        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == id) {
+            pane.extra_args = extra;
+            pane.worktree = worktree;
+            if pane.session_id.is_none() {
+                self.captures.push(PendingCapture { pane_id: id.clone(), cli, dir: dir.to_string(), since_ms: since, tries: 0 });
+            }
+        }
+        Ok(id)
     }
 
     /// Carry on a past session in the folder it ran in.
     pub(crate) fn spawn_resume(&mut self, req: ResumeRequest) {
         let name = req.cli.name().to_lowercase();
-        let (spec, kept) = resume_spec(req.cli, &req.session);
+        let (spec, kept) = resume_spec(req.cli, &req.session, &[]);
         if self.spawn_pane(&name, spec, Some(req.cli), kept).is_err() {
             eprintln!("resume {} failed", req.session.id);
         }
@@ -87,18 +104,9 @@ impl ShellApp {
             ));
         }
         let dir = path.to_string_lossy().into_owned();
-        let (spec, kept) = fresh_spec(req.cli, &dir, || uuid::Uuid::new_v4().to_string());
-        let since = now_ms();
-        let id = self
-            .spawn_pane(req.cli.name().to_lowercase().as_str(), spec, Some(req.cli), kept)
-            .map_err(|e| format!("Spawn failed: {e:?}"))?;
-        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == id) {
-            pane.worktree = Some(WorktreeInfo { repo: req.repo.clone(), branch: req.branch.clone(), base: req.base.clone(), path: dir.clone() });
-            if pane.session_id.is_none() {
-                self.captures.push(PendingCapture { pane_id: id.clone(), cli: req.cli, dir, since_ms: since, tries: 0 });
-            }
-        }
-        Ok(id)
+        let info = WorktreeInfo { repo: req.repo.clone(), branch: req.branch.clone(), base: req.base.clone(), path: dir.clone() };
+        let name = format!("{} {}", req.cli.name().to_lowercase(), self.panes.len() + 1);
+        self.boot_agent(req.cli, &dir, name, Vec::new(), Some(info))
     }
 
     pub(crate) fn restart_pane(&mut self, index: usize) {
@@ -109,7 +117,7 @@ impl ShellApp {
         if let (Some(cli), Some(sid)) = (pane.cli, pane.session_id.clone()) {
             let cwd = pane.spec.cwd.clone().unwrap_or_default();
             let item = agent_core::transcript::SessionItem { id: sid, title: String::new(), cwd, modified_ms: 0 };
-            let (spec, kept) = resume_spec(cli, &item);
+            let (spec, kept) = resume_spec(cli, &item, &pane.extra_args);
             pane.spec = spec;
             pane.session_id = kept;
         }

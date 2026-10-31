@@ -2,11 +2,15 @@
 
 mod app;
 mod color;
+mod commands;
+mod deliver;
 mod flow_ui;
 mod grid;
 mod history_ui;
 mod keys;
 mod layout;
+mod newtask;
+mod newtask_ui;
 mod palette;
 mod polls;
 mod queue_ui;
@@ -15,6 +19,7 @@ mod send_ui;
 mod sessions_ui;
 mod spawn;
 mod states;
+mod tasks;
 mod term_pane;
 mod theme;
 

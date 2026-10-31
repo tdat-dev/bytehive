@@ -91,6 +91,8 @@ pub struct Pane {
     pub worktree: Option<WorktreeInfo>,
     /// Its branch landed and its worktree was removed.
     pub merged: bool,
+    /// Launch flags kept across restarts (a skip-permissions flag).
+    pub extra_args: Vec<String>,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -108,7 +110,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new() }
     }
 
     /// The visible screen as text, newest row last: what the state reads.
