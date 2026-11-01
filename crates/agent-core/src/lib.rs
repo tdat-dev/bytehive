@@ -20,6 +20,7 @@ pub mod codex;
 pub mod command_spec;
 pub mod error;
 pub mod git;
+pub mod gitfiles;
 #[cfg(windows)]
 pub mod job;
 pub mod launch;

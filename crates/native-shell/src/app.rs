@@ -26,6 +26,8 @@ use crate::term_pane::Pane;
 use crate::prefs::{prefs_path, Prefs};
 use crate::projects::{store_path, Projects};
 use crate::settings_ui::SettingsSheet;
+use crate::changes_ui::ChangesPanel;
+use crate::files_ui::FilesDrawer;
 
 pub(crate) const HEADER_H: f32 = 24.0;
 /// Avatar rail width when a pane owns the stage.
@@ -87,6 +89,8 @@ pub struct ShellApp {
     pub(crate) settings: SettingsSheet,
     /// The pane on stage per project filter ("*" for all projects).
     pub(crate) stages: HashMap<String, String>,
+    pub(crate) files: FilesDrawer,
+    pub(crate) changes: ChangesPanel,
 }
 
 impl ShellApp {
@@ -149,6 +153,8 @@ impl ShellApp {
             prefs_path,
             settings: SettingsSheet::default(),
             stages: HashMap::new(),
+            files: FilesDrawer::default(),
+            changes: ChangesPanel::default(),
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
@@ -180,6 +186,10 @@ impl ShellApp {
             self.new_task.open_with(&dir, (key == "race").then_some(3), &self.prefs);
         } else if key == "settings" {
             self.settings.toggle();
+        } else if key == "files" {
+            self.toggle_files();
+        } else if key == "changes" {
+            self.open_changes();
         } else if key == "shell" {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = self.spawn_pane("shell", spec, None, None);
@@ -350,6 +360,7 @@ impl eframe::App for ShellApp {
             self.focus_pane = focus;
         }
 
+        self.side_panels(ui);
         let grid_out = self.central(ui, &hidden);
         let kill = grid_out.kill;
         let restart = grid_out.restart;
@@ -371,6 +382,7 @@ impl eframe::App for ShellApp {
             }
         }
         self.sheets(ui.ctx());
+        self.drawers(ui.ctx());
     }
 }
 

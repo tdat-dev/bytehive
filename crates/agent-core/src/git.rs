@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::process::Command;
 
-fn git(cwd: &Path, args: &[&str]) -> Option<String> {
+pub(crate) fn git(cwd: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new("git").arg("-C").arg(cwd).args(args).output().ok()?;
     if !out.status.success() {
         return None;

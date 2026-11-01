@@ -5,13 +5,14 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-use agent_core::git::{branch_diff_text, branch_files, changed_files, checkpoint, current_branch, diff_text, merge_branch, remove_worktree, MergeOutcome};
+use agent_core::git::{branch_diff_text, branch_files, changed_files, checkpoint, current_branch, diff_text, merge_branch, remove_worktree, repo_root, MergeOutcome};
+use crate::diffview::untracked_file;
 use eframe::egui;
-use supervise::diff_file::{parse_diff, DiffFile, HunkKind};
+use supervise::diff_file::{parse_diff, DiffFile};
 use supervise::done_check::{describe_done, describe_secrets, scan_done_diff, scan_secrets, DoneFinding, SecretFinding};
 
 use crate::term_pane::{Pane, WorktreeInfo};
-use crate::theme::{ADD, CTX, DEL, DIM, FAINT};
+use crate::theme::{ADD, DEL, DIM, FAINT};
 
 /// Everything Review shows for one folder, read in one go off the UI thread.
 pub struct ReviewSnapshot {
@@ -25,7 +26,10 @@ pub struct ReviewSnapshot {
 impl ReviewSnapshot {
     /// The pure shaping: findings out of a diff. IO stays in `load_snapshot`.
     pub fn from_parts(branch: Option<String>, changed: Vec<String>, diff: &str) -> ReviewSnapshot {
-        let files = parse_diff(diff);
+        Self::from_files(branch, changed, parse_diff(diff))
+    }
+
+    pub fn from_files(branch: Option<String>, changed: Vec<String>, files: Vec<DiffFile>) -> ReviewSnapshot {
         let done = scan_done_diff(&files);
         let secrets = scan_secrets(&files);
         ReviewSnapshot { branch, changed, files, done, secrets }
@@ -35,8 +39,25 @@ impl ReviewSnapshot {
 pub fn load_snapshot(cwd: &PathBuf) -> ReviewSnapshot {
     let branch = current_branch(cwd);
     let changed = changed_files(cwd);
-    let diff = diff_text(cwd);
-    ReviewSnapshot::from_parts(branch, changed, &diff)
+    let mut files = parse_diff(&diff_text(cwd));
+    let root = repo_root(cwd).map(PathBuf::from).unwrap_or_else(|| cwd.clone());
+    add_untracked(&root, &changed, &mut files);
+    ReviewSnapshot::from_files(branch, changed, files)
+}
+
+/// New files git does not track yet join the diff as all-added, so review
+/// reads them like any change. Big (over 512 KB) or binary files stay out.
+fn add_untracked(root: &Path, changed: &[String], files: &mut Vec<DiffFile>) {
+    for c in changed {
+        if files.iter().any(|f| &f.path == c) {
+            continue;
+        }
+        let path = root.join(c);
+        let small = std::fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= 512 * 1024);
+        if let Some(f) = small.then(|| std::fs::read_to_string(&path).ok()).flatten().and_then(|t| untracked_file(c, &t)) {
+            files.push(f);
+        }
+    }
 }
 
 /// What review reads for a worktree pane: the branch against its base, plus
@@ -58,7 +79,9 @@ pub fn load_worktree_snapshot(w: &WorktreeInfo) -> ReviewSnapshot {
         }
         diff.push_str(&uncommitted);
     }
-    ReviewSnapshot::from_parts(Some(w.branch.clone()), changed, &diff)
+    let mut files = parse_diff(&diff);
+    add_untracked(&wt, &changed, &mut files);
+    ReviewSnapshot::from_files(Some(w.branch.clone()), changed, files)
 }
 
 /// A merge outcome as one plain sentence for the review row.
@@ -85,12 +108,29 @@ pub struct ReviewPanel {
     merge_msg: Option<String>,
     tx: Sender<ReviewMsg>,
     rx: Receiver<ReviewMsg>,
+    /// A file picked to read in the Changes panel; the app takes it.
+    pub open_changes: Option<usize>,
 }
 
 impl ReviewPanel {
     pub fn new() -> Self {
         let (tx, rx) = channel();
-        ReviewPanel { selected: None, snapshot: None, loading: false, checkpoint_msg: None, merge_msg: None, tx, rx }
+        ReviewPanel { selected: None, snapshot: None, loading: false, checkpoint_msg: None, merge_msg: None, tx, rx, open_changes: None }
+    }
+
+    /// The pane under review and its last read diff, for the Changes panel.
+    pub fn current(&self) -> (Option<&str>, Option<&ReviewSnapshot>) {
+        (self.selected.as_deref(), self.snapshot.as_ref())
+    }
+
+    /// Review this pane (the Changes panel follows).
+    pub fn select(&mut self, pane_id: &str) {
+        if self.selected.as_deref() != Some(pane_id) {
+            self.selected = Some(pane_id.to_string());
+            self.snapshot = None;
+            self.checkpoint_msg = None;
+            self.merge_msg = None;
+        }
     }
 
     fn cwd_of(panes: &[Pane], pane_id: &str) -> Option<PathBuf> {
@@ -238,11 +278,16 @@ impl ReviewPanel {
                 .color(if secrets_line.is_empty() { DIM } else { DEL }),
         );
         ui.separator();
+        if !snap.files.is_empty() && ui.button("Open changes").on_hover_text("The full diff, file by file (V marks viewed)").clicked() {
+            self.open_changes = Some(0);
+        }
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for f in &snap.files {
+            for (i, f) in snap.files.iter().enumerate() {
                 ui.horizontal(|ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(&f.path).monospace().strong()).truncate())
-                        .on_hover_text(&f.path);
+                    let name = egui::Label::new(egui::RichText::new(&f.path).monospace().small()).truncate().sense(egui::Sense::click());
+                    if ui.add(name).on_hover_text(format!("{}\nClick to read its diff", f.path)).clicked() {
+                        self.open_changes = Some(i);
+                    }
                     if f.additions > 0 {
                         ui.label(egui::RichText::new(format!("+{}", f.additions)).monospace().small().color(ADD));
                     }
@@ -250,29 +295,6 @@ impl ReviewPanel {
                         ui.label(egui::RichText::new(format!("-{}", f.deletions)).monospace().small().color(DEL));
                     }
                 });
-                if f.binary {
-                    ui.label(egui::RichText::new("(binary)").small().color(FAINT));
-                    continue;
-                }
-                let mut shown = 0;
-                for h in &f.hunks {
-                    for l in &h.lines {
-                        if shown >= 200 {
-                            break;
-                        }
-                        shown += 1;
-                        let (mark, color) = match l.kind {
-                            HunkKind::Add => ("+", ADD),
-                            HunkKind::Del => ("-", DEL),
-                            HunkKind::Ctx => (" ", CTX),
-                        };
-                        ui.label(egui::RichText::new(format!("{mark} {}", l.text)).monospace().small().color(color));
-                    }
-                }
-                if shown >= 200 {
-                    let all: usize = f.hunks.iter().map(|h| h.lines.len()).sum();
-                    ui.label(egui::RichText::new(format!("… first 200 of {all}")).small().color(FAINT));
-                }
             }
             let untracked: Vec<&String> = snap.changed.iter().filter(|c| !snap.files.iter().any(|f| &f.path == *c)).collect();
             if !untracked.is_empty() {

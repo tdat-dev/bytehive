@@ -1,11 +1,17 @@
 //! Maestro native shell: egui UI over the headless agent-core.
 
 mod app;
+mod changes_ui;
 mod color;
 mod commands;
 mod deliver;
+mod diffview;
+mod editor;
+mod files_ui;
+mod filetree;
 mod flow_ui;
 mod glue;
+mod glue_review;
 mod grid;
 mod history_ui;
 mod keys;
