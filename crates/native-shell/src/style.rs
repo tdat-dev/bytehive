@@ -40,6 +40,14 @@ pub fn tint(c: Color32) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 31)
 }
 
+/// A text format with CSS letter-spacing in em: the web app pulled large
+/// type in (-0.02em, -0.03em), which reads lighter than egui's default.
+pub fn tight(font: FontId, color: Color32, em: f32) -> egui::TextFormat {
+    let mut f = egui::TextFormat::simple(font.clone(), color);
+    f.extra_letter_spacing = em * font.size;
+    f
+}
+
 /// Geist at 500, the web app's weight for names, pills and tabs.
 pub fn w500(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("medium".into()))

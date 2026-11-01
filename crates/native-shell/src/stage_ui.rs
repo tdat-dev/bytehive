@@ -201,7 +201,7 @@ impl ShellApp {
                             }
                         }
                         None => {
-                            ui.add(egui::Label::new(RichText::new(title).font(medium(22.0)).color(TEXT)).truncate());
+                            ui.add(egui::Label::new(RichText::new(title).font(medium(22.0)).extra_letter_spacing(-0.44).color(TEXT)).truncate());
                         }
                     }
                     ui.add_space(8.0);

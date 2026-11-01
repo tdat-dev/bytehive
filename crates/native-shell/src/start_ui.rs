@@ -215,10 +215,10 @@ fn body(ui: &mut egui::Ui, home: &mut Home, v: &HomeView, first_run: bool, width
     ui.horizontal(|ui| {
         ui.add(egui::Image::new((logo(ui), Vec2::splat(44.0))));
         ui.add_space(4.0);
-        ui.label(RichText::new("ByteHive").font(medium(22.0)).color(TEXT));
+        ui.label(RichText::new("ByteHive").font(medium(22.0)).extra_letter_spacing(-0.44).color(TEXT));
     });
     ui.add_space(28.0);
-    ui.label(RichText::new(format!("{}.", greeting(v.hour))).font(medium(40.0)).color(TEXT));
+    ui.label(RichText::new(format!("{}.", greeting(v.hour))).font(medium(40.0)).extra_letter_spacing(-1.2).color(TEXT));
     ui.add_space(10.0);
     let needs = !v.waiting.is_empty();
     ui.label(RichText::new(status_sentence(v)).size(17.0).color(if needs { AMBER } else { INK3 }));
