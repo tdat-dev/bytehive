@@ -1,4 +1,4 @@
-// Prune stale Rust incremental-compilation caches out of src-tauri/target.
+// Prune stale Rust incremental-compilation caches out of crates/native-shell/target.
 //
 // Why this exists: cargo writes one incremental cache per (crate, build
 // configuration) as `<crate>-<hash>/`, and it never removes the ones it has
@@ -23,7 +23,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_AGE_DAYS = 7;
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri", "target");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "crates", "native-shell", "target");
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");

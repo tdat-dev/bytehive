@@ -4,7 +4,7 @@
 // The store refuses a manifest with a "key" (it assigns its own id), so the
 // packed copy leaves it out. The unpacked extension keeps it: that is what
 // gives developers the same id in every folder. Maestro's native host allows
-// both ids (see STORE_EXTENSION_ID in src-tauri/src/browser/mod.rs).
+// both ids (see STORE_EXTENSION_ID in crates/browser-hub/src/lib.rs).
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LIMIT = 500;
 const ALLOWLIST = join(dirname(fileURLToPath(import.meta.url)), "file_length_allowlist.json");
-const ROOTS = ["src", "src-tauri/src", "crates"];
+const ROOTS = ["crates", "mcp/src"];
 const EXTS = new Set([".ts", ".rs"]);
 const SKIP = new Set(["node_modules", "target", "dist"]);
 

@@ -22,7 +22,7 @@ impl ShellApp {
                 // Shells report their exe path; show the pane name instead.
                 let boring = t.contains('\\') || t.contains('/') || t.ends_with(".exe");
                 let title = if boring { pane.name.clone() } else { t.chars().take(48).collect() };
-                ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{title} - Maestro Native")));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{title} - Maestro")));
             }
         }
         self.poll_captures();

@@ -1,9 +1,9 @@
-# AGENTS.md — rules for working in Maestro
+# AGENTS.md: rules for working in Maestro
 
 ## File length (hard gate)
 
-No source file may exceed **500 lines** (`src/**/*.ts`, `src-tauri/src/**/*.rs`,
-`crates/*/src/**/*.rs`). A file heading past that is doing more than one job:
+No source file may exceed **500 lines** (`crates/*/src/**/*.rs`,
+`mcp/src/**/*.ts`). A file heading past that is doing more than one job:
 split it by responsibility (one module, one reason to change) instead of
 growing it.
 

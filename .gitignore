@@ -1,7 +1,5 @@
 node_modules/
 dist/
-src-tauri/target/
-src-tauri/gen/
 *.log
 .DS_Store
 
@@ -33,3 +31,5 @@ crates/*/target/
 /HeavyweightFishingHub/
 /dist-supervisor/
 /portfolio-caoxuanminh/
+# What is left of the retired Tauri app on disk (its old build cache).
+/src-tauri/

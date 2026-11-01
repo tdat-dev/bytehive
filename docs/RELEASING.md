@@ -1,78 +1,48 @@
 # Releasing Maestro (auto-update)
 
-Maestro ships with the Tauri updater. An installed app checks
-`https://github.com/tdat-dev/maestro-releases/releases/latest/download/latest.json` on
-launch and, if a newer **signed** build exists, prompts the user to install it.
+Maestro is the native app in `crates/native-shell`. An installed copy checks
+`https://github.com/tdat-dev/maestro-releases/releases/latest/download/latest.json`
+a little after start and every six hours (Settings > System), and when a newer
+**signed** build exists the top bar offers "Update to x.y.z". Installing
+downloads the installer, checks its minisign signature against the key built
+into `crates/native-shell/src/updater.rs`, runs it, and closes Maestro; the
+installer opens it again.
 
-The source repo `tdat-dev/maestro` is **private** (since 2026-09-29). Its releases
-can't be downloaded without a login, so installers and `latest.json` are published
-to the **public** `tdat-dev/maestro-releases` (releases, README and the extension's
-PRIVACY.md only, no code). The Release workflow builds here and publishes there with
-the `RELEASES_TOKEN` secret: a fine-grained token with Contents: read and write on
-`tdat-dev/maestro-releases` only. When it expires, releases fail at "Build and publish
-release"; make a new one and run `gh secret set RELEASES_TOKEN`.
+The source repo `tdat-dev/maestro` is **private**. Installers and `latest.json`
+go to the **public** `tdat-dev/maestro-releases` (releases only, no code).
 
-## One-time setup
+## Moving people off the Tauri app
 
-1. **Signing key** — already generated at `.tauri/maestro_updater.key` (private,
-   gitignored) with its public key baked into `tauri.conf.json`. **Back this file
-   up somewhere safe.** If you lose it, existing installs can never be updated.
-2. **GitHub repo** — create `tdat-dev/maestro` on GitHub and push:
-   ```powershell
-   git remote add origin https://github.com/tdat-dev/maestro.git
-   git push -u origin master
-   ```
-   The updater fetches the manifest and installers without auth, so they are
-   published to the public `tdat-dev/maestro-releases` (see above), not here.
-3. **Install the updater-enabled build once.** The very first `0.1.0` you
-   installed had no updater inside it, so it cannot self-update. Install the new
-   signed `…-setup.exe` (below) once, manually. From then on updates are automatic.
+The Tauri app (0.10.x and earlier) reads the same `latest.json` with the same
+key. The native installer installs where the Tauri app was, under its uninstall
+key `maestro`, and accepts the Tauri updater's `/P` (passive) flag, and every
+Windows key in `latest.json` (`windows-x86_64`, `-nsis`, `-msi`) points at the
+NSIS installer. So the first native release reaches Tauri users through their
+own updater, and they end up with one Maestro.
 
-## Cutting a new version
+## Cutting a release
 
-1. **Bump the version** in all three to the same value (e.g. `0.1.1`):
-   - `package.json` → `version`
-   - `src-tauri/tauri.conf.json` → `version`
-   - `src-tauri/Cargo.toml` → `[package] version`
+1. Bump `version` in `crates/native-shell/Cargo.toml` (and `package.json`).
+2. Add a `## [x.y.z]` section to `CHANGELOG.md`: its text becomes the release
+   notes and what the update button shows.
+3. Commit, then tag and push: `git tag vx.y.z && git push origin vx.y.z`.
 
-2. **Build, signed** (PowerShell, from the project root):
-   ```powershell
-   $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-   $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content ".tauri/maestro_updater.key" -Raw
-   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
-   npm run tauri build
-   ```
-   This produces, under `src-tauri/target/release/bundle/nsis/`:
-   - `maestro_<ver>_x64-setup.exe` — the installer
-   - `maestro_<ver>_x64-setup.exe.sig` — its signature (a short base64 string)
+The **Release** workflow (`.github/workflows/release.yml`) then:
 
-3. **Write `latest.json`** (paste the entire contents of the `.sig` file into
-   `signature`):
-   ```json
-   {
-     "version": "0.1.1",
-     "notes": "What changed in this release",
-     "pub_date": "2026-06-05T00:00:00Z",
-     "platforms": {
-       "windows-x86_64": {
-         "signature": "<paste contents of maestro_0.1.1_x64-setup.exe.sig>",
-         "url": "https://github.com/tdat-dev/maestro/releases/download/v0.1.1/maestro_0.1.1_x64-setup.exe"
-       }
-     }
-   }
-   ```
+- checks the tag matches the crate's version,
+- builds the installer (`tools/build_installer.ps1`: `cargo build --release`
+  and NSIS with `crates/native-shell/installer/maestro.nsi`),
+- signs it with `npx @tauri-apps/cli signer sign` (secrets
+  `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`),
+- writes `latest.json` (`tools/latest_json.mjs`),
+- publishes the installer, its `.sig` and `latest.json` to
+  tdat-dev/maestro-releases with `RELEASES_TOKEN`.
 
-4. **Publish a GitHub Release** tagged `v0.1.1` and upload **two** assets:
-   - `maestro_0.1.1_x64-setup.exe`
-   - `latest.json`
+## Building the installer by hand
 
-   Mark it as the **latest** release. Done — open Maestro on any install and it
-   will offer the update.
+```powershell
+npm run installer   # crates\native-shell\target\release\bundle\Maestro_<v>_x64-setup.exe
+```
 
-## Easier long-term: GitHub Actions
-
-Instead of the manual steps above, the `tauri-apps/tauri-action` GitHub Action
-builds, signs, generates `latest.json`, and publishes the release automatically
-on every tag push. Store the private key as the repo secret
-`TAURI_SIGNING_PRIVATE_KEY` (and an empty `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
-Ask and I'll wire the workflow file.
+Needs NSIS 3 (`makensis` on PATH, in Program Files, or the copy Tauri left in
+`%LOCALAPPDATA%\tauri\NSIS`).

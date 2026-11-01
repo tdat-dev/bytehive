@@ -86,7 +86,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Maestro Native (prototype)",
+        "Maestro",
         options,
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);

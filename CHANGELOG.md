@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - unreleased
+
+### Changed
+
+- **Maestro is a native app now.** The Tauri and web app are gone; Maestro
+  runs as one Rust program with its own terminals. It starts faster, uses far
+  less memory, and keeps working while minimized or in the tray. Updating from
+  0.10.x installs it in the same place, and your projects, settings, project
+  memory, board, recordings, browser profiles and dashboard password carry over.
+
+### Added
+
+- **Queue, stage and Board** as in the approved design: who needs you first,
+  one agent large, agents by state, and the plan board where you can add,
+  edit, delete and approve cards and give one to an agent.
+- **Review**: a GitHub-style diff, Merge (checks first that it goes cleanly,
+  commits what is left, cleans the worktree and branch away), Send back with
+  a note, Discard branch. A folder of repos is reviewed repo by repo.
+- **History** per task: what it cost, how long it ran, Replay session, run it
+  again every day, and a timeline of what happened.
+- **Replays**: record an agent's terminal and play it back with seek and speed.
+- **Plan limits** at the foot of the Queue for Claude and Codex, and a warning
+  in New task when the chosen CLI is nearly out.
+- **Windows notifications** when an agent needs you, finishes or runs out of
+  usage; clicking one opens that agent.
+- **Hide to tray**, the Director, hand-offs between CLIs, project memory, the
+  phone dashboard, Maestro for Chrome, schedules, all in the native app.
+- **Terminal**: select and copy, right-click menu, drop files to type their
+  paths, paste pictures, find in output (Ctrl+Shift+F).
+
 ## [0.10.10] - 2026-10-26
 
 ### Added
