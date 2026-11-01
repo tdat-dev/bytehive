@@ -32,6 +32,10 @@ pub struct Extras {
     pub home: bool,
     /// Projects folded in the left panel.
     pub folded: std::collections::HashSet<String>,
+    /// The start screen's composer.
+    pub start: crate::start_ui::Home,
+    /// CLIs found on PATH, looked up once.
+    pub clis: Option<Vec<crate::sessions_ui::Cli>>,
 }
 
 impl ShellApp {

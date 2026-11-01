@@ -98,27 +98,72 @@ impl ShellApp {
             }
             return crate::grid::show_grid(self, ui, hidden);
         }
-        let mut act = None;
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(crate::theme::BG)).show(ui, |ui| {
-            act = show_start(ui, &self.projects.recent, &self.prefs.crews);
-        });
-        if act.is_some() {
-            self.extras.home = false;
-        }
-        match act {
-            Some(StartAction::Open(dir)) => self.apply_project(crate::projects_ui::ProjectAction::Open(dir)),
-            Some(StartAction::Crew(dir, crew)) => {
-                self.apply_project(crate::projects_ui::ProjectAction::Open(dir.clone()));
-                self.new_task.open_with(&dir, Some(crew.count), &self.prefs);
-                let f = &mut self.new_task.form;
-                f.cli = crew.cli;
-                f.worktree = crew.worktree;
-                f.perm = crew.perm;
-                f.flow = crew.flow;
-            }
-            None => {}
-        }
+        self.home_central(ui);
         GridOut::default()
+    }
+
+    /// The start screen: projects, who waits on you, the composer.
+    fn home_central(&mut self, ui: &mut egui::Ui) {
+        use crate::start_ui::{HomeView, ProjectCard};
+        use supervise::task_state::TaskState;
+        let now = crate::app::now_ms();
+        let mut dirs: Vec<String> = self.projects.dirs.clone();
+        for d in &self.projects.recent {
+            if !dirs.iter().any(|x| x.eq_ignore_ascii_case(d)) {
+                dirs.push(d.clone());
+            }
+        }
+        let states: Vec<(String, TaskState)> = self.panes.iter().filter(|p| p.cli.is_some()).map(|p| (crate::projects::pane_home(p), crate::states::pane_status(p, now, None).state)).collect();
+        let projects: Vec<ProjectCard> = dirs
+            .into_iter()
+            .map(|dir| {
+                let mine: Vec<&TaskState> = states.iter().filter(|(h, _)| self.projects.owner(h).is_some_and(|o| o.eq_ignore_ascii_case(&dir))).map(|(_, s)| s).collect();
+                let needs = mine.iter().filter(|s| matches!(s, TaskState::Needs | TaskState::Blocked)).count();
+                ProjectCard { agents: mine.len(), needs, dir }
+            })
+            .collect();
+        let waiting: Vec<crate::start_ui::Waiting> = self
+            .panes
+            .iter()
+            .filter_map(|p| {
+                let st = crate::states::pane_status(p, now, None);
+                (p.cli.is_some() && st.state == TaskState::Needs).then(|| {
+                    let home = crate::projects::pane_home(p);
+                    let proj = crate::projects::project_name(self.projects.owner(&home).unwrap_or(&home));
+                    let what = st.ask.map(|a| a.prompt).unwrap_or_else(|| "Needs you".into());
+                    (p.id.clone(), p.name.clone(), proj, what)
+                })
+            })
+            .collect();
+        let count = |s: TaskState| states.iter().filter(|(_, x)| *x == s).count();
+        let installed = self.extras.clis.get_or_insert_with(crate::newtask_ui::installed_clis).clone();
+        let room = self.extras.plan.room_note(self.extras.start.cli, now as i64);
+        let hour = chrono::Timelike::hour(&chrono::Local::now());
+        let view = HomeView { projects: &projects, waiting: &waiting, working: count(TaskState::Working), review: count(TaskState::Review), installed: &installed, room, hour };
+        let mut act = None;
+        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
+            act = show_start(ui, &mut self.extras.start, &view);
+        });
+        let Some(act) = act else { return };
+        self.extras.home = false;
+        match act {
+            StartAction::Open(dir) => self.apply_project(crate::projects_ui::ProjectAction::Open(dir)),
+            StartAction::Shell => self.run_command("shell"),
+            StartAction::Show(id) => {
+                self.stage = Some(id.clone());
+                self.focus_pane = Some(id);
+            }
+            StartAction::Start(task) => match self.start_task(&task) {
+                Ok(()) => {
+                    self.projects.open(&task.dir);
+                    self.save_projects();
+                }
+                Err(e) => {
+                    self.extras.home = true;
+                    self.notice = Some(e);
+                }
+            },
+        }
     }
 
     /// Before the project filter changes: remember what was on stage.

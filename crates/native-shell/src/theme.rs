@@ -4,9 +4,8 @@
 //! you, red stop/deny). Every UI module reads these; nothing hardcodes a
 //! color, radius, or size.
 //!
-//! Fonts (also mirroring the web app, which loads Geist + Geist Mono):
-//! install_fonts() embeds the vendored TTFs (assets/fonts) and makes them
-//! the Proportional/Monospace families plus named weights for strong text.
+//! Fonts are the ones the web app really showed on Windows (Segoe UI,
+//! Cascadia Mono); see install_fonts().
 //!
 //! Some palette entries are reserved for surfaces still being ported
 //! (Native 2/3); they mirror tokens.css 1:1 on purpose.
@@ -97,65 +96,58 @@ pub fn state_word(state: TaskState) -> &'static str {
     }
 }
 
-fn font(name: &str, bytes: &'static [u8]) -> (String, FontData) {
-    (name.to_string(), FontData::from_static(bytes))
-}
+/// Windows' own fonts, as (name, file); what the web app really drew with.
+const SYSTEM: [(&str, &str); 6] = [
+    ("Segoe UI", "segoeui.ttf"),
+    ("Segoe UI Semibold", "seguisb.ttf"),
+    ("Segoe UI Bold", "segoeuib.ttf"),
+    ("Segoe UI Symbol", "seguisym.ttf"),
+    ("Cascadia Mono", "CascadiaMono.ttf"),
+    ("Consolas", "consola.ttf"),
+];
 
-/// Load the Windows fonts that stand in for glyphs Geist lacks, as the web
-/// app's `--sans` / `--mono` stacks did; (sans fallbacks, mono fallbacks),
-/// only those found on this machine.
-fn system_fallbacks(fonts: &mut FontDefinitions) -> (Vec<String>, Vec<String>) {
+/// Read the Windows fonts that are on this machine; their names.
+fn system_fonts(fonts: &mut FontDefinitions) -> Vec<&'static str> {
     let dir = std::path::PathBuf::from(std::env::var("WINDIR").unwrap_or_else(|_| r"C:\Windows".into())).join("Fonts");
-    let mut load = |name: &str, file: &str| -> Option<String> {
-        if !fonts.font_data.contains_key(name) {
+    SYSTEM
+        .iter()
+        .filter_map(|(name, file)| {
             let bytes = std::fs::read(dir.join(file)).ok()?;
             fonts.font_data.insert(name.to_string(), FontData::from_owned(bytes).into());
-        }
-        Some(name.to_string())
-    };
-    let mono = [("Cascadia Mono", "CascadiaMono.ttf"), ("Consolas", "consola.ttf"), ("Segoe UI Symbol", "seguisym.ttf")];
-    let sans = [("Segoe UI", "segoeui.ttf"), ("Segoe UI Symbol", "seguisym.ttf")];
-    let mono: Vec<String> = mono.iter().filter_map(|(n, f)| load(n, f)).collect();
-    let sans: Vec<String> = sans.iter().filter_map(|(n, f)| load(n, f)).collect();
-    (sans, mono)
+            Some(*name)
+        })
+        .collect()
 }
 
-/// Make Geist (+ Geist Mono) the UI fonts and match the web app's 13.5px
-/// body. Call once at startup; egui keeps the fonts after this returns.
+/// The fonts the web app showed on Windows. Its stacks named Geist first,
+/// but never shipped it, so WebView2 fell through to the system: Segoe UI
+/// for text (600 is Segoe UI Semibold), Cascadia Mono for the terminal and
+/// code, Segoe UI Symbol for what those lack (Claude's ⏺ ⎿ ✻, ✓ ⚠). The
+/// same here, read from Windows at startup; the bundled Geist only stands
+/// in where those fonts are missing. Body text is 13.5px. Call once.
 pub fn install_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
-    let files = [
-        font("Geist-Regular", include_bytes!("../assets/fonts/Geist-Regular.ttf")),
-        font("Geist-Medium", include_bytes!("../assets/fonts/Geist-Medium.ttf")),
-        font("Geist-Bold", include_bytes!("../assets/fonts/Geist-Bold.ttf")),
-        font("GeistMono-Regular", include_bytes!("../assets/fonts/GeistMono-Regular.ttf")),
-        font("GeistMono-Medium", include_bytes!("../assets/fonts/GeistMono-Medium.ttf")),
-    ];
-    for (name, data) in files {
-        fonts.font_data.insert(name, data.into());
-    }
-    // The fallbacks the web app got from the browser, in its order: what
-    // Geist lacks (box drawing, Claude's ⏺ ⎿ ✻, ✓ ⚠) comes from Windows'
-    // own fonts, read at startup rather than shipped.
-    let (sans_back, mono_back) = system_fallbacks(&mut fonts);
     let egui_back: Vec<String> = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
-    let chain = |first: &[&str], back: &[String]| -> Vec<String> {
-        let mut v: Vec<String> = first.iter().map(|s| s.to_string()).collect();
-        v.extend(back.iter().cloned());
+    fonts.font_data.insert("Geist-Regular".into(), FontData::from_static(include_bytes!("../assets/fonts/Geist-Regular.ttf")).into());
+    fonts.font_data.insert("GeistMono-Regular".into(), FontData::from_static(include_bytes!("../assets/fonts/GeistMono-Regular.ttf")).into());
+    let have = system_fonts(&mut fonts);
+    let chain = |names: &[&str]| -> Vec<String> {
+        let mut v: Vec<String> = names.iter().filter(|n| n.starts_with("Geist") || have.contains(n)).map(|s| s.to_string()).collect();
         v.extend(egui_back.iter().cloned());
         v
     };
-    fonts.families.insert(FontFamily::Proportional, chain(&["Geist-Regular"], &sans_back));
-    fonts.families.insert(FontFamily::Monospace, chain(&["GeistMono-Regular"], &mono_back));
-    fonts.families.insert(FontFamily::Name("semibold".into()), chain(&["Geist-Medium", "Geist-Regular"], &sans_back));
-    fonts.families.insert(FontFamily::Name("bold".into()), chain(&["Geist-Bold", "Geist-Regular"], &sans_back));
-    fonts.families.insert(FontFamily::Name("monomedium".into()), chain(&["GeistMono-Medium", "GeistMono-Regular"], &mono_back));
+    let sans = chain(&["Segoe UI", "Segoe UI Symbol", "Geist-Regular"]);
+    let semi = chain(&["Segoe UI Semibold", "Segoe UI", "Segoe UI Symbol", "Geist-Regular"]);
+    let bold = chain(&["Segoe UI Bold", "Segoe UI", "Segoe UI Symbol", "Geist-Regular"]);
+    let mono = chain(&["Cascadia Mono", "Consolas", "Segoe UI Symbol", "GeistMono-Regular"]);
+    fonts.families.insert(FontFamily::Proportional, sans);
+    fonts.families.insert(FontFamily::Monospace, mono.clone());
+    fonts.families.insert(FontFamily::Name("semibold".into()), semi);
+    fonts.families.insert(FontFamily::Name("bold".into()), bold);
+    fonts.families.insert(FontFamily::Name("monomedium".into()), mono);
     ctx.set_fonts(fonts);
     ctx.all_styles_mut(|style| {
-        style.text_styles.insert(
-            egui::TextStyle::Body,
-            egui::FontId::new(UI_BASE, FontFamily::Proportional),
-        );
+        style.text_styles.insert(egui::TextStyle::Body, egui::FontId::new(UI_BASE, FontFamily::Proportional));
     });
 }
 

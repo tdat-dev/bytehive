@@ -168,6 +168,8 @@ impl ShellApp {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = app.spawn_pane("shell", spec, None, None);
         }
+        // BYTEHIVE_HOME=1 opens on the start screen.
+        app.extras.home = std::env::var("BYTEHIVE_HOME").is_ok();
         if std::env::var("BYTEHIVE_STAGE").is_ok() {
             if let Some(p) = app.panes.first() {
                 app.stage = Some(p.id.clone());

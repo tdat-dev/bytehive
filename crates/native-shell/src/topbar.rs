@@ -88,8 +88,8 @@ impl ShellApp {
                 }
                 ui.add_space(8.0);
                 let mut job = egui::text::LayoutJob::default();
-                job.append(&lead, 0.0, egui::TextFormat::simple(FontId::new(24.0, egui::FontFamily::Name("bold".into())), TEXT));
-                job.append(&tail, 0.0, egui::TextFormat::simple(medium(24.0), INK3));
+                job.append(&lead, 0.0, egui::TextFormat::simple(medium(24.0), TEXT));
+                job.append(&tail, 0.0, egui::TextFormat::simple(FontId::proportional(24.0), INK3));
                 ui.add(egui::Label::new(job).truncate()).on_hover_text(summary);
             });
         });

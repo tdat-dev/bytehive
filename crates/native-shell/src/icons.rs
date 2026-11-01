@@ -15,6 +15,7 @@ pub enum Icon {
     History,
     Gear,
     Book,
+    Folder,
     Pencil,
     Dots,
     Close,
@@ -100,6 +101,9 @@ pub fn paint(p: &Painter, at: Rect, icon: Icon, color: Color32, width: f32) {
         Icon::Book => {
             pen.closed(&[(5.0, 4.5), (17.5, 4.5), (19.0, 6.0), (19.0, 20.5), (6.5, 20.5), (5.0, 19.0)]);
             pen.line(&[(9.0, 4.5), (9.0, 20.5)]);
+        }
+        Icon::Folder => {
+            pen.closed(&[(2.5, 6.0), (3.5, 5.0), (9.0, 5.0), (11.0, 7.0), (20.5, 7.0), (21.5, 8.0), (21.5, 18.5), (20.5, 19.5), (3.5, 19.5), (2.5, 18.5)]);
         }
         Icon::Pencil => {
             pen.closed(&[(16.0, 3.5), (20.5, 8.0), (8.5, 20.0), (4.0, 20.0), (4.0, 15.5)]);

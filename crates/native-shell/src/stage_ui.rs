@@ -49,7 +49,7 @@ fn pill(ui: &mut egui::Ui, state: TaskState, stopped: bool) {
         _ => (DIM, "Idle"),
     };
     let fill = if matches!(state, TaskState::Working | TaskState::Review | TaskState::Needs | TaskState::Blocked) && !stopped { tint(c) } else { Color32::from_white_alpha(15) };
-    let g = ui.painter().layout_no_wrap(word.into(), medium(12.5), c);
+    let g = ui.painter().layout_no_wrap(word.into(), FontId::proportional(12.5), c);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(12.0 + 8.0 + 7.0 + g.size().x + 12.0, 28.0), egui::Sense::hover());
     let p = ui.painter();
     p.rect_filled(rect, 14.0, fill);
@@ -69,7 +69,7 @@ fn tabs(ui: &mut egui::Ui, items: &[(&str, bool)]) -> Option<usize> {
     egui::Frame::new().fill(Color32::from_white_alpha(13)).corner_radius(999.0).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         for (i, (label, on)) in items.iter().enumerate() {
-            let g = ui.painter().layout_no_wrap(label.to_string(), medium(12.5), DIM);
+            let g = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(12.5), DIM);
             let (rect, r) = ui.allocate_exact_size(Vec2::new(g.size().x + 24.0, 26.0), egui::Sense::click());
             let fill = if *on { Color32::from_white_alpha(31) } else if r.hovered() { Color32::from_white_alpha(15) } else { Color32::TRANSPARENT };
             ui.painter().rect_filled(rect, 13.0, fill);
@@ -201,7 +201,7 @@ impl ShellApp {
                             }
                         }
                         None => {
-                            ui.add(egui::Label::new(RichText::new(title).font(FontId::new(22.0, egui::FontFamily::Name("bold".into()))).color(TEXT)).truncate());
+                            ui.add(egui::Label::new(RichText::new(title).font(medium(22.0)).color(TEXT)).truncate());
                         }
                     }
                     ui.add_space(8.0);
