@@ -247,11 +247,23 @@ impl Pane {
     }
 }
 
+/// Line height over the font's own, as the web app's terminal had it
+/// (xterm's lineHeight 1.2).
+pub const LINE_HEIGHT: f32 = 1.2;
+
+/// One cell's (width, height) in `font`, from one measured run of glyphs.
+pub fn cell_metrics(painter: &egui::Painter, font: &FontId) -> (f32, f32) {
+    let g = painter.layout_no_wrap("MMMMMMMMMM".to_string(), font.clone(), TEXT);
+    (g.rect.width() / 10.0, (g.rect.height() * LINE_HEIGHT).round())
+}
+
 /// Paint an emulator grid and its cursor into `rect`: the live panes and the
 /// replay player draw the same way.
 pub fn paint_grid<T: EventListener>(painter: &egui::Painter, term: &Term<T>, rect: Rect, size: (usize, usize), font: &FontId, cell: (f32, f32)) {
     let (cols, rows) = size;
     let (cell_w, cell_h) = cell;
+    // Glyphs sit in the middle of the taller line.
+    let lift = ((cell_h - cell_h / LINE_HEIGHT) / 2.0).round();
     let content = term.renderable_content();
     for indexed in content.display_iter {
         let row = indexed.point.line.0 + content.display_offset as i32;
@@ -278,7 +290,7 @@ pub fn paint_grid<T: EventListener>(painter: &egui::Painter, term: &Term<T>, rec
             painter.rect_filled(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, c32(bg));
         }
         if cell.c != ' ' {
-            painter.text(min, egui::Align2::LEFT_TOP, cell.c.to_string(), font.clone(), c32(fg));
+            painter.text(min + Vec2::new(0.0, lift), egui::Align2::LEFT_TOP, cell.c.to_string(), font.clone(), c32(fg));
         }
     }
 

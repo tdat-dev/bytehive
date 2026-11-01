@@ -101,6 +101,25 @@ fn font(name: &str, bytes: &'static [u8]) -> (String, FontData) {
     (name.to_string(), FontData::from_static(bytes))
 }
 
+/// Load the Windows fonts that stand in for glyphs Geist lacks, as the web
+/// app's `--sans` / `--mono` stacks did; (sans fallbacks, mono fallbacks),
+/// only those found on this machine.
+fn system_fallbacks(fonts: &mut FontDefinitions) -> (Vec<String>, Vec<String>) {
+    let dir = std::path::PathBuf::from(std::env::var("WINDIR").unwrap_or_else(|_| r"C:\Windows".into())).join("Fonts");
+    let mut load = |name: &str, file: &str| -> Option<String> {
+        if !fonts.font_data.contains_key(name) {
+            let bytes = std::fs::read(dir.join(file)).ok()?;
+            fonts.font_data.insert(name.to_string(), FontData::from_owned(bytes).into());
+        }
+        Some(name.to_string())
+    };
+    let mono = [("Cascadia Mono", "CascadiaMono.ttf"), ("Consolas", "consola.ttf"), ("Segoe UI Symbol", "seguisym.ttf")];
+    let sans = [("Segoe UI", "segoeui.ttf"), ("Segoe UI Symbol", "seguisym.ttf")];
+    let mono: Vec<String> = mono.iter().filter_map(|(n, f)| load(n, f)).collect();
+    let sans: Vec<String> = sans.iter().filter_map(|(n, f)| load(n, f)).collect();
+    (sans, mono)
+}
+
 /// Make Geist (+ Geist Mono) the UI fonts and match the web app's 13.5px
 /// body. Call once at startup; egui keeps the fonts after this returns.
 pub fn install_fonts(ctx: &egui::Context) {
@@ -115,18 +134,22 @@ pub fn install_fonts(ctx: &egui::Context) {
     for (name, data) in files {
         fonts.font_data.insert(name, data.into());
     }
-    fonts.families.insert(FontFamily::Proportional, vec!["Geist-Regular".to_string()]);
-    fonts
-        .families
-        .insert(FontFamily::Monospace, vec!["GeistMono-Regular".to_string()]);
-    fonts.families.insert(
-        FontFamily::Name("semibold".into()),
-        vec!["Geist-Medium".to_string(), "Geist-Regular".to_string()],
-    );
-    fonts.families.insert(
-        FontFamily::Name("bold".into()),
-        vec!["Geist-Bold".to_string(), "Geist-Regular".to_string()],
-    );
+    // The fallbacks the web app got from the browser, in its order: what
+    // Geist lacks (box drawing, Claude's ⏺ ⎿ ✻, ✓ ⚠) comes from Windows'
+    // own fonts, read at startup rather than shipped.
+    let (sans_back, mono_back) = system_fallbacks(&mut fonts);
+    let egui_back: Vec<String> = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let chain = |first: &[&str], back: &[String]| -> Vec<String> {
+        let mut v: Vec<String> = first.iter().map(|s| s.to_string()).collect();
+        v.extend(back.iter().cloned());
+        v.extend(egui_back.iter().cloned());
+        v
+    };
+    fonts.families.insert(FontFamily::Proportional, chain(&["Geist-Regular"], &sans_back));
+    fonts.families.insert(FontFamily::Monospace, chain(&["GeistMono-Regular"], &mono_back));
+    fonts.families.insert(FontFamily::Name("semibold".into()), chain(&["Geist-Medium", "Geist-Regular"], &sans_back));
+    fonts.families.insert(FontFamily::Name("bold".into()), chain(&["Geist-Bold", "Geist-Regular"], &sans_back));
+    fonts.families.insert(FontFamily::Name("monomedium".into()), chain(&["GeistMono-Medium", "GeistMono-Regular"], &mono_back));
     ctx.set_fonts(fonts);
     ctx.all_styles_mut(|style| {
         style.text_styles.insert(

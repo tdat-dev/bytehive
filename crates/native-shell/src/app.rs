@@ -300,8 +300,7 @@ impl eframe::App for ShellApp {
         use supervise::task_state::TaskState as T;
         let counts = (count(&[T::Needs, T::Blocked]), count(&[T::Review]), count(&[T::Working]));
         let order: Vec<String> = rows.iter().map(|r| r.pane_id.clone()).collect();
-        let top = egui::Frame::NONE.inner_margin(egui::Margin { left: 0, right: 0, top: 20, bottom: 16 });
-        egui::Panel::top("bar").frame(top).show_separator_line(false).show(ui, |ui| self.top_bar(ui, counts));
+        egui::Panel::top("bar").exact_size(68.0).frame(egui::Frame::NONE).show_separator_line(false).show(ui, |ui| self.top_bar(ui, counts));
         self.dock(ui);
         if !self.projects.dirs.is_empty() || !self.panes.is_empty() {
             self.inbox_panel(ui, &rows, &hidden);
@@ -332,6 +331,7 @@ impl eframe::App for ShellApp {
         self.sheets(ui.ctx());
         self.extra_sheets(ui.ctx());
         self.drawers(ui.ctx());
+        crate::chrome::resize_edges(ui.ctx());
     }
 }
 

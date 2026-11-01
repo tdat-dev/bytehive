@@ -139,8 +139,7 @@ impl ReplaySheet {
     fn player_ui(&mut self, ui: &mut egui::Ui, font: &FontId, screen_h: f32) {
         let Some(p) = self.player.as_mut() else { return };
         let (cell_w, cell_h) = {
-            let g = ui.painter().layout_no_wrap("MMMMMMMMMM".to_string(), font.clone(), TEXT);
-            (g.rect.width() / 10.0, g.rect.height())
+            crate::term_pane::cell_metrics(ui.painter(), &font)
         };
         let size = egui::vec2(ui.available_width(), (screen_h - 260.0).clamp(200.0, 560.0));
         let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());

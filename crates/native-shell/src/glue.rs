@@ -89,7 +89,7 @@ impl ShellApp {
 
     /// The grid, or the start screen while no project is open.
     pub(crate) fn central(&mut self, ui: &mut egui::Ui, hidden: &std::collections::HashSet<String>, order: &[String]) -> GridOut {
-        if !self.projects.dirs.is_empty() || !self.panes.is_empty() {
+        if !self.extras.home && (!self.projects.dirs.is_empty() || !self.panes.is_empty()) {
             if self.board.open {
                 return self.board_central(ui, hidden);
             }
@@ -102,6 +102,9 @@ impl ShellApp {
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(crate::theme::BG)).show(ui, |ui| {
             act = show_start(ui, &self.projects.recent, &self.prefs.crews);
         });
+        if act.is_some() {
+            self.extras.home = false;
+        }
         match act {
             Some(StartAction::Open(dir)) => self.apply_project(crate::projects_ui::ProjectAction::Open(dir)),
             Some(StartAction::Crew(dir, crew)) => {

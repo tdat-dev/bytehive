@@ -13,7 +13,7 @@ use chrono::{Local, TimeZone};
 use eframe::egui::{self, Color32, RichText};
 
 use crate::sessions_ui::Cli;
-use crate::theme::{ADD, AMBER, DEL, INK3, TEXT};
+use crate::theme::{AMBER, DEL, DIM, INK3, TEXT};
 
 const FIRST: Duration = Duration::from_secs(5);
 const EVERY: Duration = Duration::from_secs(120);
@@ -197,22 +197,27 @@ impl PlanWatch {
             ui.add_space(10.0);
             ui.label(RichText::new("Claude's sign-in renews the next time an agent runs; its limits show then.").size(11.5).color(INK3));
         }
+        let mut first = true;
         for src in [&self.claude, &self.codex] {
             let Some(u) = src.usage.as_ref().filter(|u| !all_reset(u, now)) else { continue };
             let rows = plan_rows(u, now);
             if rows.is_empty() {
                 continue;
             }
-            ui.add_space(10.0);
+            if !first {
+                ui.add_space(6.0);
+                let (line, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+                ui.painter().rect_filled(line, 0.0, Color32::from_white_alpha(14));
+            }
+            first = false;
+            ui.add_space(8.0);
             let plan = u.plan.as_deref().map(|p| format!("{}{}", p[..1].to_uppercase(), &p[1..])).unwrap_or_else(|| "plan".into());
-            let stale = u.as_of_ms.filter(|at| now - at > 10 * 60_000).or(if src.problem.is_some() { Some(now) } else { None });
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{} {plan} limits", u.provider)).size(12.0).strong().color(TEXT));
-                if let Some(at) = stale {
-                    let when = Local.timestamp_millis_opt(at).single().map(|t| t.format("%b %-d, %H:%M").to_string()).unwrap_or_default();
-                    ui.label(RichText::new(format!("as of {when}")).size(11.0).color(INK3)).on_hover_text(src.problem.clone().unwrap_or_else(|| format!("What {} was told on its last request", u.provider)));
-                }
-            });
+            let at = u.as_of_ms.unwrap_or(now);
+            let when = Local.timestamp_millis_opt(at).single().map(|t| t.format("%b %-d, %I:%M %p").to_string()).unwrap_or_default();
+            let mut job = egui::text::LayoutJob::default();
+            job.append(&format!("{} {plan} limits", u.provider), 0.0, egui::TextFormat::simple(crate::style::medium(11.5), INK3));
+            job.append(&format!("  as of {when}"), 0.0, egui::TextFormat::simple(egui::FontId::proportional(11.5), INK3));
+            ui.label(job).on_hover_text(src.problem.clone().unwrap_or_else(|| format!("What {} was told on its last request", u.provider)));
             for r in rows {
                 meter_row(ui, &r);
             }
@@ -267,23 +272,29 @@ impl PlanWatch {
 
 fn meter_row(ui: &mut egui::Ui, r: &PlanRow) {
     let color = match r.level {
-        Level::Ok => ADD,
+        Level::Ok => DIM,
         Level::High => AMBER,
         Level::Full => DEL,
     };
-    ui.horizontal(|ui| {
-        ui.allocate_ui_with_layout(egui::vec2(86.0, 16.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-            ui.set_min_width(86.0);
-            ui.label(RichText::new(&r.label).size(11.5).color(INK3));
+    // Label left, percent right, a thin bar under them, when it resets.
+    let ink = if r.level == Level::Ok { TEXT } else { color };
+    let fill_c = if r.level == Level::Ok { DIM } else { color };
+    ui.add_space(4.0);
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 5.0;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(&r.label).size(12.5).color(DIM));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(RichText::new(format!("{}%", r.percent)).font(egui::FontId::new(12.0, egui::FontFamily::Name("monomedium".into()))).color(ink));
+            });
         });
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(96.0, 6.0), egui::Sense::hover());
-        ui.painter().rect_filled(rect, 3.0, Color32::from_white_alpha(18));
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 2.0, Color32::from_white_alpha(20));
         let mut fill = rect;
-        fill.set_width(rect.width() * (r.percent.min(100) as f32 / 100.0));
-        ui.painter().rect_filled(fill, 3.0, color);
-        ui.label(RichText::new(format!("{}%", r.percent)).size(11.5).monospace().color(TEXT));
+        fill.set_width((rect.width() * (r.percent.min(100) as f32 / 100.0)).max(2.0));
+        ui.painter().rect_filled(fill, 2.0, fill_c);
         if !r.resets.is_empty() {
-            ui.label(RichText::new(format!("resets {}", r.resets)).size(11.0).color(INK3));
+            ui.label(RichText::new(format!("resets {}", r.resets)).size(11.5).color(INK3));
         }
     })
     .response

@@ -7,7 +7,6 @@
 
 use eframe::egui::{self, Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle};
 
-use crate::sessions_ui::Cli;
 use crate::theme::{BG, DIM, INK3, SURFACE, TEXT};
 
 /// --panel: the floating panels (queue, stage, columns).
@@ -18,18 +17,22 @@ pub const RAISE: Color32 = SURFACE;
 pub const LINE_SOFT: Color32 = Color32::from_rgba_premultiplied(15, 15, 15, 15);
 pub const LINE: Color32 = Color32::from_rgba_premultiplied(23, 23, 23, 23);
 /// The space around the panels and above the dock.
-pub const GUTTER: f32 = 26.0;
+pub const GUTTER: f32 = 16.0;
 pub const DOCK_H: f32 = 84.0;
 
-/// The avatar color of an agent's CLI (the design's CLIS hues).
-pub fn cli_hue(cli: Option<Cli>) -> Color32 {
-    match cli {
-        Some(Cli::Claude) => Color32::from_rgb(236, 166, 118),
-        Some(Cli::Codex) => Color32::from_rgb(143, 211, 160),
-        Some(Cli::Muse) => Color32::from_rgb(148, 173, 235),
-        Some(Cli::Opencode) => Color32::from_rgb(216, 174, 219),
-        None => Color32::from_rgb(140, 140, 150),
-    }
+/// A round icon button (.ibtn): `size` square, the icon in ink-3, a white
+/// 6% wash on hover; `danger` turns the hover red (remove).
+pub fn icon_btn(ui: &mut egui::Ui, icon: crate::icons::Icon, size: f32, on: bool, danger: bool) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    let hot = r.hovered() || on;
+    let (fill, ink) = match (hot, danger && r.hovered()) {
+        (_, true) => (Color32::from_rgba_unmultiplied(242, 118, 107, 41), crate::theme::DEL),
+        (true, _) => (Color32::from_white_alpha(if on { 26 } else { 15 }), TEXT),
+        _ => (Color32::TRANSPARENT, INK3),
+    };
+    ui.painter().rect_filled(rect, size / 2.0, fill);
+    crate::icons::paint_in(ui.painter(), rect, 15.0, icon, ink, 1.6);
+    r
 }
 
 /// A state's tint for pills and rows: the color at 12%.

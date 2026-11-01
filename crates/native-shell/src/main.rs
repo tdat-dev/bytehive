@@ -6,8 +6,11 @@ mod browser_live;
 mod browser_prefs;
 mod browser_ui;
 mod changes_ui;
+mod chrome;
 mod color;
 mod commands;
+mod face;
+mod icons;
 mod deliver;
 mod diffview;
 mod dock;
@@ -86,7 +89,7 @@ fn main() -> eframe::Result<()> {
     }
     projects::adopt_old_home();
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]).with_icon(tray::window_icon()),
+        viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]).with_min_inner_size([900.0, 560.0]).with_decorations(false).with_icon(tray::window_icon()),
         ..Default::default()
     };
     eframe::run_native(

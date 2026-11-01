@@ -27,8 +27,11 @@ pub struct Extras {
     pub view: crate::dock::View,
     pub stage: crate::stage_ui::StageState,
     pub pending_hist: Option<crate::history_task::HistAction>,
-    pub logo: Option<eframe::egui::TextureHandle>,
     pub dock_w: f32,
+    /// The house button: the start screen over the stage.
+    pub home: bool,
+    /// Projects folded in the left panel.
+    pub folded: std::collections::HashSet<String>,
 }
 
 impl ShellApp {

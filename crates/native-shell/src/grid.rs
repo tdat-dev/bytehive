@@ -49,8 +49,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
         // Cell metrics from one measured run of glyphs.
         let (cell_w, cell_h) = {
-            let g = ui.painter().layout_no_wrap("MMMMMMMMMM".to_string(), app.font.clone(), TEXT);
-            (g.rect.width() / 10.0, g.rect.height())
+            crate::term_pane::cell_metrics(ui.painter(), &app.font)
         };
         let avail = ui.available_rect_before_wrap();
         ui.allocate_rect(avail, egui::Sense::hover());
