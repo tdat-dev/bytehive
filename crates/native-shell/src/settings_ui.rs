@@ -229,6 +229,7 @@ impl SettingsSheet {
         ui.add_space(18.0);
         self.heading(ui, 4);
         ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time.", |ui| switch(ui, &mut p.reopen_projects).changed());
+        ch |= row(ui, "Hide to tray when minimized", "Agents keep working; click the tray icon to come back.", |ui| switch(ui, &mut p.hide_to_tray).changed());
         row(ui, "Where settings live", store, |_| false);
         ch
     }

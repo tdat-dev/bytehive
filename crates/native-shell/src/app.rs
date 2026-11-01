@@ -218,6 +218,11 @@ impl ShellApp {
 }
 
 impl eframe::App for ShellApp {
+    /// The background work, also run while the window is minimized (logic.rs).
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.tick(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // One dark theme across panels and grid.
         let vis = ui.visuals_mut();
@@ -225,23 +230,6 @@ impl eframe::App for ShellApp {
         vis.window_fill = crate::theme::BG;
         vis.widgets.noninteractive.bg_fill = crate::theme::SURFACE;
         vis.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, crate::theme::BORDER);
-        for pane in &mut self.panes {
-            pane.drain(&mut lock(&self.registry));
-        }
-        for pane in &mut self.panes {
-            if let Some(t) = pane.pending_title.take() {
-                // Shells report their exe path; show the pane name instead.
-                let boring = t.contains('\\') || t.contains('/') || t.ends_with(".exe");
-                let title = if boring { pane.name.clone() } else { t.chars().take(48).collect() };
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(format!("{title} - Maestro Native")));
-            }
-        }
-        self.poll_captures();
-        self.poll_git();
-        self.poll_stuck();
-        self.poll_launches();
-        self.poll_deliveries();
-        self.poll_usage();
         // Density zoom: Ctrl+= / Ctrl+- step the terminal glyphs, Ctrl+0
         // resets. Keyboard only on purpose: the wheel already scrolls back.
         let mut zoom = self.zoom;
@@ -259,10 +247,6 @@ impl eframe::App for ShellApp {
         });
         self.zoom = zoom;
         self.font = FontId::monospace(self.prefs.term_size * self.zoom);
-        if self.panes.iter().any(|p| p.exit_code.is_none()) {
-            // Poll the PTYs at ~30fps; try_recv is cheap when idle.
-            ui.ctx().request_repaint_after(Duration::from_millis(33));
-        }
 
         egui::Panel::top("bar").show(ui, |ui| self.top_bar(ui));
 
@@ -405,7 +389,6 @@ impl eframe::App for ShellApp {
         }
         self.sheets(ui.ctx());
         self.extra_sheets(ui.ctx());
-        self.poll_schedules(ui.ctx());
         self.drawers(ui.ctx());
     }
 }

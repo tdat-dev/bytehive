@@ -80,9 +80,11 @@ pub struct Prefs {
     pub auto_resume: bool,
     /// Hand an agent's task to this CLI when it hits its limit.
     pub handover_to: Option<Cli>,
-    /// Serve the phone dashboard, and to other devices too.
     /// Hold an agent's risky browser click (send, post, pay, delete) for your OK.
     pub browser_ask: bool,
+    /// Minimizing puts Maestro in the system tray instead of the taskbar.
+    pub hide_to_tray: bool,
+    /// Serve the phone dashboard, and to other devices too.
     pub remote_on: bool,
     pub remote_lan: bool,
     /// The page's port (the terminal socket takes the next one).
@@ -108,6 +110,7 @@ impl Default for Prefs {
             auto_resume: true,
             handover_to: None,
             browser_ask: true,
+            hide_to_tray: false,
             remote_on: false,
             remote_lan: false,
             remote_port: dashboard::DEFAULT_PORT,
@@ -161,6 +164,7 @@ impl Prefs {
             "autoResume": self.auto_resume,
             "handoverTo": self.handover_to.map(|c| c.program()),
             "browserAsk": self.browser_ask,
+            "hideToTray": self.hide_to_tray,
             "remoteOn": self.remote_on,
             "remoteLan": self.remote_lan,
             "remotePort": self.remote_port,
@@ -186,6 +190,7 @@ impl Prefs {
             auto_resume: v["autoResume"].as_bool().unwrap_or(d.auto_resume),
             handover_to: v["handoverTo"].as_str().and_then(cli_from_key),
             browser_ask: v["browserAsk"].as_bool().unwrap_or(d.browser_ask),
+            hide_to_tray: v["hideToTray"].as_bool().unwrap_or(d.hide_to_tray),
             remote_on: v["remoteOn"].as_bool().unwrap_or(d.remote_on),
             remote_lan: v["remoteLan"].as_bool().unwrap_or(d.remote_lan),
             remote_port: v["remotePort"].as_u64().map_or(d.remote_port, |n| (n as u16).clamp(1024, 65534)),

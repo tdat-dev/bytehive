@@ -37,11 +37,18 @@ impl ShellApp {
         self.panes.iter().filter(|p| p.cli.is_some() && p.exit_code.is_none()).count()
     }
 
+    /// Hold a close while agents are live and ask first (ui pass).
     pub(crate) fn poll_system(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested()) && should_ask(self.live_agents(), self.extras.system.quit_ok) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.extras.system.asking_quit = true;
         }
+        self.quit_sheet(ctx);
+    }
+
+    /// Flash the taskbar for an agent that newly needs you while Maestro is
+    /// in the background, minimized included (logic pass).
+    pub(crate) fn watch_attention(&mut self, ctx: &egui::Context) {
         let now = now_ms();
         let needs: HashSet<String> = self
             .panes
@@ -55,7 +62,6 @@ impl ShellApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
         self.extras.system.needs = needs;
-        self.quit_sheet(ctx);
     }
 
     fn quit_sheet(&mut self, ctx: &egui::Context) {

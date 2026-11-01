@@ -19,6 +19,7 @@ pub struct Extras {
     pub browser: crate::browser_ui::BrowserWatch,
     pub replay: crate::replay_ui::ReplaySheet,
     pub plan: crate::planmeter::PlanWatch,
+    pub tray: crate::tray::Tray,
 }
 
 impl ShellApp {
@@ -79,13 +80,9 @@ impl ShellApp {
 
     /// The Phase E sheets, floating over everything.
     pub(crate) fn extra_sheets(&mut self, ctx: &egui::Context) {
-        self.poll_handoffs();
-        self.handover_on_limit();
         self.handoff_sheet(ctx);
         self.poll_system(ctx);
-        self.poll_remote(ctx);
         self.poll_browser(ctx);
-        self.extras.plan.poll(ctx);
         let font = self.font.clone();
         self.extras.replay.show(ctx, &font);
         if self.extras.memory.open {

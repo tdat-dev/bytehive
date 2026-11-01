@@ -23,6 +23,7 @@ mod handoff;
 mod history_ui;
 mod keys;
 mod layout;
+mod logic;
 mod memory;
 mod memory_ui;
 mod newtask;
@@ -54,6 +55,7 @@ mod tasks;
 mod term_pane;
 mod theme;
 mod topbar;
+mod tray;
 mod usage_watch;
 
 use app::ShellApp;
@@ -65,7 +67,7 @@ fn main() -> eframe::Result<()> {
         browser_hub::host::run();
     }
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]),
+        viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]).with_icon(tray::window_icon()),
         ..Default::default()
     };
     eframe::run_native(
@@ -73,7 +75,9 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);
-            Ok(Box::new(ShellApp::new().expect("spawn the shell")))
+            let app = ShellApp::new().expect("spawn the shell");
+            app.extras.tray.set_window(cc);
+            Ok(Box::new(app))
         }),
     )
 }

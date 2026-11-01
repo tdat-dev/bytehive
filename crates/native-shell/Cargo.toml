@@ -12,12 +12,15 @@ anyhow = "1.0.104"
 chrono = "0.4"
 dashboard = { path = "../dashboard" }
 eframe = "0.37.0"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 portable-pty = "0.9"
 regex = "1"
 rfd = "0.16.0"
 serde_json = "1"
+raw-window-handle = "0.6"
+tray-icon = "0.23"
 ureq = "3"
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 supervise = { version = "0.1.0", path = "../supervise" }
 uuid = { version = "1.29.0", features = ["v4"] }
 vte = "0.15"
