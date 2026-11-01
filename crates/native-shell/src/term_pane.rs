@@ -201,6 +201,12 @@ impl Pane {
                             let _ = registry.write_input(&self.id, b);
                         }
                     }
+                    egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) | egui::Event::PasteImage(_) => {
+                        let bracketed = self.term.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE);
+                        if let Some(bytes) = crate::paste::clipboard_bytes(ev, bracketed) {
+                            let _ = registry.write_input(&self.id, &bytes);
+                        }
+                    }
                     egui::Event::MouseWheel { delta, .. } => {
                         let lines = (delta.y / 20.0).round() as i32;
                         if lines != 0 {
