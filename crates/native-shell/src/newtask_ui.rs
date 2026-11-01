@@ -1,17 +1,17 @@
-//! The New task sheet (Ctrl+N), painted after the approved Agent Inbox
-//! design: a floating sheet with the folder crumb on top, a large borderless
-//! prompt, a row of pill properties (project, agent, count, worktree,
-//! permissions, flow, crew), one help line saying what Start will do, and a
-//! footer with the
-//! keys, "Create more" and the white Start button. Esc or a click outside
-//! closes it; Ctrl+Enter starts.
+//! The New agent sheet (Ctrl+N), after the web app's dialog: the title and
+//! where it starts, what it should do, the agent, how many and how it
+//! works, one line saying what Start will do, then crews, start later,
+//! Cancel and the white Start. Esc or a click outside closes it;
+//! Ctrl+Enter starts.
 
-use eframe::egui::{self, Color32, FontFamily, FontId, Key, Modifiers, RichText, Stroke};
+use eframe::egui::{self, Color32, FontId, Key, Modifiers, RichText, Stroke};
 
 use crate::newtask::{help_line, NewTask};
 use crate::prefs::{Crew, Prefs};
 use crate::sessions_ui::Cli;
-use crate::theme::{DEL, DIM, INK3, PRIMARY, PRIMARY_INK, R_XL, SHEET, TEXT};
+use crate::newtask_props::{im_btn, label};
+use crate::style::PANEL;
+use crate::theme::{DEL, INK3, R_XL, TEXT};
 
 /// What the sheet hands back.
 pub enum SheetOut {
@@ -96,80 +96,71 @@ impl NewTaskSheet {
         }
         // Read Ctrl+Enter before the prompt can take it as a newline.
         let mut start = ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
+        // The web app's dialog (.inbox-modal): 560 wide, panel ground, a
+        // faint ring, a deep shadow, over a 55% dark backdrop.
         let frame = egui::Frame::new()
-            .fill(SHEET)
+            .fill(PANEL)
             .corner_radius(R_XL)
-            .stroke(Stroke::new(1.0, Color32::from_white_alpha(20)))
-            .shadow(egui::Shadow { offset: [0, 18], blur: 40, spread: 0, color: Color32::from_black_alpha(140) })
-            .inner_margin(egui::Margin::ZERO);
-        let modal = egui::Modal::new(egui::Id::unique("new-task")).frame(frame).show(ctx, |ui| {
-            // Wide enough that the pill row fits on one line, as in the design.
-            ui.set_width(820.0_f32.min(ctx.content_rect().width() - 32.0));
-            ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-            let mut close = false;
-            egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 14, top: 14, bottom: 0 }).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(crumb(&self.form.dir)).size(12.5).color(INK3));
-                    ui.label(RichText::new("\u{203A}").size(12.5).color(INK3));
-                    ui.label(RichText::new("New task").size(12.5).color(INK3));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let x = ui.add(egui::Button::new(RichText::new("\u{2715}").color(INK3)).frame(false).min_size(egui::vec2(28.0, 28.0)));
-                        if x.on_hover_text("Close (Esc)").clicked() {
-                            close = true;
-                        }
-                    });
+            .stroke(Stroke::new(1.0, Color32::from_white_alpha(23)))
+            .shadow(egui::Shadow { offset: [0, 40], blur: 100, spread: 0, color: Color32::from_black_alpha(190) })
+            .inner_margin(egui::Margin { left: 22, right: 22, top: 22, bottom: 18 });
+        let modal = egui::Modal::new(egui::Id::unique("new-task")).frame(frame).backdrop_color(Color32::from_black_alpha(140)).show(ctx, |ui| {
+            ui.set_width(516.0_f32.min(ctx.content_rect().width() - 76.0));
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 0.0);
+            let close = self.head(ui, projects);
+            ui.add_space(14.0);
+            label(ui, "What should it do?");
+            ui.add_space(8.0);
+            egui::Frame::new()
+                .fill(Color32::from_black_alpha(89))
+                .corner_radius(12.0)
+                .stroke(Stroke::new(1.0, Color32::from_white_alpha(23)))
+                .inner_margin(egui::Margin::symmetric(14, 12))
+                .show(ui, |ui| {
+                    let prompt = egui::TextEdit::multiline(&mut self.form.prompt)
+                        .frame(egui::Frame::NONE)
+                        .font(FontId::proportional(14.0))
+                        .text_color(TEXT)
+                        .hint_text(RichText::new("Fix the flaky upload test and add a regression test.").size(14.0).color(INK3))
+                        .desired_rows(4)
+                        .desired_width(f32::INFINITY);
+                    let resp = ui.add(prompt);
+                    if self.just_opened {
+                        resp.request_focus();
+                        self.just_opened = false;
+                    }
+                });
+            ui.add_space(14.0);
+            self.agents(ui);
+            if !self.room.is_empty() {
+                ui.add_space(8.0);
+                ui.label(RichText::new(&self.room).size(12.5).color(crate::theme::AMBER));
+            }
+            ui.add_space(14.0);
+            self.options(ui);
+            ui.add_space(8.0);
+            let race_clash = self.form.count > 1 && !self.form.worktree;
+            let help = help_line(self.form.count, self.form.worktree, self.form.flow);
+            ui.label(RichText::new(help).size(12.5).color(if race_clash { DEL } else { INK3 }));
+            if let Some(e) = &self.error {
+                ui.add_space(4.0);
+                ui.label(RichText::new(e).size(12.5).color(DEL));
+            }
+            ui.add_space(12.0);
+            self.schedule_controls(ui);
+            ui.add_space(14.0);
+            let mut cancel = false;
+            ui.horizontal(|ui| {
+                self.crews(ui, crews);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let go_label = if self.sched_on { "Schedule" } else if self.form.count > 1 { "Start agents" } else { "Start agent" };
+                    if im_btn(ui, go_label, true).on_hover_text("Start (Ctrl+Enter)").clicked() {
+                        start = true;
+                    }
+                    cancel = im_btn(ui, "Cancel", false).on_hover_text("Esc").clicked();
                 });
             });
-            egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 6, bottom: 4 }).show(ui, |ui| {
-                let prompt = egui::TextEdit::multiline(&mut self.form.prompt)
-                    .frame(egui::Frame::NONE)
-                    .font(FontId::new(20.0, FontFamily::Name("semibold".into())))
-                    .text_color(TEXT)
-                    .hint_text(RichText::new("What should get done? e.g. The login form accepts an empty password. Reject it and add a test.").size(20.0).color(INK3))
-                    .desired_rows(4)
-                    .desired_width(f32::INFINITY);
-                let resp = ui.add(prompt);
-                if self.just_opened {
-                    resp.request_focus();
-                    self.just_opened = false;
-                }
-            });
-            egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 4, bottom: 10 }).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| self.props(ui, projects, crews));
-            });
-            egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 0, bottom: 12 }).show(ui, |ui| {
-                let race_clash = self.form.count > 1 && !self.form.worktree;
-                let help = help_line(self.form.count, self.form.worktree, self.form.flow);
-                ui.label(RichText::new(help).size(12.5).color(if race_clash { DEL } else { INK3 }));
-                if !self.room.is_empty() {
-                    ui.label(RichText::new(&self.room).size(12.5).color(crate::theme::AMBER));
-                }
-                if let Some(e) = &self.error {
-                    ui.label(RichText::new(e).size(12.5).color(DEL));
-                }
-            });
-            let line = ui.cursor().min.y;
-            ui.painter().hline(ui.min_rect().x_range(), line, Stroke::new(1.0, Color32::from_white_alpha(15)));
-            egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 12, bottom: 12 }).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Ctrl \u{21B5} start  \u{00B7}  Esc cancel").size(12.0).color(INK3));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let go_label = if self.sched_on { "Schedule task" } else { "Start task" };
-                        let go = egui::Button::new(RichText::new(go_label).strong().color(PRIMARY_INK))
-                            .fill(PRIMARY)
-                            .corner_radius(999.0)
-                            .min_size(egui::vec2(0.0, 36.0));
-                        if ui.add(go).clicked() {
-                            start = true;
-                        }
-                        ui.add_space(8.0);
-                        ui.checkbox(&mut self.more, RichText::new("Create more").size(12.5).color(DIM));
-                        ui.add_space(8.0);
-                        self.schedule_controls(ui);
-                    });
-                });
-            });
-            close
+            close || cancel
         });
         if modal.inner || modal.should_close() {
             self.open = false;
@@ -192,36 +183,9 @@ impl NewTaskSheet {
     }
 }
 
-impl NewTaskSheet {
-    /// "Schedule [09:00] [Daily]": start later instead of now.
-    fn schedule_controls(&mut self, ui: &mut egui::Ui) {
-        if self.sched_on {
-            egui::ComboBox::from_id_salt("nt-repeat").selected_text(RichText::new(if self.sched_daily { "Daily" } else { "Once" }).size(12.5)).show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.sched_daily, true, "Daily");
-                ui.selectable_value(&mut self.sched_daily, false, "Once");
-            });
-            ui.add(egui::TextEdit::singleline(&mut self.sched_time).desired_width(46.0).hint_text("09:00"));
-        }
-        ui.checkbox(&mut self.sched_on, RichText::new("Schedule").size(12.5).color(DIM)).on_hover_text("Start it later at a time of day, once or every day");
-    }
-}
-
-/// The folder's last name for the crumb, or the whole path when it has none.
-fn crumb(dir: &str) -> String {
-    let t = dir.trim().trim_end_matches(['\\', '/']);
-    t.rsplit(['\\', '/']).next().filter(|s| !s.is_empty()).unwrap_or(t).to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn crumb_is_the_folder_name() {
-        assert_eq!(crumb("D:\\maestro"), "maestro");
-        assert_eq!(crumb("D:/work/app/"), "app");
-        assert_eq!(crumb(""), "");
-    }
 
     #[test]
     fn sheet_paints_and_starts_on_ctrl_enter() {
