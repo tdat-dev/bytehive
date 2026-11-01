@@ -40,10 +40,14 @@ pub fn rec_name(file: &str) -> (String, u64) {
     }
 }
 
+/// An agent's name as its recordings' file names spell it.
+pub fn safe_name(name: &str) -> String {
+    name.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '-' }).take(40).collect()
+}
+
 /// A new recording's path for agent `name` in `project`.
 pub fn rec_path(project: &str, name: &str, now: u64) -> PathBuf {
-    let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '-' }).take(40).collect();
-    Path::new(project).join(REC_DIR).join(format!("{safe}-{now}.jsonl"))
+    Path::new(project).join(REC_DIR).join(format!("{}-{now}.jsonl", safe_name(name)))
 }
 
 #[derive(Clone, Debug, PartialEq)]

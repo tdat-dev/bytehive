@@ -9,10 +9,12 @@ use agent_core::{claude, codex, muse, opencode, TranscriptChunk};
 use eframe::egui;
 use supervise::types::{Chat, ChatItem, ChatMeta};
 
+use crate::history_task::{cards, commands, first_prompt, timeline, timeline_ui, CardFacts, HistAction};
+
 use crate::sessions_ui::Cli;
 use crate::states::pane_cwd;
 use crate::term_pane::Pane;
-use crate::theme::{DEL, DIM, FAINT, YOU};
+use crate::theme::FAINT;
 
 /// Only the end of a long conversation is read: enough to see where it got to.
 const TAIL_BYTES: u64 = 256 * 1024;
@@ -77,6 +79,10 @@ enum HistoryMsg {
 
 pub struct HistoryPanel {
     selected: Option<String>,
+    /// The stage at the last look: picking another agent there follows it.
+    staged: Option<String>,
+    /// This agent's recordings: (pane id, how many, when counted).
+    recs: Option<(String, usize, std::time::Instant)>,
     cache: HashMap<String, HistoryCache>,
     last_req: HashMap<String, u64>,
     loading: bool,
@@ -87,7 +93,7 @@ pub struct HistoryPanel {
 impl HistoryPanel {
     pub fn new() -> Self {
         let (tx, rx) = channel();
-        HistoryPanel { selected: None, cache: HashMap::new(), last_req: HashMap::new(), loading: false, tx, rx }
+        HistoryPanel { selected: None, staged: None, recs: None, cache: HashMap::new(), last_req: HashMap::new(), loading: false, tx, rx }
     }
 
     fn now_ms() -> u64 {
@@ -106,12 +112,21 @@ impl HistoryPanel {
         });
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, panes: &[Pane]) {
+    /// One task's History: cost, session, run again, and what happened.
+    /// `stage` is the agent on stage (followed when it changes), `home` the
+    /// project of a pane.
+    pub fn show(&mut self, ui: &mut egui::Ui, panes: &[Pane], stage: Option<&str>, schedules: &[crate::schedule::Schedule], home: impl Fn(&Pane) -> String) -> Option<HistAction> {
         ui.label(egui::RichText::new("History").strong().size(15.0));
         let agents: Vec<&Pane> = panes.iter().filter(|p| p.cli.is_some()).collect();
         if agents.is_empty() {
             ui.label(egui::RichText::new("No agent panes yet. Plain shells have no transcript.").color(FAINT));
-            return;
+            return None;
+        }
+        if stage != self.staged.as_deref() {
+            self.staged = stage.map(str::to_string);
+            if stage.is_some_and(|s| agents.iter().any(|p| p.id == s)) {
+                self.selected = self.staged.clone();
+            }
         }
         let before = self.selected.clone();
         if self.selected.as_ref().is_none_or(|id| agents.iter().all(|p| &p.id != id)) {
@@ -169,44 +184,43 @@ impl HistoryPanel {
             }
         }
         ui.separator();
-        let Some(entry) = self.cache.get(&pane_id) else {
+        let (Some(entry), Some(pane)) = (self.cache.get(&pane_id), pane) else {
             if !self.loading {
                 ui.label(egui::RichText::new("Nothing read yet. Press Refresh.").color(FAINT));
             }
-            return;
+            return None;
         };
+        let now = Self::now_ms();
+        if self.recs.as_ref().is_none_or(|(id, _, t)| *id != pane_id || t.elapsed().as_secs() >= 3) {
+            let safe = crate::replay::safe_name(&pane.name);
+            let n = crate::replay::list(&home(pane)).iter().filter(|r| r.agent == safe).count();
+            self.recs = Some((pane_id.clone(), n, std::time::Instant::now()));
+        }
+        let first = entry.items.iter().map(|i| i.at()).find(|a| *a > 0).unwrap_or(pane.started_ms);
+        let last = entry.items.iter().rev().map(|i| i.at()).find(|a| *a > 0).unwrap_or(now);
+        let prompt = first_prompt(&entry.items);
+        let repeats = prompt.as_ref().and_then(|p| schedules.iter().find(|s| s.daily && s.enabled && s.task.prompt == *p).map(|s| s.time.clone()));
+        let usage = pane.usage.as_ref();
+        let facts = CardFacts {
+            pane_id: &pane_id,
+            usd: usage.and_then(|u| u.usd),
+            tokens: usage.and_then(|u| u.tokens),
+            minutes: last.saturating_sub(first) / 60_000,
+            commands: commands(&entry.items),
+            recordings: self.recs.as_ref().map_or(0, |r| r.1),
+            recording: pane.recording.is_some(),
+            prompt,
+            repeats,
+        };
+        let action = cards(ui, &facts);
         if !entry.meta.todos.clone().unwrap_or_default().is_empty() {
             let todos = entry.meta.todos.clone().unwrap_or_default();
             let done = todos.iter().filter(|t| t.state == supervise::types::TodoState::Completed).count();
             ui.label(egui::RichText::new(format!("Plan: {done}/{} done", todos.len())).small().strong());
         }
-        egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
-            let items = entry.items.iter().rev().take(300).collect::<Vec<_>>();
-            for it in items.into_iter().rev() {
-                match it {
-                    ChatItem::User(u) => {
-                        ui.label(egui::RichText::new("You").small().strong().color(YOU));
-                        ui.label(egui::RichText::new(&u.text).small());
-                    }
-                    ChatItem::Text(t) => {
-                        ui.label(egui::RichText::new(&t.text).small());
-                    }
-                    ChatItem::Step(s) => {
-                        let mark = if s.error { "✕" } else if s.done { "✓" } else { "…" };
-                        let color = if s.error { DEL } else { DIM };
-                        ui.label(egui::RichText::new(format!("{mark} {} {}", s.verb, s.target)).small().color(color));
-                        if let Some(out) = s.output.as_deref() {
-                            let head: String = out.lines().take(6).collect::<Vec<_>>().join("\n");
-                            ui.label(egui::RichText::new(head).small().monospace().color(FAINT));
-                        }
-                    }
-                    ChatItem::Note(n) => {
-                        ui.label(egui::RichText::new(&n.text).small().italics().color(FAINT));
-                    }
-                }
-                ui.separator();
-            }
-        });
+        let evs = timeline(&entry.items, &pane.name);
+        egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| timeline_ui(ui, &evs, now));
+        action
     }
 }
 

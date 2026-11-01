@@ -253,6 +253,7 @@ impl eframe::App for ShellApp {
         let mut resume: Option<ResumeRequest> = None;
         let mut worktree: Option<WorktreeRequest> = None;
         let mut focus: Option<String> = None;
+        let mut hist = None;
         // Ctrl/Cmd+K toggles the command palette. Consuming the key here keeps
         // it from reaching a focused terminal pane as a raw control byte.
         if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
@@ -340,7 +341,12 @@ impl eframe::App for ShellApp {
                     self.review.show(ui, &mut self.panes);
                 }
                 SideTab::History => {
-                    self.history.show(ui, &self.panes);
+                    let projects = &self.projects;
+                    let home = |p: &Pane| {
+                        let h = crate::projects::pane_home(p);
+                        projects.owner(&h).map(str::to_string).unwrap_or(h)
+                    };
+                    hist = self.history.show(ui, &self.panes, self.stage.as_deref(), &self.prefs.schedules, home);
                 }
                 SideTab::Sessions => {
                     resume = self.sessions.show(ui);
@@ -352,6 +358,9 @@ impl eframe::App for ShellApp {
             }
             self.send.show(ui, &self.panes, &mut lock(&self.registry));
         });
+        if let Some(a) = hist {
+            self.history_action(a);
+        }
         if let Some(req) = resume {
             self.spawn_resume(req);
         }
