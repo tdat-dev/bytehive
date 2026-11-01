@@ -40,6 +40,7 @@ mod sessions_ui;
 mod spawn;
 mod start_ui;
 mod states;
+mod system;
 mod taskopts;
 mod tasks;
 mod term_pane;

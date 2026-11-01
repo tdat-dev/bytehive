@@ -14,6 +14,7 @@ use crate::projects::pane_home;
 pub struct Extras {
     pub memory: MemorySheet,
     pub handoffs: Handoffs,
+    pub system: crate::system::SystemWatch,
 }
 
 impl ShellApp {
@@ -73,6 +74,7 @@ impl ShellApp {
         self.poll_handoffs();
         self.handover_on_limit();
         self.handoff_sheet(ctx);
+        self.poll_system(ctx);
         if self.extras.memory.open {
             let agents = self.project_agents(&self.extras.memory.project.clone());
             if let Some((to, text)) = self.extras.memory.show(ctx, &self.projects.dirs, &agents) {
