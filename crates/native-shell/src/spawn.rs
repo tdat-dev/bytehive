@@ -38,7 +38,7 @@ impl ShellApp {
         pane.session_id = session_id;
         let tx = pane.sender();
         let tx_exit = pane.sender();
-        self.registry.spawn(
+        agent_core::lock(&self.registry).spawn(
             id.clone(),
             &spec,
             PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 },
@@ -111,7 +111,8 @@ impl ShellApp {
 
     pub(crate) fn restart_pane(&mut self, index: usize) {
         let Some(pane) = self.panes.get_mut(index) else { return };
-        self.registry.kill(&pane.id);
+        let gone = agent_core::lock(&self.registry).take(&pane.id);
+        drop(gone);
         pane.reset();
         // Restart carries the conversation on when one is known.
         if let (Some(cli), Some(sid)) = (pane.cli, pane.session_id.clone()) {
@@ -126,7 +127,7 @@ impl ShellApp {
         let tx = pane.sender();
         let tx_exit = pane.sender();
         let size = PtySize { rows: pane.rows as u16, cols: pane.cols as u16, pixel_width: 0, pixel_height: 0 };
-        let _ = self.registry.spawn(
+        let _ = agent_core::lock(&self.registry).spawn(
             id,
             &spec,
             size,

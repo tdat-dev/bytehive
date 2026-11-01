@@ -156,7 +156,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
                     }
                 }
             }
-            pane.paint(ui, body, registry, &font, (cell_w, cell_h));
+            pane.paint(ui, body, &mut agent_core::lock(registry), &font, (cell_w, cell_h));
             if !*focused_once {
                 *focused_once = true;
                 ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));

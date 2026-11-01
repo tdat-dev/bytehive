@@ -129,7 +129,7 @@ impl ShellApp {
                     continue;
                 }
                 Tick::Write(bytes) => {
-                    let _ = self.registry.write_input(&pane_id, &bytes);
+                    let _ = agent_core::lock(&self.registry).write_input(&pane_id, &bytes);
                 }
                 Tick::Wait => {}
             }
@@ -197,7 +197,7 @@ mod tests {
         let mut seen = false;
         while std::time::Instant::now() < end && !seen {
             let ShellApp { panes, registry, .. } = &mut app;
-            panes[0].drain(registry);
+            panes[0].drain(&mut agent_core::lock(registry));
             app.poll_deliveries();
             // The echo's output sits on a line of its own, not the typed one.
             seen = app.panes[0].screen_text().lines().any(|l| l.trim() == "task-landed-42");

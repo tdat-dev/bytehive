@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use agent_core::{launch::launch_spec, Registry};
+use agent_core::{launch::launch_spec, lock, Registry};
 use eframe::egui::{self, FontId};
 use supervise::stuck::{StuckEvidence, StuckWatch};
 
@@ -40,7 +40,8 @@ pub(crate) fn now_ms() -> u64 {
 
 
 pub struct ShellApp {
-    pub(crate) registry: Registry,
+    /// Shared with the remote dashboard's server threads.
+    pub(crate) registry: std::sync::Arc<std::sync::Mutex<Registry>>,
     pub(crate) panes: Vec<Pane>,
     pub(crate) next_id: usize,
     pub(crate) font: FontId,
@@ -116,7 +117,7 @@ impl ShellApp {
         }
         let new_task = NewTaskSheet::new(sessions.dir.clone());
         let mut app = ShellApp {
-            registry: Registry::new(),
+            registry: Default::default(),
             panes: Vec::new(),
             next_id: 1,
             font: FontId::monospace(prefs.term_size),
@@ -225,7 +226,7 @@ impl eframe::App for ShellApp {
         vis.widgets.noninteractive.bg_fill = crate::theme::SURFACE;
         vis.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, crate::theme::BORDER);
         for pane in &mut self.panes {
-            pane.drain(&mut self.registry);
+            pane.drain(&mut lock(&self.registry));
         }
         for pane in &mut self.panes {
             if let Some(t) = pane.pending_title.take() {
@@ -345,7 +346,7 @@ impl eframe::App for ShellApp {
                 } {
                     Some(QueueAction::Focus(id)) => focus = Some(id),
                     Some(QueueAction::Answer { pane_id, bytes }) => {
-                        let _ = self.registry.write_input(&pane_id, &bytes);
+                        let _ = lock(&self.registry).write_input(&pane_id, &bytes);
                     }
                     None => {}
                 },
@@ -363,7 +364,7 @@ impl eframe::App for ShellApp {
                     self.flow.show(ui);
                 }
             }
-            self.send.show(ui, &self.panes, &mut self.registry);
+            self.send.show(ui, &self.panes, &mut lock(&self.registry));
         });
         if let Some(req) = resume {
             self.spawn_resume(req);
@@ -386,7 +387,9 @@ impl eframe::App for ShellApp {
             self.restart_pane(i);
         }
         for id in &kill {
-            self.registry.kill(id);
+            // Torn down outside the lock: a dashboard thread may want it.
+            let gone = lock(&self.registry).take(id);
+            drop(gone);
         }
         self.panes.retain(|p| !kill.contains(&p.id));
 
@@ -423,7 +426,7 @@ mod tests {
         let end = Instant::now() + Duration::from_secs(secs);
         let mut grid = grid_text(&pane.term);
         while Instant::now() < end {
-            pane.drain(registry);
+            pane.drain(&mut lock(registry));
             grid = grid_text(&pane.term);
             if grid.iter().any(|r| r.contains(want)) {
                 break;
@@ -446,7 +449,7 @@ mod tests {
         let mut app = ShellApp::new().unwrap();
         feed_until(&mut app, 0, ">", 20);
         let id = app.panes[0].id.clone();
-        app.registry.write_input(&id, b"echo native-probe-7\r").unwrap();
+        lock(&app.registry).write_input(&id, b"echo native-probe-7\r").unwrap();
         let grid = feed_until(&mut app, 0, "native-probe-7", 15);
         assert!(grid.iter().any(|r| r.contains("native-probe-7")), "echo visible: {grid:?}");
     }
@@ -458,8 +461,8 @@ mod tests {
         feed_until(&mut app, 0, ">", 20);
         feed_until(&mut app, 1, ">", 20);
         let (id0, id1) = (app.panes[0].id.clone(), app.panes[1].id.clone());
-        app.registry.write_input(&id0, b"echo marker-aaa\r").unwrap();
-        app.registry.write_input(&id1, b"echo marker-bbb\r").unwrap();
+        lock(&app.registry).write_input(&id0, b"echo marker-aaa\r").unwrap();
+        lock(&app.registry).write_input(&id1, b"echo marker-bbb\r").unwrap();
         let g0 = feed_until(&mut app, 0, "marker-aaa", 15);
         let g1 = feed_until(&mut app, 1, "marker-bbb", 15);
         assert!(g0.iter().any(|r| r.contains("marker-aaa")));
@@ -473,11 +476,11 @@ mod tests {
         let mut app = ShellApp::new().unwrap();
         feed_until(&mut app, 0, ">", 20);
         let id = app.panes[0].id.clone();
-        assert!(app.registry.has(&id));
+        assert!(lock(&app.registry).has(&id));
         app.restart_pane(0);
-        assert!(app.registry.has(&id));
+        assert!(lock(&app.registry).has(&id));
         feed_until(&mut app, 0, ">", 20);
-        app.registry.write_input(&id, b"echo back-again\r").unwrap();
+        lock(&app.registry).write_input(&id, b"echo back-again\r").unwrap();
         let grid = feed_until(&mut app, 0, "back-again", 15);
         assert!(grid.iter().any(|r| r.contains("back-again")), "respawned shell answers: {grid:?}");
     }
