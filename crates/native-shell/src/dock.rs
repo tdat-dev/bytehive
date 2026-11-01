@@ -92,7 +92,7 @@ fn search(ui: &mut egui::Ui, w: f32, narrow: bool) -> bool {
 
 /// The white New agent pill.
 fn new_agent(ui: &mut egui::Ui, narrow: bool) -> egui::Response {
-    let g = ui.painter().layout_no_wrap("New agent".into(), medium(13.0), Color32::BLACK);
+    let g = ui.painter().layout_no_wrap("New agent".into(), crate::style::on_white(13.0), Color32::BLACK);
     let pad = if narrow { 12.0 } else { 18.0 };
     let (rect, r) = ui.allocate_exact_size(Vec2::new(g.size().x + pad * 2.0, 40.0), Sense::click());
     let fill = if r.hovered() { Color32::from_rgb(0xe9, 0xe9, 0xec) } else { Color32::WHITE };

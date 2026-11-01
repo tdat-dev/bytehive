@@ -48,6 +48,13 @@ pub fn tight(font: FontId, color: Color32, em: f32) -> egui::TextFormat {
     f
 }
 
+/// Dark type on a white button. egui runs every glyph through one
+/// coverage curve, tuned for light text on dark; it thickens dark text on
+/// white, so the browser's 600 there matches Geist 400 here.
+pub fn on_white(size: f32) -> FontId {
+    FontId::proportional(size)
+}
+
 /// Geist at 500, the web app's weight for names, pills and tabs.
 pub fn w500(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("medium".into()))
@@ -118,7 +125,7 @@ pub fn hbtn(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
 /// The white primary pill (.newbtn / .btn.primary), with an optional key.
 pub fn primary(ui: &mut egui::Ui, label: &str, key: Option<&str>, h: f32) -> egui::Response {
     let mut job = egui::text::LayoutJob::default();
-    job.append(label, 0.0, egui::TextFormat::simple(medium(13.0), Color32::BLACK));
+    job.append(label, 0.0, egui::TextFormat::simple(on_white(13.0), Color32::BLACK));
     if let Some(k) = key {
         job.append(&format!("  {k}"), 0.0, egui::TextFormat::simple(FontId::monospace(11.0), Color32::from_gray(110)));
     }

@@ -350,7 +350,7 @@ fn composer(ui: &mut egui::Ui, home: &mut Home, v: &HomeView, out: &mut Option<S
 
 /// Start (.st-go): white, with the Enter key.
 fn go(ui: &mut egui::Ui) -> egui::Response {
-    let g = ui.painter().layout_no_wrap("Start".into(), medium(13.5), Color32::BLACK);
+    let g = ui.painter().layout_no_wrap("Start".into(), crate::style::on_white(13.5), Color32::BLACK);
     let k = ui.painter().layout_no_wrap("\u{21B5}".into(), FontId::monospace(11.0), Color32::from_gray(85));
     let (rect, r) = ui.allocate_exact_size(Vec2::new(16.0 + g.size().x + 8.0 + k.size().x + 10.0 + 12.0, 36.0), Sense::click());
     let p = ui.painter();
