@@ -189,6 +189,11 @@ impl SettingsSheet {
             combo(ui, "set-flow", &mut p.flow, &opts)
         });
         ch |= row(ui, "Carry on after a usage limit", "An agent stopped by its plan's limit is told to continue once the limit resets.", |ui| switch(ui, &mut p.auto_resume).changed());
+        ch |= row(ui, "When an agent hits its limit", "Wait for it, or hand its task to an agent of another CLI with a brief of the conversation.", |ui| {
+            let mut opts: Vec<(Option<Cli>, String)> = vec![(None, "Wait for it".to_string())];
+            opts.extend(Cli::all().into_iter().map(|c| (Some(c), format!("Hand over to {}", c.name()))));
+            combo(ui, "set-handover", &mut p.handover_to, &opts)
+        });
         ch |= row(ui, "Time to reach the prompt", "How long a new CLI gets before its task is typed in.", |ui| {
             ui.add(egui::Slider::new(&mut p.job_delay_s, 1..=20).suffix(" s")).changed()
         });

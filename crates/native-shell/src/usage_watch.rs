@@ -118,7 +118,8 @@ impl ShellApp {
             p.limit = limit_on_screen(&p.screen_text(), clock);
             if let Some(at) = p.limit.as_ref().and_then(|l| l.resets_at) {
                 let lifted = clock >= at + chrono::Duration::seconds(60);
-                if lifted && p.exit_code.is_none() && self.usage.resumed.get(&p.id) != Some(&at.timestamp()) {
+                let waits = self.prefs.handover_to.is_none_or(|to| to == cli);
+                if lifted && waits && p.exit_code.is_none() && self.usage.resumed.get(&p.id) != Some(&at.timestamp()) {
                     self.usage.resumed.insert(p.id.clone(), at.timestamp());
                     resume.push(p.id.clone());
                 }

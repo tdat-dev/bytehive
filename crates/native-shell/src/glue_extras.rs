@@ -6,12 +6,14 @@ use eframe::egui;
 
 use crate::app::{now_ms, ShellApp};
 use crate::deliver::Delivery;
+use crate::handoff::Handoffs;
 use crate::memory_ui::MemorySheet;
 use crate::projects::pane_home;
 
 #[derive(Default)]
 pub struct Extras {
     pub memory: MemorySheet,
+    pub handoffs: Handoffs,
 }
 
 impl ShellApp {
@@ -19,6 +21,7 @@ impl ShellApp {
     pub(crate) fn run_more(&mut self, key: &str) -> bool {
         match key {
             "memory" => self.open_memory(),
+            "handoff" => self.open_handoff(),
             _ => return false,
         }
         true
@@ -67,6 +70,9 @@ impl ShellApp {
 
     /// The Phase E sheets, floating over everything.
     pub(crate) fn extra_sheets(&mut self, ctx: &egui::Context) {
+        self.poll_handoffs();
+        self.handover_on_limit();
+        self.handoff_sheet(ctx);
         if self.extras.memory.open {
             let agents = self.project_agents(&self.extras.memory.project.clone());
             if let Some((to, text)) = self.extras.memory.show(ctx, &self.projects.dirs, &agents) {

@@ -16,6 +16,7 @@ mod glue_board;
 mod glue_extras;
 mod glue_review;
 mod grid;
+mod handoff;
 mod history_ui;
 mod keys;
 mod layout;

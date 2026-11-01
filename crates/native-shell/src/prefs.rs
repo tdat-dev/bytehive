@@ -78,6 +78,8 @@ pub struct Prefs {
     pub reopen_projects: bool,
     /// Tell an agent stopped by its plan's limit to carry on once it lifts.
     pub auto_resume: bool,
+    /// Hand an agent's task to this CLI when it hits its limit.
+    pub handover_to: Option<Cli>,
     pub crews: Vec<Crew>,
     /// New tasks set to start at a time of day.
     pub schedules: Vec<crate::schedule::Schedule>,
@@ -97,6 +99,7 @@ impl Default for Prefs {
             job_delay_s: crate::deliver::JOB_DELAY_MS / 1000,
             reopen_projects: true,
             auto_resume: true,
+            handover_to: None,
             crews: Vec::new(),
             schedules: Vec::new(),
         }
@@ -145,6 +148,7 @@ impl Prefs {
             "jobDelay": self.job_delay_s,
             "reopenProjects": self.reopen_projects,
             "autoResume": self.auto_resume,
+            "handoverTo": self.handover_to.map(|c| c.program()),
             "crews": self.crews.iter().map(crew_json).collect::<Vec<_>>(),
             "schedules": self.schedules.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
         })
@@ -165,6 +169,7 @@ impl Prefs {
             job_delay_s: v["jobDelay"].as_u64().map_or(d.job_delay_s, |n| n.clamp(1, 20)),
             reopen_projects: v["reopenProjects"].as_bool().unwrap_or(d.reopen_projects),
             auto_resume: v["autoResume"].as_bool().unwrap_or(d.auto_resume),
+            handover_to: v["handoverTo"].as_str().and_then(cli_from_key),
             crews: v["crews"].as_array().into_iter().flatten().filter_map(crew_from).collect(),
             schedules: v["schedules"].as_array().into_iter().flatten().filter_map(crate::schedule::Schedule::from_json).collect(),
         }
