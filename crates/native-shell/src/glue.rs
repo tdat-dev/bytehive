@@ -29,6 +29,12 @@ impl ShellApp {
         }
         let Some(out) = self.new_task.show(ctx, &self.projects.dirs, &self.prefs.crews) else { return };
         match out {
+            SheetOut::Schedule(s) => {
+                self.notice = Some(format!("Scheduled: {}.", s.when()));
+                self.prefs.schedules.push(s);
+                self.save_prefs();
+                self.new_task.started();
+            }
             SheetOut::SaveCrew(crew) => {
                 self.notice = Some(format!("Saved crew {}.", crew.name));
                 self.prefs.save_crew(crew);
@@ -49,6 +55,31 @@ impl ShellApp {
                 Err(e) => self.new_task.error = Some(e),
             },
         }
+    }
+
+    /// Start every scheduled task that is due, and wake up for the next one.
+    pub(crate) fn poll_schedules(&mut self, ctx: &egui::Context) {
+        if !self.prefs.schedules.iter().any(|s| s.enabled) {
+            return;
+        }
+        ctx.request_repaint_after(std::time::Duration::from_secs(20));
+        let now = chrono::Local::now();
+        let due: Vec<usize> = (0..self.prefs.schedules.len()).filter(|&i| self.prefs.schedules[i].is_due(now)).collect();
+        if due.is_empty() {
+            return;
+        }
+        for i in due {
+            let task = self.prefs.schedules[i].task.clone();
+            self.prefs.schedules[i].fired(now);
+            let title: String = task.prompt.lines().next().unwrap_or("").chars().take(60).collect();
+            self.notice = Some(match self.start_task(&task) {
+                Ok(()) => format!("Started the scheduled task: {title}"),
+                Err(e) => format!("The scheduled task {title} could not start: {e}"),
+            });
+            self.projects.open(&task.dir);
+        }
+        self.save_projects();
+        self.save_prefs();
     }
 
     /// The grid, or the start screen while no project is open.
@@ -103,6 +134,26 @@ impl ShellApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_due_schedule_fires_once_and_says_why_it_failed() {
+        let mut app = ShellApp::new().unwrap();
+        app.prefs_path = None; // never touch the real settings file
+        app.projects_path = None;
+        let mut task = crate::newtask::NewTask::new(r"Z:\no-such-repo".to_string());
+        task.prompt = "Nightly checks".to_string();
+        let now = chrono::Local::now();
+        let time = format!("{:02}:{:02}", now.format("%H"), now.format("%M"));
+        app.prefs.schedules = vec![crate::schedule::Schedule { id: "s".into(), task, time, daily: false, enabled: true, last_fired: 0 }];
+        let ctx = egui::Context::default();
+        app.poll_schedules(&ctx);
+        let note = app.notice.clone().unwrap_or_default();
+        assert!(note.contains("could not start") && note.contains("git repo"), "{note}");
+        assert!(!app.prefs.schedules[0].enabled, "a once schedule is spent");
+        let before = app.notice.take();
+        app.poll_schedules(&ctx);
+        assert!(app.notice.is_none() && before.is_some(), "it does not fire twice");
+    }
 
     #[test]
     fn each_project_keeps_its_own_stage() {

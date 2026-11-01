@@ -15,6 +15,8 @@ use crate::theme::{DEL, DIM, INK3, PRIMARY, PRIMARY_INK, R_XL, SHEET, TEXT};
 /// What the sheet hands back.
 pub enum SheetOut {
     Start(NewTask),
+    /// Start it later, at a time of day.
+    Schedule(crate::schedule::Schedule),
     /// Remember the sheet's settings as a named crew.
     SaveCrew(Crew),
 }
@@ -29,11 +31,15 @@ pub struct NewTaskSheet {
     /// The name typed for a crew to save.
     pub(crate) crew_name: String,
     pub(crate) out: Option<SheetOut>,
+    /// Start later instead of now: at `sched_time`, once or daily.
+    pub(crate) sched_on: bool,
+    pub(crate) sched_time: String,
+    pub(crate) sched_daily: bool,
 }
 
 impl NewTaskSheet {
     pub fn new(dir: String) -> NewTaskSheet {
-        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None }
+        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None, sched_on: false, sched_time: "09:00".to_string(), sched_daily: true }
     }
 
     /// Open on `dir` with the settings' defaults; `count` overrides theirs
@@ -128,7 +134,8 @@ impl NewTaskSheet {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Ctrl \u{21B5} start  \u{00B7}  Esc cancel").size(12.0).color(INK3));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let go = egui::Button::new(RichText::new("Start task").strong().color(PRIMARY_INK))
+                        let go_label = if self.sched_on { "Schedule task" } else { "Start task" };
+                        let go = egui::Button::new(RichText::new(go_label).strong().color(PRIMARY_INK))
                             .fill(PRIMARY)
                             .corner_radius(999.0)
                             .min_size(egui::vec2(0.0, 36.0));
@@ -137,6 +144,8 @@ impl NewTaskSheet {
                         }
                         ui.add_space(8.0);
                         ui.checkbox(&mut self.more, RichText::new("Create more").size(12.5).color(DIM));
+                        ui.add_space(8.0);
+                        self.schedule_controls(ui);
                     });
                 });
             });
@@ -147,9 +156,33 @@ impl NewTaskSheet {
             return None;
         }
         if start {
-            return Some(SheetOut::Start(self.form.clone()));
+            if !self.sched_on {
+                return Some(SheetOut::Start(self.form.clone()));
+            }
+            match crate::schedule::parse_time(&self.sched_time) {
+                None => self.error = Some("Write the time as HH:MM, like 09:00.".to_string()),
+                Some(_) => {
+                    let id = format!("s{}", crate::app::now_ms());
+                    let s = crate::schedule::Schedule { id, task: self.form.clone(), time: self.sched_time.trim().to_string(), daily: self.sched_daily, enabled: true, last_fired: 0 };
+                    return Some(SheetOut::Schedule(s));
+                }
+            }
         }
         self.out.take()
+    }
+}
+
+impl NewTaskSheet {
+    /// "Schedule [09:00] [Daily]": start later instead of now.
+    fn schedule_controls(&mut self, ui: &mut egui::Ui) {
+        if self.sched_on {
+            egui::ComboBox::from_id_salt("nt-repeat").selected_text(RichText::new(if self.sched_daily { "Daily" } else { "Once" }).size(12.5)).show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.sched_daily, true, "Daily");
+                ui.selectable_value(&mut self.sched_daily, false, "Once");
+            });
+            ui.add(egui::TextEdit::singleline(&mut self.sched_time).desired_width(46.0).hint_text("09:00"));
+        }
+        ui.checkbox(&mut self.sched_on, RichText::new("Schedule").size(12.5).color(DIM)).on_hover_text("Start it later at a time of day, once or every day");
     }
 }
 

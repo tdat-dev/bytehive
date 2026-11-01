@@ -395,6 +395,7 @@ impl eframe::App for ShellApp {
             }
         }
         self.sheets(ui.ctx());
+        self.poll_schedules(ui.ctx());
         self.drawers(ui.ctx());
     }
 }

@@ -63,7 +63,7 @@ pub fn help_line(count: usize, worktree: bool, flow: Flow) -> String {
 }
 
 /// What the sheet holds.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NewTask {
     pub prompt: String,
     pub dir: String,

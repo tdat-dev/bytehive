@@ -192,6 +192,7 @@ impl SettingsSheet {
         ch |= row(ui, "Time to reach the prompt", "How long a new CLI gets before its task is typed in.", |ui| {
             ui.add(egui::Slider::new(&mut p.job_delay_s, 1..=20).suffix(" s")).changed()
         });
+        ch |= scheduled_rows(ui, p);
         let mut drop = None;
         for (i, c) in p.crews.iter().enumerate() {
             let why = format!("{} \u{00D7} {} \u{00B7} {} \u{00B7} {}", c.count, c.cli.name(), c.perm.label(), c.flow.label());
@@ -212,6 +213,30 @@ impl SettingsSheet {
         row(ui, "Where settings live", store, |_| false);
         ch
     }
+}
+
+/// One row per scheduled task: when, what, next run; on/off and delete.
+fn scheduled_rows(ui: &mut egui::Ui, p: &mut Prefs) -> bool {
+    let now = chrono::Local::now();
+    let mut ch = false;
+    let mut drop = None;
+    for (i, s) in p.schedules.iter_mut().enumerate() {
+        let title: String = s.task.prompt.lines().next().unwrap_or("").chars().take(70).collect();
+        let next = s.next_run(now).map_or("not scheduled".to_string(), |t| format!("next {}", supervise::limits::reset_label(t, now)));
+        let why = format!("{title} \u{00B7} {} \u{00D7} {} \u{00B7} {next}", s.task.count, s.task.cli.name());
+        ch |= row(ui, &format!("Scheduled: {}", s.when()), &why, |ui| {
+            let mut c = false;
+            if ui.add(egui::Button::new(RichText::new("Delete").size(12.5).color(DEL)).frame(false)).clicked() {
+                drop = Some(i);
+                c = true;
+            }
+            c | switch(ui, &mut s.enabled).changed()
+        });
+    }
+    if let Some(i) = drop {
+        p.schedules.remove(i);
+    }
+    ch
 }
 
 #[cfg(test)]

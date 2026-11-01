@@ -79,6 +79,8 @@ pub struct Prefs {
     /// Tell an agent stopped by its plan's limit to carry on once it lifts.
     pub auto_resume: bool,
     pub crews: Vec<Crew>,
+    /// New tasks set to start at a time of day.
+    pub schedules: Vec<crate::schedule::Schedule>,
 }
 
 impl Default for Prefs {
@@ -96,6 +98,7 @@ impl Default for Prefs {
             reopen_projects: true,
             auto_resume: true,
             crews: Vec::new(),
+            schedules: Vec::new(),
         }
     }
 }
@@ -143,6 +146,7 @@ impl Prefs {
             "reopenProjects": self.reopen_projects,
             "autoResume": self.auto_resume,
             "crews": self.crews.iter().map(crew_json).collect::<Vec<_>>(),
+            "schedules": self.schedules.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
         })
     }
 
@@ -162,6 +166,7 @@ impl Prefs {
             reopen_projects: v["reopenProjects"].as_bool().unwrap_or(d.reopen_projects),
             auto_resume: v["autoResume"].as_bool().unwrap_or(d.auto_resume),
             crews: v["crews"].as_array().into_iter().flatten().filter_map(crew_from).collect(),
+            schedules: v["schedules"].as_array().into_iter().flatten().filter_map(crate::schedule::Schedule::from_json).collect(),
         }
     }
 
