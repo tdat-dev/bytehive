@@ -230,6 +230,9 @@ impl SettingsSheet {
         self.heading(ui, 4);
         ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time.", |ui| switch(ui, &mut p.reopen_projects).changed());
         ch |= row(ui, "Hide to tray when minimized", "Agents keep working; click the tray icon to come back.", |ui| switch(ui, &mut p.hide_to_tray).changed());
+        ch |= row(ui, "Tell me when an agent needs me", "A Windows notification while Maestro is in the background.", |ui| switch(ui, &mut p.notify_needs).changed());
+        ch |= row(ui, "Tell me when an agent finishes", "Done, ready to review, or stopped with an error.", |ui| switch(ui, &mut p.notify_done).changed());
+        ch |= row(ui, "Tell me about usage limits", "When an agent runs out, and when it is back at work.", |ui| switch(ui, &mut p.limit_notify).changed());
         row(ui, "Where settings live", store, |_| false);
         ch
     }

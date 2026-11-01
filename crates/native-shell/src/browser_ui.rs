@@ -193,9 +193,19 @@ impl ShellApp {
             let where_ = if at.is_empty() { String::new() } else { format!(" on {at}") };
             self.notice = Some(format!("{} reached {what}{where_}. Handle it in Chrome, then tell it to carry on.", b.agent));
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+            if Self::away(ctx) {
+                self.toast(ctx, format!("{} needs you in Chrome", b.agent), format!("It reached {what}{where_}."), None);
+            }
         }
-        if !self.extras.browser.asks.is_empty() && !ctx.input(|i| i.viewport().focused.unwrap_or(true)) {
+        if !self.extras.browser.asks.is_empty() && Self::away(ctx) {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Critical));
+            let fresh: Vec<_> = self.extras.browser.asks.iter().filter(|a| !self.extras.notify.asks_told.contains(&a.id)).cloned().collect();
+            for a in fresh {
+                self.extras.notify.asks_told.insert(a.id);
+                let at = host(&a.url);
+                let on = if at.is_empty() { String::new() } else { format!("On {at}. ") };
+                self.toast(ctx, crate::browser_live::ask_line(&a), format!("{on}Open Maestro to allow it or not."), None);
+            }
         }
         self.browser_card(ctx);
         self.browser_asks(ctx);

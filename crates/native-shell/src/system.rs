@@ -57,9 +57,16 @@ impl ShellApp {
             .filter(|p| matches!(pane_status(p, now, None).state, TaskState::Needs | TaskState::Blocked))
             .map(|p| p.id.clone())
             .collect();
-        let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
-        if !focused && newly_needing(&self.extras.system.needs, &needs) > 0 {
+        if Self::away(ctx) && newly_needing(&self.extras.system.needs, &needs) > 0 {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+            if self.prefs.notify_needs {
+                for p in self.panes.iter().filter(|p| needs.contains(&p.id) && !self.extras.system.needs.contains(&p.id)) {
+                    let ask = pane_status(p, now, None).ask.map(|a| a.prompt).unwrap_or_default();
+                    let project = crate::projects::project_name(&crate::projects::pane_home(p));
+                    let body = if ask.is_empty() { format!("In {project}.") } else { ask };
+                    self.toast(ctx, format!("{} needs you", p.name), body, Some(p.id.clone()));
+                }
+            }
         }
         self.extras.system.needs = needs;
     }

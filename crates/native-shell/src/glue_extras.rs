@@ -20,6 +20,7 @@ pub struct Extras {
     pub replay: crate::replay_ui::ReplaySheet,
     pub plan: crate::planmeter::PlanWatch,
     pub tray: crate::tray::Tray,
+    pub notify: crate::notify::Notifier,
 }
 
 impl ShellApp {

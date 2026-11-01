@@ -26,6 +26,7 @@ mod layout;
 mod logic;
 mod memory;
 mod memory_ui;
+mod notify;
 mod newtask;
 mod newtask_props;
 mod newtask_ui;
@@ -59,6 +60,10 @@ mod tray;
 mod usage_watch;
 
 use app::ShellApp;
+
+/// The app's Windows identity: toasts and the Start-menu shortcut share it
+/// (the Tauri app's, so its shortcut and notification settings carry over).
+pub const APP_ID: &str = "com.maestro.app";
 use theme::install_fonts;
 
 fn main() -> eframe::Result<()> {

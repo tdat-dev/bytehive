@@ -15,6 +15,7 @@ pub mod describe;
 pub mod diff_file;
 pub mod digest;
 pub mod done_check;
+pub mod finish;
 pub mod ledgers;
 pub mod limits;
 pub mod muse;

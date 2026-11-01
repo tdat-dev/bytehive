@@ -52,7 +52,7 @@ pub struct Tray {
 }
 
 #[cfg(windows)]
-fn show_window(hwnd: isize) {
+pub(crate) fn show_window(hwnd: isize) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW};
     if hwnd != 0 {
         unsafe {
@@ -74,11 +74,15 @@ fn hide_window(hwnd: isize) {
 }
 
 #[cfg(not(windows))]
-fn show_window(_: isize) {}
+pub(crate) fn show_window(_: isize) {}
 #[cfg(not(windows))]
 fn hide_window(_: isize) {}
 
 impl Tray {
+    pub fn hwnd(&self) -> isize {
+        self.hwnd.load(Ordering::Relaxed)
+    }
+
     /// Learn the main window from eframe at start.
     pub fn set_window(&self, cc: &eframe::CreationContext<'_>) {
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};

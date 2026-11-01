@@ -37,6 +37,7 @@ impl ShellApp {
         self.poll_remote(ctx);
         self.extras.plan.poll(ctx);
         self.poll_tray(ctx);
+        self.poll_notify(ctx);
         self.poll_schedules(ctx);
         if self.panes.iter().any(|p| p.exit_code.is_none()) {
             // Poll the PTYs at ~30fps while shown (eframe slows this down by
