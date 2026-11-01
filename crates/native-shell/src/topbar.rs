@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use eframe::egui::{self, Color32, FontId, Rect, Sense, Vec2};
+use eframe::egui::{self, Color32, Rect, Sense, Vec2};
 
 use crate::app::ShellApp;
 use crate::icons::{paint_in, Icon};
@@ -89,7 +89,7 @@ impl ShellApp {
                 ui.add_space(8.0);
                 let mut job = egui::text::LayoutJob::default();
                 job.append(&lead, 0.0, egui::TextFormat::simple(medium(24.0), TEXT));
-                job.append(&tail, 0.0, egui::TextFormat::simple(FontId::proportional(24.0), INK3));
+                job.append(&tail, 0.0, egui::TextFormat::simple(crate::style::w500(24.0), INK3));
                 ui.add(egui::Label::new(job).truncate()).on_hover_text(summary);
             });
         });

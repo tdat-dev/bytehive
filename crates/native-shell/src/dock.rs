@@ -35,7 +35,7 @@ fn views(ui: &mut egui::Ui, now: View, narrow: bool) -> Option<View> {
     let items = [(View::Queue, "Focus", Icon::Focus), (View::Split, "Grid", Icon::Grid)];
     let widths: Vec<f32> = items
         .iter()
-        .map(|(_, l, _)| if narrow { 40.0 } else { 14.0 + 15.0 + 7.0 + ui.painter().layout_no_wrap(l.to_string(), FontId::proportional(13.0), DIM).size().x + 14.0 })
+        .map(|(_, l, _)| if narrow { 40.0 } else { 14.0 + 15.0 + 7.0 + ui.painter().layout_no_wrap(l.to_string(), crate::style::w500(13.0), DIM).size().x + 14.0 })
         .collect();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(widths.iter().sum::<f32>() + 8.0 + 2.0, 40.0), Sense::hover());
     lift(ui, rect, 20.0, RAISE);
@@ -52,7 +52,7 @@ fn views(ui: &mut egui::Ui, now: View, narrow: bool) -> Option<View> {
         let ir = Rect::from_min_size(Pos2::new(if narrow { b.center().x - 7.5 } else { b.left() + 14.0 }, b.center().y - 7.5), Vec2::splat(15.0));
         paint_in(ui.painter(), ir, 15.0, icon, ink, 1.6);
         if !narrow {
-            ui.painter().text(Pos2::new(ir.right() + 7.0, b.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
+            ui.painter().text(Pos2::new(ir.right() + 7.0, b.center().y), egui::Align2::LEFT_CENTER, label, crate::style::w500(13.0), ink);
         }
         if r.on_hover_text(if view == View::Queue { "One agent, large" } else { "Every agent side by side" }).clicked() {
             hit = Some(view);

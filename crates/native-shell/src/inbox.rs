@@ -160,7 +160,7 @@ fn row(ui: &mut egui::Ui, i: usize, p: &Pane, r: &QueueRow, on: bool, now: u64) 
         }
     });
     let name_c = if stopped { DIM } else { TEXT };
-    let name_f = FontId::proportional(13.5);
+    let name_f = if stopped { FontId::proportional(13.5) } else { crate::style::w500(13.5) };
     let name = painter.layout(p.name.clone(), name_f, name_c, inner.right() - 34.0 - left);
     painter.galley(Pos2::new(left, inner.top()), name, name_c);
     let (label, rest) = row_line(&p.name, state, &r.line);

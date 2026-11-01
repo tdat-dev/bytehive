@@ -40,6 +40,12 @@ pub fn tint(c: Color32) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 31)
 }
 
+/// Geist at 500, the web app's weight for names, pills and tabs.
+pub fn w500(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name("medium".into()))
+}
+
+/// Geist at 600: titles, the sentence's lead, primary buttons.
 pub fn medium(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("semibold".into()))
 }
@@ -60,6 +66,9 @@ pub fn install_style(ctx: &egui::Context) {
         s.spacing.scroll.floating = true;
         let v = &mut s.visuals;
         v.dark_mode = true;
+        // egui thickens light text on dark (2c - c^2), which reads bold next
+        // to the browser's text; a gentler curve reads like the browser.
+        v.text_options.color_transfer_function = egui::epaint::FontColorTransferFunction::Gamma(0.7);
         v.panel_fill = BG;
         v.window_fill = Color32::from_rgb(20, 21, 24);
         v.window_stroke = Stroke::new(1.0, LINE);
