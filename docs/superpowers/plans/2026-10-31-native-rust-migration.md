@@ -160,16 +160,32 @@ Theo bản đã duyệt ("Board thành view suy ra", "Pomodoro: bỏ"), commit `
       danh sách trong Settings (lần chạy tới, bật/tắt, xóa).
 
 ### Phase E: Trình duyệt + remote + hệ thống
-- [ ] Maestro Browser trong native (web `browserview`, `browserprefs`,
-      `bridges`): xem screencast, Dừng / Tôi làm tiếp (xem thẻ To-do board +
-      spec `2026-09-24-maestro-browser-design.md`).
-- [ ] Remote fleet dashboard native-side (web `dashboard`, `dashpw`,
-      `dashorder`): các lệnh backend đã có trong `src-tauri/dashboard`, cần UI +
-      gate login (xem nhóm thẻ Login trên board) và password.
-- [ ] Hệ thống: tray + quit-life + power (web `quitlife`, `power`), updater
-      (web `updater`), titlebar, intro, tips/hint/calm.
-- [ ] Project-memory + memory view (web `projectmemory`, `memoryview`).
-- [ ] Replay + handoff + convdigest (web `replay`, `handoff`, `convdigest`).
+- [x] Project memory (commit `73e894a`): sheet Memory (nút trên thanh trên, Ctrl+K)
+      đọc/sửa `.maestro/memory.json` cùng định dạng với web và MCP, theo dõi
+      agent ghi vào, chặn secret, Undo xóa, gửi một fact hoặc cả bộ cho agent
+      đang chạy để kiểm lại với code.
+- [x] Handoff (commit `7fea514`): Ctrl+K "Hand this agent's task to another
+      CLI" hoặc tự động khi chạm limit (Settings: When an agent hits its limit).
+      Agent mới chạy cùng thư mục/worktree, được gõ brief từ transcript + git
+      (`supervise::digest::handoff_brief`).
+- [x] Hệ thống (commit `3173522`): hỏi trước khi thoát khi còn agent sống,
+      nháy taskbar khi agent mới cần bạn lúc app ở nền. Pause animation của web
+      không cần (egui chỉ vẽ khi có thay đổi).
+- [x] Remote dashboard (commit `9f7e0c1`, `4ed221c`, `3fdfbf7`): crate
+      `crates/dashboard` không phụ thuộc Tauri (giữ nguyên các lớp bảo vệ: Host/
+      Origin, X-Maestro, JSON-only, argon2, khóa thử sai), Settings > Remote,
+      chung file mật khẩu với bản Tauri. Cổng 8477 bị Windows giữ trên máy này
+      (excluded range 8402-8501), nên có ô đổi cổng. Còn: xterm.js vẫn đọc từ
+      `node_modules` (phải vendor trước khi gỡ web ở Phase F).
+- [x] Maestro Browser (commit `621256c`, `e2e9d57`): crate `crates/browser-hub`
+      tách từ `src-tauri/src/browser` (hub, native host, profiles); native chạy hub,
+      làm native messaging host khi Chrome gọi, live view tab của agent trên
+      stage (Stop / Let it go on), Allow / Don't allow cho click rủi ro, báo
+      login/CAPTCHA, Settings > Browser. Chưa thử với extension thật vì bản debug
+      không giành quyền trình duyệt của bản Tauri đã cài (MAESTRO_DEV_BROWSER=1).
+- [ ] Còn thiếu: replay (bản ghi PTY + player; registry đã có `record_start`),
+      tray (ẩn xuống khay), updater (chờ kênh phát hành native ở Phase F), tab
+      History theo từng việc, planmeter.
 
 ### Phase F: Thay thế + đóng gói + rút lui Tauri
 - [ ] Parity backend: mọi lệnh `src-tauri` cần thiết đã có đường native tương
