@@ -8,6 +8,7 @@ use crate::app::ShellApp;
 use crate::changes_ui::ChangesView;
 use crate::commands::SideTab;
 use crate::files_ui::FileSource;
+use crate::land_ui::LandOut;
 use crate::projects::project_name;
 
 impl ShellApp {
@@ -56,6 +57,17 @@ impl ShellApp {
     pub(crate) fn side_panels(&mut self, ui: &mut egui::Ui) {
         if let Some(i) = self.review.open_changes.take() {
             self.changes.open_at(i);
+        }
+        match self.review.land_out.take() {
+            Some(LandOut::Tell(id, text)) => self.tell(id, text),
+            Some(LandOut::Discarded(id)) => {
+                // Its folder is gone: the agent goes with it.
+                let name = self.panes.iter().find(|p| p.id == id).map(|p| p.name.clone()).unwrap_or_default();
+                drop(agent_core::lock(&self.registry).take(&id));
+                self.panes.retain(|p| p.id != id);
+                self.notice = Some(format!("Discarded {name}'s branch."));
+            }
+            _ => {}
         }
         if !self.changes.open {
             return;

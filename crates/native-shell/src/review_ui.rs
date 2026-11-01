@@ -5,7 +5,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-use agent_core::git::{branch_diff_text, branch_files, changed_files, checkpoint, current_branch, diff_text, merge_branch, remove_worktree, repo_root, MergeOutcome};
+use agent_core::git::{branch_diff_text, branch_files, changed_files, checkpoint, current_branch, diff_text, repo_root};
+
+use crate::land_ui::{LandBox, LandOut};
 use crate::diffview::untracked_file;
 use eframe::egui;
 use supervise::diff_file::{parse_diff, DiffFile};
@@ -37,7 +39,29 @@ impl ReviewSnapshot {
     }
 }
 
+/// The repos right under a folder that is not one itself (a parent of
+/// repos), sorted by name.
+pub fn repos_under(dir: &Path) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir() && p.join(".git").exists()).collect();
+    v.sort();
+    v
+}
+
 pub fn load_snapshot(cwd: &PathBuf) -> ReviewSnapshot {
+    if repo_root(cwd).is_none() {
+        // A folder of repos: each one's changes, under its own folder name.
+        let (mut changed, mut files) = (Vec::new(), Vec::new());
+        for r in repos_under(cwd) {
+            let name = r.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let snap = load_snapshot(&r);
+            changed.extend(snap.changed.into_iter().map(|c| format!("{name}/{c}")));
+            files.extend(snap.files.into_iter().map(|mut f| {
+                f.path = format!("{name}/{}", f.path);
+                f
+            }));
+        }
+        return ReviewSnapshot::from_files(None, changed, files);
+    }
     let branch = current_branch(cwd);
     let changed = changed_files(cwd);
     let mut files = parse_diff(&diff_text(cwd));
@@ -85,20 +109,9 @@ pub fn load_worktree_snapshot(w: &WorktreeInfo) -> ReviewSnapshot {
     ReviewSnapshot::from_files(Some(w.branch.clone()), changed, files)
 }
 
-/// A merge outcome as one plain sentence for the review row.
-pub fn describe_merge(outcome: &MergeOutcome, base: &str) -> String {
-    match outcome {
-        MergeOutcome::Merged => format!("Merged into {base}."),
-        MergeOutcome::Conflicts(files) => format!("Conflicts in {}. Nothing merged.", files.join(", ")),
-        MergeOutcome::DirtyMain => "Main checkout is dirty. Merge nothing until it is clean.".to_string(),
-        MergeOutcome::Failed(e) => format!("Merge failed: {e}"),
-    }
-}
-
 enum ReviewMsg {
     Snapshot(String, ReviewSnapshot),
     Checkpoint(Option<String>),
-    Merge(String, MergeOutcome),
 }
 
 pub struct ReviewPanel {
@@ -106,7 +119,10 @@ pub struct ReviewPanel {
     snapshot: Option<ReviewSnapshot>,
     loading: bool,
     checkpoint_msg: Option<String>,
-    merge_msg: Option<String>,
+    /// Merge, Send back, Discard for an agent in its own worktree.
+    land: LandBox,
+    /// What a branch action asks the app to do; the app takes it.
+    pub land_out: Option<LandOut>,
     tx: Sender<ReviewMsg>,
     rx: Receiver<ReviewMsg>,
     /// A file picked to read in the Changes panel; the app takes it.
@@ -116,7 +132,7 @@ pub struct ReviewPanel {
 impl ReviewPanel {
     pub fn new() -> Self {
         let (tx, rx) = channel();
-        ReviewPanel { selected: None, snapshot: None, loading: false, checkpoint_msg: None, merge_msg: None, tx, rx, open_changes: None }
+        ReviewPanel { selected: None, snapshot: None, loading: false, checkpoint_msg: None, land: LandBox::default(), land_out: None, tx, rx, open_changes: None }
     }
 
     /// The pane under review and its last read diff, for the Changes panel.
@@ -130,7 +146,6 @@ impl ReviewPanel {
             self.selected = Some(pane_id.to_string());
             self.snapshot = None;
             self.checkpoint_msg = None;
-            self.merge_msg = None;
         }
     }
 
@@ -174,8 +189,7 @@ impl ReviewPanel {
                     self.selected = Some(p.id.clone());
                     self.snapshot = None;
                     self.checkpoint_msg = None;
-                    self.merge_msg = None;
-                    changed = true;
+                            changed = true;
                 }
             }
         });
@@ -192,23 +206,6 @@ impl ReviewPanel {
                         Some(s) => format!("Checkpoint kept: {}", s.chars().take(8).collect::<String>()),
                         None => "Nothing to checkpoint.".to_string(),
                     });
-                }
-                ReviewMsg::Merge(id, outcome) => {
-                    if self.selected.as_deref() == Some(id.as_str()) {
-                        let base = panes
-                            .iter()
-                            .find(|p| p.id == id)
-                            .and_then(|p| p.worktree.as_ref().map(|w| w.base.clone()))
-                            .unwrap_or_else(|| "base".to_string());
-                        self.merge_msg = Some(describe_merge(&outcome, &base));
-                        if outcome == MergeOutcome::Merged {
-                            if let Some(p) = panes.iter_mut().find(|p| p.id == id) {
-                                p.merged = true;
-                            }
-                            self.snapshot = None;
-                            self.request_load(&id, panes);
-                        }
-                    }
                 }
             }
         }
@@ -233,30 +230,17 @@ impl ReviewPanel {
                 ui.label(egui::RichText::new(msg).small().color(DIM));
             }
         });
-        if let Some(p) = panes.iter().find(|p| Some(p.id.as_str()) == self.selected.as_deref()) {
-            if let Some(w) = p.worktree.clone() {
-                if p.merged {
-                    ui.label(egui::RichText::new(format!("Merged {} into {}.", w.branch, w.base)).small().color(DIM));
-                } else {
-                    ui.horizontal(|ui| {
-                        if ui.small_button(format!("Merge {} into {}", w.branch, w.base)).clicked() {
-                            self.merge_msg = None;
-                            let tx = self.tx.clone();
-                            let id = p.id.clone();
-                            std::thread::spawn(move || {
-                                let outcome = merge_branch(Path::new(&w.repo), &w.branch, &w.base);
-                                if outcome == MergeOutcome::Merged {
-                                    remove_worktree(Path::new(&w.repo), Path::new(&w.path));
-                                }
-                                let _ = tx.send(ReviewMsg::Merge(id, outcome));
-                            });
-                        }
-                        if let Some(msg) = self.merge_msg.as_deref() {
-                            ui.label(egui::RichText::new(msg).small().color(DIM));
-                        }
-                    });
+        let out = panes.iter().find(|p| Some(p.id.as_str()) == self.selected.as_deref()).and_then(|p| self.land.show(ui, p));
+        match out {
+            Some(LandOut::Merged(id)) => {
+                if let Some(p) = panes.iter_mut().find(|p| p.id == id) {
+                    p.merged = true;
                 }
+                self.snapshot = None;
+                self.request_load(&id, panes);
             }
+            Some(o) => self.land_out = Some(o),
+            None => {}
         }
         ui.separator();
         if self.loading && self.snapshot.is_none() {
@@ -340,6 +324,21 @@ mod tests {
         assert!(snap.secrets.is_empty());
     }
 
+    #[test]
+    fn a_folder_of_repos_reviews_each_under_its_name() {
+        let parent = std::env::temp_dir().join(format!("maestro-parent-review-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        let repo = scratch_repo("inner");
+        std::fs::create_dir_all(&parent).unwrap();
+        let inner = parent.join("api");
+        std::fs::rename(&repo, &inner).unwrap();
+        std::fs::write(inner.join("note.txt"), "hello\nworld\n").unwrap();
+        let snap = load_snapshot(&parent);
+        assert_eq!(snap.changed, vec!["api/note.txt".to_string()]);
+        assert_eq!(snap.files.first().map(|f| f.path.as_str()), Some("api/note.txt"));
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
     fn scratch_repo(tag: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("maestro-wt-review-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -380,19 +379,9 @@ mod tests {
         assert!(!snap.files.is_empty());
         assert_eq!(snap.done.len(), 1);
         assert!(!branch_files(&repo, &base, "feat/wt").is_empty());
+        use agent_core::git::{merge_branch, remove_worktree, MergeOutcome};
         assert_eq!(merge_branch(&repo, "feat/wt", &base), MergeOutcome::Merged);
         assert!(remove_worktree(&repo, &wt_path));
         let _ = std::fs::remove_dir_all(&repo);
-    }
-
-    #[test]
-    fn merge_outcomes_read_as_plain_sentences() {
-        assert_eq!(describe_merge(&MergeOutcome::Merged, "main"), "Merged into main.");
-        assert_eq!(
-            describe_merge(&MergeOutcome::Conflicts(vec!["a.ts".to_string(), "b.ts".to_string()]), "main"),
-            "Conflicts in a.ts, b.ts. Nothing merged."
-        );
-        assert_eq!(describe_merge(&MergeOutcome::DirtyMain, "main"), "Main checkout is dirty. Merge nothing until it is clean.");
-        assert_eq!(describe_merge(&MergeOutcome::Failed("nope".to_string()), "main"), "Merge failed: nope");
     }
 }
