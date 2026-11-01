@@ -17,6 +17,7 @@ portable-pty = "0.9"
 regex = "1"
 rfd = "0.16.0"
 serde_json = "1"
+ureq = "3"
 supervise = { version = "0.1.0", path = "../supervise" }
 uuid = { version = "1.29.0", features = ["v4"] }
 vte = "0.15"

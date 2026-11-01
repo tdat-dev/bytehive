@@ -27,6 +27,7 @@ impl ShellApp {
         if self.settings.show(ctx, &mut self.prefs, &store, &mut self.extras.remote.form, &mut self.extras.browser.form) {
             self.save_prefs();
         }
+        self.new_task.room = self.extras.plan.room_note(self.new_task.form.cli, crate::app::now_ms() as i64);
         let Some(out) = self.new_task.show(ctx, &self.projects.dirs, &self.prefs.crews) else { return };
         match out {
             SheetOut::Schedule(s) => {

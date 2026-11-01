@@ -342,7 +342,9 @@ impl eframe::App for ShellApp {
             match self.side_tab {
                 SideTab::Queue => match {
                     self.flow.show_recent(ui, now_ms());
-                    QueuePanel::show(&mut self.queue, ui, &self.panes, &hidden, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes)
+                    let act = QueuePanel::show(&mut self.queue, ui, &self.panes, &hidden, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
+                    self.extras.plan.show(ui);
+                    act
                 } {
                     Some(QueueAction::Focus(id)) => focus = Some(id),
                     Some(QueueAction::Answer { pane_id, bytes }) => {

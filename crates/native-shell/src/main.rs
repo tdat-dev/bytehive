@@ -30,6 +30,7 @@ mod newtask_props;
 mod newtask_ui;
 mod palette;
 mod plan_board;
+mod planmeter;
 mod polls;
 mod prefs;
 mod projects;

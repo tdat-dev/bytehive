@@ -26,6 +26,7 @@ pub mod job;
 pub mod launch;
 pub mod muse;
 pub mod opencode;
+pub mod planusage;
 #[cfg(windows)]
 pub mod pipe_session;
 mod record;

@@ -35,11 +35,13 @@ pub struct NewTaskSheet {
     pub(crate) sched_on: bool,
     pub(crate) sched_time: String,
     pub(crate) sched_daily: bool,
+    /// How little room the chosen CLI's plan has left, when little.
+    pub room: String,
 }
 
 impl NewTaskSheet {
     pub fn new(dir: String) -> NewTaskSheet {
-        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None, sched_on: false, sched_time: "09:00".to_string(), sched_daily: true }
+        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None, sched_on: false, sched_time: "09:00".to_string(), sched_daily: true, room: String::new() }
     }
 
     /// Open on `dir` with the settings' defaults; `count` overrides theirs
@@ -124,6 +126,9 @@ impl NewTaskSheet {
                 let race_clash = self.form.count > 1 && !self.form.worktree;
                 let help = help_line(self.form.count, self.form.worktree, self.form.flow);
                 ui.label(RichText::new(help).size(12.5).color(if race_clash { DEL } else { INK3 }));
+                if !self.room.is_empty() {
+                    ui.label(RichText::new(&self.room).size(12.5).color(crate::theme::AMBER));
+                }
                 if let Some(e) = &self.error {
                     ui.label(RichText::new(e).size(12.5).color(DEL));
                 }

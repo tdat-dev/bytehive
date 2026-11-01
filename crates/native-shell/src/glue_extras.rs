@@ -18,6 +18,7 @@ pub struct Extras {
     pub remote: crate::remote::Remote,
     pub browser: crate::browser_ui::BrowserWatch,
     pub replay: crate::replay_ui::ReplaySheet,
+    pub plan: crate::planmeter::PlanWatch,
 }
 
 impl ShellApp {
@@ -84,6 +85,7 @@ impl ShellApp {
         self.poll_system(ctx);
         self.poll_remote(ctx);
         self.poll_browser(ctx);
+        self.extras.plan.poll(ctx);
         let font = self.font.clone();
         self.extras.replay.show(ctx, &font);
         if self.extras.memory.open {

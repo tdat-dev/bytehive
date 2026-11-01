@@ -145,7 +145,7 @@ pub fn claude_session_usage(dir: &str, session_id: &str) -> Vec<ModelUsage> {
 }
 
 /// The last `bytes` of a file as whole lines (the first, cut, line dropped).
-fn tail_lines(path: &Path, bytes: u64) -> Vec<String> {
+pub(crate) fn tail_lines(path: &Path, bytes: u64) -> Vec<String> {
     let Ok(mut f) = std::fs::File::open(path) else { return Vec::new() };
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
     let start = len.saturating_sub(bytes);
