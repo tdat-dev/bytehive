@@ -10,6 +10,7 @@ use eframe::egui::{self, Color32, FontFamily, FontId, Key, Modifiers, RichText, 
 
 use crate::newtask::{help_line, NewTask};
 use crate::prefs::{Crew, Prefs};
+use crate::sessions_ui::Cli;
 use crate::theme::{DEL, DIM, INK3, PRIMARY, PRIMARY_INK, R_XL, SHEET, TEXT};
 
 /// What the sheet hands back.
@@ -37,11 +38,20 @@ pub struct NewTaskSheet {
     pub(crate) sched_daily: bool,
     /// How little room the chosen CLI's plan has left, when little.
     pub room: String,
+    /// The CLIs found on PATH when the sheet opened; None until looked.
+    pub installed: Option<Vec<Cli>>,
+}
+
+/// The CLIs whose program is on PATH (`where`-style, with PATHEXT).
+pub fn installed_clis() -> Vec<Cli> {
+    let path = std::env::var_os("PATH");
+    let ext = std::env::var("PATHEXT").ok();
+    Cli::all().into_iter().filter(|c| agent_core::pipe_session::resolve(c.program(), path.as_deref(), ext.as_deref()).is_some()).collect()
 }
 
 impl NewTaskSheet {
     pub fn new(dir: String) -> NewTaskSheet {
-        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None, sched_on: false, sched_time: "09:00".to_string(), sched_daily: true, room: String::new() }
+        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None, sched_on: false, sched_time: "09:00".to_string(), sched_daily: true, room: String::new(), installed: None }
     }
 
     /// Open on `dir` with the settings' defaults; `count` overrides theirs
@@ -51,6 +61,11 @@ impl NewTaskSheet {
             self.form.dir = dir.to_string();
         }
         self.form.cli = prefs.start_cli();
+        let installed = installed_clis();
+        if !installed.is_empty() && !installed.contains(&self.form.cli) {
+            self.form.cli = installed[0];
+        }
+        self.installed = Some(installed);
         self.form.worktree = prefs.worktree;
         self.form.perm = prefs.perm;
         self.form.flow = prefs.flow;

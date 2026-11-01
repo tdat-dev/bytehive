@@ -46,7 +46,12 @@ impl NewTaskSheet {
             lbl(ui, "Agent");
             egui::ComboBox::from_id_salt("nt-cli").selected_text(RichText::new(self.form.cli.name()).size(12.5)).show_ui(ui, |ui| {
                 for cli in Cli::all() {
-                    ui.selectable_value(&mut self.form.cli, cli, cli.name());
+                    let here = self.installed.as_ref().is_none_or(|v| v.contains(&cli));
+                    let r = ui.add_enabled(here, egui::Button::selectable(self.form.cli == cli, cli.name()));
+                    if r.clicked() {
+                        self.form.cli = cli;
+                    }
+                    r.on_disabled_hover_text(format!("Not installed: {} isn't on PATH", cli.program()));
                 }
             });
         });
