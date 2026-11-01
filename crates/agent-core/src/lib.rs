@@ -31,6 +31,7 @@ pub mod pipe_session;
 pub mod pty_session;
 pub mod registry;
 pub mod transcript;
+pub mod usage;
 
 pub use agent::{Agent, Sink};
 pub use command_spec::CommandSpec;
