@@ -32,6 +32,8 @@ mod prefs;
 mod projects;
 mod projects_ui;
 mod queue_ui;
+mod remote;
+mod remote_ui;
 mod review_ui;
 mod schedule;
 mod send_ui;

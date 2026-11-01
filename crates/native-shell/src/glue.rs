@@ -24,7 +24,7 @@ impl ShellApp {
     /// Settings, then New task, floating over everything.
     pub(crate) fn sheets(&mut self, ctx: &egui::Context) {
         let store = self.prefs_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "not saved (no home folder)".to_string());
-        if self.settings.show(ctx, &mut self.prefs, &store) {
+        if self.settings.show(ctx, &mut self.prefs, &store, &mut self.extras.remote.form) {
             self.save_prefs();
         }
         let Some(out) = self.new_task.show(ctx, &self.projects.dirs, &self.prefs.crews) else { return };

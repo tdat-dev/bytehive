@@ -80,6 +80,11 @@ pub struct Prefs {
     pub auto_resume: bool,
     /// Hand an agent's task to this CLI when it hits its limit.
     pub handover_to: Option<Cli>,
+    /// Serve the phone dashboard, and to other devices too.
+    pub remote_on: bool,
+    pub remote_lan: bool,
+    /// The page's port (the terminal socket takes the next one).
+    pub remote_port: u16,
     pub crews: Vec<Crew>,
     /// New tasks set to start at a time of day.
     pub schedules: Vec<crate::schedule::Schedule>,
@@ -100,6 +105,9 @@ impl Default for Prefs {
             reopen_projects: true,
             auto_resume: true,
             handover_to: None,
+            remote_on: false,
+            remote_lan: false,
+            remote_port: dashboard::DEFAULT_PORT,
             crews: Vec::new(),
             schedules: Vec::new(),
         }
@@ -149,6 +157,9 @@ impl Prefs {
             "reopenProjects": self.reopen_projects,
             "autoResume": self.auto_resume,
             "handoverTo": self.handover_to.map(|c| c.program()),
+            "remoteOn": self.remote_on,
+            "remoteLan": self.remote_lan,
+            "remotePort": self.remote_port,
             "crews": self.crews.iter().map(crew_json).collect::<Vec<_>>(),
             "schedules": self.schedules.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
         })
@@ -170,6 +181,9 @@ impl Prefs {
             reopen_projects: v["reopenProjects"].as_bool().unwrap_or(d.reopen_projects),
             auto_resume: v["autoResume"].as_bool().unwrap_or(d.auto_resume),
             handover_to: v["handoverTo"].as_str().and_then(cli_from_key),
+            remote_on: v["remoteOn"].as_bool().unwrap_or(d.remote_on),
+            remote_lan: v["remoteLan"].as_bool().unwrap_or(d.remote_lan),
+            remote_port: v["remotePort"].as_u64().map_or(d.remote_port, |n| (n as u16).clamp(1024, 65534)),
             crews: v["crews"].as_array().into_iter().flatten().filter_map(crew_from).collect(),
             schedules: v["schedules"].as_array().into_iter().flatten().filter_map(crate::schedule::Schedule::from_json).collect(),
         }

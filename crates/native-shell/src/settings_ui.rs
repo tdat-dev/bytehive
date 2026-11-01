@@ -1,17 +1,18 @@
 //! Settings (Ctrl+,), painted after the approved Agent Inbox design: a
 //! floating sheet with a section nav on the left (Appearance, Agents,
-//! System) and one rounded row per setting, its name and a one-line why on
+//! Remote, System) and one rounded row per setting, its name and a one-line why on
 //! the left, the control on the right. Every change saves at once.
 
 use eframe::egui::{self, Color32, RichText, Sense, Stroke};
 
 use crate::newtask::MAX_AGENTS;
 use crate::prefs::{Backdrop, Prefs};
+use crate::remote_ui::{remote_rows, RemoteForm};
 use crate::sessions_ui::Cli;
 use crate::taskopts::{Flow, Perm};
 use crate::theme::{ADD, DEL, INK3, R3, R_XL, SHEET, SURFACE, TEXT};
 
-const SECTIONS: [&str; 3] = ["Appearance", "Agents", "System"];
+const SECTIONS: [&str; 4] = ["Appearance", "Agents", "Remote", "System"];
 
 #[derive(Default)]
 pub struct SettingsSheet {
@@ -21,7 +22,7 @@ pub struct SettingsSheet {
 }
 
 /// A pill switch like the design's `.switch`: green when on.
-fn switch(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
+pub(crate) fn switch(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
     let size = egui::vec2(30.0, 18.0);
     let (rect, mut r) = ui.allocate_exact_size(size, Sense::click());
     if r.clicked() {
@@ -38,7 +39,7 @@ fn switch(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
 }
 
 /// One setting row: name and why on the left, `control` on the right.
-fn row(ui: &mut egui::Ui, name: &str, why: &str, control: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
+pub(crate) fn row(ui: &mut egui::Ui, name: &str, why: &str, control: impl FnOnce(&mut egui::Ui) -> bool) -> bool {
     let mut changed = false;
     egui::Frame::new().fill(SURFACE).corner_radius(R3).inner_margin(egui::Margin::symmetric(14, 12)).show(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -76,8 +77,15 @@ impl SettingsSheet {
         self.open = !self.open;
     }
 
+    /// Open on one section (by its nav position).
+    pub fn open_at(&mut self, section: usize) {
+        self.open = true;
+        self.section = section.min(SECTIONS.len() - 1);
+        self.scroll_to = Some(self.section);
+    }
+
     /// Paint the sheet; true when a setting changed (save and apply it).
-    pub fn show(&mut self, ctx: &egui::Context, prefs: &mut Prefs, store: &str) -> bool {
+    pub fn show(&mut self, ctx: &egui::Context, prefs: &mut Prefs, store: &str, remote: &mut RemoteForm) -> bool {
         if !self.open {
             return false;
         }
@@ -125,7 +133,7 @@ impl SettingsSheet {
                     }
                 });
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    changed |= self.body(ui, prefs, store);
+                    changed |= self.body(ui, prefs, store, remote);
                 });
             });
             close
@@ -145,7 +153,7 @@ impl SettingsSheet {
         ui.add_space(4.0);
     }
 
-    fn body(&mut self, ui: &mut egui::Ui, p: &mut Prefs, store: &str) -> bool {
+    fn body(&mut self, ui: &mut egui::Ui, p: &mut Prefs, store: &str, remote: &mut RemoteForm) -> bool {
         let mut ch = false;
         self.heading(ui, 0);
         ch |= row(ui, "Terminal font size", "Applies to every agent's terminal. Ctrl + and Ctrl - still zoom on top.", |ui| {
@@ -214,6 +222,9 @@ impl SettingsSheet {
         }
         ui.add_space(18.0);
         self.heading(ui, 2);
+        ch |= remote_rows(ui, p, remote);
+        ui.add_space(18.0);
+        self.heading(ui, 3);
         ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time.", |ui| switch(ui, &mut p.reopen_projects).changed());
         row(ui, "Where settings live", store, |_| false);
         ch
@@ -255,7 +266,7 @@ mod tests {
         let mut prefs = Prefs::default();
         let ctx = egui::Context::default();
         ctx.run_ui(egui::RawInput::default(), |ui| {
-            sheet.show(ui.ctx(), &mut prefs, "~/.maestro/native-prefs.json");
+            sheet.show(ui.ctx(), &mut prefs, "~/.maestro/native-prefs.json", &mut Default::default());
         })
         .drop_without_applying_deltas();
         assert!(sheet.open);

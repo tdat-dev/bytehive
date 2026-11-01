@@ -15,6 +15,7 @@ pub struct Extras {
     pub memory: MemorySheet,
     pub handoffs: Handoffs,
     pub system: crate::system::SystemWatch,
+    pub remote: crate::remote::Remote,
 }
 
 impl ShellApp {
@@ -23,6 +24,7 @@ impl ShellApp {
         match key {
             "memory" => self.open_memory(),
             "handoff" => self.open_handoff(),
+            "remote" => self.settings.open_at(2),
             _ => return false,
         }
         true
@@ -75,6 +77,7 @@ impl ShellApp {
         self.handover_on_limit();
         self.handoff_sheet(ctx);
         self.poll_system(ctx);
+        self.poll_remote(ctx);
         if self.extras.memory.open {
             let agents = self.project_agents(&self.extras.memory.project.clone());
             if let Some((to, text)) = self.extras.memory.show(ctx, &self.projects.dirs, &agents) {

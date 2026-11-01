@@ -53,6 +53,7 @@ pub(crate) fn command_catalog() -> Vec<PaletteItem> {
         cmd("board", "Board (agents by state)", "view"),
         cmd("plan", "Plan board (approve proposed cards)", "view"),
         cmd("handoff", "Hand this agent's task to another CLI", "run"),
+        cmd("remote", "Remote dashboard (open the fleet on your phone)", "view"),
         cmd("memory", "Project memory (what every agent knows)", "view"),
     ];
     for cli in Cli::all() {
