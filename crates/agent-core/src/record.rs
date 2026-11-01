@@ -72,7 +72,7 @@ mod tests {
     fn encodes_and_writes_frames() {
         assert_eq!(b64(b"hi!"), "aGkh");
         assert_eq!(b64(b"h"), "aA==");
-        let path = std::env::temp_dir().join(format!("maestro-rec-{}.jsonl", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bytehive-rec-{}.jsonl", std::process::id()));
         let p = path.to_string_lossy().to_string();
         let mut r = Rec::create(&p, b"x").unwrap();
         r.frame(b"y");

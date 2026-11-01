@@ -1,4 +1,4 @@
-//! What Maestro does whether or not its window shows: read the agents'
+//! What ByteHive does whether or not its window shows: read the agents'
 //! output, type tasks in when they are free, run schedules, hand off and
 //! resume on limits, flash the taskbar, ask for plan limits, hide to the
 //! tray. eframe calls [`ShellApp::tick`] through `App::logic` before every
@@ -22,7 +22,7 @@ impl ShellApp {
                 // Shells report their exe path; show the pane name instead.
                 let boring = t.contains('\\') || t.contains('/') || t.ends_with(".exe");
                 let title = if boring { pane.name.clone() } else { t.chars().take(48).collect() };
-                ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{title} - Maestro")));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{title} - ByteHive")));
             }
         }
         self.poll_captures();

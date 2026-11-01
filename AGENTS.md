@@ -1,4 +1,4 @@
-# AGENTS.md: rules for working in Maestro
+# AGENTS.md: rules for working in ByteHive
 
 ## File length (hard gate)
 

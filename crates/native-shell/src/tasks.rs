@@ -147,7 +147,7 @@ mod tests {
     fn a_race_outside_a_repo_is_refused_before_anything_starts() {
         let mut app = ShellApp::new().unwrap();
         let before = app.panes.len();
-        let mut t = NewTask::new("D:/no-such-repo-maestro".to_string());
+        let mut t = NewTask::new("D:/no-such-repo-bytehive".to_string());
         t.prompt = "Fix it".to_string();
         t.set_count(2);
         t.cli = Cli::Claude;
@@ -163,10 +163,10 @@ mod tests {
 
     #[test]
     fn a_taken_branch_gets_a_number() {
-        let dir = std::env::temp_dir().join(format!("maestro-task-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-task-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let ok = git(&dir, &["init"])
-            && git(&dir, &["config", "user.email", "t@maestro.local"])
+            && git(&dir, &["config", "user.email", "t@bytehive.local"])
             && git(&dir, &["config", "user.name", "t"])
             && git(&dir, &["commit", "--allow-empty", "-m", "first"]);
         if !ok {

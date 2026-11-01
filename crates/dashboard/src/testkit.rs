@@ -94,9 +94,9 @@ pub(crate) fn raw(port: u16, method: &str, path: &str, headers: &[(&str, &str)],
 }
 
 /// A request the way the dashboard page sends it: its own host, the
-/// X-Maestro header, JSON on a POST.
+/// X-ByteHive header, JSON on a POST.
 pub(crate) fn http(port: u16, method: &str, path: &str, cookie: Option<&str>, body: &str) -> Reply {
-    let mut h = vec![("X-Maestro", "1")];
+    let mut h = vec![("X-ByteHive", "1")];
     if method == "POST" {
         h.push(("Content-Type", "application/json"));
     }
@@ -129,7 +129,7 @@ pub(crate) fn session(auth: &DashAuth) -> String {
 pub(crate) fn try_status(port: u16) -> Option<u16> {
     let mut s = TcpStream::connect(("127.0.0.1", port)).ok()?;
     s.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
-    let req = format!("GET /api/fleet HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nX-Maestro: 1\r\n\r\n");
+    let req = format!("GET /api/fleet HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nX-ByteHive: 1\r\n\r\n");
     s.write_all(req.as_bytes()).ok()?;
     let mut out = String::new();
     s.read_to_string(&mut out).ok()?;

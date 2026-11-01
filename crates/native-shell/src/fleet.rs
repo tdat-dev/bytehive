@@ -1,10 +1,10 @@
-//! The app side of the fleet file bridge (the maestro MCP server is the other
+//! The app side of the fleet file bridge (the bytehive MCP server is the other
 //! side, and only writes files): every 1.5 s, for each open project,
-//!  - publish its agents to `.maestro/fleet.json` (fleet_status, agent_output
+//!  - publish its agents to `.bytehive/fleet.json` (fleet_status, agent_output
 //!    and agent_context read it),
-//!  - deliver each new line of `.maestro/outbox.jsonl` (fleet_send) into the
+//!  - deliver each new line of `.bytehive/outbox.jsonl` (fleet_send) into the
 //!    agent it names, or to every agent but the sender,
-//!  - boot the agents asked for in `.maestro/spawn-requests.jsonl` (agent_spawn).
+//!  - boot the agents asked for in `.bytehive/spawn-requests.jsonl` (agent_spawn).
 //! The files are read on from where the last read stopped; a file seen for the
 //! first time is skipped to its end so a restart doesn't replay old messages.
 //! Port of the web app's fleetbridge.ts and its host in bridges.ts.
@@ -119,7 +119,7 @@ pub struct FleetBridge {
 }
 
 fn file(dir: &str, name: &str) -> PathBuf {
-    Path::new(dir).join(".maestro").join(name)
+    Path::new(dir).join(".bytehive").join(name)
 }
 
 impl ShellApp {
@@ -196,7 +196,7 @@ impl ShellApp {
     /// under persona names and give them the task, if any.
     fn spawn_requested(&mut self, dir: &str, req: SpawnLine) {
         let Some(cli) = Cli::all().into_iter().find(|c| same_name(c.program(), &req.cli) || same_name(c.name(), &req.cli)) else {
-            self.notice = Some(format!("An agent asked for {}, which Maestro can't start.", req.cli));
+            self.notice = Some(format!("An agent asked for {}, which ByteHive can't start.", req.cli));
             return;
         };
         for _ in 0..req.count {
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn reads_only_new_whole_lines() {
-        let dir = std::env::temp_dir().join(format!("maestro-fleet-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-fleet-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("outbox.jsonl");
         assert_eq!(read_new_lines(&p, None), (vec![], Some(0)), "not there yet: starts at 0");
@@ -256,8 +256,8 @@ mod tests {
 
     #[test]
     fn publishes_and_delivers_for_a_project() {
-        let dir = std::env::temp_dir().join(format!("maestro-fleet-app-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join(".maestro")).unwrap();
+        let dir = std::env::temp_dir().join(format!("bytehive-fleet-app-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".bytehive")).unwrap();
         let d = dir.to_string_lossy().to_string();
         let mut app = ShellApp::new().unwrap();
         app.projects = Default::default();
@@ -266,10 +266,10 @@ mod tests {
         app.panes[0].name = "Ana".into();
         app.panes[0].spec.cwd = Some(d.clone());
         app.fleet_tick(&d);
-        let roster: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".maestro/fleet.json")).unwrap()).unwrap();
+        let roster: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".bytehive/fleet.json")).unwrap()).unwrap();
         assert_eq!(roster["agents"][0]["name"], "Ana");
         assert_eq!(roster["agents"][0]["cli"], "claude");
-        std::fs::write(dir.join(".maestro/outbox.jsonl"), "{\"to\":\"ana\",\"message\":\"run the tests\"}\n").unwrap();
+        std::fs::write(dir.join(".bytehive/outbox.jsonl"), "{\"to\":\"ana\",\"message\":\"run the tests\"}\n").unwrap();
         app.fleet_tick(&d);
         assert_eq!(app.deliveries.len(), 1, "the message is on its way to Ana");
         std::fs::remove_dir_all(&dir).ok();

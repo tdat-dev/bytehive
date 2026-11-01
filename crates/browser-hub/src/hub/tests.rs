@@ -2,17 +2,17 @@ use super::file::*;
 use super::*;
 
 #[test]
-fn a_test_build_keeps_off_the_installed_maestros_hub_file() {
+fn a_test_build_keeps_off_the_installed_bytehives_hub_file() {
     // debug_assertions: this is a test build
-    std::env::remove_var("MAESTRO_DEV_BROWSER");
+    std::env::remove_var("BYTEHIVE_DEV_BROWSER");
     assert!(!owns_browser());
     assert!(own_hub_file().unwrap().ends_with("browser-hub.dev.json"));
     assert!(hub_file().unwrap().ends_with("browser-hub.json"), "the host always reads the installed one");
     // asked for on purpose: it takes the browser like the installed app
-    std::env::set_var("MAESTRO_DEV_BROWSER", "1");
+    std::env::set_var("BYTEHIVE_DEV_BROWSER", "1");
     assert!(owns_browser());
     assert_eq!(own_hub_file(), hub_file());
-    std::env::remove_var("MAESTRO_DEV_BROWSER");
+    std::env::remove_var("BYTEHIVE_DEV_BROWSER");
 }
 
 #[test]
@@ -24,7 +24,7 @@ fn a_hub_file_naming_a_hub_that_left_is_taken_back() {
     assert!(should_claim(Some("not json"), own, alive));
     // already ours: leave it
     assert!(!should_claim(Some(r#"{"port":6967,"token":"t"}"#), own, alive));
-    // another Maestro that still answers (the one opened last): leave it
+    // another ByteHive that still answers (the one opened last): leave it
     assert!(!should_claim(Some(r#"{"port":4000,"token":"t"}"#), own, alive));
     // one that closed and left its file behind: take it back
     assert!(should_claim(Some(r#"{"port":3710,"token":"t"}"#), own, alive));
@@ -120,7 +120,7 @@ fn a_stopped_agent_is_refused_until_let_go_on() {
 }
 
 #[test]
-fn maestro_can_ask_a_browser_for_an_agent() {
+fn bytehive_can_ask_a_browser_for_an_agent() {
     let hub = std::sync::Arc::new(Hub::for_test("t", |_, _| "P".into()));
     let (br, brx) = peer(&hub);
     hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);

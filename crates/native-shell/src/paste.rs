@@ -4,13 +4,13 @@
 //! (the terminal has no selection to copy), pasted text goes in as one paste
 //! (bracketed when the program asked for that), and a pasted picture is
 //! saved as a PNG whose path is typed in, the way agents take a dropped file.
-//! The picture folder is the Tauri app's (`%TEMP%\maestro-paste`).
+//! The picture folder is the Tauri app's (`%TEMP%\bytehive-paste`).
 
 use std::path::{Path, PathBuf};
 
 use eframe::egui;
 
-const PASTE_DIR: &str = "maestro-paste";
+const PASTE_DIR: &str = "bytehive-paste";
 /// Pictures pasted in earlier sessions go after a week.
 const KEEP_SECS: u64 = 7 * 24 * 3600;
 
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn a_pasted_picture_becomes_a_png_file() {
-        let dir = std::env::temp_dir().join(format!("maestro-paste-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-paste-test-{}", std::process::id()));
         let img = egui::ColorImage::new([3, 2], vec![egui::Color32::RED; 6]);
         let p = save_image_in(&dir, &img, 42).unwrap();
         assert!(p.ends_with("pasted-42.png"));

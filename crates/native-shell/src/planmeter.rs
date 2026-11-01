@@ -2,7 +2,7 @@
 //! 5-hour window and the week (and a model's own week once used), how much of
 //! each is used and when it resets. Claude is asked of Anthropic with Claude
 //! Code's own sign-in (agent_core::planusage), Codex is read from its last
-//! rollout. Asked a few seconds after Maestro opens, then every two minutes,
+//! rollout. Asked a few seconds after ByteHive opens, then every two minutes,
 //! off the UI thread. Port of the web app's `planmeter.ts`.
 
 use std::sync::mpsc::{channel, Receiver, Sender};

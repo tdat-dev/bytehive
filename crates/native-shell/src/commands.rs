@@ -15,12 +15,12 @@ pub(crate) enum SideTab {
 }
 
 impl SideTab {
-    /// Starting tab override for screenshots and debugging: MAESTRO_TAB=review.
+    /// Starting tab override for screenshots and debugging: BYTEHIVE_TAB=review.
     pub(crate) fn from_env() -> SideTab {
-        Self::from_key(&std::env::var("MAESTRO_TAB").unwrap_or_default().to_lowercase())
+        Self::from_key(&std::env::var("BYTEHIVE_TAB").unwrap_or_default().to_lowercase())
     }
 
-    /// The tab a `tab:<name>` command (or `MAESTRO_TAB`) names. Unknown names
+    /// The tab a `tab:<name>` command (or `BYTEHIVE_TAB`) names. Unknown names
     /// fall back to the Queue.
     pub(crate) fn from_key(key: &str) -> SideTab {
         match key {

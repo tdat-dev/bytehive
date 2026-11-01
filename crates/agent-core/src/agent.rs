@@ -118,7 +118,7 @@ impl Agent {
 
     /// Spawn an agent on pipes instead of a terminal: its stdout goes out in
     /// whole lines only, and each line it writes to stderr goes out as one line
-    /// of its own, `{"type":"maestro_stderr","text":...}`, so the two never cut
+    /// of its own, `{"type":"bytehive_stderr","text":...}`, so the two never cut
     /// into each other's JSON.
     #[cfg(windows)]
     pub fn spawn_pipe(
@@ -319,9 +319,9 @@ pub fn readable(bytes: &[u8]) -> Vec<u8> {
                 put(if failed { "31" } else { "90" }, if failed { "Stopped." } else { "Done." });
             }
             Some("control_request") if v.pointer("/request/subtype").and_then(|s| s.as_str()) == Some("can_use_tool") => {
-                put("33", &format!("? Wants to use {} (answer it in Maestro)", v.pointer("/request/tool_name").and_then(|s| s.as_str()).unwrap_or("a tool")));
+                put("33", &format!("? Wants to use {} (answer it in ByteHive)", v.pointer("/request/tool_name").and_then(|s| s.as_str()).unwrap_or("a tool")));
             }
-            Some("maestro_stderr") => put("31", v.get("text").and_then(|t| t.as_str()).unwrap_or("")),
+            Some("bytehive_stderr") => put("31", v.get("text").and_then(|t| t.as_str()).unwrap_or("")),
             _ => {}
         }
     }
@@ -331,7 +331,7 @@ pub fn readable(bytes: &[u8]) -> Vec<u8> {
 /// Wrap one stderr line as a JSON line of its own.
 fn stderr_line(line: &[u8]) -> Vec<u8> {
     let text = String::from_utf8_lossy(line);
-    let mut out = serde_json::json!({ "type": "maestro_stderr", "text": text.trim_end_matches('\r') }).to_string().into_bytes();
+    let mut out = serde_json::json!({ "type": "bytehive_stderr", "text": text.trim_end_matches('\r') }).to_string().into_bytes();
     out.push(b'\n');
     out
 }
@@ -435,7 +435,7 @@ mod line_tests {
     fn stderr_lines_become_json_lines() {
         let mut p = b"Error: \"bad\"\r\n\n".to_vec();
         let out = String::from_utf8(take_lines(&mut p, false, true)).unwrap();
-        assert_eq!(out, "{\"text\":\"Error: \\\"bad\\\"\",\"type\":\"maestro_stderr\"}\n");
+        assert_eq!(out, "{\"text\":\"Error: \\\"bad\\\"\",\"type\":\"bytehive_stderr\"}\n");
     }
     #[test]
     fn a_tap_that_never_reads_is_dropped_instead_of_queueing_forever() {

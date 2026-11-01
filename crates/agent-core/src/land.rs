@@ -180,7 +180,7 @@ impl ScratchIndex {
     fn copy_of(repo_root: &str) -> Self {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("maestro-index-{}-{n}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bytehive-index-{}-{n}", std::process::id()));
         if let Ok(rel) = git(&["rev-parse", "--git-path", "index"], repo_root) {
             // Missing index (a repo with nothing staged yet): git starts a fresh one.
             let _ = std::fs::copy(Path::new(repo_root).join(rel), &path);
@@ -213,7 +213,7 @@ fn snapshot(s: &Sides) -> Result<String, String> {
     let made = (|| {
         git_env(&["add", "-A", "--", "."], &s.worktree, &env)?;
         let tree = git_env(&["write-tree"], &s.worktree, &env)?;
-        git(&["commit-tree", &tree, "-p", &head, "-m", "maestro: merge check"], &s.worktree)
+        git(&["commit-tree", &tree, "-p", &head, "-m", "bytehive: merge check"], &s.worktree)
     })();
     made
 }
@@ -273,7 +273,7 @@ fn wait_released(dir: &str) -> bool {
     if !p.exists() {
         return true;
     }
-    let probe = PathBuf::from(format!("{}.maestro-probe", dir.trim_end_matches(['\\', '/'])));
+    let probe = PathBuf::from(format!("{}.bytehive-probe", dir.trim_end_matches(['\\', '/'])));
     for _ in 0..12 {
         if std::fs::rename(p, &probe).is_ok() {
             if std::fs::rename(&probe, p).is_ok() {
@@ -384,7 +384,7 @@ fn land_impl(worktree: &str, message: Option<&str>, title: Option<&str>, dry_run
     // 3. Merge. A conflict is aborted, leaving the project folder as it was.
     let msg = match title.map(str::trim).filter(|t| !t.is_empty()) {
         Some(t) => format!("Merge {}: {}", s.branch, commit_message(None, Some(t), &s.branch)),
-        None => format!("Merge {} (maestro)", s.branch),
+        None => format!("Merge {} (bytehive)", s.branch),
     };
     let merged = match run(&["merge", "--no-ff", "-m", &msg, &s.branch], &s.main, &[]) {
         Ok(o) => o,

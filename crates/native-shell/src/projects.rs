@@ -2,7 +2,7 @@
 //! approved Agent Inbox ("You can open more than one; the queue shows every
 //! project together"). A chip row filters the Queue and the grid to one
 //! project or shows them all. The list and the filter survive restarts in
-//! `~/.maestro/native-projects.json`.
+//! `~/.bytehive/native-projects.json`.
 
 use std::path::{Path, PathBuf};
 
@@ -70,6 +70,7 @@ impl Projects {
     /// Open `dir` (once); returns its normalized spelling.
     pub fn open(&mut self, dir: &str) -> String {
         let d = normalize(dir);
+        adopt_old_folder(&d);
         if !d.is_empty() && !self.dirs.iter().any(|x| same(x, &d)) {
             self.dirs.push(d.clone());
         }
@@ -131,7 +132,9 @@ impl Projects {
 
     /// Read the saved list; a missing or broken file is an empty list.
     pub fn load(path: &Path) -> Projects {
-        std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).map(|v| Projects::from_json(&v)).unwrap_or_default()
+        let p = std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).map(|v| Projects::from_json(&v)).unwrap_or_default();
+        p.dirs.iter().for_each(|d| adopt_old_folder(d));
+        p
     }
 
     /// Best effort: a failed write only loses the list for next time.
@@ -143,10 +146,43 @@ impl Projects {
     }
 }
 
-/// Where the list lives: `~/.maestro/native-projects.json`.
+/// A project from before the rename (Maestro) keeps its board, memory, fleet
+/// and recordings in `.maestro`: it becomes `.bytehive`, once.
+pub fn adopt_old_folder(project: &str) {
+    let (old, now) = (Path::new(project).join(".maestro"), Path::new(project).join(".bytehive"));
+    if !cfg!(test) && old.is_dir() && !now.exists() {
+        let _ = std::fs::rename(old, now);
+    }
+}
+
+/// `~/.bytehive` from `~/.maestro` the first time ByteHive runs: the
+/// projects, settings, dashboard password and the rest carry over. Copied,
+/// not moved, since an older Maestro may still be installed beside it.
+pub fn adopt_old_home() {
+    let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) else { return };
+    let (old, now) = (PathBuf::from(&home).join(".maestro"), PathBuf::from(&home).join(".bytehive"));
+    if old.is_dir() && !now.exists() {
+        let _ = copy_dir(&old, &now);
+    }
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(from)?.flatten() {
+        let (src, dst) = (e.path(), to.join(e.file_name()));
+        if e.file_type()?.is_dir() {
+            copy_dir(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
+        }
+    }
+    Ok(())
+}
+
+/// Where the list lives: `~/.bytehive/native-projects.json`.
 pub fn store_path() -> Option<PathBuf> {
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
-    Some(PathBuf::from(home).join(".maestro").join("native-projects.json"))
+    Some(PathBuf::from(home).join(".bytehive").join("native-projects.json"))
 }
 
 #[cfg(test)]
@@ -201,7 +237,7 @@ mod tests {
         p.open("D:\\a");
         p.open("D:\\b");
         p.filter = Some("D:\\b".into());
-        let path = std::env::temp_dir().join(format!("maestro-projects-{}.json", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bytehive-projects-{}.json", std::process::id()));
         p.save(&path);
         assert_eq!(Projects::load(&path), p);
         std::fs::remove_file(&path).ok();

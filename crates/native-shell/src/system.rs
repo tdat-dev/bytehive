@@ -1,6 +1,6 @@
-//! The window and the OS: closing Maestro while agents work asks first (they
+//! The window and the OS: closing ByteHive while agents work asks first (they
 //! stop with it; their sessions resume later from Sessions), and an agent
-//! that starts needing you while Maestro is in the background flashes the
+//! that starts needing you while ByteHive is in the background flashes the
 //! taskbar button.
 
 use std::collections::HashSet;
@@ -46,7 +46,7 @@ impl ShellApp {
         self.quit_sheet(ctx);
     }
 
-    /// Flash the taskbar for an agent that newly needs you while Maestro is
+    /// Flash the taskbar for an agent that newly needs you while ByteHive is
     /// in the background, minimized included (logic pass).
     pub(crate) fn watch_attention(&mut self, ctx: &egui::Context) {
         let now = now_ms();
@@ -80,7 +80,7 @@ impl ShellApp {
         let mut quit = false;
         let modal = egui::Modal::new(egui::Id::unique("quit-sheet")).frame(frame).show(ctx, |ui| {
             ui.set_width(420.0);
-            ui.label(RichText::new("Quit Maestro?").size(16.0).color(TEXT));
+            ui.label(RichText::new("Quit ByteHive?").size(16.0).color(TEXT));
             let who = if n == 1 { "1 agent is".to_string() } else { format!("{n} agents are") };
             ui.label(RichText::new(format!("{who} still running. Quitting stops them; their sessions can be resumed later from Sessions.")).size(12.5).color(INK3));
             ui.add_space(12.0);

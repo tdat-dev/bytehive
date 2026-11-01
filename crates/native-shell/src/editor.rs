@@ -1,5 +1,5 @@
 //! Opening a file in your own editor, as the approved design asks ("Files
-//! open in your editor. Maestro shows the branch; it doesn't try to be a
+//! open in your editor. ByteHive shows the branch; it doesn't try to be a
 //! second IDE"). VS Code first, then Cursor, else whatever Windows opens the
 //! file with. Launched through `cmd /c` (the editors install as .cmd shims)
 //! without flashing a console window.

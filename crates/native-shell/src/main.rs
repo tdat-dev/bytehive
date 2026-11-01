@@ -1,4 +1,4 @@
-//! Maestro native shell: egui UI over the headless agent-core.
+//! ByteHive native shell: egui UI over the headless agent-core.
 
 mod app;
 mod board_ui;
@@ -73,7 +73,7 @@ use app::ShellApp;
 
 /// The app's Windows identity: toasts and the Start-menu shortcut share it
 /// (the Tauri app's, so its shortcut and notification settings carry over).
-pub const APP_ID: &str = "com.maestro.app";
+pub const APP_ID: &str = "com.bytehive.app";
 use theme::install_fonts;
 
 fn main() -> eframe::Result<()> {
@@ -81,12 +81,13 @@ fn main() -> eframe::Result<()> {
     if browser_hub::host::wanted() {
         browser_hub::host::run();
     }
+    projects::adopt_old_home();
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]).with_icon(tray::window_icon()),
         ..Default::default()
     };
     eframe::run_native(
-        "Maestro",
+        "ByteHive",
         options,
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);

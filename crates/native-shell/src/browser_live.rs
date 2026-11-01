@@ -1,4 +1,4 @@
-//! Maestro Browser, the pure part: what an agent's last browser step was in
+//! ByteHive Browser, the pure part: what an agent's last browser step was in
 //! words, when the live view shows, and how a held click reads. Port of the
 //! web app's `browserview.ts` helpers.
 

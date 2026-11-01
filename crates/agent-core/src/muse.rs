@@ -250,7 +250,7 @@ mod tests {
     use super::*;
 
     fn muse_tree() -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!("maestro-muse-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("bytehive-muse-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for id in [
             "01a18216-5bd8-7b20-9b10-9f481ee54a74",
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn transcript_reads_whole_lines_in_slices() {
-        let root = std::env::temp_dir().join(format!("maestro-muse-tx-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("bytehive-muse-tx-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let dir = root.join("2026").join("10").join("28").join("01a18216-5bd8-7b20-9b10-9f481ee54a74");
         std::fs::create_dir_all(&dir).unwrap();
@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn session_list_titles_and_counts() {
-        let root = std::env::temp_dir().join(format!("maestro-muse-list-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("bytehive-muse-list-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let a = root.join("2026").join("10").join("28").join("01a18216-5bd8-7b20-9b10-9f481ee54a74");
         std::fs::create_dir_all(&a).unwrap();

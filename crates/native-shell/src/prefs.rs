@@ -1,6 +1,6 @@
 //! The native shell's settings: one typed store with a default for every
 //! value, so a fresh install behaves well. Lives in
-//! `~/.maestro/native-prefs.json`; a missing or broken file is the defaults,
+//! `~/.bytehive/native-prefs.json`; a missing or broken file is the defaults,
 //! and each value is clamped on load like the web app's `prefs.ts` does.
 //! Only settings the native shell acts on are here: no dead switches.
 
@@ -82,7 +82,7 @@ pub struct Prefs {
     pub handover_to: Option<Cli>,
     /// Hold an agent's risky browser click (send, post, pay, delete) for your OK.
     pub browser_ask: bool,
-    /// Minimizing puts Maestro in the system tray instead of the taskbar.
+    /// Minimizing puts ByteHive in the system tray instead of the taskbar.
     pub hide_to_tray: bool,
     /// Notify when an agent needs you, when a run finishes, and on usage limits.
     pub notify_needs: bool,
@@ -236,7 +236,7 @@ impl Prefs {
     }
 }
 
-/// Where the settings live: `~/.maestro/native-prefs.json`.
+/// Where the settings live: `~/.bytehive/native-prefs.json`.
 pub fn prefs_path() -> Option<PathBuf> {
     crate::projects::store_path().map(|p| p.with_file_name("native-prefs.json"))
 }

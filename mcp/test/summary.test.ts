@@ -17,9 +17,9 @@ describe("slugPane", () => {
 });
 
 describe("writeSummary", () => {
-  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "maestro-summary-"));
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-summary-"));
 
-  it("writes Doing/Blocked/Next to the slugged file, creating .maestro", () => {
+  it("writes Doing/Blocked/Next to the slugged file, creating .bytehive", () => {
     const dir = tmp();
     const r = writeSummary(dir, "Claude Code 1", { doing: "login form", blocked: "no", next: "tests" });
     expect(r.path).toBe(summaryPath(dir, "Claude Code 1"));

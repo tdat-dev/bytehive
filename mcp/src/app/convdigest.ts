@@ -1,6 +1,6 @@
 // What a conversation comes down to for another agent: what it was asked, its
 // plan, the files it changed and its last words. Pure, for both the app (a
-// handoff brief) and maestro-mcp (agent_context), which reads the same CLI
+// handoff brief) and bytehive-mcp (agent_context), which reads the same CLI
 // conversations with the same parsers.
 
 import type { Chat, FileChange, Todo } from "./chatmodel";

@@ -1,12 +1,12 @@
 /* Functions injected into pages with chrome.scripting.executeScript. Each one
  * must be self-contained: it runs in the page's isolated world, not here.
- * Refs live in that isolated world (globalThis.__maestro), so the page's own
+ * Refs live in that isolated world (globalThis.__bytehive), so the page's own
  * scripts never see them and the DOM is never marked. */
 
 /** A readable outline of the page: interactive elements (or everything
  *  meaningful with filter "all"), each with a ref the other tools accept. */
 export function snapshotPage(filter, maxItems) {
-  const S = (globalThis.__maestro ??= { refs: new Map(), next: 1, byEl: new WeakMap() });
+  const S = (globalThis.__bytehive ??= { refs: new Map(), next: 1, byEl: new WeakMap() });
   const W = innerWidth, H = innerHeight;
   const INTERACTIVE = new Set(["a", "button", "input", "select", "textarea", "summary", "details", "option"]);
   const ROLES = /^(button|link|checkbox|radio|switch|tab|menuitem|menuitemcheckbox|menuitemradio|option|combobox|textbox|searchbox|slider|spinbutton|treeitem)$/;
@@ -99,7 +99,7 @@ export function snapshotPage(filter, maxItems) {
 
 /** The element behind a ref: scrolled into view, with its centre. */
 export function locateRef(ref) {
-  const el = globalThis.__maestro?.refs.get(ref)?.deref();
+  const el = globalThis.__bytehive?.refs.get(ref)?.deref();
   if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
   el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
   const r = el.getBoundingClientRect();
@@ -108,7 +108,7 @@ export function locateRef(ref) {
 
 /** Set a form control's value the way typing would, so frameworks notice. */
 export function fillRef(ref, value) {
-  const el = globalThis.__maestro?.refs.get(ref)?.deref();
+  const el = globalThis.__bytehive?.refs.get(ref)?.deref();
   if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
   const fire = (t) => el.dispatchEvent(new Event(t, { bubbles: true }));
   const tag = el.tagName.toLowerCase();
@@ -134,7 +134,7 @@ export function fillRef(ref, value) {
 /** Elements whose name or text contains every word of the query. */
 export function findInPage(query, maxItems) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const S = (globalThis.__maestro ??= { refs: new Map(), next: 1, byEl: new WeakMap() });
+  const S = (globalThis.__bytehive ??= { refs: new Map(), next: 1, byEl: new WeakMap() });
   const hits = [];
   const CONTROL = /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/;
   for (const el of document.querySelectorAll("a,button,input,select,textarea,[role],[aria-label],label,h1,h2,h3,h4,li,td,span,div,p")) {
@@ -163,7 +163,7 @@ export function pageText(maxChars) {
 
 /** The name of what sits at a point: the button or link a click there hits. */
 export function labelAt(x, y) {
-  let el = document.elementsFromPoint(x, y).find((e) => !e.closest("[data-maestro-overlay]"));
+  let el = document.elementsFromPoint(x, y).find((e) => !e.closest("[data-bytehive-overlay]"));
   el = el?.closest("button,a,[role=button],[role=link],[role=menuitem],input[type=submit],input[type=button],[onclick]") ?? el;
   if (!el) return "";
   return (el.getAttribute("aria-label") || el.value || el.innerText || el.title || "").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -182,7 +182,7 @@ export function blockerOf() {
 /** For an upload: mark the file input behind a ref so CDP can find it, or,
  *  when the ref is a button that opens a file chooser, say where to click. */
 export function markForUpload(ref, mark) {
-  const el = globalThis.__maestro?.refs.get(ref)?.deref();
+  const el = globalThis.__bytehive?.refs.get(ref)?.deref();
   if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
   const input = el.matches("input[type=file]")
     ? el
@@ -190,11 +190,11 @@ export function markForUpload(ref, mark) {
   el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
   const r = el.getBoundingClientRect();
   const at = { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-  if (input) input.setAttribute("data-maestro-upload", mark);
+  if (input) input.setAttribute("data-bytehive-upload", mark);
   return { input: !!input, ...at };
 }
 
 export function unmarkUpload(mark) {
-  document.querySelector(`[data-maestro-upload="${mark}"]`)?.removeAttribute("data-maestro-upload");
+  document.querySelector(`[data-bytehive-upload="${mark}"]`)?.removeAttribute("data-bytehive-upload");
   return true;
 }

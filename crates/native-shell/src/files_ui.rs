@@ -197,7 +197,7 @@ impl FilesDrawer {
         ui.painter().hline(ui.max_rect().x_range(), line_y, Stroke::new(1.0, Color32::from_white_alpha(15)));
         egui::Frame::NONE.inner_margin(egui::Margin::symmetric(18, 12)).show(ui, |ui| {
             let ed = self.editor.unwrap_or("your editor");
-            ui.label(RichText::new(format!("Files open in {ed}. Maestro shows the branch; it doesn't try to be a second IDE.")).size(12.0).color(INK3));
+            ui.label(RichText::new(format!("Files open in {ed}. ByteHive shows the branch; it doesn't try to be a second IDE.")).size(12.0).color(INK3));
         });
         picked.and_then(|rel| self.source.as_ref().map(|d| Path::new(d).join(rel)))
     }

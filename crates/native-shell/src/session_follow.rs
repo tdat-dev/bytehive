@@ -1,4 +1,4 @@
-//! Resume carries on the conversation an agent was last in. Maestro starts a
+//! Resume carries on the conversation an agent was last in. ByteHive starts a
 //! Claude agent on a session id it chose and resumes that id later, but the
 //! conversation can move on inside the CLI: /clear starts a new one, /resume
 //! switches. Claude Code writes the session each running process is in to

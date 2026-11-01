@@ -1,6 +1,6 @@
 /* MCP surface: nine tools over the board store. Each mutating tool is one
  * load → mutate → save cycle (nothing cached between calls, so a long agent
- * session always sees the Maestro UI's edits). Every error thrown along the
+ * session always sees the ByteHive UI's edits). Every error thrown along the
  * way — BoardError or otherwise — is caught and returned as an isError tool
  * result; nothing here propagates to a crash. */
 
@@ -44,7 +44,7 @@ const labelsSchema = z
   .optional()
   .describe(`Label colour keys: ${LABELS.join("|")}`);
 
-const INSTRUCTIONS = `Maestro board — how to work in this workspace.
+const INSTRUCTIONS = `ByteHive board — how to work in this workspace.
 
 For any non-trivial task, plan on the board BEFORE implementing:
 1. Call board_get to see the current lists and cards.
@@ -59,12 +59,12 @@ For any non-trivial task, plan on the board BEFORE implementing:
 Keep card titles stable so the board can track them. Use fleet_status to see
 the other agents here and fleet_send to hand work to a specific one.
 
-Other agents may have worked here before you, in Maestro or not, with any CLI.
+Other agents may have worked here before you, in ByteHive or not, with any CLI.
 Call agent_context first to see who did what, and agent_context with who to
 pick up an unfinished task instead of starting over.
 
-This project keeps a shared memory (.maestro/memory.json) that every agent
-reads and the user edits in Maestro: what anyone working here should know
+This project keeps a shared memory (.bytehive/memory.json) that every agent
+reads and the user edits in ByteHive: what anyone working here should know
 (conventions, decisions, where things live, gotchas). Read it with memory_get
 before you start. When you learn something lasting about the project, save it
 with memory_save, one fact per entry; fix a fact that turned out wrong with
@@ -86,11 +86,11 @@ ${BROWSER_INSTRUCTIONS}`;
 export function createServer(dir: string): McpServer {
   // The project's memory rides in the instructions, so an agent knows it
   // before its first tool call (read once, when the agent starts).
-  const server = new McpServer({ name: "maestro", version: "0.1.0" }, { instructions: INSTRUCTIONS + memoryForInstructions(dir) });
+  const server = new McpServer({ name: "bytehive", version: "0.1.0" }, { instructions: INSTRUCTIONS + memoryForInstructions(dir) });
 
-  // Maestro sets MAESTRO_AGENT=<pane name> on every terminal it spawns, so
+  // ByteHive sets BYTEHIVE_AGENT=<pane name> on every terminal it spawns, so
   // board mutations can record which agent acted (done.by, claim-on-move).
-  const agentName = process.env.MAESTRO_AGENT?.trim() || undefined;
+  const agentName = process.env.BYTEHIVE_AGENT?.trim() || process.env.MAESTRO_AGENT?.trim() || undefined;
 
   /** load → mutate → save, mapping any thrown error to an isError tool result. */
   const mutate = (fn: (b: Board) => unknown): ToolResult => {
@@ -108,7 +108,7 @@ export function createServer(dir: string): McpServer {
     "board_get",
     {
       description:
-        "Read the Maestro kanban board for this workspace (.maestro/board.json): all lists and their cards, including ids to use with the other tools.",
+        "Read the ByteHive kanban board for this workspace (.bytehive/board.json): all lists and their cards, including ids to use with the other tools.",
       inputSchema: {},
     },
     async () => {
@@ -124,7 +124,7 @@ export function createServer(dir: string): McpServer {
     "card_add",
     {
       description:
-        "Add a card to a list on the Maestro board. `list` is a list id or title (created if the title doesn't exist).",
+        "Add a card to a list on the ByteHive board. `list` is a list id or title (created if the title doesn't exist).",
       inputSchema: {
         list: z.string().describe("List id or title"),
         title: z.string().describe("Card title"),
@@ -237,7 +237,7 @@ export function createServer(dir: string): McpServer {
     "fleet_status",
     {
       description:
-        "List the other agents Maestro is running in this workspace and their live status (needs = waiting on the user, active = working, idle, stopped). Use to coordinate — e.g. see who is free before handing off work.",
+        "List the other agents ByteHive is running in this workspace and their live status (needs = waiting on the user, active = working, idle, stopped). Use to coordinate — e.g. see who is free before handing off work.",
       inputSchema: {},
     },
     async () => {
@@ -253,7 +253,7 @@ export function createServer(dir: string): McpServer {
     "fleet_send",
     {
       description:
-        "Send a message to another agent in this workspace (or the whole fleet). Maestro types it into the target agent's terminal. Use to hand off a task or coordinate. Omit `to` to broadcast to every agent. Write the message in English even when the user speaks another language — it is read by an agent, not by the user.",
+        "Send a message to another agent in this workspace (or the whole fleet). ByteHive types it into the target agent's terminal. Use to hand off a task or coordinate. Omit `to` to broadcast to every agent. Write the message in English even when the user speaks another language — it is read by an agent, not by the user.",
       inputSchema: {
         message: z
           .string()
@@ -333,7 +333,7 @@ export function createServer(dir: string): McpServer {
     "memory_save",
     {
       description:
-        "Save one lasting fact about this project to its shared memory, for every agent and the user (who sees it in Maestro): a convention, a decision and why, where something lives, a gotcha. One fact per call, a sentence or two. Not secrets, not notes about the task in progress.",
+        "Save one lasting fact about this project to its shared memory, for every agent and the user (who sees it in ByteHive): a convention, a decision and why, where something lives, a gotcha. One fact per call, a sentence or two. Not secrets, not notes about the task in progress.",
       inputSchema: { fact: z.string().describe("The fact, in a sentence or two") },
     },
     async ({ fact }) => {
@@ -382,7 +382,7 @@ export function createServer(dir: string): McpServer {
     "agent_spawn",
     {
       description:
-        "Ask Maestro to spawn new worker agent(s) in this workspace — for a conductor that grows its own crew. `cli` is a CLI id (claude, codex, gemini, aider, …) or a raw command. Optional `task` is typed into each new agent; `count` (1–6) spawns several.",
+        "Ask ByteHive to spawn new worker agent(s) in this workspace — for a conductor that grows its own crew. `cli` is a CLI id (claude, codex, gemini, aider, …) or a raw command. Optional `task` is typed into each new agent; `count` (1–6) spawns several.",
       inputSchema: {
         cli: z.string().describe("CLI id (claude, codex, …) or a raw command"),
         task: z.string().optional().describe("Prompt to type into each new agent"),
@@ -403,18 +403,18 @@ export function createServer(dir: string): McpServer {
     "summary_write",
     {
       description:
-        "Report your status for the fleet dashboard (mandatory every 15 minutes, when blocked/unblocked, and on milestones). Writes .maestro/summary-<you>.md; the dashboard shows a missing report as a stuck agent.",
+        "Report your status for the fleet dashboard (mandatory every 15 minutes, when blocked/unblocked, and on milestones). Writes .bytehive/summary-<you>.md; the dashboard shows a missing report as a stuck agent.",
       inputSchema: {
         doing: z.string().describe("One line: what you are doing right now"),
         blocked: z.string().describe("One line: what blocks you, or no when unblocked"),
         next: z.string().describe("One line: your next step"),
-        agent: z.string().optional().describe("Your Maestro pane name (defaults to MAESTRO_AGENT; pass it when running outside Maestro)"),
+        agent: z.string().optional().describe("Your ByteHive pane name (defaults to BYTEHIVE_AGENT; pass it when running outside ByteHive)"),
       },
     },
     async ({ doing, blocked, next, agent }) => {
       try {
         const who = agent?.trim() || agentName;
-        if (!who) return fail(new Error("no agent name: pass agent, or run inside Maestro so MAESTRO_AGENT is set"));
+        if (!who) return fail(new Error("no agent name: pass agent, or run inside ByteHive so BYTEHIVE_AGENT is set"));
         return ok(writeSummary(dir, who, { doing, blocked, next }));
       } catch (e) {
         return fail(e);
@@ -422,7 +422,7 @@ export function createServer(dir: string): McpServer {
     },
   );
 
-  // The user's real browsers, through the Maestro hub (see browser.ts).
+  // The user's real browsers, through the ByteHive hub (see browser.ts).
   registerBrowserTools(server, new HubClient(agentName ?? "Agent"), dir, agentName ?? "Agent");
 
   return server;

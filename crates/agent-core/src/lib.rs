@@ -1,4 +1,4 @@
-//! The headless core every Maestro UI talks to: spawn CLI agents on a PTY,
+//! The headless core every ByteHive UI talks to: spawn CLI agents on a PTY,
 //! read their output, write their input, mirror them to remote terminals.
 //!
 //! No UI framework here, no Tauri: the desktop webview app, the native shell

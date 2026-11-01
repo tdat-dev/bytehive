@@ -1,5 +1,5 @@
-//! Maestro Browser in the native shell: hosts the browser hub (agents call
-//! browser tools through it; the "Maestro for Chrome" extension answers),
+//! ByteHive Browser in the native shell: hosts the browser hub (agents call
+//! browser tools through it; the "ByteHive for Chrome" extension answers),
 //! shows a live view of the tab the agent on stage works in with Stop, asks
 //! you before a held click (sending, posting, paying, deleting), and says
 //! when a page wants a person (a login or a CAPTCHA).
@@ -129,7 +129,7 @@ impl BrowserWatch {
         self.form.hub_error = self.error.clone();
         if let Some(p) = self.form.want_open.take() {
             match browser_hub::profiles::browser_exe(&p.browser) {
-                None => self.form.error = Some(format!("{} isn't installed where Maestro looked.", p.browser)),
+                None => self.form.error = Some(format!("{} isn't installed where ByteHive looked.", p.browser)),
                 Some(exe) => {
                     self.form.error = std::process::Command::new(exe).arg(format!("--profile-directory={}", p.dir)).spawn().err().map(|e| e.to_string());
                 }
@@ -204,7 +204,7 @@ impl ShellApp {
                 self.extras.notify.asks_told.insert(a.id);
                 let at = host(&a.url);
                 let on = if at.is_empty() { String::new() } else { format!("On {at}. ") };
-                self.toast(ctx, crate::browser_live::ask_line(&a), format!("{on}Open Maestro to allow it or not."), None);
+                self.toast(ctx, crate::browser_live::ask_line(&a), format!("{on}Open ByteHive to allow it or not."), None);
             }
         }
         self.browser_card(ctx);

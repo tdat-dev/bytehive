@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="design/logo.svg" width="110" alt="Maestro logo">
+<img src="design/logo.svg" width="110" alt="ByteHive logo">
 
-# Maestro
+# ByteHive
 
 **Spawn & orchestrate fleets of AI agent CLIs, real terminals, real tree-kill.**
 
@@ -26,7 +26,7 @@ changed, and a board the agents plan on.
 
 Running one AI CLI is easy. Running **eight of them across three repos** , 
 spawning, watching, killing, reviewing what each one changed, is a tab-juggling
-nightmare. Maestro turns that into a single orchestrated surface: one window,
+nightmare. ByteHive turns that into a single orchestrated surface: one window,
 tiled live terminals, one broadcast bar, one diff review.
 
 ## Features
@@ -61,8 +61,8 @@ tiled live terminals, one broadcast bar, one diff review.
 
 ## MCP server (agent ⇄ board)
 
-Maestro ships a kanban board per workspace (`.maestro/board.json`). The
-[`maestro-mcp`](mcp/README.md) package exposes that board to any MCP-capable
+ByteHive ships a kanban board per workspace (`.bytehive/board.json`). The
+[`bytehive-mcp`](mcp/README.md) package exposes that board to any MCP-capable
 agent (Claude Code, etc.) as tools, read the board, add/move/update/delete
 cards, so an agent can manage its own task list from inside the terminal
 you spawned it in. Dispatch works the other way too: send a card to a
@@ -70,7 +70,7 @@ specific agent from the board (it records the assignee and reports back when
 the agent marks it done).
 
 ```
-claude mcp add --scope user maestro -- npx -y maestro-mcp
+claude mcp add --scope user bytehive -- npx -y bytehive-mcp
 ```
 
 On native Windows, wrap with `cmd /c` (see [mcp/README.md](mcp/README.md) for
@@ -79,22 +79,22 @@ command, and a worktree-isolation caveat.
 
 ## Install
 
-Grab `Maestro_<version>_x64-setup.exe` from the
+Grab `ByteHive_<version>_x64-setup.exe` from the
 [latest release](https://github.com/tdat-dev/maestro-releases/releases/latest) and run
-it. Maestro updates itself from then on (signed releases; Settings > System).
-An older Tauri-based Maestro moves onto this one through its own updater.
+it. ByteHive updates itself from then on (signed releases; Settings > System).
+An older Tauri-based ByteHive moves onto this one through its own updater.
 
 > **Requirements:** Windows 10/11 x64. The AI CLIs themselves (`claude`,
-> `codex`, `opencode`, ...) must be on your `PATH`: Maestro launches them, it
+> `codex`, `opencode`, ...) must be on your `PATH`: ByteHive launches them, it
 > doesn't install them.
 
 ## Development
 
-Maestro is a native Rust app (egui). Each crate is its own Cargo workspace.
+ByteHive is a native Rust app (egui). Each crate is its own Cargo workspace.
 
 ```powershell
 git clone https://github.com/tdat-dev/maestro.git
-cd maestro\crates\native-shell
+cd bytehive\crates\native-shell
 cargo run             # the app
 cargo test            # its tests (also run in crates/agent-core, supervise, dashboard, browser-hub)
 cd ..\..
@@ -112,8 +112,8 @@ crates/native-shell/   the app: egui UI, terminals, review, board, settings, tra
 crates/agent-core/     headless core: PTY agents, registry, CLI transcripts, git, land, plan usage
 crates/supervise/      supervisor logic: task state, asks, stuck/clash, digests, limits, finishes
 crates/dashboard/      the phone dashboard server (password gate, web terminal)
-crates/browser-hub/    Maestro for Chrome: hub, native messaging host, profiles
-mcp/                   maestro-mcp: board, memory, fleet and browser tools for the agents
+crates/browser-hub/    ByteHive for Chrome: hub, native messaging host, profiles
+mcp/                   bytehive-mcp: board, memory, fleet and browser tools for the agents
 browser-extension/     the Chrome extension
 docs/                  releasing guide and design notes
 ```

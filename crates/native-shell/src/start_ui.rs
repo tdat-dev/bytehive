@@ -30,7 +30,7 @@ pub fn show_start(ui: &mut egui::Ui, recent: &[String], crews: &[Crew]) -> Optio
             ui.allocate_ui(egui::vec2(width, 0.0), |ui| {
                 ui.set_width(width);
                 ui.vertical(|ui| {
-                    ui.label(semibold("Maestro", 13.0).color(INK3));
+                    ui.label(semibold("ByteHive", 13.0).color(INK3));
                     ui.add_space(10.0);
                     let mut h1 = egui::text::LayoutJob::default();
                     let font = egui::FontId::new(28.0, egui::FontFamily::Name("semibold".into()));

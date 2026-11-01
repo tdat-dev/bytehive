@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with Maestro
+description: Report a problem with ByteHive
 labels: ["bug"]
 body:
   - type: markdown
@@ -7,9 +7,9 @@ body:
       value: Thanks for taking the time to file a bug report.
 
   - type: input
-    id: maestro-version
+    id: bytehive-version
     attributes:
-      label: Maestro version
+      label: ByteHive version
       description: See the app's Settings or title bar (e.g. 0.1.7).
       placeholder: "0.1.7"
     validations:

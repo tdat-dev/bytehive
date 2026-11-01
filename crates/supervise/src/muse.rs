@@ -242,8 +242,8 @@ mod tests {
         assert_eq!(d.added, Some(2));
         let d = describe_muse_tool("subagent_spawn", &json!({ "task_name": "Scout" }));
         assert_eq!(d.target, "Scout");
-        let d = describe_muse_tool("mcp__maestro__card_add", &json!({}));
-        assert_eq!((d.verb.as_str(), d.target.as_str()), ("Used", "maestro \u{b7} card add"));
+        let d = describe_muse_tool("mcp__bytehive__card_add", &json!({}));
+        assert_eq!((d.verb.as_str(), d.target.as_str()), ("Used", "bytehive \u{b7} card add"));
         let d = describe_muse_tool("something_new", &json!({}));
         assert_eq!((d.verb.as_str(), d.target.as_str()), ("Used", "something_new"));
     }

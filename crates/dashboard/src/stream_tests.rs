@@ -18,7 +18,7 @@ use crate::testkit::*;
 fn socket_closes_after(srv: &TestServer, token: &str, end: impl FnOnce()) -> Duration {
     let url = format!("ws://127.0.0.1:{}/term?id=a", srv.ws_port);
     let mut req = url.as_str().into_client_request().unwrap();
-    req.headers_mut().insert("Cookie", format!("maestro_dash={token}").parse().unwrap());
+    req.headers_mut().insert("Cookie", format!("bytehive_dash={token}").parse().unwrap());
     let (mut ws, _) = tungstenite::connect(req).expect("a signed-in browser gets its terminal");
     if let tungstenite::stream::MaybeTlsStream::Plain(s) = ws.get_mut() {
         s.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
@@ -54,7 +54,7 @@ fn stream_ends_after(srv: &TestServer, token: &str, end: impl FnOnce()) -> Durat
     let mut s = TcpStream::connect(("127.0.0.1", srv.port)).unwrap();
     s.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
     let req = format!(
-        "GET /term?id=a HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nX-Maestro: 1\r\nCookie: maestro_dash={token}\r\n\r\n",
+        "GET /term?id=a HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nX-ByteHive: 1\r\nCookie: bytehive_dash={token}\r\n\r\n",
         srv.port
     );
     s.write_all(req.as_bytes()).unwrap();
@@ -130,7 +130,7 @@ fn the_terminal_socket_wants_a_session_too() {
     }
     let Login::Ok(token) = auth.login(IpAddr::V4(Ipv4Addr::LOCALHOST), "correct horse", Instant::now()) else { panic!() };
     let mut req = url.as_str().into_client_request().unwrap();
-    req.headers_mut().insert("Cookie", format!("maestro_dash={token}").parse().unwrap());
+    req.headers_mut().insert("Cookie", format!("bytehive_dash={token}").parse().unwrap());
     assert!(tungstenite::connect(req).is_ok(), "a signed-in browser gets its terminal");
 }
 

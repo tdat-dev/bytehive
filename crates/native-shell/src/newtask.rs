@@ -1,5 +1,5 @@
 //! The New task sheet's model, ported from the approved Agent Inbox design
-//! (`design/redesign/maestro-inbox.html`) and the web app's `spawnAgents`:
+//! (`design/redesign/bytehive-inbox.html`) and the web app's `spawnAgents`:
 //! one prompt, one folder, one CLI, 1..4 agents. Several agents on one task
 //! is a race, each on its own branch, and you keep the best diff. Pure, so
 //! names, branches and the help line are checked without a window.

@@ -135,7 +135,7 @@ mod tests {
         app.run_command("memory");
         assert!(!app.extras.memory.open);
         assert!(app.notice.as_deref().unwrap_or("").contains("Open a project"));
-        let dir = std::env::temp_dir().join(format!("maestro-memui-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-memui-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let d = dir.to_string_lossy().to_string();
         app.projects.open(&d);

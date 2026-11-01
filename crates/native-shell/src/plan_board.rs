@@ -1,4 +1,4 @@
-//! The plan board: `.maestro/board.json`, where agents propose cards over
+//! The plan board: `.bytehive/board.json`, where agents propose cards over
 //! MCP (card_add) and you approve them by moving them to "To do". Edited as
 //! raw JSON so fields this module does not know (labels, due, done evidence,
 //! anything the MCP server adds later) survive untouched. Every change
@@ -28,7 +28,7 @@ pub struct ListView {
 
 /// Where a project's plan board lives.
 pub fn board_path(project: &str) -> PathBuf {
-    Path::new(project).join(".maestro").join("board.json")
+    Path::new(project).join(".bytehive").join("board.json")
 }
 
 fn s(v: &Value, k: &str) -> String {
@@ -281,8 +281,8 @@ mod tests {
 
     #[test]
     fn edits_go_through_the_file() {
-        let dir = std::env::temp_dir().join(format!("maestro-plan-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join(".maestro")).unwrap();
+        let dir = std::env::temp_dir().join(format!("bytehive-plan-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".bytehive")).unwrap();
         let path = board_path(&dir.to_string_lossy());
         save(&path, &board()).unwrap();
         edit(&path, |b| move_card(b, "c1", "l2")).unwrap();

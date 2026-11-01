@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Maestro fleet</title>
+<title>ByteHive fleet</title>
 <style>
   :root{--bg:#090a0c;--s0:#0f1115;--s1:#16181d;--s2:#20232a;--line:#20232a;--line2:#323842;
     --text:#f8fafc;--muted:#94a3b8;--muted2:#64748b;--accent:#c6f135;--ink:#1a2e05;
@@ -118,7 +118,7 @@
 <link rel="stylesheet" href="/xterm.css">
 </head>
 <body>
-<header><h1>Maestro <span>fleet</span></h1><div class="sum" id="sum"></div><button class="bell" id="bell" hidden>Notify me</button><button class="out-btn" id="signout" hidden>Sign out</button></header>
+<header><h1>ByteHive <span>fleet</span></h1><div class="sum" id="sum"></div><button class="bell" id="bell" hidden>Notify me</button><button class="out-btn" id="signout" hidden>Sign out</button></header>
 <div class="list" id="list"></div>
 <div id="term">
   <div class="term-head">
@@ -135,12 +135,12 @@
   const enc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
   let openId = null;
   // Stopped agents stay out of the way until they run again (resume them in
-  // Maestro); this shows them anyway, remembered on this device.
+  // ByteHive); this shows them anyway, remembered on this device.
   let showStopped = false;
-  try { showStopped = localStorage.getItem("maestro.showStopped") === "1"; } catch (e) {}
+  try { showStopped = localStorage.getItem("bytehive.showStopped") === "1"; } catch (e) {}
   // Every call to the app says it comes from this page (the server refuses
-  // API calls without X-Maestro, which another site can't send).
-  const API = { "Content-Type": "application/json", "X-Maestro": "1" };
+  // API calls without X-ByteHive, which another site can't send).
+  const API = { "Content-Type": "application/json", "X-ByteHive": "1" };
 
   async function post(paneId, payload) {
     try {
@@ -217,7 +217,7 @@
     const body = fresh.length === 1 ? (fresh[0].wsName || "") : fresh.map(finishText).join("\n");
     let shown = false;
     if (canNotify && Notification.permission === "granted") {
-      try { new Notification(title, { body, tag: "maestro-finish" }); shown = true; } catch (e) {}
+      try { new Notification(title, { body, tag: "bytehive-finish" }); shown = true; } catch (e) {}
     }
     if (document.visibilityState !== "visible") { missed += fresh.length; document.title = "(" + missed + ") " + baseTitle; }
     if (!shown && navigator.vibrate) { try { navigator.vibrate(200); } catch (e) {} }
@@ -246,13 +246,13 @@
     const wireMore = () => {
       document.getElementById("more")?.addEventListener("click", () => {
         showStopped = !showStopped;
-        try { localStorage.setItem("maestro.showStopped", showStopped ? "1" : "0"); } catch (e) {}
+        try { localStorage.setItem("bytehive.showStopped", showStopped ? "1" : "0"); } catch (e) {}
         render(data);
       });
     };
     if (!shown.length) {
       list.innerHTML = '<div class="empty">No agents running.'
-        + (stopped ? "<br>Resume one in Maestro and it shows up here." : "") + "</div>" + more;
+        + (stopped ? "<br>Resume one in ByteHive and it shows up here." : "") + "</div>" + more;
       wireMore();
       return;
     }

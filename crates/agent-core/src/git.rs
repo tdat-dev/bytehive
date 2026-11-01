@@ -239,7 +239,7 @@ fn short_hash(s: &str) -> String {
 }
 
 /// Compute the worktree directory for a repo + branch:
-/// `<drive>:\.maestro-worktrees\<repo-slug>-<hash>\<branch-slug>-<branch-hash>`.
+/// `<drive>:\.bytehive-worktrees\<repo-slug>-<hash>\<branch-slug>-<branch-hash>`.
 /// The root sits on the repo's own drive (never C:/profile) and out of the repo tree.
 /// NOTE: UNC paths (\\server\share) are unsupported — Windows-local repos only.
 pub fn worktree_path_for(repo_root: &str, branch: &str) -> std::path::PathBuf {
@@ -251,7 +251,7 @@ pub fn worktree_path_for(repo_root: &str, branch: &str) -> std::path::PathBuf {
     let leaf = format!("{}-{}", slug(branch), short_hash(branch));
     let mut p = std::path::PathBuf::new();
     p.push(format!("{drive}\\"));
-    p.push(".maestro-worktrees");
+    p.push(".bytehive-worktrees");
     p.push(folder);
     p.push(leaf);
     p
@@ -279,12 +279,12 @@ mod tests {
             return None;
         }
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!("maestro-git-test-{}-{}", std::process::id(), nanos));
+        let dir = std::env::temp_dir().join(format!("bytehive-git-test-{}-{}", std::process::id(), nanos));
         std::fs::create_dir_all(&dir).ok()?;
         let run = |args: &[&str]| Command::new("git").arg("-C").arg(&dir).args(args).output().ok().filter(|o| o.status.success());
         run(&["init"])?;
-        run(&["config", "user.email", "test@maestro.local"])?;
-        run(&["config", "user.name", "maestro-test"])?;
+        run(&["config", "user.email", "test@bytehive.local"])?;
+        run(&["config", "user.name", "bytehive-test"])?;
         run(&["config", "commit.gpgsign", "false"])?;
         run(&["config", "core.autocrlf", "false"])?;
         std::fs::write(dir.join("a.txt"), "one\n").ok()?;
@@ -313,7 +313,7 @@ mod tests {
     fn checkpoint_keeps_work_without_touching_the_tree() {
         let Some(dir) = fresh_repo() else { return };
         std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
-        let sha = checkpoint(&dir, "maestro test checkpoint");
+        let sha = checkpoint(&dir, "bytehive test checkpoint");
         assert!(sha.is_some());
         assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\ntwo\n");
         std::fs::remove_dir_all(&dir).ok();
@@ -366,7 +366,7 @@ mod tests {
         if cfg!(windows) {
             assert!(!top.contains('/'), "Windows separators: {top}");
         }
-        assert_eq!(repo_root(&std::env::temp_dir().join("maestro-surely-no-repo-here")), None);
+        assert_eq!(repo_root(&std::env::temp_dir().join("bytehive-surely-no-repo-here")), None);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -408,22 +408,22 @@ mod tests {
 
     #[test]
     fn path_lives_on_repo_drive_under_hidden_root() {
-        let p = worktree_path_for("D:\\WhaleloSource\\payments-svc", "maestro/claude-a1b2").to_string_lossy().to_string();
-        assert!(p.starts_with("D:\\.maestro-worktrees\\"), "got {p}");
+        let p = worktree_path_for("D:\\WhaleloSource\\payments-svc", "bytehive/claude-a1b2").to_string_lossy().to_string();
+        assert!(p.starts_with("D:\\.bytehive-worktrees\\"), "got {p}");
         assert!(p.contains("payments-svc-"), "got {p}");
-        assert!(p.contains("maestro-claude-a1b2-"), "got {p}");
+        assert!(p.contains("bytehive-claude-a1b2-"), "got {p}");
     }
 
     #[test]
     fn same_name_different_path_differ() {
-        let a = worktree_path_for("D:\\a\\app", "maestro/x");
-        let b = worktree_path_for("D:\\b\\app", "maestro/x");
+        let a = worktree_path_for("D:\\a\\app", "bytehive/x");
+        let b = worktree_path_for("D:\\b\\app", "bytehive/x");
         assert_ne!(a, b);
     }
 
     #[test]
     fn non_repos_read_as_empty() {
-        let dir = std::env::temp_dir().join(format!("maestro-not-a-repo-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-not-a-repo-{}", std::process::id()));
         std::fs::create_dir_all(&dir).ok();
         assert_eq!(current_branch(&dir), None);
         assert!(changed_files(&dir).is_empty());

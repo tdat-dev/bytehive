@@ -3,7 +3,7 @@
 //! release reaches both. A check runs a little after start and every six
 //! hours (not from a build under target\, which is always "older"); a newer
 //! version shows on the top bar. Installing downloads the installer, checks
-//! its signature against the key built in here, runs it, and closes Maestro;
+//! its signature against the key built in here, runs it, and closes ByteHive;
 //! the installer opens it again.
 
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -76,7 +76,7 @@ fn fetch_latest() -> Result<Release, String> {
 fn download(r: &Release) -> Result<std::path::PathBuf, String> {
     let bytes = agent().get(&r.url).call().map_err(|e| format!("download failed: {e}"))?.body_mut().with_config().limit(400 * 1024 * 1024).read_to_vec().map_err(|e| format!("download failed: {e}"))?;
     verify(&bytes, &r.signature)?;
-    let path = std::env::temp_dir().join(format!("Maestro_{}_x64-setup.exe", r.version));
+    let path = std::env::temp_dir().join(format!("ByteHive_{}_x64-setup.exe", r.version));
     std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
     Ok(path)
 }
@@ -152,7 +152,7 @@ impl ShellApp {
                     u.status = format!("Version {} is out.", r.version);
                     u.available = Some(r);
                 }
-                Msg::Checked(Ok(_)) => u.status = format!("Maestro {} is up to date.", current()),
+                Msg::Checked(Ok(_)) => u.status = format!("ByteHive {} is up to date.", current()),
                 Msg::Checked(Err(e)) => u.status = e,
                 Msg::Ready(Err(e)) => u.status = e,
                 Msg::Ready(Ok(path)) => match std::process::Command::new(&path).arg("/UPDATE").spawn() {
@@ -183,8 +183,8 @@ impl ShellApp {
             let mut close = false;
             egui::Modal::new(egui::Id::unique("update-ask")).show(ui.ctx(), |ui| {
                 ui.set_width(380.0);
-                ui.label(egui::RichText::new(format!("Install Maestro {}?", r.version)).size(15.0));
-                ui.label(egui::RichText::new("Maestro closes to update, and the agents stop with it. Their sessions resume from Sessions.").size(12.5).color(crate::theme::INK3));
+                ui.label(egui::RichText::new(format!("Install ByteHive {}?", r.version)).size(15.0));
+                ui.label(egui::RichText::new("ByteHive closes to update, and the agents stop with it. Their sessions resume from Sessions.").size(12.5).color(crate::theme::INK3));
                 ui.horizontal(|ui| {
                     if ui.button("Update now").clicked() {
                         self.extras.updates.install(ui.ctx());

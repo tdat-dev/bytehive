@@ -166,20 +166,20 @@ impl ShellApp {
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
-        // Debug hooks for screenshots without clicking: MAESTRO_PANES=N
-        // boots with N shells, MAESTRO_STAGE=1 puts the first on stage.
-        let extra: usize = std::env::var("MAESTRO_PANES").ok().and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, 6);
+        // Debug hooks for screenshots without clicking: BYTEHIVE_PANES=N
+        // boots with N shells, BYTEHIVE_STAGE=1 puts the first on stage.
+        let extra: usize = std::env::var("BYTEHIVE_PANES").ok().and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, 6);
         for _ in 1..extra {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = app.spawn_pane("shell", spec, None, None);
         }
-        if std::env::var("MAESTRO_STAGE").is_ok() {
+        if std::env::var("BYTEHIVE_STAGE").is_ok() {
             if let Some(p) = app.panes.first() {
                 app.stage = Some(p.id.clone());
             }
         }
-        // MAESTRO_SHEET=new (or race) boots with the New task sheet open.
-        if let Ok(key) = std::env::var("MAESTRO_SHEET") {
+        // BYTEHIVE_SHEET=new (or race) boots with the New task sheet open.
+        if let Ok(key) = std::env::var("BYTEHIVE_SHEET") {
             app.run_command(&key);
         }
         Ok(app)

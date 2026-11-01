@@ -1,9 +1,9 @@
-// Pack "Maestro for Chrome" for the Chrome Web Store:
-//   node tools/pack_extension.mjs  →  dist/maestro-for-chrome-<version>.zip
+// Pack "ByteHive for Chrome" for the Chrome Web Store:
+//   node tools/pack_extension.mjs  →  dist/bytehive-for-chrome-<version>.zip
 //
 // The store refuses a manifest with a "key" (it assigns its own id), so the
 // packed copy leaves it out. The unpacked extension keeps it: that is what
-// gives developers the same id in every folder. Maestro's native host allows
+// gives developers the same id in every folder. ByteHive's native host allows
 // both ids (see STORE_EXTENSION_ID in crates/browser-hub/src/lib.rs).
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -15,7 +15,7 @@ const src = path.join(root, "browser-extension");
 const manifest = JSON.parse(fs.readFileSync(path.join(src, "manifest.json"), "utf8"));
 delete manifest.key;
 
-const stage = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-ext-"));
+const stage = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-ext-"));
 const SKIP = new Set(["logs", "PRIVACY.md", "store"]);
 const copy = (from, to) => {
   fs.mkdirSync(to, { recursive: true });
@@ -29,7 +29,7 @@ const copy = (from, to) => {
 copy(src, stage);
 fs.writeFileSync(path.join(stage, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 
-const out = path.join(root, "dist", `maestro-for-chrome-${manifest.version}.zip`);
+const out = path.join(root, "dist", `bytehive-for-chrome-${manifest.version}.zip`);
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.rmSync(out, { force: true });
 // .NET's zip with "/" in entry names: Windows PowerShell's Compress-Archive

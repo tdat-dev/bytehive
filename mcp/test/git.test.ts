@@ -7,7 +7,7 @@ import { changedFiles } from "../src/git.js";
 
 let dir: string;
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-mcp-git-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-mcp-git-"));
 });
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });

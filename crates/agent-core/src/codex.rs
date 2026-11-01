@@ -221,7 +221,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("maestro-codex-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("bytehive-codex-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -281,7 +281,7 @@ mod tests {
         let p = rollout(&root, "2026/09/25", "a", "D:\\app", "");
         let got = codex_transcript_in(&root, "D:\\app", Some(u64::MAX / 2), None, 0, None);
         assert_eq!(got.path, "");
-        let outside = std::env::temp_dir().join(format!("maestro-codex-outside-{}.jsonl", std::process::id()));
+        let outside = std::env::temp_dir().join(format!("bytehive-codex-outside-{}.jsonl", std::process::id()));
         std::fs::write(&outside, "{}\n").unwrap();
         let got = codex_transcript_in(&root, "D:\\nowhere", None, Some(&outside.to_string_lossy()), 0, None);
         assert_eq!(got.path, "");

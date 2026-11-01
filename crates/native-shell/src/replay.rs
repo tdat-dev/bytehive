@@ -14,7 +14,7 @@ use base64::Engine;
 use crate::term_pane::GridSize;
 
 /// Where a project keeps its recordings.
-pub const REC_DIR: &str = ".maestro/recordings";
+pub const REC_DIR: &str = ".bytehive/recordings";
 
 pub struct Frame {
     pub t: u64,
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(rec_name("Ana-Bob-1793000000000.jsonl"), ("Ana-Bob".to_string(), 1793000000000));
         assert_eq!(rec_name("odd.jsonl"), ("odd".to_string(), 0));
         let p = rec_path("D:/x", "Ana (codex)", 5);
-        assert!(p.ends_with(".maestro/recordings/Ana--codex--5.jsonl"), "{p:?}");
+        assert!(p.ends_with(".bytehive/recordings/Ana--codex--5.jsonl"), "{p:?}");
         assert_eq!(clock(125_000), "2:05");
         assert_eq!(size_text(2048), "2 KB");
     }
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn lists_newest_first() {
-        let dir = std::env::temp_dir().join(format!("maestro-rec-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-rec-{}", std::process::id()));
         let recs = dir.join(REC_DIR);
         std::fs::create_dir_all(&recs).unwrap();
         std::fs::write(recs.join("Ana-1700000000000.jsonl"), "x").unwrap();

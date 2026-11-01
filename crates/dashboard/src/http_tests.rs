@@ -36,7 +36,7 @@ fn with_a_password_nothing_opens_without_a_session() {
     assert!(page.body.contains("id=\"pw\""), "the sign-in page");
     assert!(!page.body.contains("id=\"list\""));
     assert_eq!(http(srv.port, "GET", "/api/fleet", None, "").status, 401);
-    assert_eq!(http(srv.port, "GET", "/api/fleet", Some("maestro_dash=forged"), "").status, 401);
+    assert_eq!(http(srv.port, "GET", "/api/fleet", Some("bytehive_dash=forged"), "").status, 401);
     assert_eq!(http(srv.port, "POST", "/api/send", None, r#"{"paneId":"a","message":"rm -rf"}"#).status, 401);
     assert_eq!(http(srv.port, "POST", "/term/input", None, r#"{"id":"a","data":"eA=="}"#).status, 401);
     assert_eq!(http(srv.port, "POST", "/term/resize", None, r#"{"id":"a"}"#).status, 401);
@@ -89,7 +89,7 @@ fn signing_in_opens_everything_until_signing_out() {
     assert_eq!(r.status, 200);
     assert!(r.head.contains("HttpOnly; SameSite=Strict; Path=/; Max-Age=43200"));
     let cookie = cookie_from(&r);
-    assert!(cookie.starts_with("maestro_dash=") && cookie.len() == "maestro_dash=".len() + 64);
+    assert!(cookie.starts_with("bytehive_dash=") && cookie.len() == "bytehive_dash=".len() + 64);
 
     let page = http(srv.port, "GET", "/", Some(&cookie), "");
     assert!(page.body.contains("id=\"list\"") && page.body.contains("<body data-auth>"));
@@ -119,7 +119,7 @@ fn curl_sees_401_then_200_after_login() {
     let base = format!("http://127.0.0.1:{}", srv.port);
     let code = |out: std::io::Result<std::process::Output>| String::from_utf8(out.unwrap().stdout).unwrap();
     let fleet = format!("{base}/api/fleet");
-    let mx = "X-Maestro: 1";
+    let mx = "X-ByteHive: 1";
     assert_eq!(code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-H", mx, &fleet])), "401");
     let login = format!("{base}/api/login");
     let ok = code(curl(&["-s", "-o", "nul", "-w", "%{http_code}", "-c", jar, "-H", "Content-Type: application/json",
@@ -201,7 +201,7 @@ fn a_rebound_host_is_refused() {
         format!("127.0.0.1:{p}.evil.com"),
     ];
     for host in &bad {
-        let r = raw(p, "GET", "/api/fleet", &[("Host", host), ("X-Maestro", "1")], "");
+        let r = raw(p, "GET", "/api/fleet", &[("Host", host), ("X-ByteHive", "1")], "");
         assert_eq!(r.status, 403, "Host {host}");
         assert!(!r.body.contains("Ana"), "Host {host} read the fleet");
         let r = raw(p, "GET", "/", &[("Host", host)], "");
@@ -210,7 +210,7 @@ fn a_rebound_host_is_refused() {
             p,
             "POST",
             "/api/send",
-            &[("Host", host), ("X-Maestro", "1"), ("Content-Type", "application/json")],
+            &[("Host", host), ("X-ByteHive", "1"), ("Content-Type", "application/json")],
             r#"{"paneId":"a","message":"rm -rf"}"#,
         );
         assert_eq!(r.status, 403, "send for Host {host}");
@@ -218,7 +218,7 @@ fn a_rebound_host_is_refused() {
     assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
     // the names this computer really uses still work
     for host in [format!("127.0.0.1:{p}"), format!("localhost:{p}"), format!("LocalHost:{p}")] {
-        let r = raw(p, "GET", "/api/fleet", &[("Host", &host), ("X-Maestro", "1")], "");
+        let r = raw(p, "GET", "/api/fleet", &[("Host", &host), ("X-ByteHive", "1")], "");
         assert_eq!(r.status, 200, "Host {host}");
     }
 }
@@ -235,7 +235,7 @@ fn a_foreign_origin_is_refused() {
         "null".to_string(),
     ];
     for origin in &foreign {
-        let h = [("Origin", origin.as_str()), ("X-Maestro", "1"), ("Content-Type", "application/json")];
+        let h = [("Origin", origin.as_str()), ("X-ByteHive", "1"), ("Content-Type", "application/json")];
         assert_eq!(raw(p, "POST", "/api/send", &h, r#"{"paneId":"a","message":"x"}"#).status, 403, "{origin}");
         assert_eq!(raw(p, "POST", "/term/input", &h, r#"{"id":"a","data":"eA=="}"#).status, 403, "{origin}");
         assert_eq!(raw(p, "GET", "/api/fleet", &h[..2], "").status, 403, "{origin}");
@@ -243,24 +243,24 @@ fn a_foreign_origin_is_refused() {
     }
     assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
     for origin in [format!("http://127.0.0.1:{p}"), format!("http://localhost:{p}")] {
-        let h = [("Origin", origin.as_str()), ("X-Maestro", "1"), ("Content-Type", "application/json")];
+        let h = [("Origin", origin.as_str()), ("X-ByteHive", "1"), ("Content-Type", "application/json")];
         assert_eq!(raw(p, "POST", "/api/send", &h, r#"{"paneId":"a","message":"hi"}"#).status, 200, "{origin}");
     }
     assert_eq!(srv.sent.lock().unwrap().len(), 2);
 }
 
-/// Without JSON and the X-Maestro header a request is not the page's own:
+/// Without JSON and the X-ByteHive header a request is not the page's own:
 /// a browser can't send either cross-site without a preflight nobody answers.
 #[test]
-fn api_calls_need_json_and_the_maestro_header() {
+fn api_calls_need_json_and_the_bytehive_header() {
     let srv = start(Arc::new(DashAuth::default()));
     let p = srv.port;
     let body = r#"{"paneId":"a","message":"x"}"#;
     for ct in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"] {
-        let r = raw(p, "POST", "/api/send", &[("X-Maestro", "1"), ("Content-Type", ct)], body);
+        let r = raw(p, "POST", "/api/send", &[("X-ByteHive", "1"), ("Content-Type", ct)], body);
         assert_eq!(r.status, 415, "{ct}");
     }
-    assert_eq!(raw(p, "POST", "/api/send", &[("X-Maestro", "1")], body).status, 415, "no content type");
+    assert_eq!(raw(p, "POST", "/api/send", &[("X-ByteHive", "1")], body).status, 415, "no content type");
     assert_eq!(raw(p, "POST", "/api/send", &[("Content-Type", "application/json")], body).status, 403);
     assert_eq!(raw(p, "POST", "/term/input", &[("Content-Type", "application/json")], "{}").status, 403);
     assert_eq!(raw(p, "POST", "/term/resize", &[("Content-Type", "application/json")], "{}").status, 403);
@@ -269,7 +269,7 @@ fn api_calls_need_json_and_the_maestro_header() {
     assert_eq!(raw(p, "GET", "/term?id=a", &[], "").status, 403);
     assert!(srv.sent.lock().unwrap().is_empty(), "nothing reached an agent");
     // charset is fine; the page and its scripts load without the header
-    let h = [("X-Maestro", "1"), ("Content-Type", "application/json; charset=utf-8")];
+    let h = [("X-ByteHive", "1"), ("Content-Type", "application/json; charset=utf-8")];
     assert_eq!(raw(p, "POST", "/api/send", &h, body).status, 200);
     assert_eq!(raw(p, "GET", "/", &[], "").status, 200);
     assert_eq!(raw(p, "GET", "/xterm.js", &[], "").status, 200);

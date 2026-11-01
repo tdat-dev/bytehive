@@ -1,7 +1,7 @@
 /* Agent progress reports for the fleet dashboard: one small file per agent
- * at <workspace>/.maestro/summary-<slug>.md, written through the summary_write
+ * at <workspace>/.bytehive/summary-<slug>.md, written through the summary_write
  * tool. The Supervisor watch loop reads these files — no model, no key.
- * The slug algorithm MUST match maestro-supervisor's selfsummary.ts, or the
+ * The slug algorithm MUST match bytehive-supervisor's selfsummary.ts, or the
  * dashboard reads a different filename than the agent writes. */
 
 import fs from "node:fs";
@@ -23,10 +23,10 @@ export function slugPane(name: string): string {
 }
 
 export function summaryPath(dir: string, agentName: string): string {
-  return path.join(dir, ".maestro", `summary-${slugPane(agentName)}.md`);
+  return path.join(dir, ".bytehive", `summary-${slugPane(agentName)}.md`);
 }
 
-/** Overwrite the agent's summary file (latest wins). Creates .maestro/ on
+/** Overwrite the agent's summary file (latest wins). Creates .bytehive/ on
  *  first use. Throws on an empty report — a blank status helps nobody. */
 export function writeSummary(
   dir: string,

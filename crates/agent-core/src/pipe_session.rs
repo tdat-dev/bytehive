@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn finds_a_program_on_path_with_its_ending() {
-        let dir = std::env::temp_dir().join(format!("maestro-resolve-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-resolve-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("tool.cmd"), "@echo off").unwrap();
         let path = std::env::join_paths([dir.clone()]).unwrap();
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn an_npm_shim_runs_the_exe_it_wraps() {
-        let dir = std::env::temp_dir().join(format!("maestro-unshim-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-unshim-{}", std::process::id()));
         let bin = dir.join("node_modules").join("pkg").join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(bin.join("tool.exe"), "").unwrap();

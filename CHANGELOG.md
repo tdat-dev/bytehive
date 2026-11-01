@@ -11,11 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Maestro is a native app now.** The Tauri and web app are gone; Maestro
-  runs as one Rust program with its own terminals. It starts faster, uses far
-  less memory, and keeps working while minimized or in the tray. Updating from
-  0.10.x installs it in the same place, and your projects, settings, project
-  memory, board, recordings, browser profiles and dashboard password carry over.
+- **Maestro is now ByteHive, and a native app.** The Tauri and web app are
+  gone; ByteHive runs as one Rust program with its own terminals. It starts
+  faster, uses far less memory, and keeps working while minimized or in the
+  tray. Updating from Maestro 0.10.x replaces it (one app in Add/Remove
+  Programs), and your projects, settings, project memory, board, recordings,
+  browser profiles and dashboard password carry over: `~/.maestro` is copied
+  to `~/.bytehive`, and a project's `.maestro` folder becomes `.bytehive` the
+  first time ByteHive or its MCP server opens it. The MCP server is
+  `bytehive-mcp` now; it still reads the old `MAESTRO_*` variables, and the
+  Chrome extension still connects to an app that has not updated yet.
 
 ### Added
 

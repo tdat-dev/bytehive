@@ -2,7 +2,7 @@
 //! devices can reach it, it has to know who is asking.
 //!
 //! One password per install, kept only as an argon2id hash (random salt) in
-//! `dashboard-auth.json` in the app-config dir (`%APPDATA%\com.maestro.app`,
+//! `dashboard-auth.json` in the app-config dir (`%APPDATA%\com.bytehive.app`,
 //! the same file the Tauri app uses, so one password serves both); the plaintext is never stored
 //! or logged. A good login gets a session: a random 32-byte token in an
 //! HttpOnly, SameSite=Strict cookie, held in memory for 12 hours. A wrong one
@@ -39,7 +39,7 @@ pub const GLOBAL_FAILS: usize = 10;
 pub const GLOBAL_WINDOW: Duration = Duration::from_secs(60);
 /// Shortest password the settings accept.
 pub const MIN_LEN: usize = 10;
-pub const COOKIE: &str = "maestro_dash";
+pub const COOKIE: &str = "bytehive_dash";
 pub(crate) const FILE: &str = "dashboard-auth.json";
 
 #[derive(Serialize, Deserialize)]
@@ -367,7 +367,7 @@ pub fn bind_addr(lan: bool, has_password: bool) -> Result<std::net::Ipv4Addr, St
 /// Where the Tauri app keeps its config (its `app_config_dir`), so the
 /// native shell reads and writes the same password file.
 pub fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("com.maestro.app"))
+    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("com.bytehive.app"))
 }
 
 #[cfg(test)]

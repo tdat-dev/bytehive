@@ -234,7 +234,7 @@ fn branch_diff_has_commits_and_uncommitted_work_but_not_the_base_s_own() {
 fn commit_message_comes_from_the_title() {
     assert_eq!(commit_message(Some("  mine "), Some("t"), "b"), "mine");
     assert_eq!(commit_message(None, Some("Fix the flaky test\nmore"), "b"), "Fix the flaky test");
-    assert_eq!(commit_message(Some(" "), None, "maestro/ana-1"), "Work from maestro/ana-1");
+    assert_eq!(commit_message(Some(" "), None, "bytehive/ana-1"), "Work from bytehive/ana-1");
     let long = "x".repeat(100);
     assert_eq!(commit_message(None, Some(&long), "b").chars().count(), 73);
 }

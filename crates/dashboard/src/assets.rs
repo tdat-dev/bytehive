@@ -13,14 +13,14 @@ mod tests {
 
     /// Every fetch the embedded pages make carries what the server now wants.
     #[test]
-    fn the_pages_send_json_and_the_maestro_header() {
-        assert!(PAGE.contains(r#"const API = { "Content-Type": "application/json", "X-Maestro": "1" };"#));
+    fn the_pages_send_json_and_the_bytehive_header() {
+        assert!(PAGE.contains(r#"const API = { "Content-Type": "application/json", "X-ByteHive": "1" };"#));
         for (name, page) in [("dashboard", PAGE), ("login", LOGIN_PAGE)] {
             let calls: Vec<&str> = page.split("fetch(").skip(1).collect();
             assert!(!calls.is_empty(), "{name}");
             for call in calls {
                 let call = &call[..call.find(';').unwrap_or(call.len())];
-                assert!(call.contains("headers: API") || call.contains(r#""X-Maestro": "1""#), "{name}: fetch({call}");
+                assert!(call.contains("headers: API") || call.contains(r#""X-ByteHive": "1""#), "{name}: fetch({call}");
             }
         }
     }

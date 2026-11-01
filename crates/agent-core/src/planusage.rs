@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn reads_the_sign_in_and_says_why_not() {
-        let home = std::env::temp_dir().join(format!("maestro-cred-{}", std::process::id()));
+        let home = std::env::temp_dir().join(format!("bytehive-cred-{}", std::process::id()));
         std::fs::create_dir_all(home.join(".claude")).unwrap();
         assert_eq!(claude_credentials(&home, 0), Err(NoSignIn::NotSignedIn));
         std::fs::write(home.join(".claude/.credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t","expiresAt":100,"subscriptionType":"max"}}"#).unwrap();

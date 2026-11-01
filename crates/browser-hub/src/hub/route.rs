@@ -62,7 +62,7 @@ impl Hub {
             }
             _ => {
                 if inner.activity.get(&name).is_some_and(|a| a.paused) {
-                    let _ = tx.send(fail(&id, format!("The user stopped {name}'s browser use from Maestro. Don't use the browser; tell the user where you are and wait until they say to go on.")));
+                    let _ = tx.send(fail(&id, format!("The user stopped {name}'s browser use from ByteHive. Don't use the browser; tell the user where you are and wait until they say to go on.")));
                     return false;
                 }
                 let target = match (pick, browsers.as_slice()) {
@@ -83,7 +83,7 @@ impl Hub {
                     if let Some(want) = (self.wanted_version)().filter(|w| !b.version.is_empty() && *w != b.version) {
                         if inner.reloaded.insert(format!("{}|{}|{}", b.browser, b.email, want)) {
                             let _ = inner.peers[&target].tx.send(RELOAD.to_string());
-                            let _ = tx.send(fail(&id, format!("Maestro is updating the browser extension to {want}. Try again in a few seconds.")));
+                            let _ = tx.send(fail(&id, format!("ByteHive is updating the browser extension to {want}. Try again in a few seconds.")));
                             return false;
                         }
                     }

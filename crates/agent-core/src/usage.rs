@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn counts_each_reply_once_and_reads_on() {
-        let path = std::env::temp_dir().join(format!("maestro-usage-{}.jsonl", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bytehive-usage-{}.jsonl", std::process::id()));
         // One reply over two lines, then a second reply.
         std::fs::write(&path, format!("{}{}{}", reply("a", "claude-opus-5-5"), reply("a", "claude-opus-5-5"), reply("b", "claude-opus-5-5"))).unwrap();
         let first = file_usage(&path);

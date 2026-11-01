@@ -173,7 +173,7 @@ mod tests {
     use super::*;
 
     fn temp_db(name: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("maestro-opencode-{name}-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bytehive-opencode-{name}-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let conn = Connection::open(&path).unwrap();
         conn.execute_batch(

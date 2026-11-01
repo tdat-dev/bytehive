@@ -30,7 +30,7 @@ pub struct FinishSnap {
     pub limited: bool,
     pub files: Option<u32>,
     pub exit_code: Option<u32>,
-    /// You (or Maestro) asked it to stop just now.
+    /// You (or ByteHive) asked it to stop just now.
     pub stop_asked: bool,
 }
 
@@ -202,7 +202,7 @@ mod tests {
     use super::*;
 
     fn snap(id: &str, state: TaskState) -> FinishSnap {
-        FinishSnap { pane_id: id.into(), name: id.to_uppercase(), project: "maestro".into(), state, limited: false, files: Some(2), exit_code: None, stop_asked: false }
+        FinishSnap { pane_id: id.into(), name: id.to_uppercase(), project: "bytehive".into(), state, limited: false, files: Some(2), exit_code: None, stop_asked: false }
     }
 
     #[test]

@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn live_sessions_are_read_from_claudes_pid_files() {
-        let dir = std::env::temp_dir().join(format!("maestro-live-sessions-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-live-sessions-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("20916.json"), r#"{"pid":20916,"sessionId":"7f19387c-fc1f-4bc7-af25-0e3ba5fcf7e2","cwd":"D:\\app","startedAt":1792395112932,"status":"busy"}"#).unwrap();
         std::fs::write(dir.join("1.json"), r#"{"pid":1,"sessionId":"../../etc","cwd":"D:\\app"}"#).unwrap();
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn a_session_says_its_folder_title_and_what_you_typed() {
-        let dir = std::env::temp_dir().join(format!("maestro-sessions-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-sessions-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let id = "11111111-2222-3333-4444-555555555555";
         let lines = [
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn a_projects_sessions_include_its_worktrees_but_not_a_lookalike() {
-        let projects = std::env::temp_dir().join(format!("maestro-sessions-under-{}", std::process::id()));
+        let projects = std::env::temp_dir().join(format!("bytehive-sessions-under-{}", std::process::id()));
         let write = |folder: &str, id: &str, cwd: &str| {
             let d = projects.join(folder);
             std::fs::create_dir_all(&d).unwrap();
@@ -376,8 +376,8 @@ mod tests {
         write("D--app", "11111111-0000-0000-0000-000000000001", r"D:\app");
         write("D--app--claude-worktrees-x", "11111111-0000-0000-0000-000000000002", r"D:\app\.claude\worktrees\x");
         write("D--app-two", "11111111-0000-0000-0000-000000000003", r"D:\app-two");
-        write("D---maestro-worktrees-app-abc123-maestro-bob-1-xyz", "11111111-0000-0000-0000-000000000004", r"D:\.maestro-worktrees\app-abc123\maestro-bob-1-xyz");
-        let roots = [r"D:\app\", r"D:\.maestro-worktrees\app-abc123"];
+        write("D---bytehive-worktrees-app-abc123-bytehive-bob-1-xyz", "11111111-0000-0000-0000-000000000004", r"D:\.bytehive-worktrees\app-abc123\bytehive-bob-1-xyz");
+        let roots = [r"D:\app\", r"D:\.bytehive-worktrees\app-abc123"];
         let ids: std::collections::BTreeSet<String> = sessions_under(&projects, &roots, 50).into_iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), 3);
         assert!(!ids.contains("11111111-0000-0000-0000-000000000003"));

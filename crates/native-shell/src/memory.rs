@@ -1,7 +1,7 @@
 //! Project memory: what every agent in a project should know about it
 //! (conventions, decisions, where things are, gotchas), one fact per entry,
-//! in `<project>/.maestro/memory.json`. Agents read and save it through the
-//! maestro MCP tools; you read and edit it in the Memory sheet. Port of the
+//! in `<project>/.bytehive/memory.json`. Agents read and save it through the
+//! bytehive MCP tools; you read and edit it in the Memory sheet. Port of the
 //! web app's `projectmemory.ts`, same file format, so both sides share it.
 //! Every change re-reads the file first and writes through a temp file, so a
 //! fact an agent saved a second ago survives.
@@ -28,7 +28,7 @@ pub const MAX_FACT: usize = 600;
 pub const MAX_ENTRIES: usize = 80;
 
 pub fn memory_path(project: &str) -> PathBuf {
-    Path::new(project).join(".maestro").join("memory.json")
+    Path::new(project).join(".bytehive").join("memory.json")
 }
 
 /// Reads memory.json, forgiving: missing or empty is an empty memory, and
@@ -38,7 +38,7 @@ pub fn parse_memory(raw: &str) -> Result<Vec<MemoryEntry>, String> {
     if raw.trim().is_empty() {
         return Ok(Vec::new());
     }
-    let v: Value = serde_json::from_str(raw).map_err(|_| "The project memory file (.maestro/memory.json) is not valid JSON.".to_string())?;
+    let v: Value = serde_json::from_str(raw).map_err(|_| "The project memory file (.bytehive/memory.json) is not valid JSON.".to_string())?;
     let mut out: Vec<MemoryEntry> = Vec::new();
     for e in v["entries"].as_array().into_iter().flatten() {
         let Some(text) = e["text"].as_str().map(str::trim).filter(|t| !t.is_empty()) else { continue };
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn changes_go_through_the_file() {
-        let dir = std::env::temp_dir().join(format!("maestro-mem-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-mem-{}", std::process::id()));
         let path = memory_path(&dir.to_string_lossy());
         let (id, m) = change(&path, |m| add_fact(m, "First fact", "you", 1)).unwrap();
         assert_eq!((id.as_str(), m.len()), ("m1", 1));

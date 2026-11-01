@@ -21,8 +21,8 @@ fn comment(text: &str) -> LineComment {
 
 #[test]
 fn conflict_names_files_and_the_fix() {
-    let t = conflict_text(&Conflict { base: "main".to_string(), branch: "maestro/eli-1a2b3c".to_string(), files: vec!["src/a.ts".to_string(), "src/b.ts".to_string()] });
-    assert!(t.contains("Merging your branch maestro/eli-1a2b3c into main conflicts in:\n- src/a.ts\n- src/b.ts"));
+    let t = conflict_text(&Conflict { base: "main".to_string(), branch: "bytehive/eli-1a2b3c".to_string(), files: vec!["src/a.ts".to_string(), "src/b.ts".to_string()] });
+    assert!(t.contains("Merging your branch bytehive/eli-1a2b3c into main conflicts in:\n- src/a.ts\n- src/b.ts"));
     assert!(t.contains("git merge main"));
     assert!(t.contains("resolve the conflicts"));
     assert!(!t.contains('\u{2014}'));

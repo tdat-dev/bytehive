@@ -1,7 +1,7 @@
 //! Windows notifications: an agent that needs you, a run that finished
 //! (done, ready to review, or crashed; bursts go out as one), an agent out of
-//! usage or back at work. Sent while Maestro is in the background; clicking
-//! one brings Maestro forward with that agent on stage. Settings > System
+//! usage or back at work. Sent while ByteHive is in the background; clicking
+//! one brings ByteHive forward with that agent on stage. Settings > System
 //! turns each kind off. Port of the web app's finishwatch.ts / setAttention
 //! and src-tauri's toast.rs (WinRT straight, so a click is heard).
 
@@ -62,7 +62,7 @@ impl ShellApp {
         });
     }
 
-    /// Maestro is in the background: minimized, hidden, or another app in front.
+    /// ByteHive is in the background: minimized, hidden, or another app in front.
     pub(crate) fn away(ctx: &egui::Context) -> bool {
         ctx.input(|i| !i.viewport().focused.unwrap_or(true) || i.viewport().minimized.unwrap_or(false))
     }
@@ -102,13 +102,13 @@ impl ShellApp {
         if self.prefs.limit_notify && self.prefs.handover_to.is_none() {
             for p in self.panes.iter().filter(|p| limited.contains(&p.id) && !self.extras.notify.limited.contains(&p.id)) {
                 let back = p.limit.as_ref().and_then(|l| l.resets_at).map(|at| format!("Back at {}.", at.format("%H:%M"))).unwrap_or_default();
-                let carry = if self.prefs.auto_resume { " Maestro tells it to carry on then." } else { "" };
+                let carry = if self.prefs.auto_resume { " ByteHive tells it to carry on then." } else { "" };
                 self.toast(ctx, format!("{} is out of usage", p.name), format!("{back}{carry}").trim().to_string(), Some(p.id.clone()));
             }
         }
         if self.prefs.limit_notify && self.prefs.auto_resume {
             for p in self.panes.iter().filter(|p| self.extras.notify.limited.contains(&p.id) && !limited.contains(&p.id) && p.exit_code.is_none()) {
-                self.toast(ctx, format!("{} is back at work", p.name), "Its usage limit reset, so Maestro told it to carry on.".into(), Some(p.id.clone()));
+                self.toast(ctx, format!("{} is back at work", p.name), "Its usage limit reset, so ByteHive told it to carry on.".into(), Some(p.id.clone()));
             }
         }
         self.extras.notify.limited = limited;
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     #[ignore]
     fn real_toast() {
-        let t = tauri_winrt_notification::Toast::new(&app_id()).title("Ana is ready to review").text1("3 files changed in maestro, after 4 min.");
+        let t = tauri_winrt_notification::Toast::new(&app_id()).title("Ana is ready to review").text1("3 files changed in bytehive, after 4 min.");
         assert!(t.show().is_ok());
     }
 }

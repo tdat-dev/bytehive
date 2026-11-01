@@ -1,7 +1,7 @@
 //! The Board view, in place of the terminals (top bar "Board"). Two halves:
 //! Agents, the approved design's derived board, where columns follow what
 //! each agent is actually doing so there is nothing to drag and a click opens
-//! the agent; and Plan, the project's `.maestro/board.json`, where agents
+//! the agent; and Plan, the project's `.bytehive/board.json`, where agents
 //! propose cards and you approve them into "To do", move them on, and tick
 //! their checklists. The plan file is re-read every two seconds, since
 //! agents write to it while you look.
@@ -295,13 +295,13 @@ mod tests {
 
     #[test]
     fn board_paints_both_halves() {
-        let agents = vec![AgentCard { pane_id: "p".into(), name: "Ana".into(), cli: "Claude".into(), title: "Fix login".into(), where_: "maestro / ana/fix".into(), state: TaskState::Needs, cost: "$0.42".into() }];
+        let agents = vec![AgentCard { pane_id: "p".into(), name: "Ana".into(), cli: "Claude".into(), title: "Fix login".into(), where_: "bytehive / ana/fix".into(), state: TaskState::Needs, cost: "$0.42".into() }];
         let mut b = BoardView::default();
         let ctx = egui::Context::default();
         for half in [Half::Agents, Half::Plan] {
             b.half = half;
             ctx.run_ui(egui::RawInput::default(), |ui| {
-                assert!(b.show(ui, &agents, Some(Path::new("Z:\\none\\board.json")), "maestro").is_none());
+                assert!(b.show(ui, &agents, Some(Path::new("Z:\\none\\board.json")), "bytehive").is_none());
             })
             .drop_without_applying_deltas();
         }

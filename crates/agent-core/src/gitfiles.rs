@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn a_folder_outside_a_repo_lists_nothing() {
-        let dir = std::env::temp_dir().join("maestro-surely-no-repo-files");
+        let dir = std::env::temp_dir().join("bytehive-surely-no-repo-files");
         assert!(listed_files(&dir).is_empty());
         assert!(file_statuses(&dir).is_empty());
     }

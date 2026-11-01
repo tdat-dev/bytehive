@@ -1,5 +1,5 @@
 //! Settings > Browser: which of your browser profiles agents can use, and the
-//! steps to add "Maestro for Chrome" to one. A profile turns to Connected by
+//! steps to add "ByteHive for Chrome" to one. A profile turns to Connected by
 //! itself when its extension reaches the hub. Port of `browserprefs.ts`.
 
 use browser_hub::profiles::ProfileRow;
@@ -81,7 +81,7 @@ pub fn browser_rows(ui: &mut egui::Ui, p: &mut Prefs, f: &mut BrowserForm) -> bo
     }
     if let Some(s) = f.setting_up.clone() {
         egui::Frame::new().fill(egui::Color32::from_white_alpha(8)).corner_radius(10.0).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
-            ui.label(RichText::new(format!("Add Maestro for Chrome to {}", s.name)).strong().color(TEXT));
+            ui.label(RichText::new(format!("Add ByteHive for Chrome to {}", s.name)).strong().color(TEXT));
             let b = short(&s.browser);
             ui.label(RichText::new(format!("1. In the {b} window that opened, go to {}://extensions.", if b == "Edge" { "edge" } else if b == "Brave" { "brave" } else { "chrome" })).size(12.5).color(INK3));
             ui.label(RichText::new("2. Turn on Developer mode (top right).").size(12.5).color(INK3));

@@ -221,7 +221,7 @@ impl ReviewPanel {
                 if let Some(cwd) = Self::cwd_of(panes, &pane_id) {
                     let tx = self.tx.clone();
                     std::thread::spawn(move || {
-                        let sha = checkpoint(&cwd, "maestro review checkpoint");
+                        let sha = checkpoint(&cwd, "bytehive review checkpoint");
                         let _ = tx.send(ReviewMsg::Checkpoint(sha));
                     });
                 }
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn a_folder_of_repos_reviews_each_under_its_name() {
-        let parent = std::env::temp_dir().join(format!("maestro-parent-review-{}", std::process::id()));
+        let parent = std::env::temp_dir().join(format!("bytehive-parent-review-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&parent);
         let repo = scratch_repo("inner");
         std::fs::create_dir_all(&parent).unwrap();
@@ -340,7 +340,7 @@ mod tests {
     }
 
     fn scratch_repo(tag: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("maestro-wt-review-{tag}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("bytehive-wt-review-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let run = |args: &[&str], cwd: &Path| {
@@ -362,7 +362,7 @@ mod tests {
         use agent_core::git::{branch_files, create_worktree, current_branch};
         let repo = scratch_repo("snap");
         let base = current_branch(&repo).unwrap();
-        let wt_path = repo.parent().unwrap().join(format!("maestro-wt-pane-{}", std::process::id()));
+        let wt_path = repo.parent().unwrap().join(format!("bytehive-wt-pane-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&wt_path);
         assert!(create_worktree(&repo, &wt_path, "feat/wt", "HEAD").is_some());
         std::fs::write(wt_path.join("note.txt"), "hello\n// TODO: polish\n").unwrap();

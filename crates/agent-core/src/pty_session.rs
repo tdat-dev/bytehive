@@ -10,11 +10,11 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use crate::command_spec::CommandSpec;
 
 /// Session-identity markers Claude Code exports into the processes it launches.
-/// `CommandBuilder` inherits our whole environment, so if Maestro itself was
+/// `CommandBuilder` inherits our whole environment, so if ByteHive itself was
 /// started from inside a Claude Code session (e.g. `npm run tauri:dev` run by an
 /// agent) these leak into every agent we spawn — each one then believes it is a
 /// *child* session and silently turns off transcript saving. Scrubbing them
-/// restores the "launched from a plain terminal" baseline; when Maestro is
+/// restores the "launched from a plain terminal" baseline; when ByteHive is
 /// started normally none of them are set and removing them is a no-op. These are
 /// identity, not user config, so unsetting them never discards a real setting.
 pub(crate) const INHERITED_SESSION_MARKERS: [&str; 4] = [

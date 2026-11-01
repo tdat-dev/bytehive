@@ -168,7 +168,7 @@ impl Registry {
             .write_input(bytes)
     }
 
-    /// Keys typed from outside Maestro's own window (the remote terminal). An
+    /// Keys typed from outside ByteHive's own window (the remote terminal). An
     /// agent on pipes reads JSON lines, which stray keys would break: refused.
     pub fn write_keys(&mut self, id: &str, bytes: &[u8]) -> Result<()> {
         let agent = &mut self.agents.get_mut(id).ok_or_else(|| anyhow!("no agent '{id}'"))?.agent;

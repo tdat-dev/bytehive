@@ -1,7 +1,7 @@
 //! Only the dashboard's own page gets in: the Host must be one of this
 //! server's names (no DNS rebinding), an Origin must be the page's own (no
 //! other site or other port on this computer), a POST must be JSON and an
-//! API call must carry `X-Maestro: 1`, neither of which another site can send
+//! API call must carry `X-ByteHive: 1`, neither of which another site can send
 //! without a CORS preflight that nothing here answers.
 
 use std::net::{Ipv4Addr, UdpSocket};
@@ -70,9 +70,9 @@ impl Guard {
                 return Some((415, "send JSON"));
             }
         }
-        // The page's own calls carry X-Maestro; another site's can't without a preflight.
+        // The page's own calls carry X-ByteHive; another site's can't without a preflight.
         let api = path.starts_with("/api/") || path == "/term" || path.starts_with("/term/");
-        if api && get("X-Maestro").as_deref().map(str::trim) != Some("1") {
+        if api && get("X-ByteHive").as_deref().map(str::trim) != Some("1") {
             return Some((403, "not from the dashboard"));
         }
         None

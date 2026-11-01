@@ -1,15 +1,15 @@
-//! The browser hub: one local WebSocket server inside Maestro that both sides
+//! The browser hub: one local WebSocket server inside ByteHive that both sides
 //! dial into.
 //!
-//! - **Browsers**: each Chrome/Edge/Brave profile running the "Maestro for
+//! - **Browsers**: each Chrome/Edge/Brave profile running the "ByteHive for
 //!   Chrome" extension reaches us through the native host (`host.rs`).
-//! - **Agents**: every maestro-mcp process (one per agent) dials in to call
+//! - **Agents**: every bytehive-mcp process (one per agent) dials in to call
 //!   browser tools.
 //!
 //! The hub routes an agent's call to the browser that agent picked (or the only
 //! one connected) and routes the answer back. It never runs browser actions
 //! itself. The port and a random token are written to
-//! `~/.maestro/browser-hub.json`, readable only by this user's processes; every
+//! `~/.bytehive/browser-hub.json`, readable only by this user's processes; every
 //! peer must present the token in its first message.
 
 use std::collections::HashMap;
@@ -53,7 +53,7 @@ struct Peer {
     role: Role,
 }
 
-/// Who asked. Maestro itself (the live view) asks too, and waits on a channel.
+/// Who asked. ByteHive itself (the live view) asks too, and waits on a channel.
 enum Asker {
     Agent(u64, Value),
     App(mpsc::Sender<Value>),
@@ -80,11 +80,11 @@ struct Held {
 }
 
 /// How long a held click waits for the user. The agent's call gives up after
-/// the same time (HOLD_TIMEOUT_MS in maestro-mcp), so a late OK never clicks
+/// the same time (HOLD_TIMEOUT_MS in bytehive-mcp), so a late OK never clicks
 /// for an agent that has moved on.
 pub const HOLD_MS: u64 = 10 * 60_000;
 
-/// What Maestro shows for a held click.
+/// What ByteHive shows for a held click.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct Ask {
     pub id: u64,
@@ -207,7 +207,7 @@ impl Hub {
         hub.wanted_version = wanted_version;
         let hub = Arc::new(hub);
         publish(port, &hub.token);
-        // Every Maestro writes the one hub file, the last one opened wins, and
+        // Every ByteHive writes the one hub file, the last one opened wins, and
         // one that closes leaves its port there with nobody behind it: the
         // extension and every agent then find no browser. Look again now and
         // then, and take the file back when it names a hub that left.
@@ -292,7 +292,7 @@ impl Hub {
         (self.on_change)(HubEvent::Asks(list));
     }
 
-    /// Maestro's own call into a browser on behalf of `agent` (the live view),
+    /// ByteHive's own call into a browser on behalf of `agent` (the live view),
     /// answered on a channel. Uses the browser the agent last used.
     pub fn app_call(&self, agent: &str, tool: &str, args: Value, timeout: Duration) -> Result<Value, String> {
         let (tx, rx) = mpsc::channel();
@@ -486,5 +486,5 @@ impl Hub {
 
 }
 
-const RELOAD: &str = r#"{"type":"call","id":0,"agent":"Maestro","tool":"reload","args":{}}"#;
-const NONE_CONNECTED: &str = "No browser is connected to Maestro. Open Chrome (or Edge/Brave) in a profile that has the \"Maestro for Chrome\" extension; see Maestro Settings → Browser to install it.";
+const RELOAD: &str = r#"{"type":"call","id":0,"agent":"ByteHive","tool":"reload","args":{}}"#;
+const NONE_CONNECTED: &str = "No browser is connected to ByteHive. Open Chrome (or Edge/Brave) in a profile that has the \"ByteHive for Chrome\" extension; see ByteHive Settings → Browser to install it.";

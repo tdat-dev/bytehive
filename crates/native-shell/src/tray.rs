@@ -28,12 +28,12 @@ pub fn window_icon() -> egui::IconData {
     rgba(ICON_128).map(|(rgba, width, height)| egui::IconData { rgba, width, height }).unwrap_or_default()
 }
 
-/// The tray tip: "Maestro" and, when any, how many agents run.
+/// The tray tip: "ByteHive" and, when any, how many agents run.
 pub fn tip(running: usize) -> String {
     match running {
-        0 => "Maestro".into(),
-        1 => "Maestro \u{00B7} 1 agent running".into(),
-        n => format!("Maestro \u{00B7} {n} agents running"),
+        0 => "ByteHive".into(),
+        1 => "ByteHive \u{00B7} 1 agent running".into(),
+        n => format!("ByteHive \u{00B7} {n} agents running"),
     }
 }
 
@@ -96,7 +96,7 @@ impl Tray {
     fn build(&mut self, ctx: &egui::Context) {
         let Some((rgba, w, h)) = rgba(ICON_32) else { return };
         let Ok(icon) = tray_icon::Icon::from_rgba(rgba, w, h) else { return };
-        let show = MenuItem::new("Show Maestro", true, None);
+        let show = MenuItem::new("Show ByteHive", true, None);
         let quit = MenuItem::new("Quit", true, None);
         let menu = Menu::new();
         if menu.append(&show).is_err() || menu.append(&quit).is_err() {
@@ -104,7 +104,7 @@ impl Tray {
         }
         self.show_id = show.id().0.clone();
         self.quit_id = quit.id().0.clone();
-        let Ok(tray) = TrayIconBuilder::new().with_icon(icon).with_tooltip("Maestro").with_menu(Box::new(menu)).with_menu_on_left_click(false).build() else { return };
+        let Ok(tray) = TrayIconBuilder::new().with_icon(icon).with_tooltip("ByteHive").with_menu(Box::new(menu)).with_menu_on_left_click(false).build() else { return };
         self.icon = Some(tray);
         let (hwnd, repaint) = (Arc::clone(&self.hwnd), ctx.clone());
         TrayIconEvent::set_event_handler(Some(move |e: TrayIconEvent| {
@@ -170,7 +170,7 @@ mod tests {
         assert_eq!((i.width, i.height), (128, 128));
         assert_eq!(i.rgba.len(), 128 * 128 * 4);
         assert!(rgba(ICON_32).is_some());
-        assert_eq!(tip(0), "Maestro");
-        assert_eq!(tip(3), "Maestro \u{00B7} 3 agents running");
+        assert_eq!(tip(0), "ByteHive");
+        assert_eq!(tip(3), "ByteHive \u{00B7} 3 agents running");
     }
 }

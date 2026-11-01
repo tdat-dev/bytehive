@@ -22,18 +22,18 @@ pub(crate) struct PendingCapture {
     tries: u8,
 }
 
-/// An agent's launch with what Maestro gives every agent it starts: its name
-/// and folder for the maestro MCP server (`MAESTRO_AGENT`, `MAESTRO_WORKSPACE`:
+/// An agent's launch with what ByteHive gives every agent it starts: its name
+/// and folder for the bytehive MCP server (`BYTEHIVE_AGENT`, `BYTEHIVE_WORKSPACE`:
 /// who moved a card, which project's fleet it is in), and for Claude the laws
 /// as a system prompt (the Director's own for the Director). Plain shells
 /// are left alone.
 pub(crate) fn agent_spec(mut spec: CommandSpec, name: &str, cli: Option<Cli>) -> CommandSpec {
     let Some(cli) = cli else { return spec };
-    spec.env.retain(|(k, _)| k != "MAESTRO_AGENT" && k != "MAESTRO_WORKSPACE");
-    spec.env.push(("MAESTRO_AGENT".into(), name.to_string()));
-    spec.env.push(("MAESTRO_WORKSPACE".into(), spec.cwd.clone().unwrap_or_default()));
+    spec.env.retain(|(k, _)| k != "BYTEHIVE_AGENT" && k != "BYTEHIVE_WORKSPACE");
+    spec.env.push(("BYTEHIVE_AGENT".into(), name.to_string()));
+    spec.env.push(("BYTEHIVE_WORKSPACE".into(), spec.cwd.clone().unwrap_or_default()));
     if cli == Cli::Claude && !spec.args.iter().any(|a| a == "--append-system-prompt") {
-        let laws = if name == crate::laws::DIRECTOR { crate::laws::DIRECTOR_LAWS } else { crate::laws::MAESTRO_LAWS };
+        let laws = if name == crate::laws::DIRECTOR { crate::laws::DIRECTOR_LAWS } else { crate::laws::BYTEHIVE_LAWS };
         spec.args.push("--append-system-prompt".into());
         spec.args.push(laws.into());
     }
@@ -195,7 +195,7 @@ mod tests {
         let before = app.panes.len();
         let req = WorktreeRequest {
             cli: Cli::Claude,
-            repo: "D:/no-such-repo-maestro".to_string(),
+            repo: "D:/no-such-repo-bytehive".to_string(),
             branch: "feat/x".to_string(),
             base: "HEAD".to_string(),
         };

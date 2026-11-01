@@ -1,7 +1,7 @@
-/* Maestro for Chrome — service worker.
+/* ByteHive for Chrome — service worker.
  *
- * Chrome starts Maestro's native host (maestro.exe) when we connect to
- * "com.maestro.browser"; the host relays to the Maestro app, which routes
+ * Chrome starts ByteHive's native host (bytehive.exe) when we connect to
+ * "com.bytehive.browser"; the host relays to the ByteHive app, which routes
  * calls from its agents here. Each call runs one browser action and answers
  * with an MCP-shaped result ({ content: [...] }).
  *
@@ -13,14 +13,17 @@ import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blocke
 import { GIFEncoder, quantize, applyPalette } from "./vendor/gifenc.esm.js";
 import { cursorAct } from "./cursor.js";
 
-const HOST = "com.maestro.browser";
+// The app before its rename registered "com.maestro.browser": tried when the
+// new name is not there yet.
+const HOSTS = ["com.bytehive.browser", "com.maestro.browser"];
+let hostIdx = 0;
 const COLORS = ["blue", "purple", "green", "orange", "pink", "cyan", "red", "yellow"];
 /** Chrome's tab group colours, so the cursor matches the agent's group. */
 const HEX = { grey: "#5f6368", blue: "#1a73e8", red: "#d93025", yellow: "#e8a500", green: "#1e8e3e", pink: "#d01884", purple: "#9334e6", cyan: "#007b83", orange: "#e8710a" };
 const MAX_CONSOLE = 300;
 const MAX_NETWORK = 300;
 /** Clicks that are hard to take back: sending, posting, paying, deleting.
- *  When Maestro asks for it (args._ask), such a click waits for the user's OK. */
+ *  When ByteHive asks for it (args._ask), such a click waits for the user's OK. */
 const RISKY = /^(gửi|gửi ngay|send|send now|đăng|đăng bài|đăng ngay|post|publish|share|chia sẻ|thanh toán|pay|pay now|mua|mua ngay|buy|buy now|đặt hàng|place order|checkout|xác nhận thanh toán|confirm payment|chuyển tiền|transfer|xóa|xoá|delete|remove)$/i;
 const BLOCKER_NOTE = {
   login: "This page asks for a login. Stop here and ask the user to sign in in this tab themselves; carry on once they say it is done. Never type their password.",
@@ -37,7 +40,7 @@ function connect() {
   if (port) return;
   clearTimeout(retry);
   try {
-    port = chrome.runtime.connectNative(HOST);
+    port = chrome.runtime.connectNative(HOSTS[hostIdx]);
   } catch (e) {
     setStatus("no-host", String(e?.message ?? e));
     return later();
@@ -46,7 +49,9 @@ function connect() {
   port.onDisconnect.addListener(() => {
     const why = chrome.runtime.lastError?.message ?? "";
     port = null;
-    setStatus(/not found/i.test(why) ? "no-host" : "offline", why);
+    const missing = /not found/i.test(why);
+    if (missing) hostIdx = (hostIdx + 1) % HOSTS.length;
+    setStatus(missing ? "no-host" : "offline", why);
     later();
   });
   setStatus("connecting", "");
@@ -102,7 +107,7 @@ async function onMessage(msg) {
 // The popup asks how things stand.
 chrome.runtime.onMessage.addListener((m, _s, reply) => {
   if (m?.type === "stop_agent" && m.agent) {
-    // Stop, pressed on the pill over the page: Maestro refuses the agent's
+    // Stop, pressed on the pill over the page: ByteHive refuses the agent's
     // browser calls until you let it go on there.
     send({ type: "pause", agent: m.agent });
     return;
@@ -214,7 +219,7 @@ async function dbg(tabId) {
   // then stops painting its page and slows its timers to once a minute: the
   // agent's work stalls until someone brings the window up. Focus emulation
   // counts the tab as being captured, so it stays visible, focused and running
-  // behind other windows (or behind another tab) while Maestro drives it.
+  // behind other windows (or behind another tab) while ByteHive drives it.
   await cdp(tabId, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
   await cdp(tabId, "Page.setWebLifecycleState", { state: "active" }).catch(() => {});
 }
@@ -306,7 +311,7 @@ function withScheme(url) {
  *
  * It copies the frame Chrome already painted (captureVisibleTab), so the
  * page is never touched: a CDP screenshot with a clip makes Chrome re-lay the
- * view out, and the page visibly flashed on every frame of Maestro's live
+ * view out, and the page visibly flashed on every frame of ByteHive's live
  * view. The CDP path is only the fallback, for a tab that isn't the one
  * showing in its window, and it runs without a clip. */
 async function grab(tab, maxW, quality) {
@@ -483,7 +488,7 @@ async function cursor(tabId, agent, op, extra = {}) {
 const prettyKeys = (combo) =>
   combo.trim().split(/\s+/).map((c) => c.split("+").map((k) => (k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1))).join("+")).join("  ");
 
-/** Add a note (and a flag Maestro reads) when the page wants a person. */
+/** Add a note (and a flag ByteHive reads) when the page wants a person. */
 async function withBlocker(tabId, result) {
   let kind = "";
   try { kind = (await inPage(tabId, blockerOf, [])) ?? ""; } catch {}
@@ -639,7 +644,7 @@ async function run(agent, tool, a) {
       if (a.pattern) { const re = new RegExp(a.pattern, "i"); list = list.filter((m) => re.test(m.text)); }
       if (a.onlyErrors) list = list.filter((m) => m.level === "error" || m.level === "exception");
       if (a.clear) consoleLog.delete(t.id);
-      return text(list.length ? list.slice(-(a.limit ?? 100)).map((m) => `[${m.level}] ${m.text}`).join("\n") : "No console messages yet (recording starts when Maestro first controls the tab).");
+      return text(list.length ? list.slice(-(a.limit ?? 100)).map((m) => `[${m.level}] ${m.text}`).join("\n") : "No console messages yet (recording starts when ByteHive first controls the tab).");
     }
     case "network": {
       const t = await tabFor(agent, a.tabId);
@@ -647,14 +652,14 @@ async function run(agent, tool, a) {
       let list = [...(networkLog.get(t.id)?.values() ?? [])];
       if (a.pattern) { const re = new RegExp(a.pattern, "i"); list = list.filter((e) => re.test(e.url)); }
       if (a.clear) networkLog.delete(t.id);
-      return text(list.length ? list.slice(-(a.limit ?? 100)).map((e) => `${e.method} ${e.status || e.error || "…"} ${e.url}`).join("\n") : "No requests yet (recording starts when Maestro first controls the tab).");
+      return text(list.length ? list.slice(-(a.limit ?? 100)).map((e) => `${e.method} ${e.status || e.error || "…"} ${e.url}`).join("\n") : "No requests yet (recording starts when ByteHive first controls the tab).");
     }
     case "peek": {
-      // Maestro's live view: a small frame of the agent's current tab. Never
+      // ByteHive's live view: a small frame of the agent's current tab. Never
       // brings the tab forward, so watching never gets in the agent's way.
       const t = await tabFor(agent, a.tabId);
       await awake(t.id);
-      // As wide as Maestro shows it (the small card, or the large view), so a
+      // As wide as ByteHive shows it (the small card, or the large view), so a
       // large view is sharp and a small one stays light.
       const maxW = Math.max(320, Math.min(2560, Number(a.maxW) || 720));
       const quality = Math.max(40, Math.min(90, Number(a.quality) || 60));
@@ -662,7 +667,7 @@ async function run(agent, tool, a) {
       return { content: [{ type: "image", data: img.data, mimeType: "image/jpeg" }], tab: brief(t), dialog: dialogs.get(t.id) ?? null };
     }
     case "reload": {
-      // Maestro saw this profile running an older copy than the folder on
+      // ByteHive saw this profile running an older copy than the folder on
       // disk: load the new one. The port drops and reconnects by itself.
       setTimeout(() => chrome.runtime.reload(), 100);
       return text("Reloading.");
@@ -680,7 +685,7 @@ async function run(agent, tool, a) {
         // The cursor goes to the field, so a watcher sees where the files went.
         await cursor(t.id, agent, "move", at);
         const doc = await cdp(t.id, "DOM.getDocument", { depth: 0 });
-        const q = await cdp(t.id, "DOM.querySelector", { nodeId: doc.root.nodeId, selector: `[data-maestro-upload="${mark}"]` });
+        const q = await cdp(t.id, "DOM.querySelector", { nodeId: doc.root.nodeId, selector: `[data-bytehive-upload="${mark}"]` });
         await cdp(t.id, "DOM.setFileInputFiles", { files, nodeId: q.nodeId });
         await inPage(t.id, unmarkUpload, [mark]);
       } else {

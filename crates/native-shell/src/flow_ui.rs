@@ -1,5 +1,5 @@
 //! Flow panel: the fleet's hand-off log, tailed from
-//! `.maestro/outbox.jsonl` (one JSON object per line: ts/from/to/message).
+//! `.bytehive/outbox.jsonl` (one JSON object per line: ts/from/to/message).
 //! The web app feeds its flow buffer at delivery time; native has no
 //! delivery hook, so it re-reads the outbox file, at most once every few
 //! seconds, keeping only complete lines and the last 200 messages.
@@ -85,7 +85,7 @@ impl Default for FlowPanel {
 impl FlowPanel {
     fn outbox_path() -> Option<PathBuf> {
         let mut dir = std::env::current_dir().ok()?;
-        dir.push(".maestro");
+        dir.push(".bytehive");
         dir.push("outbox.jsonl");
         Some(dir)
     }

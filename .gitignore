@@ -3,13 +3,14 @@ dist/
 *.log
 .DS_Store
 
-# updater signing key (SECRET â€” never commit)
+# updater signing key (SECRET, never commit)
 .tauri/
 
 # hook logs / local agent data
 logs/
 .claude/
 # kanban board runtime state (MCP-shared, per-workspace)
+.bytehive/
 .maestro/
 # stray installer artifacts
 /maestro.exe
