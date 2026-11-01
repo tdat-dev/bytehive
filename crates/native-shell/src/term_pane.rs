@@ -168,12 +168,19 @@ impl Pane {
         }
     }
 
+    fn copy_selection(&mut self, ctx: &egui::Context) {
+        if let Some(t) = self.term.selection_to_string().filter(|t| !t.is_empty()) {
+            ctx.copy_text(t);
+        }
+        self.term.selection = None;
+    }
+
     /// Paint the pane into `rect`: focus, resize, input, grid, cursor.
     pub fn paint(&mut self, ui: &mut egui::Ui, rect: Rect, registry: &mut Registry, font: &FontId, cell: (f32, f32)) {
         let (cell_w, cell_h) = cell;
         let id = ui.make_persistent_id(("term", &self.id));
-        let resp = ui.interact(rect, id, egui::Sense::click());
-        if resp.clicked() {
+        let resp = ui.interact(rect, id, egui::Sense::click_and_drag());
+        if resp.clicked() || resp.drag_started() || resp.secondary_clicked() {
             resp.request_focus();
         }
 
@@ -188,6 +195,18 @@ impl Pane {
             self.term.resize(GridSize { rows, cols });
             let _ = registry.resize(&self.id, cols as u16, rows as u16);
         }
+        let bracketed = self.term.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE);
+        match crate::term_select::mouse(&mut self.term, &resp, rect, cell) {
+            Some(crate::term_select::MenuPick::Copy) => self.copy_selection(ui.ctx()),
+            Some(crate::term_select::MenuPick::Paste) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
+            None => {}
+        }
+        // Files dropped from Explorer onto this pane: type their paths.
+        let (dropped, at) = ui.ctx().input(|i| (i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect::<Vec<_>>(), i.pointer.hover_pos()));
+        if !dropped.is_empty() && at.is_some_and(|p| rect.contains(p)) {
+            let _ = registry.write_input(&self.id, &crate::paste::paste_bytes(&crate::term_select::drop_text(&dropped), bracketed));
+            resp.request_focus();
+        }
 
         if resp.has_focus() {
             let events: Vec<egui::Event> = ui.ctx().input(|i| i.events.clone());
@@ -201,8 +220,9 @@ impl Pane {
                             let _ = registry.write_input(&self.id, b);
                         }
                     }
+                    // Ctrl+C copies a selection; with none it interrupts.
+                    egui::Event::Copy if self.term.selection.as_ref().is_some_and(|s| !s.is_empty()) => self.copy_selection(ui.ctx()),
                     egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) | egui::Event::PasteImage(_) => {
-                        let bracketed = self.term.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE);
                         if let Some(bytes) = crate::paste::clipboard_bytes(ev, bracketed) {
                             let _ = registry.write_input(&self.id, &bytes);
                         }
@@ -248,7 +268,9 @@ pub fn paint_grid<T: EventListener>(painter: &egui::Painter, term: &Term<T>, rec
             std::mem::swap(&mut fg, &mut bg);
         }
         let min = Pos2::new(rect.left() + col as f32 * cell_w, rect.top() + row as f32 * cell_h);
-        if bg != BG_DEFAULT {
+        if content.selection.is_some_and(|s| s.contains(indexed.point)) {
+            painter.rect_filled(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, egui::Color32::from_rgba_unmultiplied(110, 150, 255, 90));
+        } else if bg != BG_DEFAULT {
             painter.rect_filled(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, c32(bg));
         }
         if cell.c != ' ' {
