@@ -198,6 +198,7 @@ mod tests {
         app.projects_path = None;
         let mut task = crate::newtask::NewTask::new(r"Z:\no-such-repo".to_string());
         task.prompt = "Nightly checks".to_string();
+        task.worktree = true;
         let now = chrono::Local::now();
         let time = format!("{:02}:{:02}", now.format("%H"), now.format("%M"));
         app.prefs.schedules = vec![crate::schedule::Schedule { id: "s".into(), task, time, daily: false, enabled: true, last_fired: 0 }];

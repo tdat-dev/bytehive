@@ -88,7 +88,7 @@ impl Schedule {
         task.prompt = t["prompt"].as_str()?.to_string();
         task.cli = cli_from_key(t["cli"].as_str()?)?;
         task.set_count(t["count"].as_u64().unwrap_or(1) as usize);
-        task.worktree = t["worktree"].as_bool().unwrap_or(true);
+        task.worktree = t["worktree"].as_bool().unwrap_or(false);
         task.perm = Perm::from_key(t["perm"].as_str().unwrap_or(""));
         task.flow = Flow::from_key(t["flow"].as_str().unwrap_or(""));
         let time = v["time"].as_str()?.to_string();

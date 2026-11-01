@@ -13,7 +13,7 @@ use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
 use crate::color::{c32, rgb_of, BG_DEFAULT};
 use crate::keys::key_bytes;
 use crate::sessions_ui::Cli;
-use crate::theme::{FOCUS, TEXT};
+use crate::theme::TEXT;
 
 fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -239,7 +239,6 @@ impl Pane {
                     _ => {}
                 }
             }
-            ui.painter().rect_stroke(rect, 0.0, egui::Stroke::new(1.0, FOCUS), egui::StrokeKind::Inside);
         }
 
         paint_grid(ui.painter(), &self.term, rect, (self.cols, self.rows), font, cell);

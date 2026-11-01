@@ -150,6 +150,7 @@ mod tests {
         let mut t = NewTask::new("D:/no-such-repo-bytehive".to_string());
         t.prompt = "Fix it".to_string();
         t.set_count(2);
+        t.worktree = true;
         t.cli = Cli::Claude;
         let err = app.start_task(&t).unwrap_err();
         assert!(err.contains("git repo"), "{err}");

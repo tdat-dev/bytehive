@@ -108,7 +108,7 @@ impl Default for Prefs {
             default_cli: None,
             last_cli: Cli::Claude,
             default_count: 1,
-            worktree: true,
+            worktree: false,
             perm: Perm::Ask,
             flow: Flow::Direct,
             job_delay_s: crate::deliver::JOB_DELAY_MS / 1000,
@@ -143,7 +143,7 @@ fn crew_from(v: &Value) -> Option<Crew> {
         name: v["name"].as_str().filter(|s| !s.trim().is_empty())?.to_string(),
         cli: cli_from_key(v["cli"].as_str()?)?,
         count: (v["count"].as_u64().unwrap_or(1) as usize).clamp(1, crate::newtask::MAX_AGENTS),
-        worktree: v["worktree"].as_bool().unwrap_or(true),
+        worktree: v["worktree"].as_bool().unwrap_or(false),
         perm: Perm::from_key(v["perm"].as_str().unwrap_or("")),
         flow: Flow::from_key(v["flow"].as_str().unwrap_or("")),
     })
@@ -166,7 +166,7 @@ impl Prefs {
             "defaultCli": self.default_cli.map_or("last", |c| c.program()),
             "lastCli": self.last_cli.program(),
             "defaultCount": self.default_count,
-            "worktree": self.worktree,
+            "ownWorktree": self.worktree,
             "perm": self.perm.key(),
             "flow": self.flow.key(),
             "jobDelay": self.job_delay_s,
@@ -196,7 +196,8 @@ impl Prefs {
             default_cli: v["defaultCli"].as_str().and_then(cli_from_key),
             last_cli: v["lastCli"].as_str().and_then(cli_from_key).unwrap_or(d.last_cli),
             default_count: v["defaultCount"].as_u64().map_or(d.default_count, |n| (n as usize).clamp(1, crate::newtask::MAX_AGENTS)),
-            worktree: v["worktree"].as_bool().unwrap_or(d.worktree),
+            // "ownWorktree", not the old "worktree" (on for everyone by default).
+            worktree: v["ownWorktree"].as_bool().unwrap_or(d.worktree),
             perm: v["perm"].as_str().map_or(d.perm, Perm::from_key),
             flow: v["flow"].as_str().map_or(d.flow, Flow::from_key),
             job_delay_s: v["jobDelay"].as_u64().map_or(d.job_delay_s, |n| n.clamp(1, 20)),
@@ -257,12 +258,12 @@ mod tests {
 
     #[test]
     fn bad_values_fall_back_or_clamp() {
-        let p = Prefs::from_json(&json!({ "termSize": 99, "jobDelay": 0, "defaultCount": 9, "defaultCli": "nope", "worktree": "yes", "crews": [{ "name": "" }, { "name": "x", "cli": "codex" }] }));
+        let p = Prefs::from_json(&json!({ "termSize": 99, "jobDelay": 0, "defaultCount": 9, "defaultCli": "nope", "ownWorktree": "yes", "crews": [{ "name": "" }, { "name": "x", "cli": "codex" }] }));
         assert_eq!(p.term_size, 22.0);
         assert_eq!(p.job_delay_s, 1);
         assert_eq!(p.default_count, crate::newtask::MAX_AGENTS);
         assert_eq!(p.default_cli, None, "unknown CLI means the last one used");
-        assert!(p.worktree, "wrong type keeps the default");
+        assert!(!p.worktree, "wrong type keeps the default: off");
         assert_eq!(p.crews.len(), 1, "a nameless crew is dropped");
         assert_eq!(Prefs::load(Path::new("Z:\\no\\prefs.json")), Prefs::default());
     }

@@ -379,8 +379,8 @@ fn start(home: &mut Home) -> Option<StartAction> {
     t.prompt = home.job.trim().to_string();
     t.cli = home.cli;
     t.set_count(home.count);
-    // Each agent on its own branch where there is git to branch from.
-    t.worktree = agent_core::git::repo_root(std::path::Path::new(&dir)).is_some();
+    // In the folder itself; only a race needs a branch per agent.
+    t.worktree = t.count > 1 && agent_core::git::repo_root(std::path::Path::new(&dir)).is_some();
     home.job.clear();
     Some(StartAction::Start(t))
 }

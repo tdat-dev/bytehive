@@ -87,7 +87,7 @@ pub struct Launch {
 
 impl NewTask {
     pub fn new(dir: String) -> NewTask {
-        NewTask { prompt: String::new(), dir, cli: Cli::Claude, count: 1, worktree: true, perm: Perm::Ask, flow: Flow::Direct }
+        NewTask { prompt: String::new(), dir, cli: Cli::Claude, count: 1, worktree: false, perm: Perm::Ask, flow: Flow::Direct }
     }
 
     pub fn set_count(&mut self, n: usize) {
@@ -175,6 +175,7 @@ mod tests {
         let mut t = NewTask::new("D:/app".to_string());
         t.prompt = "Fix the flaky upload test".to_string();
         t.set_count(3);
+        t.worktree = true;
         t.perm = Perm::Bypass;
         t.flow = Flow::Plan;
         let l = t.launches(&taken(&["Ana"]));

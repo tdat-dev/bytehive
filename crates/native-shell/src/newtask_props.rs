@@ -142,6 +142,10 @@ impl NewTaskSheet {
                             ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, n.to_string(), FontId::monospace(13.0), if on { TEXT } else { DIM });
                             if r.clicked() {
                                 self.form.set_count(n);
+                                // A race needs a branch per agent, or they write over each other.
+                                if n > 1 {
+                                    self.form.worktree = true;
+                                }
                             }
                         }
                     });
