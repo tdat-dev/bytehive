@@ -1,85 +1,89 @@
-//! The top bar: shell + New task, the project chips, launch progress and
-//! notices, and the density zoom readout. Also what a project chip does to
-//! the app (filter, open, close), kept here so app.rs stays a dispatcher.
+//! The top bar of the approved design: the brand, one sentence that says
+//! what needs you, what the agents on show cost, and any notice. Also what a
+//! project chip does to the app (filter, open, close).
 
 use std::collections::HashSet;
 
-use agent_core::launch::launch_spec;
 use eframe::egui;
 
 use crate::app::ShellApp;
 use crate::projects::pane_home;
-use crate::projects_ui::{show_chips, ProjectAction};
-use crate::queue_ui::is_attention;
-use crate::states::pane_status;
-use crate::theme::{DEL, DIM, PRIMARY, PRIMARY_INK};
+use crate::projects_ui::ProjectAction;
+use crate::style::{medium, GUTTER};
+use crate::theme::{AMBER, INK3, TEXT};
+
+/// The sentence on the top bar: what needs you first, then the rest.
+/// (needs you, ready to review, working, agents in all).
+pub fn pulse(needs: usize, review: usize, working: usize, agents: usize) -> (String, String) {
+    let are = |n: usize, what: &str| if n == 1 { format!("1 is {what}") } else { format!("{n} are {what}") };
+    let mut rest = Vec::new();
+    let lead = if needs > 0 {
+        if review > 0 {
+            rest.push(are(review, "ready to review"));
+        }
+        if working > 0 {
+            rest.push(are(working, "working"));
+        }
+        if needs == 1 { "1 agent needs you.".to_string() } else { format!("{needs} agents need you.") }
+    } else if review > 0 {
+        if working > 0 {
+            rest.push(are(working, "working"));
+        }
+        if review == 1 { "1 agent is ready to review.".to_string() } else { format!("{review} agents are ready to review.") }
+    } else if working > 0 {
+        if working == 1 { "1 agent is working.".to_string() } else { format!("{working} agents are working.") }
+    } else if agents == 0 {
+        "No agents yet.".to_string()
+    } else {
+        "All clear.".to_string()
+    };
+    let tail = if rest.is_empty() { String::new() } else { format!(" {}.", rest.join(", ")) };
+    (lead, tail)
+}
 
 impl ShellApp {
-    pub(crate) fn top_bar(&mut self, ui: &mut egui::Ui) {
-        let homes: Vec<(String, bool)> = self
-            .panes
-            .iter()
-            .map(|p| (pane_home(p), is_attention(pane_status(p, crate::app::now_ms(), None).state)))
-            .collect();
-        let mut action = None;
+    fn logo(&mut self, ctx: &egui::Context) -> egui::TextureId {
+        if self.extras.logo.is_none() {
+            let img = image::load_from_memory(include_bytes!("../assets/icons/32x32.png")).map(|i| i.into_rgba8()).unwrap_or_default();
+            let size = [img.width() as usize, img.height() as usize];
+            let color = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
+            self.extras.logo = Some(ctx.load_texture("logo", color, egui::TextureOptions::LINEAR));
+        }
+        self.extras.logo.as_ref().map(|t| t.id()).unwrap_or_default()
+    }
+
+    /// The top bar of the approved design: the brand, the sentence that says
+    /// what needs you, and on the right what it cost, plus any notice.
+    pub(crate) fn top_bar(&mut self, ui: &mut egui::Ui, counts: (usize, usize, usize)) {
+        let agents = self.panes.iter().filter(|p| p.cli.is_some()).count();
+        let (lead, tail) = pulse(counts.0, counts.1, counts.2, agents);
+        let logo = self.logo(ui.ctx());
+        let summary = self.summary_line();
         ui.horizontal(|ui| {
-            if ui.button("+ Shell").clicked() {
-                let mut spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
-                spec.cwd = self.projects.filter.clone();
-                let _ = self.spawn_pane("shell", spec, None, None);
-            }
-            let new = egui::Button::new(egui::RichText::new("New task").strong().color(PRIMARY_INK)).fill(PRIMARY).corner_radius(999.0);
-            if ui.add(new).on_hover_text("Start agents on a task (Ctrl+N). Spawn a bare CLI from Ctrl+K.").clicked() {
-                self.run_command("new");
-            }
-            ui.add_space(10.0);
-            action = show_chips(ui, &self.projects, &homes);
-            if !self.launching.is_empty() {
-                ui.label(egui::RichText::new(format!("Making worktrees for {}\u{2026}", self.launching.join(", "))).small().color(DIM));
-            }
-            if let Some(n) = self.notice.clone() {
-                if ui.add(egui::Label::new(egui::RichText::new(n).small().color(DEL)).sense(egui::Sense::click())).on_hover_text("Click to dismiss").clicked() {
-                    self.notice = None;
-                }
-            }
-            let summary = self.summary_line();
+            ui.add_space(GUTTER);
+            ui.add(egui::Image::new((logo, egui::vec2(22.0, 22.0))).corner_radius(6.0));
+            ui.label(egui::RichText::new("ByteHive").font(medium(15.0)).color(TEXT));
+            ui.add_space(22.0);
+            let mut job = egui::text::LayoutJob::default();
+            job.append(&lead, 0.0, egui::TextFormat::simple(medium(22.0), TEXT));
+            job.append(&tail, 0.0, egui::TextFormat::simple(medium(22.0), INK3));
+            ui.add(egui::Label::new(job).truncate());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                self.update_button(ui);
-                if ui.add(egui::Button::new(egui::RichText::new("Settings").small().color(DIM)).frame(false)).on_hover_text("Settings (Ctrl+,)").clicked() {
-                    self.run_command("settings");
-                }
-                let mem_color = if self.extras.memory.open { crate::theme::TEXT } else { DIM };
-                if ui.add(egui::Button::new(egui::RichText::new("Memory").small().color(mem_color)).frame(false)).on_hover_text("What every agent in this project knows when it starts").clicked() {
-                    self.run_command("memory");
-                }
-                let board_on = self.board.open;
-                let board_color = if board_on { crate::theme::TEXT } else { DIM };
-                if ui.add(egui::Button::new(egui::RichText::new("Board").small().color(board_color)).frame(false)).on_hover_text("Agents by state, and the plan board").clicked() {
-                    self.run_command("board");
-                }
-                let files_on = self.files.open;
-                let files_color = if files_on { crate::theme::TEXT } else { DIM };
-                if ui.add(egui::Button::new(egui::RichText::new("Files").small().color(files_color)).frame(false)).on_hover_text("Files on this branch").clicked() {
-                    self.run_command("files");
-                }
-                let ch_on = self.changes.open;
-                let ch_color = if ch_on { crate::theme::TEXT } else { DIM };
-                if ui.add(egui::Button::new(egui::RichText::new("Changes").small().color(ch_color)).frame(false)).on_hover_text("Review the diff, file by file").clicked() {
-                    if ch_on {
-                        self.changes.open = false;
-                    } else {
-                        self.run_command("changes");
+                ui.add_space(GUTTER);
+                ui.label(egui::RichText::new(&summary).font(egui::FontId::monospace(12.0)).color(INK3))
+                    .on_hover_text("Cost is what the same work would cost at API list prices (Claude), or what the CLI reports. A subscription does not bill per token.");
+                if let Some(n) = self.notice.clone() {
+                    ui.add_space(14.0);
+                    if ui.add(egui::Label::new(egui::RichText::new(n).size(12.5).color(AMBER)).sense(egui::Sense::click()).truncate()).on_hover_text("Click to dismiss").clicked() {
+                        self.notice = None;
                     }
                 }
-                ui.label(egui::RichText::new(&summary).small().color(DIM))
-                    .on_hover_text("Cost is what the same work would cost at API list prices (Claude), or what the CLI reports. A subscription does not bill per token.");
-                ui.label(egui::RichText::new(format!("{}%", (self.zoom * 100.0) as u32)).small().color(DIM))
-                    .on_hover_text("Density zoom: Ctrl+= bigger, Ctrl+- smaller, Ctrl+0 reset");
+                if !self.launching.is_empty() {
+                    ui.add_space(14.0);
+                    ui.label(egui::RichText::new(format!("Making worktrees for {}\u{2026}", self.launching.join(", "))).size(12.5).color(INK3));
+                }
             });
         });
-        if let Some(a) = action {
-            self.apply_project(a);
-        }
     }
 
     pub(crate) fn apply_project(&mut self, action: ProjectAction) {

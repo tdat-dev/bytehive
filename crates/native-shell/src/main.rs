@@ -10,6 +10,7 @@ mod color;
 mod commands;
 mod deliver;
 mod diffview;
+mod dock;
 mod editor;
 mod files_ui;
 mod fleet;
@@ -22,6 +23,7 @@ mod glue_review;
 mod grid;
 mod handoff;
 mod history_task;
+mod inbox;
 mod history_ui;
 mod keys;
 mod land_ui;
@@ -50,13 +52,14 @@ mod replay_ui;
 mod remote_ui;
 mod review_ui;
 mod schedule;
-mod send_ui;
 mod settings_ui;
 mod session_follow;
 mod sessions_ui;
 mod spawn;
 mod start_ui;
+mod stage_ui;
 mod states;
+mod style;
 mod system;
 mod taskopts;
 mod tasks;
@@ -91,6 +94,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);
+            style::install_style(&cc.egui_ctx);
             let app = ShellApp::new().expect("spawn the shell");
             app.extras.tray.set_window(cc);
             Ok(Box::new(app))

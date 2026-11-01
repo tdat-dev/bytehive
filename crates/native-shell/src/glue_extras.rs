@@ -24,6 +24,11 @@ pub struct Extras {
     pub fleet: crate::fleet::FleetBridge,
     pub follow: crate::session_follow::Follow,
     pub updates: crate::updater::Updater,
+    pub view: crate::dock::View,
+    pub stage: crate::stage_ui::StageState,
+    pub pending_hist: Option<crate::history_task::HistAction>,
+    pub logo: Option<eframe::egui::TextureHandle>,
+    pub dock_w: f32,
 }
 
 impl ShellApp {

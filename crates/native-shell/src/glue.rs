@@ -88,10 +88,13 @@ impl ShellApp {
     }
 
     /// The grid, or the start screen while no project is open.
-    pub(crate) fn central(&mut self, ui: &mut egui::Ui, hidden: &std::collections::HashSet<String>) -> GridOut {
-        if !self.projects.dirs.is_empty() {
+    pub(crate) fn central(&mut self, ui: &mut egui::Ui, hidden: &std::collections::HashSet<String>, order: &[String]) -> GridOut {
+        if !self.projects.dirs.is_empty() || !self.panes.is_empty() {
             if self.board.open {
                 return self.board_central(ui, hidden);
+            }
+            if self.extras.view == crate::dock::View::Queue {
+                return self.stage_central(ui, order);
             }
             return crate::grid::show_grid(self, ui, hidden);
         }

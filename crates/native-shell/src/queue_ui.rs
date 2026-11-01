@@ -1,23 +1,16 @@
-//! Queue panel: every agent in one list, what needs you first, with the
-//! one line each draws. Picking a row focuses its pane in the grid.
+//! The queue's rows: every agent with its status and the one line it draws,
+//! what needs you first (inbox.rs paints them), and how an answer to an
+//! agent's question is typed.
 
 use std::collections::HashMap;
 
-use eframe::egui::{self};
 use supervise::ask::{free_text_keys, Ask};
 use supervise::clash::{clash_short, ClashNote};
 use supervise::stuck::StuckEvidence;
 use supervise::task_state::{state_rank, status_line, TaskState, TaskStatus};
 
-use crate::states::{pane_cwd, pane_status, state_badge};
+use crate::states::{pane_cwd, pane_status};
 use crate::term_pane::Pane;
-use crate::theme::{BORDER, DIM, FAINT, SURFACE};
-
-pub enum QueueAction {
-    Focus(String),
-    /// Bytes to write to the pane's PTY: an option key or a free answer.
-    Answer { pane_id: String, bytes: Vec<u8> },
-}
 
 /// One queue row, computed from a pane: sort rank, status, and its line.
 pub struct QueueRow {
@@ -73,114 +66,6 @@ pub fn answer_bytes(ask: &Ask, n: u32) -> Option<Vec<u8>> {
 /// has one, then the text, then Enter.
 pub fn free_answer_bytes(ask: Option<&Ask>, text: &str) -> Vec<u8> {
     free_text_keys(ask, text).concat().into_bytes()
-}
-
-#[derive(Default)]
-pub struct QueuePanel {
-    free_text: HashMap<String, String>,
-}
-
-impl QueuePanel {
-    pub fn show(
-        &mut self,
-        ui: &mut egui::Ui,
-        panes: &[Pane],
-        hidden: &std::collections::HashSet<String>,
-        now: u64,
-        git: &HashMap<String, Vec<String>>,
-        stuck: &HashMap<String, StuckEvidence>,
-        clash: &HashMap<String, ClashNote>,
-    ) -> Option<QueueAction> {
-        let mut out = None;
-        ui.label(egui::RichText::new("Queue").strong().size(15.0));
-        let mut rows = queue_rows(panes, now, git, stuck, clash);
-        rows.retain(|r| !hidden.contains(&r.pane_id));
-        if rows.is_empty() {
-            ui.label(egui::RichText::new("No agents yet.").color(FAINT));
-            return None;
-        }
-        // Drop typed answers for panes that are gone.
-        self.free_text.retain(|id, _| rows.iter().any(|r| &r.pane_id == id));
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for row in &rows {
-                if is_attention(row.status.state) {
-                    let card = egui::Frame::new().fill(SURFACE).stroke(egui::Stroke::new(1.0, BORDER)).corner_radius(egui::CornerRadius::same(4)).inner_margin(egui::Margin::same(6));
-                    let acted = card.show(ui, |ui| self.show_row(ui, row)).inner;
-                    if out.is_none() {
-                        out = acted;
-                    }
-                    ui.add_space(4.0);
-                } else {
-                    let acted = self.show_row(ui, row);
-                    if out.is_none() {
-                        out = acted;
-                    }
-                    ui.separator();
-                }
-            }
-        });
-        out
-    }
-
-    fn show_row(&mut self, ui: &mut egui::Ui, row: &QueueRow) -> Option<QueueAction> {
-        let mut out = None;
-        let (dot, word) = state_badge(row.status.state);
-        let resp = ui.horizontal(|ui| {
-            let (r, _) = ui.allocate_exact_size(egui::Vec2::new(8.0, 8.0), egui::Sense::hover());
-            ui.painter().circle_filled(r.center(), 4.0, dot);
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(&row.name).strong());
-                    ui.label(egui::RichText::new(word).small().color(dot));
-                });
-                ui.label(egui::RichText::new(&row.line).small().color(DIM));
-            });
-        });
-        if resp.response.interact(egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-            out = Some(QueueAction::Focus(row.pane_id.clone()));
-        }
-        if out.is_none() {
-            if let Some(ask) = row.status.ask.as_ref() {
-                out = self.show_ask(ui, &row.pane_id, ask);
-            }
-        }
-        out
-    }
-
-    /// The ask inline under its row: what it wants, one button per option,
-    /// and a free-text answer when the CLI offers one.
-    fn show_ask(&mut self, ui: &mut egui::Ui, pane_id: &str, ask: &Ask) -> Option<QueueAction> {
-        let mut out = None;
-        ui.vertical(|ui| {
-            ui.label(egui::RichText::new(&ask.prompt).small().strong());
-            if let Some(detail) = ask.detail.as_deref() {
-                ui.label(egui::RichText::new(detail).small().monospace().color(DIM));
-            }
-            ui.horizontal_wrapped(|ui| {
-                for o in &ask.options {
-                    let label = if o.always { format!("{} (always)", o.label) } else { o.label.clone() };
-                    if ui.small_button(label).on_hover_text(format!("sends {:?}", o.key)).clicked() {
-                        if let Some(bytes) = answer_bytes(ask, o.n) {
-                            out = Some(QueueAction::Answer { pane_id: pane_id.to_string(), bytes });
-                        }
-                    }
-                }
-            });
-            if ask.free_text_option.is_some() {
-                let entry = self.free_text.entry(pane_id.to_string()).or_default();
-                ui.horizontal(|ui| {
-                    let resp = ui.add(egui::TextEdit::singleline(entry).hint_text("Type an answer…").desired_width(160.0));
-                    let send = ui.small_button("Send").clicked()
-                        || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-                    if send && !entry.trim().is_empty() {
-                        out = Some(QueueAction::Answer { pane_id: pane_id.to_string(), bytes: free_answer_bytes(Some(ask), entry) });
-                        entry.clear();
-                    }
-                });
-            }
-        });
-        out
-    }
 }
 
 #[cfg(test)]

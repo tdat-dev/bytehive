@@ -15,11 +15,10 @@ use crate::layout::clamp_zoom;
 use crate::newtask_ui::NewTaskSheet;
 use crate::commands::{command_catalog, SideTab};
 use crate::palette::{Palette, PaletteItem, PaletteKind};
-use crate::queue_ui::{is_attention, queue_rows, QueueAction, QueuePanel};
+use crate::queue_ui::queue_rows;
 use crate::review_ui::ReviewPanel;
-use crate::send_ui::SendPanel;
 use crate::polls::StuckRead;
-use crate::sessions_ui::{Cli, ResumeRequest, SessionsPanel, WorktreeRequest};
+use crate::sessions_ui::{Cli, SessionsPanel};
 use crate::spawn::PendingCapture;
 use crate::tasks::LaunchMsg;
 use crate::term_pane::Pane;
@@ -56,10 +55,8 @@ pub struct ShellApp {
     /// The pane filling the stage; the rest collapse into the right rail.
     /// None means the plain tidy grid. Toggled by the header Focus button.
     pub(crate) stage: Option<String>,
-    pub(crate) queue: QueuePanel,
     pub(crate) review: ReviewPanel,
     pub(crate) history: HistoryPanel,
-    pub(crate) send: SendPanel,
     pub(crate) flow: FlowPanel,
     pub(crate) palette: Palette,
     /// Changed-file paths per folder, read off the UI thread.
@@ -129,10 +126,8 @@ impl ShellApp {
             focus_pane: None,
             zoom: 1.0,
             stage: None,
-            queue: QueuePanel::default(),
             review: ReviewPanel::new(),
             history: HistoryPanel::new(),
-            send: SendPanel::default(),
             flow: FlowPanel::default(),
             palette: Palette::default(),
             git_changed: HashMap::new(),
@@ -164,12 +159,12 @@ impl ShellApp {
             usage: Default::default(),
             extras: Default::default(),
         };
-        let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
-        app.spawn_pane("shell", spec, None, None)?;
-        // Debug hooks for screenshots without clicking: BYTEHIVE_PANES=N
-        // boots with N shells, BYTEHIVE_STAGE=1 puts the first on stage.
-        let extra: usize = std::env::var("BYTEHIVE_PANES").ok().and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, 6);
-        for _ in 1..extra {
+        // No shell of its own: the queue holds agents (Ctrl+K New Shell opens
+        // one). Tests and screenshots get shells: BYTEHIVE_PANES=N boots with
+        // N, BYTEHIVE_STAGE=1 puts the first on stage.
+        let shells = if cfg!(test) { 1 } else { 0 };
+        let extra: usize = std::env::var("BYTEHIVE_PANES").ok().and_then(|v| v.parse().ok()).unwrap_or(shells).min(6);
+        for _ in 0..extra {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = app.spawn_pane("shell", spec, None, None);
         }
@@ -224,6 +219,8 @@ impl eframe::App for ShellApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // The ground under everything, margins included.
+        ui.ctx().layer_painter(egui::LayerId::background()).rect_filled(ui.ctx().content_rect(), 0.0, crate::theme::BG);
         // One dark theme across panels and grid.
         let vis = ui.visuals_mut();
         vis.panel_fill = crate::theme::BG;
@@ -248,12 +245,6 @@ impl eframe::App for ShellApp {
         self.zoom = zoom;
         self.font = FontId::monospace(self.prefs.term_size * self.zoom);
 
-        egui::Panel::top("bar").show(ui, |ui| self.top_bar(ui));
-
-        let mut resume: Option<ResumeRequest> = None;
-        let mut worktree: Option<WorktreeRequest> = None;
-        let mut focus: Option<String> = None;
-        let mut hist = None;
         // Ctrl/Cmd+K toggles the command palette. Consuming the key here keeps
         // it from reaching a focused terminal pane as a raw control byte.
         if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
@@ -270,7 +261,6 @@ impl eframe::App for ShellApp {
         let hidden = self.hidden_panes();
         let mut rows = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
         rows.retain(|r| !hidden.contains(&r.pane_id));
-        let needs = rows.iter().filter(|r| is_attention(r.status.state)).count();
 
         // Ctrl/Cmd+1..9 jumps straight to that Queue row's pane, no palette.
         for n in 1..=9u32 {
@@ -304,77 +294,20 @@ impl eframe::App for ShellApp {
             .collect();
         // Agents first (needs-you ranked), then the commands.
         palette_items.extend(command_catalog());
-        let queue_tab = if needs > 0 { format!("Queue ({needs})") } else { "Queue".to_string() };
-        egui::Panel::left("side").default_size(280.0).size_range(220.0..=480.0).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.selectable_label(self.side_tab == SideTab::Queue, queue_tab).clicked() {
-                    self.side_tab = SideTab::Queue;
-                }
-                if ui.selectable_label(self.side_tab == SideTab::Review, "Review").clicked() {
-                    self.side_tab = SideTab::Review;
-                }
-                if ui.selectable_label(self.side_tab == SideTab::History, "History").clicked() {
-                    self.side_tab = SideTab::History;
-                }
-                if ui.selectable_label(self.side_tab == SideTab::Sessions, "Sessions").clicked() {
-                    self.side_tab = SideTab::Sessions;
-                }
-                if ui.selectable_label(self.side_tab == SideTab::Flow, "Flow").clicked() {
-                    self.side_tab = SideTab::Flow;
-                }
-            });
-            ui.separator();
-            match self.side_tab {
-                SideTab::Queue => match {
-                    self.flow.show_recent(ui, now_ms());
-                    let act = QueuePanel::show(&mut self.queue, ui, &self.panes, &hidden, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
-                    self.extras.plan.show(ui);
-                    act
-                } {
-                    Some(QueueAction::Focus(id)) => focus = Some(id),
-                    Some(QueueAction::Answer { pane_id, bytes }) => {
-                        let _ = lock(&self.registry).write_input(&pane_id, &bytes);
-                    }
-                    None => {}
-                },
-                SideTab::Review => {
-                    self.review.show(ui, &mut self.panes);
-                }
-                SideTab::History => {
-                    let projects = &self.projects;
-                    let home = |p: &Pane| {
-                        let h = crate::projects::pane_home(p);
-                        projects.owner(&h).map(str::to_string).unwrap_or(h)
-                    };
-                    hist = self.history.show(ui, &self.panes, self.stage.as_deref(), &self.prefs.schedules, home);
-                }
-                SideTab::Sessions => {
-                    resume = self.sessions.show(ui);
-                    worktree = self.sessions.show_worktree(ui);
-                }
-                SideTab::Flow => {
-                    self.flow.show(ui);
-                }
-            }
-            self.send.show(ui, &self.panes, &mut lock(&self.registry));
-        });
-        if let Some(a) = hist {
-            self.history_action(a);
+        // The sentence counts agents, not plain shells.
+        let agent = |id: &str| self.panes.iter().any(|p| p.id == id && p.cli.is_some());
+        let count = |st: &[supervise::task_state::TaskState]| rows.iter().filter(|r| agent(&r.pane_id) && st.contains(&r.status.state)).count();
+        use supervise::task_state::TaskState as T;
+        let counts = (count(&[T::Needs, T::Blocked]), count(&[T::Review]), count(&[T::Working]));
+        let order: Vec<String> = rows.iter().map(|r| r.pane_id.clone()).collect();
+        let top = egui::Frame::NONE.inner_margin(egui::Margin { left: 0, right: 0, top: 20, bottom: 16 });
+        egui::Panel::top("bar").frame(top).show_separator_line(false).show(ui, |ui| self.top_bar(ui, counts));
+        self.dock(ui);
+        if !self.projects.dirs.is_empty() || !self.panes.is_empty() {
+            self.inbox_panel(ui, &rows, &hidden);
         }
-        if let Some(req) = resume {
-            self.spawn_resume(req);
-        }
-        if let Some(req) = worktree {
-            if let Err(e) = self.spawn_worktree(req) {
-                self.sessions.wt_error = Some(e);
-            }
-        }
-        if focus.is_some() {
-            self.focus_pane = focus;
-        }
-
         self.side_panels(ui);
-        let grid_out = self.central(ui, &hidden);
+        let grid_out = self.central(ui, &hidden, &order);
         let kill = grid_out.kill;
         let restart = grid_out.restart;
 
