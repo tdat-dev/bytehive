@@ -94,6 +94,7 @@ pub struct ShellApp {
     pub(crate) changes: ChangesPanel,
     pub(crate) board: BoardView,
     pub(crate) usage: crate::usage_watch::UsageWatch,
+    pub(crate) extras: crate::glue_extras::Extras,
 }
 
 impl ShellApp {
@@ -160,6 +161,7 @@ impl ShellApp {
             changes: ChangesPanel::default(),
             board: BoardView::default(),
             usage: Default::default(),
+            extras: Default::default(),
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
@@ -208,6 +210,8 @@ impl ShellApp {
             }
         } else if let Some(tab) = key.strip_prefix("tab:") {
             self.side_tab = SideTab::from_key(tab);
+        } else {
+            self.run_more(key);
         }
     }
 }
@@ -395,6 +399,7 @@ impl eframe::App for ShellApp {
             }
         }
         self.sheets(ui.ctx());
+        self.extra_sheets(ui.ctx());
         self.poll_schedules(ui.ctx());
         self.drawers(ui.ctx());
     }

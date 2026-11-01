@@ -47,6 +47,10 @@ impl ShellApp {
                 if ui.add(egui::Button::new(egui::RichText::new("Settings").small().color(DIM)).frame(false)).on_hover_text("Settings (Ctrl+,)").clicked() {
                     self.run_command("settings");
                 }
+                let mem_color = if self.extras.memory.open { crate::theme::TEXT } else { DIM };
+                if ui.add(egui::Button::new(egui::RichText::new("Memory").small().color(mem_color)).frame(false)).on_hover_text("What every agent in this project knows when it starts").clicked() {
+                    self.run_command("memory");
+                }
                 let board_on = self.board.open;
                 let board_color = if board_on { crate::theme::TEXT } else { DIM };
                 if ui.add(egui::Button::new(egui::RichText::new("Board").small().color(board_color)).frame(false)).on_hover_text("Agents by state, and the plan board").clicked() {
