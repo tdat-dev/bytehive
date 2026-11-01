@@ -137,11 +137,16 @@ doesn't try to be a second IDE", nên Phase B làm theo đó (commit `c7ef337`):
       dòng thêm. Còn thiếu: so sánh đua (Compare race), syntax highlight.
 
 ### Phase C: Điều phối fleet + bảng việc
-- [ ] Kanban board trong app (web `kanban`, `board`, `boardfile`): đọc/sửa
-      `.maestro/board.json`, kéo thẻ giữa list, gán agent.
-- [ ] Delegation connectors + crew/fleet (web `delegation`, `crew`, `fleet`,
-      `fleetbridge`): vẽ khi agent giao việc nhau; Flow tab đã là mầm.
-- [ ] Tool dock: Pomodoro + dock (web `pomodoro`, `dock`, `dockstore`).
+Theo bản đã duyệt ("Board thành view suy ra", "Pomodoro: bỏ"), commit `c338b23`:
+- [x] Board (nút Board / Ctrl+K): nửa Agents là 5 cột theo trạng thái thật
+      (Free / Working / Needs you / Ready to review / Merged), không kéo thả,
+      bấm thẻ đưa agent lên stage. Nửa Plan đọc `.maestro/board.json` của
+      project: Approve (Proposed → To do), Move to list bất kỳ, tích
+      checklist; ghi an toàn (đọc lại bản mới nhất, giữ trường lạ, temp +
+      rename), tự đọc lại mỗi 2 giây. Chưa có: tạo/sửa/xóa thẻ, gán agent.
+- [x] Hand-off giữa agent: hiện 3 hand-off gần nhất (30 phút) ngay trong
+      Queue; tab Flow giữ lịch sử đầy đủ. Không vẽ connector (canvas bị bỏ).
+- [x] Pomodoro + dock: KHÔNG port, bản đã duyệt cắt.
 
 ### Phase D: Theo dõi chi phí + lịch
 - [ ] Usage/limit/cost UI (web `usage`, `limits`, `pricing`, `planmeter`,
