@@ -10,13 +10,10 @@
 //!   3. threads -> JoinHandles detach; both threads have already finished.
 
 use std::collections::VecDeque;
-use std::fs::File;
-use std::io::{Read, Write as IoWrite};
-use std::path::Path;
+use std::io::Read;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Instant;
 
 use anyhow::{anyhow, Result};
 use portable_pty::PtySize;
@@ -49,15 +46,6 @@ fn tap_channel() -> (SyncSender<Vec<u8>>, Receiver<Vec<u8>>) {
 /// Recent output kept for replay when a new window attaches (tab detach).ch).
 const SCROLLBACK_CAP: usize = 512 * 1024;
 
-/// An in-progress session recording: raw output frames appended to a JSONL file
-/// with a millisecond timestamp, so a player can replay the terminal with its
-/// original timing. Each frame is one line `{"t":<ms since start>,"d":"<b64>"}`;
-/// the first line is a header `{"v":1}`. Buffered; flushed on stop/drop.
-struct Rec {
-    w: std::io::BufWriter<File>,
-    start: Instant,
-}
-
 struct Output {
     buf: VecDeque<u8>,
     sink: Sink,
@@ -66,35 +54,10 @@ struct Output {
     // window; taps are additional read-only mirrors.
     taps: Vec<SyncSender<Vec<u8>>>,
     // When Some, every output chunk is also appended to this recording.
-    rec: Option<Rec>,
+    rec: Option<crate::record::Rec>,
     // A pipe agent's output is JSON lines: its window reads them as they are,
     // a remote terminal or a recording gets them as readable text.
     pipe: bool,
-}
-
-/// Standard base64 (no line breaks). Small dependency-free encoder, matching the
-/// one in core::fs — kept local so this module has no cross-module coupling.
-fn b64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(T[((n >> 18) & 63) as usize] as char);
-        out.push(T[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
-    }
-    out
-}
-
-/// Append one recorded frame (called by the reader thread under the output lock).
-fn rec_frame(rec: &mut Rec, bytes: &[u8]) {
-    let t = rec.start.elapsed().as_millis();
-    // A failed write must not kill the reader thread; drop the frame silently.
-    let _ = writeln!(rec.w, "{{\"t\":{t},\"d\":\"{}\"}}", b64(bytes));
 }
 
 pub struct Agent {
@@ -228,27 +191,19 @@ impl Agent {
     /// self-contained — a player sees the screen state at record start. Replaces
     /// any recording already in progress.
     pub fn record_start(&self, path: &str) -> Result<()> {
-        let file = File::create(Path::new(path))?;
-        let mut w = std::io::BufWriter::new(file);
-        writeln!(w, "{{\"v\":1}}")?;
         let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
         let (a, b) = o.buf.as_slices();
-        if !a.is_empty() || !b.is_empty() {
-            let mut snap = Vec::with_capacity(a.len() + b.len());
-            snap.extend_from_slice(a);
-            snap.extend_from_slice(b);
-            let snap = if o.pipe { readable(&snap) } else { snap };
-            writeln!(w, "{{\"t\":0,\"d\":\"{}\"}}", b64(&snap))?;
-        }
-        o.rec = Some(Rec { w, start: Instant::now() });
+        let snap = [a, b].concat();
+        let snap = if o.pipe && !snap.is_empty() { readable(&snap) } else { snap };
+        o.rec = Some(crate::record::Rec::create(path, &snap)?);
         Ok(())
     }
 
     /// Stop recording and flush the file. No-op if not recording.
     pub fn record_stop(&self) {
         let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(mut rec) = o.rec.take() {
-            let _ = rec.w.flush();
+        if let Some(rec) = o.rec.take() {
+            rec.finish();
         }
     }
 
@@ -310,7 +265,7 @@ fn emit(output: &Arc<Mutex<Output>>, bytes: &[u8]) {
     }
     // Append to the session recording, if one is running.
     if let Some(rec) = o.rec.as_mut() {
-        rec_frame(rec, &shown);
+        rec.frame(&shown);
     }
 }
 

@@ -101,6 +101,8 @@ pub struct Pane {
     pub usage: Option<crate::usage_watch::UsageFig>,
     /// The plan limit its screen says it hit.
     pub limit: Option<supervise::limits::LimitHit>,
+    /// The file its output is being recorded to.
+    pub recording: Option<std::path::PathBuf>,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -118,7 +120,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None }
     }
 
     /// The visible screen as text, newest row last: what the state reads.
@@ -211,60 +213,67 @@ impl Pane {
             ui.painter().rect_stroke(rect, 0.0, egui::Stroke::new(1.0, FOCUS), egui::StrokeKind::Inside);
         }
 
-        let painter = ui.painter();
-        let content = self.term.renderable_content();
-        for indexed in content.display_iter {
-            let row = indexed.point.line.0 + content.display_offset as i32;
-            if row < 0 || row as usize >= self.rows {
-                continue;
-            }
-            let col = indexed.point.column.0;
-            if col >= self.cols {
-                continue;
-            }
-            let cell = &indexed.cell;
-            if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
-                continue;
-            }
-            let mut fg = rgb_of(cell.fg);
-            let mut bg = rgb_of(cell.bg);
-            if cell.flags.contains(Flags::INVERSE) {
-                std::mem::swap(&mut fg, &mut bg);
-            }
-            let min = Pos2::new(rect.left() + col as f32 * cell_w, rect.top() + row as f32 * cell_h);
-            if bg != BG_DEFAULT {
-                painter.rect_filled(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, c32(bg));
-            }
-            if cell.c != ' ' {
-                painter.text(min, egui::Align2::LEFT_TOP, cell.c.to_string(), font.clone(), c32(fg));
-            }
-        }
+        paint_grid(ui.painter(), &self.term, rect, (self.cols, self.rows), font, cell);
+    }
+}
 
-        let cursor = &content.cursor;
-        let crow = cursor.point.line.0 + content.display_offset as i32;
-        let ccol = cursor.point.column.0;
-        if crow >= 0 && (crow as usize) < self.rows && ccol < self.cols {
-            let min = Pos2::new(rect.left() + ccol as f32 * cell_w, rect.top() + crow as f32 * cell_h);
-            let cur = TEXT;
-            match cursor.shape {
-                CursorShape::Block => {
-                    painter.rect_filled(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, cur);
-                }
-                CursorShape::Underline => {
-                    painter.rect_filled(
-                        Rect::from_min_size(Pos2::new(min.x, min.y + cell_h - 2.0), Vec2::new(cell_w, 2.0)),
-                        0.0,
-                        cur,
-                    );
-                }
-                CursorShape::Beam => {
-                    painter.rect_filled(Rect::from_min_size(min, Vec2::new(2.0, cell_h)), 0.0, cur);
-                }
-                CursorShape::HollowBlock => {
-                    painter.rect_stroke(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, egui::Stroke::new(1.0, cur), egui::StrokeKind::Inside);
-                }
-                CursorShape::Hidden => {}
+/// Paint an emulator grid and its cursor into `rect`: the live panes and the
+/// replay player draw the same way.
+pub fn paint_grid<T: EventListener>(painter: &egui::Painter, term: &Term<T>, rect: Rect, size: (usize, usize), font: &FontId, cell: (f32, f32)) {
+    let (cols, rows) = size;
+    let (cell_w, cell_h) = cell;
+    let content = term.renderable_content();
+    for indexed in content.display_iter {
+        let row = indexed.point.line.0 + content.display_offset as i32;
+        if row < 0 || row as usize >= rows {
+            continue;
+        }
+        let col = indexed.point.column.0;
+        if col >= cols {
+            continue;
+        }
+        let cell = &indexed.cell;
+        if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+            continue;
+        }
+        let mut fg = rgb_of(cell.fg);
+        let mut bg = rgb_of(cell.bg);
+        if cell.flags.contains(Flags::INVERSE) {
+            std::mem::swap(&mut fg, &mut bg);
+        }
+        let min = Pos2::new(rect.left() + col as f32 * cell_w, rect.top() + row as f32 * cell_h);
+        if bg != BG_DEFAULT {
+            painter.rect_filled(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, c32(bg));
+        }
+        if cell.c != ' ' {
+            painter.text(min, egui::Align2::LEFT_TOP, cell.c.to_string(), font.clone(), c32(fg));
+        }
+    }
+
+    let cursor = &content.cursor;
+    let crow = cursor.point.line.0 + content.display_offset as i32;
+    let ccol = cursor.point.column.0;
+    if crow >= 0 && (crow as usize) < rows && ccol < cols {
+        let min = Pos2::new(rect.left() + ccol as f32 * cell_w, rect.top() + crow as f32 * cell_h);
+        let cur = TEXT;
+        match cursor.shape {
+            CursorShape::Block => {
+                painter.rect_filled(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, cur);
             }
+            CursorShape::Underline => {
+                painter.rect_filled(
+                    Rect::from_min_size(Pos2::new(min.x, min.y + cell_h - 2.0), Vec2::new(cell_w, 2.0)),
+                    0.0,
+                    cur,
+                );
+            }
+            CursorShape::Beam => {
+                painter.rect_filled(Rect::from_min_size(min, Vec2::new(2.0, cell_h)), 0.0, cur);
+            }
+            CursorShape::HollowBlock => {
+                painter.rect_stroke(Rect::from_min_size(min, Vec2::new(cell_w, cell_h)), 0.0, egui::Stroke::new(1.0, cur), egui::StrokeKind::Inside);
+            }
+            CursorShape::Hidden => {}
         }
     }
 }

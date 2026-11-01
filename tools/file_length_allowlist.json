@@ -1,5 +1,4 @@
 {
-  "crates/agent-core/src/agent.rs": 503,
   "src/chatmodel.ts": 602,
   "src/filetree.ts": 1037,
   "src/inbox.test.ts": 858,

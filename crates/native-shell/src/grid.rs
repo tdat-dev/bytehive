@@ -8,7 +8,7 @@ use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
 use crate::app::{now_ms, ShellApp, HEADER_H, RAIL_W};
 use crate::layout::{header_layout, tidy_tiles, Tile};
 use crate::states::{pane_cwd, pane_status, state_badge};
-use crate::theme::{BORDER, DIM, SURFACE, TEXT, UI_BASE};
+use crate::theme::{BORDER, DEL, DIM, SURFACE, TEXT, UI_BASE};
 
 #[derive(Default)]
 pub(crate) struct GridOut {
@@ -88,7 +88,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             let body = Rect::from_min_max(Pos2::new(cell_rect.left(), cell_rect.top() + HEADER_H), cell_rect.max);
             ui.painter().rect_filled(head, 0.0, SURFACE);
             ui.painter().line_segment([head.left_bottom(), head.right_bottom()], egui::Stroke::new(1.0, BORDER));
-            let mut label = pane.name.clone();
+            let mut label = if pane.recording.is_some() { format!("REC \u{00B7} {}", pane.name) } else { pane.name.clone() };
             if let Some(w) = pane.worktree.as_ref() {
                 label.push_str(&format!(" · {}", w.branch));
                 if pane.merged {
@@ -126,8 +126,12 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             let (dot, word) = state_badge(pane_status(pane, now_ms(), changed).state);
             let word_w = ui.painter().layout_no_wrap(word.to_string(), FontId::proportional(12.0), DIM).rect.width();
             let laid = header_layout(&label, head.left(), head.width(), word_w, &btn_ws);
+            let rec_x = if pane.recording.is_some() { 14.0 } else { 0.0 };
+            if rec_x > 0.0 {
+                ui.painter().circle_filled(Pos2::new(head.left() + 12.0, head.top() + 12.0), 4.0, DEL);
+            }
             ui.painter().text(
-                Pos2::new(head.left() + 8.0, head.top() + 4.0),
+                Pos2::new(head.left() + 8.0 + rec_x, head.top() + 4.0),
                 egui::Align2::LEFT_TOP,
                 laid.label,
                 FontId::proportional(12.0),

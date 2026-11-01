@@ -56,6 +56,8 @@ pub(crate) fn command_catalog() -> Vec<PaletteItem> {
         cmd("remote", "Remote dashboard (open the fleet on your phone)", "view"),
         cmd("browser", "Browser profiles agents can use", "view"),
         cmd("memory", "Project memory (what every agent knows)", "view"),
+        cmd("record", "Record this agent (start or stop)", "run"),
+        cmd("replays", "Replays (play back a recording)", "view"),
     ];
     for cli in Cli::all() {
         v.push(cmd(&format!("spawn:{}", cli.program()), &format!("Spawn {}", cli.name()), "run"));

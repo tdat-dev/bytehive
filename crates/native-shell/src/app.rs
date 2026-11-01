@@ -173,14 +173,14 @@ impl ShellApp {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = app.spawn_pane("shell", spec, None, None);
         }
-        // MAESTRO_SHEET=new (or race) boots with the New task sheet open.
-        if let Ok(key) = std::env::var("MAESTRO_SHEET") {
-            app.run_command(&key);
-        }
         if std::env::var("MAESTRO_STAGE").is_ok() {
             if let Some(p) = app.panes.first() {
                 app.stage = Some(p.id.clone());
             }
+        }
+        // MAESTRO_SHEET=new (or race) boots with the New task sheet open.
+        if let Ok(key) = std::env::var("MAESTRO_SHEET") {
+            app.run_command(&key);
         }
         Ok(app)
     }

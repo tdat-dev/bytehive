@@ -36,6 +36,8 @@ mod projects;
 mod projects_ui;
 mod queue_ui;
 mod remote;
+mod replay;
+mod replay_ui;
 mod remote_ui;
 mod review_ui;
 mod schedule;

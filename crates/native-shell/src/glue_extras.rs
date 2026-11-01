@@ -17,6 +17,7 @@ pub struct Extras {
     pub system: crate::system::SystemWatch,
     pub remote: crate::remote::Remote,
     pub browser: crate::browser_ui::BrowserWatch,
+    pub replay: crate::replay_ui::ReplaySheet,
 }
 
 impl ShellApp {
@@ -27,6 +28,8 @@ impl ShellApp {
             "handoff" => self.open_handoff(),
             "remote" => self.settings.open_at(2),
             "browser" => self.settings.open_at(3),
+            "record" => self.toggle_record(),
+            "replays" => self.open_replays(),
             _ => return false,
         }
         true
@@ -81,6 +84,8 @@ impl ShellApp {
         self.poll_system(ctx);
         self.poll_remote(ctx);
         self.poll_browser(ctx);
+        let font = self.font.clone();
+        self.extras.replay.show(ctx, &font);
         if self.extras.memory.open {
             let agents = self.project_agents(&self.extras.memory.project.clone());
             if let Some((to, text)) = self.extras.memory.show(ctx, &self.projects.dirs, &agents) {

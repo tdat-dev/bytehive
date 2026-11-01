@@ -28,6 +28,7 @@ pub mod muse;
 pub mod opencode;
 #[cfg(windows)]
 pub mod pipe_session;
+mod record;
 pub mod pty_session;
 pub mod registry;
 pub mod transcript;
