@@ -50,6 +50,7 @@ mod review_ui;
 mod schedule;
 mod send_ui;
 mod settings_ui;
+mod session_follow;
 mod sessions_ui;
 mod spawn;
 mod start_ui;
