@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, Color32, RichText};
 use supervise::task_state::TaskState;
 
-use crate::plan_board::{edit, load, move_card, set_check, todo_list, view, ListView};
+use crate::plan_board::{default_board, doing_list, edit, load, move_card, save, set_check, todo_list, view, ListView};
+use crate::plan_edit::Change;
 use crate::theme::{state_dot, DEL, DIM, INK3, PRIMARY, PRIMARY_INK, R3, SURFACE, TEXT};
 
 const RELOAD: Duration = Duration::from_secs(2);
@@ -54,6 +55,9 @@ pub struct BoardView {
     loaded: Option<Instant>,
     expanded: Option<String>,
     error: Option<String>,
+    edit: crate::plan_edit::PlanEdit,
+    /// A card given to an agent: (pane id, task); the app types it in.
+    pub give: Option<(String, String)>,
 }
 
 impl BoardView {
@@ -101,7 +105,7 @@ impl BoardView {
                 match plan_path {
                     Some(p) => {
                         self.reload(p);
-                        self.plan_columns(ui);
+                        self.plan_columns(ui, agents, p);
                     }
                     None => {
                         ui.horizontal(|ui| {
@@ -115,7 +119,7 @@ impl BoardView {
         open
     }
 
-    fn plan_columns(&mut self, ui: &mut egui::Ui) {
+    fn plan_columns(&mut self, ui: &mut egui::Ui, agents: &[AgentCard], at: &Path) {
         if let Some(e) = &self.error {
             ui.horizontal(|ui| {
                 ui.add_space(16.0);
@@ -125,22 +129,31 @@ impl BoardView {
         let Some((path, board)) = self.plan.clone() else {
             ui.horizontal(|ui| {
                 ui.add_space(16.0);
-                ui.label(RichText::new("No plan board here yet. Agents start one with card_add over MCP.").color(INK3));
+                ui.label(RichText::new("No plan board here yet. Agents start one with card_add over MCP, or start it here.").color(INK3));
+                if ui.button("Start a plan board").clicked() {
+                    let made = at.parent().map(std::fs::create_dir_all).transpose().map_err(|e| e.to_string()).and_then(|_| save(at, &default_board()));
+                    self.error = made.err();
+                    self.loaded = None;
+                }
             });
             return;
         };
         let lists = view(&board);
         let todo = todo_list(&lists).map(|l| l.id.clone());
-        let mut change: Option<Box<dyn FnOnce(&mut serde_json::Value) -> bool>> = None;
+        let doing = doing_list(&lists).map(|l| l.id.clone());
+        let mut change: Option<Change> = None;
         egui::ScrollArea::horizontal().id_salt("plan-cols").show(ui, |ui| {
             ui.horizontal_top(|ui| {
                 ui.add_space(16.0);
                 for list in &lists {
                     column(ui, &list.title, list.cards.len(), |ui| {
                         for card in &list.cards {
-                            if let Some(c) = self.plan_card(ui, card, list, &lists, todo.as_deref()) {
+                            if let Some(c) = self.plan_card(ui, card, list, &lists, (todo.as_deref(), doing.as_deref()), agents) {
                                 change = Some(c);
                             }
+                        }
+                        if let Some(c) = self.edit.add_box(ui, &list.id) {
+                            change = Some(c);
                         }
                     });
                 }
@@ -153,8 +166,8 @@ impl BoardView {
     }
 
     /// One plan card; an action hands back the change to write.
-    fn plan_card(&mut self, ui: &mut egui::Ui, card: &crate::plan_board::CardView, list: &ListView, lists: &[ListView], todo: Option<&str>) -> Option<Box<dyn FnOnce(&mut serde_json::Value) -> bool>> {
-        let mut change: Option<Box<dyn FnOnce(&mut serde_json::Value) -> bool>> = None;
+    fn plan_card(&mut self, ui: &mut egui::Ui, card: &crate::plan_board::CardView, list: &ListView, lists: &[ListView], (todo, doing): (Option<&str>, Option<&str>), agents: &[AgentCard]) -> Option<Change> {
+        let mut change: Option<Change> = None;
         let done = card.checks.iter().filter(|c| c.2).count();
         let expanded = self.expanded.as_deref() == Some(card.id.as_str());
         let r = card_frame(ui, |ui| {
@@ -193,6 +206,13 @@ impl BoardView {
                     }
                 });
             });
+            let (c, give) = self.edit.card_tools(ui, card, agents, doing);
+            if c.is_some() {
+                change = c;
+            }
+            if give.is_some() {
+                self.give = give;
+            }
         });
         if r.clicked() {
             self.expanded = if expanded { None } else { Some(card.id.clone()) };

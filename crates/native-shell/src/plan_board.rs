@@ -101,6 +101,91 @@ pub fn set_check(board: &mut Value, card_id: &str, item_id: &str, done: bool) ->
     false
 }
 
+/// A new id the way the MCP server makes them: a prefix, the time in base
+/// 36, a counter.
+pub fn uid(prefix: &str) -> String {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let mut t = crate::app::now_ms();
+    let mut b36 = String::new();
+    while t > 0 {
+        b36.insert(0, char::from_digit((t % 36) as u32, 36).unwrap_or('0'));
+        t /= 36;
+    }
+    format!("{prefix}{b36}{n}")
+}
+
+/// A board for a project that has none: To do, Doing, Done (the MCP's).
+pub fn default_board() -> Value {
+    let list = |t: &str| serde_json::json!({ "id": uid("l"), "title": t, "cards": [] });
+    serde_json::json!({ "version": 2, "lists": [list("To do"), list("Doing"), list("Done")] })
+}
+
+/// Add a card at the end of a list, with one checklist item per step.
+pub fn add_card(board: &mut Value, list_id: &str, title: &str, desc: &str, steps: &[String]) -> bool {
+    let Some(l) = board["lists"].as_array_mut().and_then(|ls| ls.iter_mut().find(|l| l["id"] == list_id)) else { return false };
+    let checklist: Vec<Value> = steps.iter().filter(|s| !s.trim().is_empty()).map(|s| serde_json::json!({ "id": uid("i"), "text": s.trim(), "done": false })).collect();
+    let card = serde_json::json!({ "id": uid("c"), "title": title.trim(), "desc": desc.trim(), "labels": [], "due": null, "checklist": checklist });
+    match l["cards"].as_array_mut() {
+        Some(cards) => cards.push(card),
+        None => l["cards"] = Value::Array(vec![card]),
+    }
+    true
+}
+
+fn card_mut<'a>(board: &'a mut Value, card_id: &str) -> Option<&'a mut Value> {
+    board["lists"].as_array_mut()?.iter_mut().flat_map(|l| l["cards"].as_array_mut().into_iter().flatten()).find(|c| c["id"] == card_id)
+}
+
+/// Change a card's title and description; everything else stays.
+pub fn update_card(board: &mut Value, card_id: &str, title: &str, desc: &str) -> bool {
+    let Some(c) = card_mut(board, card_id) else { return false };
+    c["title"] = Value::String(title.trim().to_string());
+    c["desc"] = Value::String(desc.trim().to_string());
+    true
+}
+
+/// Mark who works on a card.
+pub fn assign(board: &mut Value, card_id: &str, who: &str) -> bool {
+    let Some(c) = card_mut(board, card_id) else { return false };
+    c["assignee"] = Value::String(who.to_string());
+    true
+}
+
+pub fn delete_card(board: &mut Value, card_id: &str) -> bool {
+    for l in board["lists"].as_array_mut().into_iter().flatten() {
+        if let Some(cards) = l["cards"].as_array_mut() {
+            if let Some(i) = cards.iter().position(|c| c["id"] == card_id) {
+                cards.remove(i);
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// A card as a task to type into an agent.
+pub fn card_task(c: &CardView) -> String {
+    let mut t = c.title.clone();
+    if !c.desc.is_empty() {
+        t.push_str(&format!("\n\n{}", c.desc));
+    }
+    let open: Vec<&str> = c.checks.iter().filter(|x| !x.2).map(|x| x.1.as_str()).collect();
+    if !open.is_empty() {
+        t.push_str("\n\nSteps:");
+        for s in open {
+            t.push_str(&format!("\n- {s}"));
+        }
+    }
+    t.push_str(&format!("\n\nThis is card \"{}\" on the board: card_move it to Doing now and card_done it when finished.", c.title));
+    t
+}
+
+/// The list a card goes to when work starts: "Doing" by title.
+pub fn doing_list(lists: &[ListView]) -> Option<&ListView> {
+    lists.iter().find(|l| l.title.trim().eq_ignore_ascii_case("doing"))
+}
+
 /// The list to approve into: "To do" by title, case and spacing aside.
 pub fn todo_list(lists: &[ListView]) -> Option<&ListView> {
     lists.iter().find(|l| l.title.to_lowercase().replace([' ', '-'], "") == "todo")
@@ -171,6 +256,27 @@ mod tests {
         assert!(set_check(&mut b, "c1", "i1", true));
         assert_eq!(b["lists"][0]["cards"][0]["checklist"][0]["done"], json!(true));
         assert!(!set_check(&mut b, "c1", "zz", true));
+    }
+
+    #[test]
+    fn adds_edits_assigns_and_deletes_cards() {
+        let mut b = board();
+        assert!(add_card(&mut b, "l3", " Ship it ", "now", &["build".into(), " ".into(), "tag".into()]));
+        let v = view(&b);
+        let c = &v[2].cards[0];
+        assert_eq!((c.title.as_str(), c.checks.len()), ("Ship it", 2));
+        assert!(c.id.starts_with('c') && c.checks[0].0.starts_with('i'));
+        assert_ne!(uid("c"), uid("c"), "ids never repeat");
+        assert!(update_card(&mut b, "c1", "Fix login now", "why"));
+        assert!(assign(&mut b, "c1", "Ana"));
+        assert_eq!((b["lists"][0]["cards"][0]["title"].as_str(), b["lists"][0]["cards"][0]["assignee"].as_str()), (Some("Fix login now"), Some("Ana")));
+        assert_eq!(b["lists"][0]["cards"][0]["labels"], json!(["red"]), "the rest stays");
+        let task = card_task(&view(&b)[0].cards[0]);
+        assert!(task.starts_with("Fix login now\n\nwhy\n\nSteps:\n- test"), "{task}");
+        assert!(delete_card(&mut b, "c1"));
+        assert!(!delete_card(&mut b, "c1"));
+        assert_eq!(view(&default_board()).iter().map(|l| l.title.as_str()).collect::<Vec<_>>(), ["To do", "Doing", "Done"]);
+        assert!(doing_list(&view(&default_board())).is_some());
     }
 
     #[test]

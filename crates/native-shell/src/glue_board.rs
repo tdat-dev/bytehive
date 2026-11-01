@@ -54,6 +54,9 @@ impl ShellApp {
             };
             picked = self.board.show(ui, &cards, path, name);
         });
+        if let Some((id, task)) = self.board.give.take() {
+            self.tell(id, task);
+        }
         if let Some(id) = picked {
             // Back to the terminals with that agent up front.
             self.board.open = false;
