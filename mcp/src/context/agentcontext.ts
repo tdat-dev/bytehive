@@ -4,7 +4,7 @@
  * words. Agents Maestro runs get their names from fleet.json; others show
  * their conversation id. */
 
-import { asksSection, clip, digestOf, filesSection, lastWordsSection, oneBlock, planProgress, planSection, type Digest } from "../../../src/convdigest";
+import { asksSection, clip, digestOf, filesSection, lastWordsSection, oneBlock, planProgress, planSection, type Digest } from "../app/convdigest";
 import { readFleet, type FleetAgent } from "../fleet.js";
 import { findConversations, projectFolders, readConversation, sameDir, type Cli, type Conversation, type Env } from "./stores.js";
 

@@ -10,9 +10,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { createChat, type Chat } from "../../../src/chatmodel";
-import { createCodexChat } from "../../../src/codexmodel";
-import { createOpencodeChat } from "../../../src/opencodemodel";
+import { createChat, type Chat } from "../app/chatmodel";
+import { createCodexChat } from "../app/codexmodel";
+import { createOpencodeChat } from "../app/opencodemodel";
 
 export type Cli = "claude" | "codex" | "opencode";
 

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { agentContext, detailText, listLine, nameOf, resolveWho } from "./agentcontext";
 import { claudeSlug, type Conversation } from "./stores";
 import type { FleetAgent } from "../fleet";
-import type { Digest } from "../../../src/convdigest";
+import type { Digest } from "../app/convdigest";
 
 const NOW = Date.parse("2026-10-22T12:00:00Z");
 const MIN = 60_000;

@@ -5,7 +5,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { addFact, deleteFact, memoryText, parseMemory, serializeMemory, updateFact, MEMORY_REL, type MemoryEntry, type ProjectMemory } from "../../src/projectmemory";
+import { addFact, deleteFact, memoryText, parseMemory, serializeMemory, updateFact, MEMORY_REL, type MemoryEntry, type ProjectMemory } from "./app/projectmemory";
 
 export const memoryPath = (dir: string): string => path.join(dir, ...MEMORY_REL.split("/"));
 
