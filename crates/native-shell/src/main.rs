@@ -66,6 +66,7 @@ mod term_select;
 mod theme;
 mod topbar;
 mod tray;
+mod updater;
 mod usage_watch;
 
 use app::ShellApp;

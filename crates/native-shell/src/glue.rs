@@ -24,6 +24,10 @@ impl ShellApp {
     /// Settings, then New task, floating over everything.
     pub(crate) fn sheets(&mut self, ctx: &egui::Context) {
         let store = self.prefs_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "not saved (no home folder)".to_string());
+        self.settings.update_status = self.extras.updates.status.clone();
+        if std::mem::take(&mut self.settings.want_update_check) {
+            self.extras.updates.check_now(ctx);
+        }
         if self.settings.show(ctx, &mut self.prefs, &store, &mut self.extras.remote.form, &mut self.extras.browser.form) {
             self.save_prefs();
         }

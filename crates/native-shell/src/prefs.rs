@@ -88,6 +88,8 @@ pub struct Prefs {
     pub notify_needs: bool,
     pub notify_done: bool,
     pub limit_notify: bool,
+    /// Look for a new version a little after start and every six hours.
+    pub update_check: bool,
     /// Serve the phone dashboard, and to other devices too.
     pub remote_on: bool,
     pub remote_lan: bool,
@@ -118,6 +120,7 @@ impl Default for Prefs {
             notify_needs: true,
             notify_done: true,
             limit_notify: true,
+            update_check: true,
             remote_on: false,
             remote_lan: false,
             remote_port: dashboard::DEFAULT_PORT,
@@ -175,6 +178,7 @@ impl Prefs {
             "notifyNeeds": self.notify_needs,
             "notifyDone": self.notify_done,
             "limitNotify": self.limit_notify,
+            "updateCheck": self.update_check,
             "remoteOn": self.remote_on,
             "remoteLan": self.remote_lan,
             "remotePort": self.remote_port,
@@ -204,6 +208,7 @@ impl Prefs {
             notify_needs: v["notifyNeeds"].as_bool().unwrap_or(d.notify_needs),
             notify_done: v["notifyDone"].as_bool().unwrap_or(d.notify_done),
             limit_notify: v["limitNotify"].as_bool().unwrap_or(d.limit_notify),
+            update_check: v["updateCheck"].as_bool().unwrap_or(d.update_check),
             remote_on: v["remoteOn"].as_bool().unwrap_or(d.remote_on),
             remote_lan: v["remoteLan"].as_bool().unwrap_or(d.remote_lan),
             remote_port: v["remotePort"].as_u64().map_or(d.remote_port, |n| (n as u16).clamp(1024, 65534)),

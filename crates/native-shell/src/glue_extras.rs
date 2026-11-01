@@ -23,6 +23,7 @@ pub struct Extras {
     pub notify: crate::notify::Notifier,
     pub fleet: crate::fleet::FleetBridge,
     pub follow: crate::session_follow::Follow,
+    pub updates: crate::updater::Updater,
 }
 
 impl ShellApp {

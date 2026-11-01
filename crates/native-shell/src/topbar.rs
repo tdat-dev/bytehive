@@ -44,6 +44,7 @@ impl ShellApp {
             }
             let summary = self.summary_line();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                self.update_button(ui);
                 if ui.add(egui::Button::new(egui::RichText::new("Settings").small().color(DIM)).frame(false)).on_hover_text("Settings (Ctrl+,)").clicked() {
                     self.run_command("settings");
                 }

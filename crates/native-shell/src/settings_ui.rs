@@ -19,6 +19,9 @@ pub struct SettingsSheet {
     pub open: bool,
     section: usize,
     scroll_to: Option<usize>,
+    /// What the updater last said, and a Check now press for the app.
+    pub update_status: String,
+    pub want_update_check: bool,
 }
 
 /// A pill switch like the design's `.switch`: green when on.
@@ -233,6 +236,12 @@ impl SettingsSheet {
         ch |= row(ui, "Tell me when an agent needs me", "A Windows notification while Maestro is in the background.", |ui| switch(ui, &mut p.notify_needs).changed());
         ch |= row(ui, "Tell me when an agent finishes", "Done, ready to review, or stopped with an error.", |ui| switch(ui, &mut p.notify_done).changed());
         ch |= row(ui, "Tell me about usage limits", "When an agent runs out, and when it is back at work.", |ui| switch(ui, &mut p.limit_notify).changed());
+        ch |= row(ui, "Check for updates", "A little after start and every six hours; a new version shows on the top bar.", |ui| switch(ui, &mut p.update_check).changed());
+        let status = if self.update_status.is_empty() { format!("Maestro {}", crate::updater::current()) } else { self.update_status.clone() };
+        row(ui, "Version", &status, |ui| {
+            self.want_update_check |= ui.button(RichText::new("Check now").size(12.5)).clicked();
+            false
+        });
         row(ui, "Where settings live", store, |_| false);
         ch
     }
