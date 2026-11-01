@@ -183,18 +183,33 @@ Theo bản đã duyệt ("Board thành view suy ra", "Pomodoro: bỏ"), commit `
       stage (Stop / Let it go on), Allow / Don't allow cho click rủi ro, báo
       login/CAPTCHA, Settings > Browser. Chưa thử với extension thật vì bản debug
       không giành quyền trình duyệt của bản Tauri đã cài (MAESTRO_DEV_BROWSER=1).
-- [ ] Còn thiếu: replay (bản ghi PTY + player; registry đã có `record_start`),
-      tray (ẩn xuống khay), updater (chờ kênh phát hành native ở Phase F), tab
-      History theo từng việc, planmeter.
+- [x] Phần còn lại của Phase E: replay (`replay.rs`, `replay_ui.rs`; ghi qua
+      `agent-core/record.rs`, flush mỗi giây), tray (`tray.rs`) cùng việc nền
+      chạy cả khi thu nhỏ (`logic.rs` qua `App::logic`), plan meter
+      (`agent-core/planusage.rs`, `planmeter.rs`), thông báo Windows
+      (`notify.rs`, `supervise/finish.rs`), History theo từng việc
+      (`history_task.rs`).
 
-### Phase F: Thay thế + đóng gói + rút lui Tauri
-- [ ] Parity backend: mọi lệnh `src-tauri` cần thiết đã có đường native tương
-      đương (hiện `src-tauri` đăng ký ~90 command trong `lib.rs`).
-- [ ] Đóng gói native binary thành installer; đẩy artifact + `latest.json` lên
-      public repo `tdat-dev/maestro-releases` (giữ pipeline release hiện tại).
-- [ ] Giữ MCP server (`mcp/`) + dashboard là tiến trình riêng do native quản lý.
-- [ ] Khi parity đủ: gỡ `src/` + `src-tauri`, đổi entry chính sang native, bỏ
-      "(prototype)" khỏi tiêu đề cửa sổ (`crates/native-shell/src/main.rs`).
+### Phase F: Thay thế + đóng gói + rút lui Tauri (XONG)
+- [x] Parity backend (rà bởi một agent đọc code, xử lý hết phần thiếu):
+      fleet bridge (`fleet.rs`: fleet.json, outbox, spawn-requests),
+      `MAESTRO_AGENT`/`MAESTRO_WORKSPACE` + luật cho Claude (`laws.rs`),
+      Director, theo phiên sau /clear (`session_follow.rs`), Review đủ Merge /
+      Send back / Discard (`agent-core/land.rs`, `land_ui.rs`), thư mục nhiều
+      repo, chọn/copy/dán/kéo thả file/tìm trong terminal (`paste.rs`,
+      `term_select.rs`, `term_search.rs`), CLI chưa cài bị làm mờ, thêm/sửa/
+      xóa/giao thẻ trên Plan (`plan_edit.rs`). Cắt theo thiết kế: editor trong
+      app, fs_* của cây file, chat view, capture_window, bản Supervisor.
+- [x] Installer NSIS (`crates/native-shell/installer/maestro.nsi`,
+      `tools/build_installer.ps1`), updater native (`updater.rs`, cùng
+      latest.json và khóa minisign, đã kiểm trên bản 0.10.10 thật), workflow
+      `release.yml` ký và đẩy lên `tdat-dev/maestro-releases`; mọi khóa
+      Windows trong latest.json trỏ installer NSIS để updater của bản Tauri
+      tự chuyển người dùng sang native.
+- [x] MCP server giữ nguyên là tiến trình riêng do CLI chạy; 5 parser nó
+      dùng chuyển từ `src/` sang `mcp/src/app/`. Dashboard chạy trong app.
+- [x] Đã gỡ `src/`, `src-tauri/`, Vite/TS; app native là Maestro 0.11.0,
+      tiêu đề "Maestro". Chưa tag/phát hành: chờ user.
 
 ## 6. Quyết định còn mở (hỏi user trước khi làm phase liên quan)
 
