@@ -47,6 +47,10 @@ pub fn queue_rows(
             if let Some(note) = clash.get(&p.id) {
                 line = format!("{line} · {}", clash_short(note));
             }
+            if let Some(l) = &p.limit {
+                let back = l.resets_at.map(|at| format!(", back at {}", supervise::limits::reset_label(at, chrono::Local::now()))).unwrap_or_default();
+                line = format!("{} hit its usage limit{back}", p.name);
+            }
             QueueRow { pane_id: p.id.clone(), name: p.name.clone(), rank, status, line }
         })
         .collect();

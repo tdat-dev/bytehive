@@ -95,6 +95,12 @@ pub struct Pane {
     pub extra_args: Vec<String>,
     /// The task it was started on (first line), for the Board.
     pub task: Option<String>,
+    /// When it was spawned, to find its own session among the CLI's.
+    pub started_ms: u64,
+    /// What it used so far, when known.
+    pub usage: Option<crate::usage_watch::UsageFig>,
+    /// The plan limit its screen says it hit.
+    pub limit: Option<supervise::limits::LimitHit>,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -112,7 +118,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None }
     }
 
     /// The visible screen as text, newest row last: what the state reads.

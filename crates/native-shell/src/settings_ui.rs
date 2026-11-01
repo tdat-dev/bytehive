@@ -188,6 +188,7 @@ impl SettingsSheet {
             let opts: Vec<(Flow, String)> = Flow::ALL.into_iter().map(|x| (x, x.label().to_string())).collect();
             combo(ui, "set-flow", &mut p.flow, &opts)
         });
+        ch |= row(ui, "Carry on after a usage limit", "An agent stopped by its plan's limit is told to continue once the limit resets.", |ui| switch(ui, &mut p.auto_resume).changed());
         ch |= row(ui, "Time to reach the prompt", "How long a new CLI gets before its task is typed in.", |ui| {
             ui.add(egui::Slider::new(&mut p.job_delay_s, 1..=20).suffix(" s")).changed()
         });

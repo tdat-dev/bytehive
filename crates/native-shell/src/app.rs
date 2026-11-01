@@ -93,6 +93,7 @@ pub struct ShellApp {
     pub(crate) files: FilesDrawer,
     pub(crate) changes: ChangesPanel,
     pub(crate) board: BoardView,
+    pub(crate) usage: crate::usage_watch::UsageWatch,
 }
 
 impl ShellApp {
@@ -158,6 +159,7 @@ impl ShellApp {
             files: FilesDrawer::default(),
             changes: ChangesPanel::default(),
             board: BoardView::default(),
+            usage: Default::default(),
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
@@ -234,6 +236,7 @@ impl eframe::App for ShellApp {
         self.poll_stuck();
         self.poll_launches();
         self.poll_deliveries();
+        self.poll_usage();
         // Density zoom: Ctrl+= / Ctrl+- step the terminal glyphs, Ctrl+0
         // resets. Keyboard only on purpose: the wheel already scrolls back.
         let mut zoom = self.zoom;

@@ -2111,6 +2111,7 @@ dependencies = [
  "chrono",
  "eframe",
  "portable-pty",
+ "regex",
  "rfd",
  "serde_json",
  "supervise",

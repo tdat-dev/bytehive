@@ -76,6 +76,8 @@ pub struct Prefs {
     pub job_delay_s: u64,
     /// Reopen last run's projects on start.
     pub reopen_projects: bool,
+    /// Tell an agent stopped by its plan's limit to carry on once it lifts.
+    pub auto_resume: bool,
     pub crews: Vec<Crew>,
 }
 
@@ -92,6 +94,7 @@ impl Default for Prefs {
             flow: Flow::Direct,
             job_delay_s: crate::deliver::JOB_DELAY_MS / 1000,
             reopen_projects: true,
+            auto_resume: true,
             crews: Vec::new(),
         }
     }
@@ -138,6 +141,7 @@ impl Prefs {
             "flow": self.flow.key(),
             "jobDelay": self.job_delay_s,
             "reopenProjects": self.reopen_projects,
+            "autoResume": self.auto_resume,
             "crews": self.crews.iter().map(crew_json).collect::<Vec<_>>(),
         })
     }
@@ -156,6 +160,7 @@ impl Prefs {
             flow: v["flow"].as_str().map_or(d.flow, Flow::from_key),
             job_delay_s: v["jobDelay"].as_u64().map_or(d.job_delay_s, |n| n.clamp(1, 20)),
             reopen_projects: v["reopenProjects"].as_bool().unwrap_or(d.reopen_projects),
+            auto_resume: v["autoResume"].as_bool().unwrap_or(d.auto_resume),
             crews: v["crews"].as_array().into_iter().flatten().filter_map(crew_from).collect(),
         }
     }

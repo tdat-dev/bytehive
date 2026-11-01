@@ -30,7 +30,8 @@ impl ShellApp {
                     None => project,
                 };
                 let title = p.task.clone().unwrap_or_else(|| crate::theme::state_word(state).to_string());
-                AgentCard { pane_id: p.id.clone(), name: p.name.clone(), cli: p.cli.map_or("Shell", |c| c.name()).to_string(), title, where_, state }
+                let cost = p.usage.as_ref().and_then(|u| u.usd).map(supervise::pricing::money).unwrap_or_default();
+                AgentCard { pane_id: p.id.clone(), name: p.name.clone(), cli: p.cli.map_or("Shell", |c| c.name()).to_string(), title, where_, state, cost }
             })
             .collect()
     }

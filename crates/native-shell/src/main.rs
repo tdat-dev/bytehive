@@ -40,6 +40,7 @@ mod tasks;
 mod term_pane;
 mod theme;
 mod topbar;
+mod usage_watch;
 
 use app::ShellApp;
 use theme::install_fonts;

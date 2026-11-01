@@ -101,6 +101,12 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             if let Some(code) = pane.exit_code {
                 label.push_str(&format!(" · exited ({code})"));
             }
+            if let Some(usd) = pane.usage.as_ref().and_then(|u| u.usd) {
+                label.push_str(&format!(" · {}", supervise::pricing::money(usd)));
+            }
+            if let Some(ctx) = pane.usage.as_ref().and_then(|u| u.context_pct) {
+                label.push_str(&format!(" · {ctx:.0}% context"));
+            }
             // Right-side chrome, laid out from the edge inward so no
             // label ever wraps: Kill, then Restart, then Focus.
             let focus_text = if staged { "Unfocus" } else { "Focus" };

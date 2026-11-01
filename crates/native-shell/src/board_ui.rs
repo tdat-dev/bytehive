@@ -26,6 +26,8 @@ pub struct AgentCard {
     pub title: String,
     pub where_: String,
     pub state: TaskState,
+    /// "$0.42", or empty when not known.
+    pub cost: String,
 }
 
 /// The design's five columns, in order.
@@ -217,6 +219,9 @@ fn agent_columns(ui: &mut egui::Ui, agents: &[AgentCard]) -> Option<String> {
                                 ui.painter().circle_filled(dot.center(), 4.0, state_dot(a.state));
                                 ui.label(RichText::new(&a.name).color(TEXT).family(egui::FontFamily::Name("semibold".into())));
                                 ui.label(RichText::new(&a.cli).size(12.0).color(INK3));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(RichText::new(&a.cost).size(12.0).monospace().color(INK3));
+                                });
                             });
                             ui.label(RichText::new(&a.title).size(12.5).color(DIM));
                             ui.label(RichText::new(&a.where_).size(12.0).monospace().color(INK3));
@@ -270,7 +275,7 @@ mod tests {
 
     #[test]
     fn board_paints_both_halves() {
-        let agents = vec![AgentCard { pane_id: "p".into(), name: "Ana".into(), cli: "Claude".into(), title: "Fix login".into(), where_: "maestro / ana/fix".into(), state: TaskState::Needs }];
+        let agents = vec![AgentCard { pane_id: "p".into(), name: "Ana".into(), cli: "Claude".into(), title: "Fix login".into(), where_: "maestro / ana/fix".into(), state: TaskState::Needs, cost: "$0.42".into() }];
         let mut b = BoardView::default();
         let ctx = egui::Context::default();
         for half in [Half::Agents, Half::Plan] {

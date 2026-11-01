@@ -42,6 +42,7 @@ impl ShellApp {
                     self.notice = None;
                 }
             }
+            let summary = self.summary_line();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(egui::Button::new(egui::RichText::new("Settings").small().color(DIM)).frame(false)).on_hover_text("Settings (Ctrl+,)").clicked() {
                     self.run_command("settings");
@@ -65,6 +66,8 @@ impl ShellApp {
                         self.run_command("changes");
                     }
                 }
+                ui.label(egui::RichText::new(&summary).small().color(DIM))
+                    .on_hover_text("Cost is what the same work would cost at API list prices (Claude), or what the CLI reports. A subscription does not bill per token.");
                 ui.label(egui::RichText::new(format!("{}%", (self.zoom * 100.0) as u32)).small().color(DIM))
                     .on_hover_text("Density zoom: Ctrl+= bigger, Ctrl+- smaller, Ctrl+0 reset");
             });
@@ -96,6 +99,20 @@ impl ShellApp {
         if let Some(path) = &self.projects_path {
             self.projects.save(path);
         }
+    }
+
+    /// "$1.23 · 4 agents · 2 projects" for what is on show.
+    fn summary_line(&self) -> String {
+        let hidden = self.hidden_panes();
+        let agents = self.panes.iter().filter(|p| p.cli.is_some() && !hidden.contains(&p.id)).count();
+        let n = self.projects.dirs.len();
+        let mut parts = Vec::new();
+        if let Some(usd) = self.total_usd(&hidden) {
+            parts.push(supervise::pricing::money(usd));
+        }
+        parts.push(format!("{agents} agent{}", if agents == 1 { "" } else { "s" }));
+        parts.push(format!("{n} project{}", if n == 1 { "" } else { "s" }));
+        parts.join(" \u{00B7} ")
     }
 
     /// Panes the project filter hides from the grid and the Queue.
