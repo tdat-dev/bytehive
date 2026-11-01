@@ -75,6 +75,10 @@ impl ShellApp {
 
     fn boot_launch(&mut self, l: Launch, dir: &str, worktree: Option<WorktreeInfo>, reveal: bool) -> Result<(), String> {
         let id = self.boot_agent(l.cli, dir, l.name, l.extra_args, worktree)?;
+        let title: String = l.task.lines().map(str::trim).find(|s| !s.is_empty()).unwrap_or("").chars().take(80).collect();
+        if let Some(p) = self.panes.iter_mut().find(|p| p.id == id) {
+            p.task = Some(title).filter(|t| !t.is_empty());
+        }
         self.deliveries.push(Delivery::new(id.clone(), l.task, now_ms(), self.prefs.job_delay_ms()));
         if reveal {
             // The agent just started is the one on screen.

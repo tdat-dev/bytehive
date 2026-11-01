@@ -16,6 +16,8 @@ use crate::theme::{DIM, FAINT};
 pub const FLOW_MAX: usize = 200;
 /// Row text is clamped so one runaway paste can't flood the panel.
 pub const FLOW_TEXT_MAX: usize = 2000;
+/// How far back the Queue shows hand-offs.
+const RECENT_MS: u64 = 30 * 60_000;
 /// Re-read the outbox at most this often; the file only grows on hand-offs.
 const POLL_EVERY: Duration = Duration::from_secs(2);
 
@@ -117,6 +119,24 @@ impl FlowPanel {
                 self.items.drain(..drop);
             }
         }
+    }
+
+    /// The last few hand-offs of the past half hour, on top of the Queue:
+    /// the approved design shows every hand-off there.
+    pub fn show_recent(&mut self, ui: &mut egui::Ui, now_ms: u64) {
+        self.poll();
+        let recent: Vec<&FlowMsg> = self.items.iter().rev().filter(|m| m.ts + RECENT_MS >= now_ms).take(3).collect();
+        if recent.is_empty() {
+            return;
+        }
+        ui.label(egui::RichText::new("Hand-offs").small().color(DIM));
+        for m in recent.into_iter().rev() {
+            let head = format!("{} \u{2192} {}  {}", m.from, to_label(m), fmt_time(m.ts));
+            let first: String = m.text.lines().next().unwrap_or("").chars().take(90).collect();
+            ui.label(egui::RichText::new(head).small().strong());
+            ui.add(egui::Label::new(egui::RichText::new(first).small().color(DIM)).truncate()).on_hover_text(&m.text);
+        }
+        ui.separator();
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui) {

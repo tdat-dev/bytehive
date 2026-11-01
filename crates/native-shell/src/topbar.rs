@@ -46,6 +46,11 @@ impl ShellApp {
                 if ui.add(egui::Button::new(egui::RichText::new("Settings").small().color(DIM)).frame(false)).on_hover_text("Settings (Ctrl+,)").clicked() {
                     self.run_command("settings");
                 }
+                let board_on = self.board.open;
+                let board_color = if board_on { crate::theme::TEXT } else { DIM };
+                if ui.add(egui::Button::new(egui::RichText::new("Board").small().color(board_color)).frame(false)).on_hover_text("Agents by state, and the plan board").clicked() {
+                    self.run_command("board");
+                }
                 let files_on = self.files.open;
                 let files_color = if files_on { crate::theme::TEXT } else { DIM };
                 if ui.add(egui::Button::new(egui::RichText::new("Files").small().color(files_color)).frame(false)).on_hover_text("Files on this branch").clicked() {

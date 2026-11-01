@@ -28,6 +28,7 @@ use crate::projects::{store_path, Projects};
 use crate::settings_ui::SettingsSheet;
 use crate::changes_ui::ChangesPanel;
 use crate::files_ui::FilesDrawer;
+use crate::board_ui::BoardView;
 
 pub(crate) const HEADER_H: f32 = 24.0;
 /// Avatar rail width when a pane owns the stage.
@@ -91,6 +92,7 @@ pub struct ShellApp {
     pub(crate) stages: HashMap<String, String>,
     pub(crate) files: FilesDrawer,
     pub(crate) changes: ChangesPanel,
+    pub(crate) board: BoardView,
 }
 
 impl ShellApp {
@@ -155,6 +157,7 @@ impl ShellApp {
             stages: HashMap::new(),
             files: FilesDrawer::default(),
             changes: ChangesPanel::default(),
+            board: BoardView::default(),
         };
         let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
         app.spawn_pane("shell", spec, None, None)?;
@@ -190,6 +193,10 @@ impl ShellApp {
             self.toggle_files();
         } else if key == "changes" {
             self.open_changes();
+        } else if key == "board" {
+            self.board.open = !self.board.open;
+        } else if key == "plan" {
+            self.board.open_plan();
         } else if key == "shell" {
             let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
             let _ = self.spawn_pane("shell", spec, None, None);
@@ -325,7 +332,10 @@ impl eframe::App for ShellApp {
             });
             ui.separator();
             match self.side_tab {
-                SideTab::Queue => match QueuePanel::show(&mut self.queue, ui, &self.panes, &hidden, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes) {
+                SideTab::Queue => match {
+                    self.flow.show_recent(ui, now_ms());
+                    QueuePanel::show(&mut self.queue, ui, &self.panes, &hidden, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes)
+                } {
                     Some(QueueAction::Focus(id)) => focus = Some(id),
                     Some(QueueAction::Answer { pane_id, bytes }) => {
                         let _ = self.registry.write_input(&pane_id, &bytes);

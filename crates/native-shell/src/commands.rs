@@ -50,6 +50,8 @@ pub(crate) fn command_catalog() -> Vec<PaletteItem> {
         cmd("settings", "Settings", "Ctrl ,"),
         cmd("files", "Files on this branch", "view"),
         cmd("changes", "Changes (review the diff)", "view"),
+        cmd("board", "Board (agents by state)", "view"),
+        cmd("plan", "Plan board (approve proposed cards)", "view"),
     ];
     for cli in Cli::all() {
         v.push(cmd(&format!("spawn:{}", cli.program()), &format!("Spawn {}", cli.name()), "run"));

@@ -25,6 +25,7 @@ pub struct ReviewSnapshot {
 
 impl ReviewSnapshot {
     /// The pure shaping: findings out of a diff. IO stays in `load_snapshot`.
+    #[cfg(test)]
     pub fn from_parts(branch: Option<String>, changed: Vec<String>, diff: &str) -> ReviewSnapshot {
         Self::from_files(branch, changed, parse_diff(diff))
     }
