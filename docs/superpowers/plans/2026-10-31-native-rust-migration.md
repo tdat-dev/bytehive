@@ -123,11 +123,18 @@ Thứ tự theo giá trị dùng hằng ngày và phụ thuộc.
       native). Ảnh nền tùy chọn và theme màu terminal chưa làm. Commit `8ad7370`.
 
 ### Phase B: Review code sâu như bản web
-- [ ] File explorer / tree (web `filetree`): multi-select, phím, context menu,
-      kéo-thả bằng Pointer-equivalent của egui, watcher realtime (`core::watch`).
-- [ ] Editor / code panel (web `editor`, `codepanel`): mở sửa file, đồng bộ khi
-      agent đổi file trên đĩa.
-- [ ] Diff viewer đầy đủ (web `diffview`): hơn mức diff gọn trong `review_ui`.
+Bản đã duyệt ghi "Files open in your editor. Maestro shows the branch; it
+doesn't try to be a second IDE", nên Phase B làm theo đó (commit `c7ef337`):
+- [x] Files drawer: cây file của nhánh (thư mục trước, đóng sẵn), tìm file,
+      dấu A/M/D + chấm trên thư mục có thay đổi, tự đọc lại mỗi 3 giây khi
+      mở; chọn nguồn là project hoặc worktree của agent; bấm file mở trong
+      VS Code / Cursor (không có thì app mặc định của Windows). Không làm
+      multi-select / kéo-thả / context menu của filetree web.
+- [x] Editor trong app: KHÔNG làm, theo bản đã duyệt (mở editor của bạn).
+- [x] Diff viewer kiểu GitHub (panel Changes): tổng +/-, nhánh → base, tiến độ
+      đã xem, danh sách file + ô Viewed, diff có số dòng cũ/mới, phím V; dấu
+      đã xem tự bỏ khi file đổi tiếp. File mới (untracked) vào diff dạng toàn
+      dòng thêm. Còn thiếu: so sánh đua (Compare race), syntax highlight.
 
 ### Phase C: Điều phối fleet + bảng việc
 - [ ] Kanban board trong app (web `kanban`, `board`, `boardfile`): đọc/sửa
