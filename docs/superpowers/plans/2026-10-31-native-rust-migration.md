@@ -54,9 +54,10 @@ native spawn/quản lý, không nhét vào UI.
 - [x] Git + worktree: `agent-core/git.rs`
 
 Còn thiếu ở lõi (khi UI cần tới mới port nốt):
-- [ ] Theo dõi usage/limit theo gói (web `limits`, `planmeter`, `agentcost`,
-      `limitguard`): mới có `ledgers.rs`, chưa đủ parity.
-- [ ] Scheduler / lịch chạy agent (web `scheduler`, `schedule`).
+- [x] Usage + giá + limit: `agent-core/usage.rs` (Claude/Codex/opencode),
+      `supervise/{pricing,limits}.rs` (commit `5ab7591`). Chưa có: planmeter
+      (% gói 5 giờ/tuần), limitguard handover sang agent khác.
+- [x] Scheduler: `native-shell/schedule.rs` (port `schedule.ts`).
 - [ ] Project-memory + MCP memory (web `projectmemory`, `memoryview`).
 
 ### 3b. UI native-shell: ĐANG DỞ (ước tính ~45% bề mặt)
@@ -149,9 +150,14 @@ Theo bản đã duyệt ("Board thành view suy ra", "Pomodoro: bỏ"), commit `
 - [x] Pomodoro + dock: KHÔNG port, bản đã duyệt cắt.
 
 ### Phase D: Theo dõi chi phí + lịch
-- [ ] Usage/limit/cost UI (web `usage`, `limits`, `pricing`, `planmeter`,
-      `agentcost`, `limitguard`) + hoàn tất parity lõi `ledgers.rs`.
-- [ ] Scheduler / routines (web `scheduler`, `schedule`).
+- [x] Chi phí + limit (commit `efed0f1`): chi phí và % context trên header
+      pane, chi phí trên thẻ Board, dòng "$X · N agents · M projects" trên
+      thanh trên; Queue báo "hit its usage limit, back at 19:00"; tự bảo
+      agent làm tiếp 1 phút sau khi limit hết (Settings, mặc định bật).
+      Chưa làm: planmeter (% gói), handover khi hết limit, tab History theo
+      từng việc (bản đã duyệt muốn gộp cost/replay/lịch vào đó).
+- [x] Lịch (commit `0b216c2`): ô Schedule trong New task (giờ + Once/Daily),
+      danh sách trong Settings (lần chạy tới, bật/tắt, xóa).
 
 ### Phase E: Trình duyệt + remote + hệ thống
 - [ ] Maestro Browser trong native (web `browserview`, `browserprefs`,
