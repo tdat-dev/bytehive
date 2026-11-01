@@ -3,9 +3,9 @@
 
 pub(crate) const PAGE: &str = include_str!("../assets/dashboard.html");
 pub(crate) const LOGIN_PAGE: &str = include_str!("../assets/dashboard-login.html");
-pub(crate) const XTERM_JS: &str = include_str!("../../../node_modules/@xterm/xterm/lib/xterm.js");
-pub(crate) const XTERM_CSS: &str = include_str!("../../../node_modules/@xterm/xterm/css/xterm.css");
-pub(crate) const ADDON_FIT_JS: &str = include_str!("../../../node_modules/@xterm/addon-fit/lib/addon-fit.js");
+pub(crate) const XTERM_JS: &str = include_str!("../assets/vendor/xterm.js");
+pub(crate) const XTERM_CSS: &str = include_str!("../assets/vendor/xterm.css");
+pub(crate) const ADDON_FIT_JS: &str = include_str!("../assets/vendor/addon-fit.js");
 
 #[cfg(test)]
 mod tests {
