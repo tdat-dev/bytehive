@@ -103,6 +103,8 @@ pub struct Pane {
     pub limit: Option<supervise::limits::LimitHit>,
     /// The file its output is being recorded to.
     pub recording: Option<std::path::PathBuf>,
+    /// Find in output (Ctrl+Shift+F).
+    pub find: crate::term_search::FindBar,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -120,7 +122,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default() }
     }
 
     /// The visible screen as text, newest row last: what the state reads.
@@ -215,6 +217,7 @@ impl Pane {
                     egui::Event::Text(t) => {
                         let _ = registry.write_input(&self.id, t.as_bytes());
                     }
+                    egui::Event::Key { key: egui::Key::F, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => self.find.toggle(),
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
                         if let Some(b) = key_bytes(*key, *modifiers) {
                             let _ = registry.write_input(&self.id, b);
@@ -240,6 +243,7 @@ impl Pane {
         }
 
         paint_grid(ui.painter(), &self.term, rect, (self.cols, self.rows), font, cell);
+        self.find.show(ui, &self.id, rect, &mut self.term);
     }
 }
 

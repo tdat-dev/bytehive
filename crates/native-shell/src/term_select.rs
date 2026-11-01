@@ -120,7 +120,7 @@ mod tests {
         let raw = egui::RawInput { events, screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 200.0))), ..Default::default() };
         ctx.run_ui(raw, |ui| {
             let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(200.0, 40.0));
-            let resp = ui.interact(rect, egui::Id::new("term-test"), egui::Sense::click_and_drag());
+            let resp = ui.interact(rect, egui::Id::unique("term-test"), egui::Sense::click_and_drag());
             mouse(term, &resp, rect, (10.0, 10.0));
         })
         .drop_without_applying_deltas();

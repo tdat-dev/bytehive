@@ -60,6 +60,7 @@ mod system;
 mod taskopts;
 mod tasks;
 mod term_pane;
+mod term_search;
 mod term_select;
 mod theme;
 mod topbar;
