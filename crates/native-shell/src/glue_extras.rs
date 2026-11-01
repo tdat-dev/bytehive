@@ -21,6 +21,7 @@ pub struct Extras {
     pub plan: crate::planmeter::PlanWatch,
     pub tray: crate::tray::Tray,
     pub notify: crate::notify::Notifier,
+    pub fleet: crate::fleet::FleetBridge,
 }
 
 impl ShellApp {
@@ -32,6 +33,7 @@ impl ShellApp {
             "remote" => self.settings.open_at(2),
             "browser" => self.settings.open_at(3),
             "record" => self.toggle_record(),
+            "director" => self.start_director(),
             "replays" => self.open_replays(),
             _ => return false,
         }
@@ -72,6 +74,31 @@ impl ShellApp {
             v.insert(0, first);
         }
         v
+    }
+
+    /// A Director for the current project: it plans on the board and hands the
+    /// work to the open agents through the fleet tools. Claude takes its laws
+    /// as a system prompt; another CLI gets them typed in once it is up.
+    pub(crate) fn start_director(&mut self) {
+        let Some(dir) = self.current_project() else {
+            self.notice = Some("Open a project first: the Director works on a project's board.".into());
+            return;
+        };
+        let d = crate::laws::DIRECTOR;
+        if self.panes.iter().any(|p| p.name == d && p.exit_code.is_none()) {
+            self.notice = Some("A Director is already running.".into());
+            return;
+        }
+        let cli = self.prefs.start_cli();
+        match self.boot_agent(cli, &dir, d.to_string(), self.prefs.perm.args(cli), None) {
+            Ok(id) => {
+                if cli != crate::sessions_ui::Cli::Claude {
+                    self.deliveries.push(Delivery::new(id.clone(), crate::laws::DIRECTOR_LAWS.to_string(), now_ms(), 3500));
+                }
+                self.stage = Some(id);
+            }
+            Err(e) => self.notice = Some(e),
+        }
     }
 
     /// Type `text` into an agent when it is free to take it.

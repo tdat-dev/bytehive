@@ -22,6 +22,24 @@ pub(crate) struct PendingCapture {
     tries: u8,
 }
 
+/// An agent's launch with what Maestro gives every agent it starts: its name
+/// and folder for the maestro MCP server (`MAESTRO_AGENT`, `MAESTRO_WORKSPACE`:
+/// who moved a card, which project's fleet it is in), and for Claude the laws
+/// as a system prompt (the Director's own for the Director). Plain shells
+/// are left alone.
+pub(crate) fn agent_spec(mut spec: CommandSpec, name: &str, cli: Option<Cli>) -> CommandSpec {
+    let Some(cli) = cli else { return spec };
+    spec.env.retain(|(k, _)| k != "MAESTRO_AGENT" && k != "MAESTRO_WORKSPACE");
+    spec.env.push(("MAESTRO_AGENT".into(), name.to_string()));
+    spec.env.push(("MAESTRO_WORKSPACE".into(), spec.cwd.clone().unwrap_or_default()));
+    if cli == Cli::Claude && !spec.args.iter().any(|a| a == "--append-system-prompt") {
+        let laws = if name == crate::laws::DIRECTOR { crate::laws::DIRECTOR_LAWS } else { crate::laws::MAESTRO_LAWS };
+        spec.args.push("--append-system-prompt".into());
+        spec.args.push(laws.into());
+    }
+    spec
+}
+
 impl ShellApp {
     /// A pane named `<name> <n>`, the shell and quick-spawn style.
     pub(crate) fn spawn_pane(&mut self, name: &str, spec: CommandSpec, cli: Option<Cli>, session_id: Option<String>) -> anyhow::Result<String> {
@@ -31,6 +49,7 @@ impl ShellApp {
 
     /// A pane under exactly this name (a persona like Ana).
     pub(crate) fn spawn_named(&mut self, name: String, spec: CommandSpec, cli: Option<Cli>, session_id: Option<String>) -> anyhow::Result<String> {
+        let spec = agent_spec(spec, &name, cli);
         let id = format!("pane-{}", self.next_id);
         self.next_id += 1;
         let mut pane = Pane::new(id.clone(), name, spec.clone(), 80, 24);
@@ -119,7 +138,7 @@ impl ShellApp {
             let cwd = pane.spec.cwd.clone().unwrap_or_default();
             let item = agent_core::transcript::SessionItem { id: sid, title: String::new(), cwd, modified_ms: 0 };
             let (spec, kept) = resume_spec(cli, &item, &pane.extra_args);
-            pane.spec = spec;
+            pane.spec = agent_spec(spec, &pane.name, Some(cli));
             pane.session_id = kept;
         }
         let spec = pane.spec.clone();
