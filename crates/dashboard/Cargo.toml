@@ -1,0 +1,27 @@
+[package]
+name = "dashboard"
+version = "0.1.0"
+description = "The remote fleet dashboard: a small HTTP + WebSocket server with a password gate. No UI, no Tauri."
+edition = "2021"
+
+[dependencies]
+agent-core = { path = "../agent-core" }
+tiny_http = "0.12"
+# the dashboard's password (argon2id hash) and its session tokens
+argon2 = "0.5"
+getrandom = "0.2"
+base64 = "0.22"
+tungstenite = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+portable-pty = "0.9"
+
+[profile.dev.package.argon2]
+# An unoptimised argon2 takes seconds per dashboard login (and per test).
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
