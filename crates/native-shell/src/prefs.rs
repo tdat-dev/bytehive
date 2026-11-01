@@ -81,6 +81,8 @@ pub struct Prefs {
     /// Hand an agent's task to this CLI when it hits its limit.
     pub handover_to: Option<Cli>,
     /// Serve the phone dashboard, and to other devices too.
+    /// Hold an agent's risky browser click (send, post, pay, delete) for your OK.
+    pub browser_ask: bool,
     pub remote_on: bool,
     pub remote_lan: bool,
     /// The page's port (the terminal socket takes the next one).
@@ -105,6 +107,7 @@ impl Default for Prefs {
             reopen_projects: true,
             auto_resume: true,
             handover_to: None,
+            browser_ask: true,
             remote_on: false,
             remote_lan: false,
             remote_port: dashboard::DEFAULT_PORT,
@@ -157,6 +160,7 @@ impl Prefs {
             "reopenProjects": self.reopen_projects,
             "autoResume": self.auto_resume,
             "handoverTo": self.handover_to.map(|c| c.program()),
+            "browserAsk": self.browser_ask,
             "remoteOn": self.remote_on,
             "remoteLan": self.remote_lan,
             "remotePort": self.remote_port,
@@ -181,6 +185,7 @@ impl Prefs {
             reopen_projects: v["reopenProjects"].as_bool().unwrap_or(d.reopen_projects),
             auto_resume: v["autoResume"].as_bool().unwrap_or(d.auto_resume),
             handover_to: v["handoverTo"].as_str().and_then(cli_from_key),
+            browser_ask: v["browserAsk"].as_bool().unwrap_or(d.browser_ask),
             remote_on: v["remoteOn"].as_bool().unwrap_or(d.remote_on),
             remote_lan: v["remoteLan"].as_bool().unwrap_or(d.remote_lan),
             remote_port: v["remotePort"].as_u64().map_or(d.remote_port, |n| (n as u16).clamp(1024, 65534)),

@@ -2,6 +2,9 @@
 
 mod app;
 mod board_ui;
+mod browser_live;
+mod browser_prefs;
+mod browser_ui;
 mod changes_ui;
 mod color;
 mod commands;
@@ -54,6 +57,10 @@ use app::ShellApp;
 use theme::install_fonts;
 
 fn main() -> eframe::Result<()> {
+    // Started by Chrome as the extension's native messaging host: relay, no window.
+    if browser_hub::host::wanted() {
+        browser_hub::host::run();
+    }
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]),
         ..Default::default()

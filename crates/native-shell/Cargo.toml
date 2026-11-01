@@ -5,11 +5,14 @@ edition = "2024"
 
 [dependencies]
 agent-core = { version = "0.1.0", path = "../agent-core" }
+base64 = "0.22"
+browser-hub = { path = "../browser-hub" }
 alacritty_terminal = "0.26.0"
 anyhow = "1.0.104"
 chrono = "0.4"
 dashboard = { path = "../dashboard" }
 eframe = "0.37.0"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 portable-pty = "0.9"
 regex = "1"
 rfd = "0.16.0"

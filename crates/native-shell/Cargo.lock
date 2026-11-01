@@ -620,6 +620,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser-hub"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tungstenite",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1916,6 +1925,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -2255,9 +2266,12 @@ dependencies = [
  "agent-core",
  "alacritty_terminal",
  "anyhow",
+ "base64",
+ "browser-hub",
  "chrono",
  "dashboard",
  "eframe",
+ "image",
  "portable-pty",
  "regex",
  "rfd",

@@ -12,7 +12,7 @@ use crate::sessions_ui::Cli;
 use crate::taskopts::{Flow, Perm};
 use crate::theme::{ADD, DEL, INK3, R3, R_XL, SHEET, SURFACE, TEXT};
 
-const SECTIONS: [&str; 4] = ["Appearance", "Agents", "Remote", "System"];
+const SECTIONS: [&str; 5] = ["Appearance", "Agents", "Remote", "Browser", "System"];
 
 #[derive(Default)]
 pub struct SettingsSheet {
@@ -85,7 +85,7 @@ impl SettingsSheet {
     }
 
     /// Paint the sheet; true when a setting changed (save and apply it).
-    pub fn show(&mut self, ctx: &egui::Context, prefs: &mut Prefs, store: &str, remote: &mut RemoteForm) -> bool {
+    pub fn show(&mut self, ctx: &egui::Context, prefs: &mut Prefs, store: &str, remote: &mut RemoteForm, browser: &mut crate::browser_prefs::BrowserForm) -> bool {
         if !self.open {
             return false;
         }
@@ -133,7 +133,7 @@ impl SettingsSheet {
                     }
                 });
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    changed |= self.body(ui, prefs, store, remote);
+                    changed |= self.body(ui, prefs, store, remote, browser);
                 });
             });
             close
@@ -153,7 +153,7 @@ impl SettingsSheet {
         ui.add_space(4.0);
     }
 
-    fn body(&mut self, ui: &mut egui::Ui, p: &mut Prefs, store: &str, remote: &mut RemoteForm) -> bool {
+    fn body(&mut self, ui: &mut egui::Ui, p: &mut Prefs, store: &str, remote: &mut RemoteForm, browser: &mut crate::browser_prefs::BrowserForm) -> bool {
         let mut ch = false;
         self.heading(ui, 0);
         ch |= row(ui, "Terminal font size", "Applies to every agent's terminal. Ctrl + and Ctrl - still zoom on top.", |ui| {
@@ -225,6 +225,9 @@ impl SettingsSheet {
         ch |= remote_rows(ui, p, remote);
         ui.add_space(18.0);
         self.heading(ui, 3);
+        ch |= crate::browser_prefs::browser_rows(ui, p, browser);
+        ui.add_space(18.0);
+        self.heading(ui, 4);
         ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time.", |ui| switch(ui, &mut p.reopen_projects).changed());
         row(ui, "Where settings live", store, |_| false);
         ch
@@ -266,7 +269,7 @@ mod tests {
         let mut prefs = Prefs::default();
         let ctx = egui::Context::default();
         ctx.run_ui(egui::RawInput::default(), |ui| {
-            sheet.show(ui.ctx(), &mut prefs, "~/.maestro/native-prefs.json", &mut Default::default());
+            sheet.show(ui.ctx(), &mut prefs, "~/.maestro/native-prefs.json", &mut Default::default(), &mut Default::default());
         })
         .drop_without_applying_deltas();
         assert!(sheet.open);
