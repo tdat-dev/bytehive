@@ -55,6 +55,7 @@ mod queue_ui;
 mod remote;
 mod reopen;
 mod single;
+mod tabs;
 mod replay;
 mod replay_ui;
 mod remote_ui;

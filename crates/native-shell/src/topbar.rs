@@ -1,7 +1,8 @@
-//! The top bar: the house button (back to the start screen), one sentence
-//! that says what needs you, Resume all for stopped agents, any notice, and
-//! the window's own buttons. The bar is where the window is dragged. Also
-//! what a project action does to the app (filter, open, close).
+//! The top bar: the house button (back to the start screen; its tip says
+//! what needs you), the project tabs (tabs.rs), Resume all for stopped
+//! agents, any notice, and the window's own buttons. The bar is where the
+//! window is dragged. Also what a project action does to the app (filter,
+//! open, close).
 
 use std::collections::HashSet;
 
@@ -85,17 +86,17 @@ impl ShellApp {
             if !self.launching.is_empty() {
                 ui.label(egui::RichText::new(format!("Making worktrees for {}\u{2026}", self.launching.join(", "))).size(12.5).color(INK3));
             }
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            // The house, then the project tabs, sitting on the bar's floor
+            // where the quick row below meets them (as tabs meet a toolbar).
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Max), |ui| {
                 ui.add_space(12.0);
                 let home = crate::style::icon_btn(ui, Icon::House, 30.0, self.extras.home, false);
-                if home.on_hover_text("Projects").clicked() {
+                if home.on_hover_text(format!("Start screen\n{lead}{tail}\n{summary}")).clicked() {
                     self.extras.home = !self.extras.home;
                 }
-                ui.add_space(8.0);
-                let mut job = egui::text::LayoutJob::default();
-                job.append(&lead, 0.0, crate::style::tight(medium(24.0), TEXT, -0.02));
-                job.append(&tail, 0.0, crate::style::tight(crate::style::w500(24.0), INK3, -0.02));
-                ui.add(egui::Label::new(job).truncate()).on_hover_text(summary);
+                ui.add_space(10.0);
+                let room = ui.available_rect_before_wrap();
+                self.tab_strip(ui, room);
             });
         });
         crate::chrome::controls(ui);

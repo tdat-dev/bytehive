@@ -247,11 +247,8 @@ fn project_head(ui: &mut egui::Ui, name: &str, open: bool, count: usize, needs: 
 impl ShellApp {
     /// The left panel; a picked agent goes on the stage.
     pub(crate) fn inbox_panel(&mut self, ui: &mut egui::Ui, rows: &[QueueRow], hidden: &HashSet<String>) {
-        // Every project shows here, grouped; a filter left from the chips the
-        // panel used to have would hide agents with no way back.
-        if self.projects.filter.is_some() {
-            self.apply_project(crate::projects_ui::ProjectAction::Filter(None));
-        }
+        // The project tab on show decides what is listed: All groups every
+        // project, a project's tab only its own agents.
         let mut act = None;
         let mut memory = None;
         let mut close = None;
@@ -276,8 +273,25 @@ impl ShellApp {
                         ui.add_space(2.0);
                         self.flow.show_recent(ui, now);
                         let shown: Vec<&QueueRow> = rows.iter().filter(|r| !hidden.contains(&r.pane_id)).collect();
+                        // The tabs name the projects: a project's tab lists its
+                        // agents with no header, All heads only the groups
+                        // that have agents.
+                        let one = self.projects.filter.is_some();
                         for (key, name) in self.groups(&shown) {
                             let mine: Vec<&&QueueRow> = shown.iter().filter(|r| self.group_of(&r.pane_id).as_deref() == Some(key.as_str())).collect();
+                            if one {
+                                for r in mine {
+                                    let Some(i) = self.panes.iter().position(|p| p.id == r.pane_id) else { continue };
+                                    let on = self.stage.as_deref() == Some(r.pane_id.as_str());
+                                    if let Some(a) = row(ui, i, &self.panes[i], r, on, now) {
+                                        act = Some(a);
+                                    }
+                                }
+                                continue;
+                            }
+                            if mine.is_empty() {
+                                continue;
+                            }
                             let open = !self.extras.folded.contains(&key);
                             let needs = mine.iter().filter(|r| is_attention(r.status.state)).count();
                             let cost: f64 = mine.iter().filter_map(|r| self.panes.iter().find(|p| p.id == r.pane_id)).filter_map(|p| p.usage.as_ref().and_then(|u| u.usd)).sum();
@@ -312,9 +326,9 @@ impl ShellApp {
                                 }
                             }
                         }
-                        if shown.is_empty() && self.projects.dirs.is_empty() {
+                        if shown.is_empty() {
                             ui.add_space(14.0);
-                            ui.label(RichText::new("No agents yet. Press Ctrl+N to start one.").size(12.5).color(INK3));
+                            ui.label(RichText::new("No agents here yet. New agent starts one.").size(12.5).color(INK3));
                         }
                         ui.add_space(8.0);
                     });
@@ -377,6 +391,10 @@ impl ShellApp {
                     v.push((k, n));
                 }
             }
+        }
+        // A project's tab lists that project alone.
+        if let Some(f) = &self.projects.filter {
+            v.retain(|(k, _)| k.eq_ignore_ascii_case(f));
         }
         v
     }
