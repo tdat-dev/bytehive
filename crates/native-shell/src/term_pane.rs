@@ -107,6 +107,9 @@ pub struct Pane {
     pub find: crate::term_search::FindBar,
     /// Wheel travel not yet a whole line (touchpads scroll in points).
     wheel: f32,
+    /// What the last drag selected, kept: a CLI that redraws (a spinner, its
+    /// status line) clears the live selection before Ctrl+C gets to it.
+    last_sel: Option<String>,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -124,7 +127,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0 }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None }
     }
 
     /// The visible screen as text, newest row last: what the state reads.
@@ -173,10 +176,17 @@ impl Pane {
     }
 
     fn copy_selection(&mut self, ctx: &egui::Context) {
-        if let Some(t) = self.term.selection_to_string().filter(|t| !t.is_empty()) {
+        let live = self.term.selection_to_string().filter(|t| !t.is_empty());
+        if let Some(t) = live.or_else(|| self.last_sel.take()) {
             ctx.copy_text(t);
         }
         self.term.selection = None;
+        self.last_sel = None;
+    }
+
+    /// Something to copy: a live selection, or what the last drag selected.
+    fn has_selection(&self) -> bool {
+        self.term.selection.as_ref().is_some_and(|s| !s.is_empty()) || self.last_sel.is_some()
     }
 
     /// Take the keyboard back when nothing else holds it, as a terminal
@@ -210,7 +220,15 @@ impl Pane {
             let _ = registry.resize(&self.id, cols as u16, rows as u16);
         }
         let bracketed = self.term.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE);
-        match crate::term_select::mouse(&mut self.term, &resp, rect, cell) {
+        // A new press starts over; a finished drag keeps what it selected.
+        if resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed()) {
+            self.last_sel = None;
+        }
+        let picked = crate::term_select::mouse(&mut self.term, &resp, rect, cell);
+        if resp.drag_stopped() || resp.double_clicked() {
+            self.last_sel = self.term.selection_to_string().filter(|t| !t.trim().is_empty());
+        }
+        match picked {
             Some(crate::term_select::MenuPick::Copy) => self.copy_selection(ui.ctx()),
             Some(crate::term_select::MenuPick::Paste) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
             None => {}
@@ -266,6 +284,10 @@ impl Pane {
                         let _ = registry.write_input(&self.id, t.as_bytes());
                     }
                     egui::Event::Key { key: egui::Key::F, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => self.find.toggle(),
+                    // Copy and paste with Shift, as in Windows Terminal: never an
+                    // interrupt sent by a hand used to it.
+                    egui::Event::Key { key: egui::Key::C, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => self.copy_selection(ui.ctx()),
+                    egui::Event::Key { key: egui::Key::V, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
                         let app = if app_cursor { crate::keys::app_cursor_bytes(*key, *modifiers) } else { None };
                         if let Some(b) = app.or_else(|| key_bytes(*key, *modifiers)) {
@@ -274,7 +296,7 @@ impl Pane {
                         }
                     }
                     // Ctrl+C copies a selection; with none it interrupts.
-                    egui::Event::Copy if self.term.selection.as_ref().is_some_and(|s| !s.is_empty()) => self.copy_selection(ui.ctx()),
+                    egui::Event::Copy if self.has_selection() => self.copy_selection(ui.ctx()),
                     egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) | egui::Event::PasteImage(_) => {
                         if let Some(bytes) = crate::paste::clipboard_bytes(ev, bracketed) {
                             let _ = registry.write_input(&self.id, &bytes);
@@ -402,6 +424,20 @@ mod tests {
     use alacritty_terminal::event::VoidListener;
     use alacritty_terminal::vte::ansi::{Color, NamedColor};
     use std::time::Instant;
+
+    #[test]
+    fn copies_what_was_selected_after_a_redraw_cleared_it() {
+        let spec = agent_core::launch::launch_spec("cmd.exe", &[]);
+        let mut p = Pane::new("t".into(), "t".into(), spec, 80, 24);
+        p.last_sel = Some("keep me".into());
+        assert!(p.term.selection.is_none(), "the live selection is gone");
+        let ctx = egui::Context::default();
+        let out = ctx.run_ui(egui::RawInput::default(), |ui| p.copy_selection(ui.ctx()));
+        let copied = out.platform_output.commands.iter().any(|c| matches!(c, egui::OutputCommand::CopyText(t) if t == "keep me"));
+        out.drop_without_applying_deltas();
+        assert!(copied);
+        assert!(p.last_sel.is_none(), "copied once");
+    }
 
     #[test]
     fn colors_and_cursor_read_back() {
