@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-03
+
+### Fixed
+
+- **Copying from a terminal works.** Ctrl+Shift+C copies and Ctrl+Shift+V
+  pastes, as in Windows Terminal (Ctrl+Shift+C used to send an interrupt),
+  and what you selected is kept, so a CLI redrawing its spinner or status
+  line no longer clears it before Ctrl+C.
+- **Browser tools reach ByteHive when it opens after the agent.** One failed
+  connection used to be remembered for good; a call whose connection was the
+  problem is now tried once more (only a read when the call was half done).
+- **The browser relay idles quietly**: about 50 wake-ups a second per
+  connection instead of 250.
+
 ## [0.12.0] - 2026-11-02
 
 ### Changed
