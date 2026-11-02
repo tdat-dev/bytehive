@@ -165,8 +165,7 @@ impl ShellApp {
         let shells = if cfg!(test) { 1 } else { 0 };
         let extra: usize = std::env::var("BYTEHIVE_PANES").ok().and_then(|v| v.parse().ok()).unwrap_or(shells).min(6);
         for _ in 0..extra {
-            let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
-            let _ = app.spawn_pane("shell", spec, None, None);
+            app.run_command("shell");
         }
         // BYTEHIVE_HOME=1 opens on the start screen.
         app.extras.home = std::env::var("BYTEHIVE_HOME").is_ok();
@@ -200,7 +199,9 @@ impl ShellApp {
         } else if key == "plan" {
             self.board.open_plan();
         } else if key == "shell" {
-            let spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
+            // In the project in view, not wherever ByteHive itself was started.
+            let mut spec = launch_spec("powershell.exe", &[String::from("-NoLogo")]);
+            spec.cwd = self.current_project().or_else(|| Some(self.sessions.dir.clone()).filter(|d| !d.is_empty()));
             let _ = self.spawn_pane("shell", spec, None, None);
         } else if let Some(program) = key.strip_prefix("spawn:") {
             if let Some(cli) = Cli::all().into_iter().find(|c| c.program() == program) {

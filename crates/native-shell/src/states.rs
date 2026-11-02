@@ -19,7 +19,8 @@ pub fn pane_facts(pane: &Pane, changed: Option<u32>) -> TaskFacts {
         running: pane.exit_code.is_none(),
         last_output_at: pane.last_output_ms,
         screen: pane.screen_text(),
-        changed_files: changed,
+        // The folder's changes are an agent's work: a plain shell has none to review.
+        changed_files: if pane.cli.is_some() { changed } else { None },
         merged: pane.merged,
         worked: false,
     }
@@ -73,9 +74,18 @@ mod tests {
     #[test]
     fn quiet_with_changes_is_review() {
         let mut p = pane();
+        p.cli = Some(crate::sessions_ui::Cli::Claude);
         p.last_output_ms = 1_000;
         let s = pane_status(&p, 1_000_000, Some(3));
         assert_eq!(s.state, TaskState::Review);
+    }
+
+    #[test]
+    fn plain_shell_never_waits_for_review() {
+        let mut p = pane();
+        p.last_output_ms = 1_000;
+        let s = pane_status(&p, 1_000_000, Some(3));
+        assert_eq!(s.state, TaskState::Idle);
     }
 
     #[test]

@@ -16,8 +16,8 @@ use crate::theme::{AMBER, INK3, TEXT};
 
 /// The sentence on the top bar, as (lead, rest): "Nothing needs you." or
 /// "2 agents need you.", then "1 is ready to review, 3 are working."
-/// (needs you, ready to review, working, agents in all).
-pub fn pulse(needs: usize, review: usize, working: usize, agents: usize) -> (String, String) {
+/// (needs you, ready to review, working, agents in all, plain shells open).
+pub fn pulse(needs: usize, review: usize, working: usize, agents: usize, shells: usize) -> (String, String) {
     let are = |n: usize, what: &str| if n == 1 { format!("1 is {what}") } else { format!("{n} are {what}") };
     let lead = match needs {
         _ if agents == 0 => "No agents yet.".to_string(),
@@ -31,6 +31,10 @@ pub fn pulse(needs: usize, review: usize, working: usize, agents: usize) -> (Str
     }
     if working > 0 {
         rest.push(are(working, "working"));
+    }
+    // Shells are no agents, but "No agents yet." over four of them reads wrong.
+    if agents == 0 && shells > 0 {
+        return (lead, if shells == 1 { " 1 terminal open.".to_string() } else { format!(" {shells} terminals open.") });
     }
     let tail = if rest.is_empty() { String::new() } else { format!(" {}.", rest.join(", ")) };
     (lead, tail)
@@ -61,7 +65,8 @@ impl ShellApp {
     pub(crate) fn top_bar(&mut self, ui: &mut egui::Ui, counts: (usize, usize, usize)) {
         crate::chrome::drag_area(ui, ui.max_rect());
         let agents = self.panes.iter().filter(|p| p.cli.is_some()).count();
-        let (lead, tail) = pulse(counts.0, counts.1, counts.2, agents);
+        let shells = self.panes.iter().filter(|p| p.cli.is_none() && p.exit_code.is_none()).count();
+        let (lead, tail) = pulse(counts.0, counts.1, counts.2, agents, shells);
         let stopped: Vec<usize> = (0..self.panes.len()).filter(|&i| self.panes[i].cli.is_some() && self.panes[i].exit_code.is_some()).collect();
         let summary = self.summary_line();
         let mut resume = false;
@@ -142,5 +147,18 @@ impl ShellApp {
     /// Panes the project filter hides from the grid and the Queue.
     pub(crate) fn hidden_panes(&self) -> HashSet<String> {
         self.panes.iter().filter(|p| !self.projects.shows(&pane_home(p))).map(|p| p.id.clone()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pulse;
+
+    #[test]
+    fn says_what_needs_you_and_counts_shells() {
+        assert_eq!(pulse(0, 0, 1, 1, 0), ("Nothing needs you.".into(), " 1 is working.".into()));
+        assert_eq!(pulse(2, 1, 0, 3, 0), ("2 agents need you.".into(), " 1 is ready to review.".into()));
+        assert_eq!(pulse(0, 0, 0, 0, 4), ("No agents yet.".into(), " 4 terminals open.".into()));
+        assert_eq!(pulse(0, 0, 0, 0, 0), ("No agents yet.".into(), String::new()));
     }
 }

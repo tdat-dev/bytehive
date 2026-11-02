@@ -95,6 +95,8 @@ impl ShellApp {
         let inputs: Vec<ClashInput> = self
             .panes
             .iter()
+            // A plain shell edits nothing of its own, so it overlaps no one.
+            .filter(|p| p.cli.is_some())
             .map(|p| {
                 let paths = self.git_changed.get(&pane_cwd(p)).cloned().unwrap_or_default();
                 let status = pane_status(p, now_ms(), Some(paths.len() as u32));

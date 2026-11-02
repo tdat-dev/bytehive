@@ -62,6 +62,12 @@ pub fn row_line(name: &str, state: TaskState, line: &str) -> (String, String) {
     let label = state_label(state).to_string();
     let rest = line.strip_prefix(name).unwrap_or(line).trim_start();
     let rest = rest.strip_prefix("is ").unwrap_or(rest).trim_end_matches('.');
+    // "Working · overlaps Cy" after the label "Working": say it once.
+    let head = format!("{label} \u{00B7} ");
+    let rest = match rest.get(..head.len()) {
+        Some(h) if h.eq_ignore_ascii_case(&head) => &rest[head.len()..],
+        _ => rest,
+    };
     let rest: String = rest.chars().next().map(|c| c.to_uppercase().collect::<String>() + &rest[c.len_utf8()..]).unwrap_or_default();
     if rest.is_empty() || rest.eq_ignore_ascii_case(&label) {
         (label, String::new())
@@ -417,5 +423,6 @@ mod tests {
     fn a_row_line_says_the_state_then_what_more_there_is() {
         assert_eq!(row_line("Ana", TaskState::Working, "Ana is working"), ("Working".into(), String::new()));
         assert_eq!(row_line("Bob", TaskState::Idle, "Bob done."), ("Idle".into(), "Done".into()));
+        assert_eq!(row_line("Cy", TaskState::Working, "Cy is working \u{00B7} overlaps Ana in a.ts"), ("Working".into(), "Overlaps Ana in a.ts".into()));
     }
 }
