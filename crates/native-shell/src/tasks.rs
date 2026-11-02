@@ -79,7 +79,10 @@ impl ShellApp {
         if let Some(p) = self.panes.iter_mut().find(|p| p.id == id) {
             p.task = Some(title).filter(|t| !t.is_empty());
         }
-        self.deliveries.push(Delivery::new(id.clone(), l.task, now_ms(), self.prefs.job_delay_ms()));
+        // No job: the agent opens and waits for you.
+        if !l.task.trim().is_empty() {
+            self.deliveries.push(Delivery::new(id.clone(), l.task, now_ms(), self.prefs.job_delay_ms()));
+        }
         if reveal {
             // The agent just started is the one on screen.
             self.focus_pane = Some(id);
@@ -208,9 +211,9 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_prompt_is_refused() {
+    fn a_folder_is_still_needed() {
         let mut app = ShellApp::new().unwrap();
-        let t = NewTask::new("D:/maestro".to_string());
+        let t = NewTask::new(String::new());
         assert!(app.start_task(&t).is_err());
     }
 }

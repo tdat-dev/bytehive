@@ -109,7 +109,11 @@ impl NewTaskSheet {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 0.0);
             let close = self.head(ui, projects);
             ui.add_space(14.0);
-            label(ui, "What should it do?");
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                label(ui, "What should it do?");
+                ui.label(RichText::new("optional").size(12.0).color(INK3));
+            });
             ui.add_space(8.0);
             egui::Frame::new()
                 .fill(Color32::from_black_alpha(89))

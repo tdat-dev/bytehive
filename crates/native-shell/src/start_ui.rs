@@ -362,11 +362,9 @@ fn go(ui: &mut egui::Ui) -> egui::Response {
     r.on_hover_text("Start (Enter)")
 }
 
-/// The job as a task to start, when there is one and a folder for it.
+/// The job (optional: without one the agent opens and waits) as a task to
+/// start, once there is a folder for it.
 fn start(home: &mut Home) -> Option<StartAction> {
-    if home.job.trim().is_empty() {
-        return None;
-    }
     let dir = match home.dir.clone() {
         Some(d) => d,
         None => {

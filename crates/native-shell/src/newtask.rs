@@ -94,11 +94,9 @@ impl NewTask {
         self.count = n.clamp(1, MAX_AGENTS);
     }
 
-    /// Why Start can't go yet, or nothing when it can.
+    /// Why Start can't go yet, or nothing when it can. The job is optional:
+    /// without one the agent opens and waits for you in its terminal.
     pub fn problem(&self) -> Option<String> {
-        if self.prompt.trim().is_empty() {
-            return Some("Write what should get done first.".to_string());
-        }
         if self.dir.trim().is_empty() {
             return Some("Pick a project folder.".to_string());
         }
@@ -112,7 +110,8 @@ impl NewTask {
     pub fn launches(&self, taken: &[String]) -> Vec<Launch> {
         let mut taken = taken.to_vec();
         let words = self.prompt.trim().to_string();
-        let task = self.flow.shape(&words);
+        // No job, nothing to type: the flow's wording wraps a job, never stands alone.
+        let task = if words.is_empty() { String::new() } else { self.flow.shape(&words) };
         let extra = self.perm.args(self.cli);
         (0..self.count)
             .map(|_| {
@@ -158,9 +157,13 @@ mod tests {
     }
 
     #[test]
-    fn a_task_needs_words_and_a_race_needs_worktrees() {
+    fn the_job_is_optional_but_a_race_needs_worktrees() {
         let mut t = NewTask::new("D:/app".to_string());
-        assert!(t.problem().is_some(), "empty prompt");
+        assert!(t.problem().is_none(), "no job: the agent opens and waits");
+        assert!(t.launches(&[])[0].task.is_empty(), "and nothing is typed in");
+        t.dir.clear();
+        assert!(t.problem().is_some(), "a folder is still needed");
+        t.dir = "D:/app".to_string();
         t.prompt = "Fix the login form".to_string();
         assert!(t.problem().is_none());
         t.set_count(3);
