@@ -175,6 +175,20 @@ impl ShellApp {
         if let Ok(key) = std::env::var("BYTEHIVE_SHEET") {
             app.run_command(&key);
         }
+        // BYTEHIVE_TASK starts an agent on that job at boot (with the sheet
+        // open it only fills it in), so a start can be tried end to end.
+        if let Ok(task) = std::env::var("BYTEHIVE_TASK") {
+            if app.new_task.open {
+                app.new_task.form.prompt = task;
+            } else {
+                let dir = std::env::current_dir().map(|d| d.display().to_string()).unwrap_or_default();
+                let mut t = crate::newtask::NewTask::new(dir);
+                t.prompt = task;
+                if let Err(e) = app.start_task(&t) {
+                    app.notice = Some(e);
+                }
+            }
+        }
         Ok(app)
     }
 

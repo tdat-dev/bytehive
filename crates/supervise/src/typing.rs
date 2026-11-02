@@ -213,6 +213,18 @@ impl Typer {
                 TypeStep::Write(b"\r".to_vec())
             }
             Stage::Check(n) => {
+                // Not on screen at all yet: the TUI has not taken the text in
+                // (a CLI still running its start-up hooks buffers it and drops
+                // the Enter, or is between a clear and a redraw). Calling that
+                // sent would leave the task sitting unsent; look again, and
+                // press Enter once it shows up in the box.
+                let head: String = squash(&self.text).chars().take(24).collect();
+                let seen = !head.is_empty() && squash(screen).contains(&head);
+                if !seen && n + 1 < RETRY_WAITS_MS.len() {
+                    self.stage = Stage::Check(n + 1);
+                    self.next_at = now_ms + RETRY_WAITS_MS[n + 1];
+                    return TypeStep::Wait;
+                }
                 let holding = still_holding(&self.text, screen);
                 // A live question means the message landed and the CLI asks
                 // something: Enter there would answer it.
@@ -238,6 +250,22 @@ mod tests {
     use super::*;
 
     const RULE_LINE: &str = "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}";
+
+    #[test]
+    fn text_not_taken_in_yet_is_not_a_sent_message() {
+        // Claude still booting: the box shows its own hint, not our text, and
+        // the Enter is dropped. Wait; once the text shows in the box, Enter.
+        let mut t = Typer::new("fix the login form please", false, 0);
+        assert!(matches!(t.step(0, ""), TypeStep::Write(_)));
+        let mut now = SUBMIT_DELAY_MS;
+        assert_eq!(t.step(now, ""), TypeStep::Write(b"\r".to_vec()));
+        now += RETRY_WAITS_MS[0];
+        let booting = format!("{RULE_LINE}\n> Try \"edit <filepath> to...\"\n{RULE_LINE}\n");
+        assert_eq!(t.step(now, &booting), TypeStep::Wait);
+        assert_eq!(t.step(now + 100_000, "   \n  "), TypeStep::Wait, "a blank redraw is no answer either");
+        let held = format!("{RULE_LINE}\n> fix the login form please\n{RULE_LINE}\n");
+        assert_eq!(t.step(now + 200_000, &held), TypeStep::Write(b"\r".to_vec()));
+    }
 
     /// A Claude Code screen: transcript above, the boxed composer holding `typed`.
     fn screen_with(typed: &str) -> String {
