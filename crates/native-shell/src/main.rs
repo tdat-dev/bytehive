@@ -54,6 +54,7 @@ mod projects_ui;
 mod queue_ui;
 mod remote;
 mod reopen;
+mod single;
 mod replay;
 mod replay_ui;
 mod remote_ui;
@@ -91,6 +92,11 @@ fn main() -> eframe::Result<()> {
     // Started by Chrome as the extension's native messaging host: relay, no window.
     if browser_hub::host::wanted() {
         browser_hub::host::run();
+    }
+    // One ByteHive at a time: a second start shows the first and quits.
+    // Debug builds skip it, so trial runs never get in each other's way.
+    if !cfg!(debug_assertions) && single::another_is_running() {
+        return Ok(());
     }
     projects::adopt_old_home();
     let options = eframe::NativeOptions {
