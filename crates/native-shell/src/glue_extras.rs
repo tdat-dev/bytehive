@@ -46,6 +46,8 @@ pub struct Extras {
     pub review_by_changes: bool,
     /// The running agents, written down so the next start reopens them.
     pub reopen: crate::reopen::Reopen,
+    /// The agent list folded down to a rail of faces.
+    pub side_mini: bool,
 }
 
 impl ShellApp {

@@ -12,6 +12,8 @@ pub enum Icon {
     Search,
     Focus,
     Grid,
+    /// A window with a panel down its left side: show or hide the side list.
+    Sidebar,
     History,
     Gear,
     Book,
@@ -89,6 +91,10 @@ pub fn paint(p: &Painter, at: Rect, icon: Icon, color: Color32, width: f32) {
             for (x, y) in [(3.5, 3.5), (13.5, 3.5), (3.5, 13.5), (13.5, 13.5)] {
                 pen.rect(x, y, 7.0, 7.0, 1.6);
             }
+        }
+        Icon::Sidebar => {
+            pen.rect(3.0, 4.5, 18.0, 15.0, 2.5);
+            pen.line(&[(9.5, 4.5), (9.5, 19.5)]);
         }
         Icon::Gear => {
             pen.circle(12.0, 12.0, 3.2);

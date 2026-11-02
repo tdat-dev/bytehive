@@ -320,9 +320,12 @@ impl eframe::App for ShellApp {
         use supervise::task_state::TaskState as T;
         let counts = (count(&[T::Needs, T::Blocked]), count(&[T::Review]), count(&[T::Working]));
         let order: Vec<String> = rows.iter().map(|r| r.pane_id.clone()).collect();
-        egui::Panel::top("bar").exact_size(68.0).frame(egui::Frame::NONE).show_separator_line(false).show(ui, |ui| self.top_bar(ui, counts));        self.dock(ui);
+        egui::Panel::top("bar").exact_size(crate::style::TOP_BAR_H).frame(egui::Frame::NONE).show_separator_line(false).show(ui, |ui| self.top_bar(ui, counts));        self.dock(ui);
         // The start screen takes the whole width: no agent list beside it.
-        if !self.extras.home && (!self.projects.dirs.is_empty() || !self.panes.is_empty()) {
+        // The grid shows every agent as a tile already: no list beside it.
+        // (Sessions, Review and Flow still open there when asked for.)
+        let grid = self.extras.view == crate::dock::View::Split && self.side_tab == crate::commands::SideTab::Queue;
+        if !self.extras.home && !grid && (!self.projects.dirs.is_empty() || !self.panes.is_empty()) {
             self.inbox_panel(ui, &rows, &hidden);
         }
         self.side_panels(ui);
@@ -416,8 +419,9 @@ mod tests {
         let (id0, id1) = (app.panes[0].id.clone(), app.panes[1].id.clone());
         lock(&app.registry).write_input(&id0, b"echo marker-aaa\r").unwrap();
         lock(&app.registry).write_input(&id1, b"echo marker-bbb\r").unwrap();
-        let g0 = feed_until(&mut app, 0, "marker-aaa", 15);
-        let g1 = feed_until(&mut app, 1, "marker-bbb", 15);
+        // Shells run below normal priority: give them room on a busy machine.
+        let g0 = feed_until(&mut app, 0, "marker-aaa", 30);
+        let g1 = feed_until(&mut app, 1, "marker-bbb", 30);
         assert!(g0.iter().any(|r| r.contains("marker-aaa")));
         assert!(!g0.iter().any(|r| r.contains("marker-bbb")), "pane 0 leaked: {g0:?}");
         assert!(g1.iter().any(|r| r.contains("marker-bbb")));

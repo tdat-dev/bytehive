@@ -19,6 +19,8 @@ pub const LINE: Color32 = Color32::from_rgba_premultiplied(23, 23, 23, 23);
 /// The space around the panels and above the dock.
 pub const GUTTER: f32 = 16.0;
 pub const DOCK_H: f32 = 84.0;
+/// The top bar: the tab strip, as slim as Chrome's.
+pub const TOP_BAR_H: f32 = 46.0;
 
 /// A round icon button (.ibtn): `size` square, the icon in ink-3, a white
 /// 6% wash on hover; `danger` turns the hover red (remove).
@@ -113,13 +115,6 @@ pub fn install_style(ctx: &egui::Context) {
         }
         w.inactive.fg_stroke = Stroke::new(1.0, INK3.lerp_to_gamma(TEXT, 0.5));
     });
-}
-
-/// A quiet round button (.hbtn / .tbtn): label, white 5% fill.
-pub fn hbtn(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
-    let color = if on { TEXT } else { DIM };
-    let fill = if on { Color32::from_white_alpha(31) } else { Color32::from_white_alpha(13) };
-    ui.add(egui::Button::new(egui::RichText::new(label).size(12.5).color(color)).fill(fill).corner_radius(999.0).min_size(egui::vec2(0.0, 30.0)))
 }
 
 /// The white primary pill (.newbtn / .btn.primary), with an optional key.

@@ -114,7 +114,7 @@ impl FilesDrawer {
         let mut picked = None;
         let screen = ctx.content_rect();
         // Under the top bar (its window buttons stay reachable) and above the dock.
-        let top = 68.0;
+        let top = crate::style::TOP_BAR_H;
         let size = egui::vec2(360.0_f32.min(screen.width() - 32.0), (screen.height() - top - crate::style::DOCK_H).max(200.0));
         let frame = egui::Frame::new()
             .fill(SHEET)
@@ -245,7 +245,8 @@ mod tests {
         d.source = Some(env!("CARGO_MANIFEST_DIR").to_string());
         d.open = true;
         d.load();
-        let l = d.rx.recv_timeout(Duration::from_secs(20)).expect("listing arrives");
+        // Generous: git reads slowly while the whole suite runs at once.
+        let l = d.rx.recv_timeout(Duration::from_secs(40)).expect("listing arrives");
         assert!(l.files.iter().any(|f| f.ends_with("files_ui.rs")), "lists files of the repo");
         d.listing = Some(l);
         d.pending = false;

@@ -63,6 +63,15 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
     let now = now_ms();
     let changed_by = app.changed_counts();
     let states: Vec<TaskState> = app.panes.iter().map(|p| pane_status(p, now, changed_by.get(&p.id).copied()).state).collect();
+    // Under All every tile says its project; a project's tab needs no reminder.
+    let projects: Vec<Option<String>> = app
+        .panes
+        .iter()
+        .map(|p| {
+            let home = crate::projects::pane_home(p);
+            app.projects.filter.is_none().then(|| crate::projects::project_name(app.projects.owner(&home).unwrap_or(&home)))
+        })
+        .collect();
 
     let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: 16, right: GUTTER as i8, top: 0, bottom: 0 });
     egui::CentralPanel::default().frame(frame).show(ui, |ui| {
@@ -136,6 +145,9 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             let room = (bx - 8.0 - text_left).max(0.0);
             let mut job = egui::text::LayoutJob::default();
             job.append(&pane.name, 0.0, egui::TextFormat::simple(w500(13.5), if running { TEXT } else { DIM }));
+            if let Some(proj) = &projects[idx] {
+                job.append(&format!("  {proj}"), 0.0, egui::TextFormat::simple(w500(12.5), DIM));
+            }
             let word = if running { state_label(state) } else { "Stopped" };
             job.append(&format!("  {word}"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), crate::inbox::line_color(state)));
             let mut extra = Vec::new();

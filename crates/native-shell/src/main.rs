@@ -53,6 +53,7 @@ mod projects;
 mod projects_ui;
 mod queue_ui;
 mod remote;
+mod rail;
 mod reopen;
 mod single;
 mod tabs;

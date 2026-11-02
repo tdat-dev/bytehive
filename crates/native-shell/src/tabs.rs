@@ -1,6 +1,7 @@
-//! Projects as tabs, like a browser's: one tab per open project on the top
-//! bar, All first for every agent at once, + to open another folder, x (or a
-//! middle click) to close one. A tab shows how many agents work there and a
+//! Projects as tabs, drawn like Chrome's: one tab per open project on the
+//! top bar, All first for every agent at once, + to open another folder, x
+//! (or a middle click) to close one. The tab on show wears the page's colour
+//! and flares into it; the others sit on the strip with thin dividers. A tab shows how many agents work there and a
 //! dot when one of them needs you. New agent starts agents in the project
 //! on show.
 
@@ -11,11 +12,17 @@ use crate::app::ShellApp;
 use crate::icons::{paint_in, Icon};
 use crate::projects::{pane_home, project_name};
 use crate::projects_ui::ProjectAction;
-use crate::style::{medium, PANEL};
+use crate::style::medium;
 use crate::theme::{AMBER, DIM, INK3, TEXT};
 
-/// Height of a tab.
+/// Height of a tab, and the strip's own colour: a shade lighter than the page,
+/// so the tab on show reads as part of the page below it, as in Chrome.
 pub const TAB_H: f32 = 34.0;
+pub const FRAME: Color32 = Color32::from_rgb(22, 23, 27);
+/// The page under the tabs (the app's ground): the tab on show wears it.
+const PAGE: Color32 = crate::theme::BG;
+/// How far a tab on show flares out at its foot, and its top corners.
+const FLARE: f32 = 8.0;
 
 /// One tab as drawn: its project (None for All), title, agents, needs you.
 pub struct Tab {
@@ -31,51 +38,58 @@ enum TabAct {
     Close(String),
 }
 
-/// A tab's width for its words, kept between `min` and 220.
-fn tab_width(ui: &egui::Ui, t: &Tab, closable: bool, min: f32) -> f32 {
-    let g = ui.painter().layout_no_wrap(t.title.clone(), medium(13.0), TEXT);
-    let count = if t.agents > 0 { 26.0 } else { 0.0 };
-    (14.0 + if t.needs { 14.0 } else { 0.0 } + g.size().x + count + if closable { 34.0 } else { 14.0 }).clamp(min, 220.0)
+/// The tab on show: rounded at the top, flaring into the page at its foot.
+fn paint_active(p: &egui::Painter, rect: Rect) {
+    p.rect_filled(rect, CornerRadius { nw: FLARE as u8, ne: FLARE as u8, sw: 0, se: 0 }, PAGE);
+    for (x, side) in [(rect.left(), -1.0), (rect.right(), 1.0)] {
+        // A square of page colour beside the foot, with a quarter circle of
+        // strip colour cut out of it: the concave flare.
+        let sq = Rect::from_min_max(Pos2::new(x.min(x + side * FLARE), rect.bottom() - FLARE), Pos2::new(x.max(x + side * FLARE), rect.bottom()));
+        p.rect_filled(sq, 0.0, PAGE);
+        p.circle_filled(Pos2::new(x + side * FLARE, rect.bottom() - FLARE), FLARE, FRAME);
+    }
 }
 
-/// Paint one tab at `rect`; the act it was asked for, if any.
-fn tab(ui: &mut egui::Ui, rect: Rect, t: &Tab, on: bool) -> Option<TabAct> {
+/// Paint one tab at `rect`; the act it was asked for, if any. `sep`: draw the
+/// thin divider at its left edge.
+fn tab(ui: &mut egui::Ui, rect: Rect, t: &Tab, on: bool, sep: bool) -> Option<TabAct> {
     let id = ui.make_persistent_id(("tab", &t.dir));
     let r = ui.interact(rect, id, Sense::click());
     let hot = r.hovered();
-    let p = ui.painter();
-    let fill = if on { PANEL } else if hot { Color32::from_white_alpha(10) } else { Color32::TRANSPARENT };
-    p.rect_filled(rect, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, fill);
+    let p = ui.painter().clone();
     if on {
-        p.rect_stroke(rect, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, Stroke::new(1.0, Color32::from_white_alpha(18)), egui::StrokeKind::Inside);
+        paint_active(&p, rect);
+    } else if hot {
+        p.rect_filled(rect.shrink2(Vec2::new(3.0, 4.0)).translate(Vec2::new(0.0, -1.0)), 8.0, Color32::from_white_alpha(12));
+    } else if sep {
+        p.vline(rect.left(), (rect.top() + 9.0)..=(rect.bottom() - 9.0), Stroke::new(1.0, Color32::from_white_alpha(28)));
     }
     let ink = if on { TEXT } else if hot { DIM } else { INK3 };
-    let mut x = rect.left() + 14.0;
+    // The favicon: a folder, or the grid for All; the needs-you dot rides on it.
+    let icon = Rect::from_min_size(Pos2::new(rect.left() + 12.0, rect.center().y - 8.0), Vec2::splat(16.0));
+    paint_in(&p, icon, 16.0, if t.dir.is_some() { Icon::Folder } else { Icon::Grid }, ink, 1.5);
     if t.needs {
-        p.circle_filled(Pos2::new(x + 3.0, rect.center().y), 3.5, AMBER);
-        x += 14.0;
+        p.circle_filled(icon.right_top() + Vec2::new(-1.0, 2.0), 3.5, AMBER);
     }
-    let closable = t.dir.is_some() && (on || hot);
-    let right = rect.right() - if closable { 28.0 } else { 10.0 };
-    let count_w = if t.agents > 0 { 26.0 } else { 0.0 };
-    let mut job = egui::text::LayoutJob::simple_singleline(t.title.clone(), medium(13.0), ink);
-    job.wrap = egui::text::TextWrapping::truncate_at_width((right - count_w - x).max(10.0));
+    let closable = t.dir.is_some() && (on || rect.width() >= 96.0);
+    let right = rect.right() - if closable { 30.0 } else { 10.0 };
+    let count = (t.agents > 0).then(|| p.layout_no_wrap(t.agents.to_string(), FontId::new(11.0, egui::FontFamily::Name("monomedium".into())), INK3));
+    let count_w = count.as_ref().map_or(0.0, |g| g.size().x + 8.0);
+    let x = icon.right() + 8.0;
+    let mut job = egui::text::LayoutJob::simple_singleline(t.title.clone(), medium(12.5), ink);
+    job.wrap = egui::text::TextWrapping::truncate_at_width((right - count_w - x).max(8.0));
     let g = p.layout_job(job);
-    let gw = g.size().x;
     p.galley(Pos2::new(x, rect.center().y - g.size().y / 2.0), g, ink);
-    if t.agents > 0 {
-        let n = p.layout_no_wrap(t.agents.to_string(), FontId::new(11.0, egui::FontFamily::Name("monomedium".into())), INK3);
-        let chip = Rect::from_min_size(Pos2::new(x + gw + 6.0, rect.center().y - 8.0), Vec2::new(n.size().x + 10.0, 16.0));
-        p.rect_filled(chip, 8.0, Color32::from_white_alpha(14));
-        p.galley(chip.center() - n.size() / 2.0, n, INK3);
+    if let Some(n) = count {
+        p.galley(Pos2::new(right - n.size().x, rect.center().y - n.size().y / 2.0), n, INK3);
     }
     if closable {
-        let at = Rect::from_center_size(Pos2::new(rect.right() - 16.0, rect.center().y), Vec2::splat(20.0));
+        let at = Rect::from_center_size(Pos2::new(rect.right() - 17.0, rect.center().y), Vec2::splat(18.0));
         let x_r = ui.interact(at, ui.make_persistent_id(("tab-x", &t.dir)), Sense::click());
         if x_r.hovered() {
-            ui.painter().rect_filled(at, 6.0, Color32::from_white_alpha(20));
+            p.circle_filled(at.center(), 9.0, Color32::from_white_alpha(26));
         }
-        paint_in(ui.painter(), at.shrink(4.0), 12.0, Icon::Close, if x_r.hovered() { TEXT } else { INK3 }, 1.6);
+        paint_in(&p, at.shrink(4.0), 10.0, Icon::Close, if x_r.hovered() { TEXT } else { ink }, 1.6);
         if x_r.on_hover_text("Close project (its agents keep running)").clicked() {
             return t.dir.clone().map(TabAct::Close);
         }
@@ -104,33 +118,37 @@ impl ShellApp {
     /// The tab strip in `strip` (the top bar's free room).
     pub(crate) fn tab_strip(&mut self, ui: &mut egui::Ui, strip: Rect) {
         let tabs = self.project_tabs();
-        let plus_w = 34.0;
-        // Room shared out like a browser's: tabs shrink before they hide.
-        let room = (strip.width() - plus_w - 4.0).max(0.0);
-        let want: Vec<f32> = tabs.iter().map(|t| tab_width(ui, t, t.dir.is_some(), 64.0)).collect();
-        let total: f32 = want.iter().sum::<f32>() + 2.0 * tabs.len() as f32;
-        let scale = if total > room { room / total } else { 1.0 };
-        let mut x = strip.left();
+        let plus_w = 36.0;
+        // Every tab one width, as in Chrome: 220 at most, narrower to fit.
+        let room = (strip.width() - plus_w - FLARE * 2.0).max(0.0);
+        let w = (room / tabs.len().max(1) as f32).clamp(56.0, 220.0);
+        let mut x = strip.left() + FLARE;
         let mut act = None;
-        for (t, w) in tabs.iter().zip(&want) {
-            let w = (w * scale).max(40.0);
+        let ons: Vec<bool> = tabs
+            .iter()
+            .map(|t| {
+                // The start screen is a page of its own: no tab is on show there.
+                !self.extras.home
+                    && match (&t.dir, &self.projects.filter) {
+                        (None, None) => true,
+                        (Some(d), Some(f)) => d.eq_ignore_ascii_case(f),
+                        _ => false,
+                    }
+            })
+            .collect();
+        for (k, t) in tabs.iter().enumerate() {
             let rect = Rect::from_min_size(Pos2::new(x, strip.bottom() - TAB_H), Vec2::new(w, TAB_H));
-            // The start screen is a page of its own: no tab is on show there.
-            let on = !self.extras.home
-                && match (&t.dir, &self.projects.filter) {
-                    (None, None) => true,
-                    (Some(d), Some(f)) => d.eq_ignore_ascii_case(f),
-                    _ => false,
-                };
-            if let Some(a) = tab(ui, rect, t, on) {
+            // A divider between two tabs, unless one of them is on show.
+            let sep = k > 0 && !ons[k] && !ons[k - 1];
+            if let Some(a) = tab(ui, rect, t, ons[k], sep) {
                 act = Some(a);
             }
-            x += w + 2.0;
+            x += w;
         }
-        let plus = Rect::from_min_size(Pos2::new(x + 2.0, strip.bottom() - TAB_H + 3.0), Vec2::splat(TAB_H - 6.0));
+        let plus = Rect::from_center_size(Pos2::new(x + FLARE + 14.0, strip.bottom() - TAB_H / 2.0 - 1.0), Vec2::splat(28.0));
         let pr = ui.interact(plus, ui.make_persistent_id("tab-plus"), Sense::click());
         if pr.hovered() {
-            ui.painter().rect_filled(plus, 8.0, Color32::from_white_alpha(18));
+            ui.painter().circle_filled(plus.center(), 14.0, Color32::from_white_alpha(18));
         }
         let c = plus.center();
         let ink = if pr.hovered() { TEXT } else { INK3 };

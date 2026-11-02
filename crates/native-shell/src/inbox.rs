@@ -247,6 +247,11 @@ fn project_head(ui: &mut egui::Ui, name: &str, open: bool, count: usize, needs: 
 impl ShellApp {
     /// The left panel; a picked agent goes on the stage.
     pub(crate) fn inbox_panel(&mut self, ui: &mut egui::Ui, rows: &[QueueRow], hidden: &HashSet<String>) {
+        // Folded: the faces alone (Sessions and the rest still open full).
+        if self.extras.side_mini && self.side_tab == SideTab::Queue {
+            self.inbox_rail(ui, rows, hidden);
+            return;
+        }
         // The project tab on show decides what is listed: All groups every
         // project, a project's tab only its own agents.
         let mut act = None;

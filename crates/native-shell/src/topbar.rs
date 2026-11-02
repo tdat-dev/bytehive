@@ -64,6 +64,8 @@ fn resume_pill(ui: &mut egui::Ui, n: usize) -> egui::Response {
 impl ShellApp {
     /// The top bar; `counts` is (needs you, ready to review, working).
     pub(crate) fn top_bar(&mut self, ui: &mut egui::Ui, counts: (usize, usize, usize)) {
+        // The tab strip's own ground, as Chrome's frame.
+        ui.painter().rect_filled(ui.max_rect(), 0.0, crate::tabs::FRAME);
         crate::chrome::drag_area(ui, ui.max_rect());
         let agents = self.panes.iter().filter(|p| p.cli.is_some()).count();
         let shells = self.panes.iter().filter(|p| p.cli.is_none() && p.exit_code.is_none()).count();
@@ -100,7 +102,14 @@ impl ShellApp {
                         }
                     }
                 }
-                ui.add_space(10.0);
+                if !self.extras.home {
+                    let mini = self.extras.side_mini;
+                    let side = crate::style::icon_btn(ui, Icon::Sidebar, 30.0, !mini, false);
+                    if side.on_hover_text(if mini { "Show the agent list" } else { "Fold the agent list" }).clicked() {
+                        self.extras.side_mini = !mini;
+                    }
+                }
+                ui.add_space(6.0);
                 let room = ui.available_rect_before_wrap();
                 self.tab_strip(ui, room);
             });
