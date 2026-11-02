@@ -243,7 +243,7 @@ impl SettingsSheet {
         ch |= crate::browser_prefs::browser_rows(ui, p, browser);
         ui.add_space(18.0);
         self.heading(ui, 4);
-        ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time.", |ui| switch(ui, &mut p.reopen_projects).changed());
+        ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time, and the agents that were running, each in its own conversation.", |ui| switch(ui, &mut p.reopen_projects).changed());
         ch |= row(ui, "Hide to tray when minimized", "Agents keep working; click the tray icon to come back.", |ui| switch(ui, &mut p.hide_to_tray).changed());
         ch |= row(ui, "Tell me when an agent needs me", "A Windows notification while ByteHive is in the background.", |ui| switch(ui, &mut p.notify_needs).changed());
         ch |= row(ui, "Tell me when an agent finishes", "Done, ready to review, or stopped with an error.", |ui| switch(ui, &mut p.notify_done).changed());

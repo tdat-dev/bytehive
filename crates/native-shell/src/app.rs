@@ -164,6 +164,12 @@ impl ShellApp {
         for _ in 0..extra {
             app.run_command("shell");
         }
+        // Last run's agents come back, each in its own conversation (not in
+        // tests, nor when a debug variable sets the scene up).
+        let staged = ["BYTEHIVE_PANES", "BYTEHIVE_TASK", "BYTEHIVE_SHEET", "BYTEHIVE_HOME", "BYTEHIVE_STAGE"].iter().any(|k| std::env::var_os(k).is_some());
+        if !cfg!(test) && !staged && app.prefs.reopen_projects {
+            app.reopen_agents();
+        }
         // BYTEHIVE_HOME=1 opens on the start screen.
         app.extras.home = std::env::var("BYTEHIVE_HOME").is_ok();
         if std::env::var("BYTEHIVE_STAGE").is_ok() {

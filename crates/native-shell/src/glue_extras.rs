@@ -44,6 +44,8 @@ pub struct Extras {
     pub grid_focus: Option<String>,
     /// Changes switched the side column to Review: switch back when it closes.
     pub review_by_changes: bool,
+    /// The running agents, written down so the next start reopens them.
+    pub reopen: crate::reopen::Reopen,
 }
 
 impl ShellApp {

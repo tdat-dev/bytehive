@@ -184,7 +184,7 @@ impl ShellApp {
             egui::Modal::new(egui::Id::unique("update-ask")).show(ui.ctx(), |ui| {
                 ui.set_width(380.0);
                 ui.label(egui::RichText::new(format!("Install ByteHive {}?", r.version)).size(15.0));
-                ui.label(egui::RichText::new("ByteHive closes to update, and the agents stop with it. Their sessions resume from Sessions.").size(12.5).color(crate::theme::INK3));
+                ui.label(egui::RichText::new("ByteHive closes to update and the agents stop with it. They come back in their own conversations when it opens again.").size(12.5).color(crate::theme::INK3));
                 ui.horizontal(|ui| {
                     if ui.button("Update now").clicked() {
                         self.extras.updates.install(ui.ctx());

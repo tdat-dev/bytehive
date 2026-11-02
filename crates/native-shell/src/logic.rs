@@ -42,6 +42,7 @@ impl ShellApp {
         self.poll_session_follow();
         self.poll_updates(ctx);
         self.poll_schedules(ctx);
+        self.save_open_agents();
         if self.panes.iter().any(|p| p.exit_code.is_none()) {
             // Poll the PTYs at ~30fps while shown (eframe slows this down by
             // itself while the window is hidden); try_recv is cheap when idle.

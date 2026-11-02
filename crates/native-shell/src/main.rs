@@ -50,6 +50,7 @@ mod projects;
 mod projects_ui;
 mod queue_ui;
 mod remote;
+mod reopen;
 mod replay;
 mod replay_ui;
 mod remote_ui;
