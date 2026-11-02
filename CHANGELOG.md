@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.7] - 2026-11-02
+
+### Changed
+
+- **Projects are tabs, like a browser's.** The top bar holds All and one tab
+  per open project, with its agent count and a dot when one needs you. The
+  list on the left holds a project tab's agents with no header of its own;
+  under All it heads only the projects that have agents. + opens a folder, x or a
+  middle click closes one (its agents keep running). New agent starts in the
+  project on show. The house button's tip says what needs you.
+
 ## [0.11.6] - 2026-11-02
 
 ### Changed
