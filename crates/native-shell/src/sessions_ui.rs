@@ -8,7 +8,7 @@ use agent_core::transcript::SessionItem;
 use agent_core::{claude, codex, muse, opencode, CommandSpec};
 use eframe::egui::{self};
 
-use crate::theme::{DEL, DIM, FAINT};
+use crate::theme::{DEL, FAINT};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Cli {
@@ -133,6 +133,41 @@ pub fn ago(modified_ms: u64, now_ms: u64) -> String {
     }
 }
 
+/// One past session as a queue row: title, age and folder, Resume at the
+/// right edge. True when Resume was clicked.
+fn session_row(ui: &mut egui::Ui, s: &SessionItem, now: u64) -> bool {
+    use crate::theme::{INK3, TEXT};
+    use egui::{Color32, FontId, Pos2, Rect, Sense, Vec2};
+    // The side column can be laid out wider than it shows: keep the chip in view.
+    let w = ui.available_width().min(ui.clip_rect().right() - ui.cursor().left() - 6.0);
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 52.0), Sense::click());
+    let painter = ui.painter_at(rect);
+    if resp.hovered() {
+        painter.rect_filled(rect, 10.0, Color32::from_white_alpha(10));
+    }
+    let chip = Rect::from_min_size(Pos2::new(rect.right() - 10.0 - 68.0, rect.center().y - 12.0), Vec2::new(68.0, 24.0));
+    let text_w = chip.left() - 10.0 - (rect.left() + 10.0);
+    let title = if s.title.is_empty() { s.id.chars().take(8).collect() } else { s.title.clone() };
+    let mut job = egui::text::LayoutJob::single_section(title, egui::TextFormat::simple(crate::style::w500(13.5), TEXT));
+    job.wrap = egui::text::TextWrapping::truncate_at_width(text_w);
+    painter.galley(Pos2::new(rect.left() + 10.0, rect.top() + 8.0), painter.layout_job(job), TEXT);
+    let mut sub = ago(s.modified_ms, now);
+    if !s.cwd.is_empty() {
+        sub.push_str(&format!(" \u{00B7} {}", s.cwd));
+    }
+    let mut job = egui::text::LayoutJob::single_section(sub, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
+    job.wrap = egui::text::TextWrapping::truncate_at_width(text_w);
+    painter.galley(Pos2::new(rect.left() + 10.0, rect.top() + 28.0), painter.layout_job(job), INK3);
+    let cr = ui.interact(chip, ui.make_persistent_id(("session-resume", &s.id)), Sense::click());
+    let (bg, ink) = if cr.hovered() { (TEXT, Color32::from_rgb(5, 5, 6)) } else { (Color32::from_white_alpha(26), TEXT) };
+    painter.rect_filled(chip, 12.0, bg);
+    painter.text(chip.center(), egui::Align2::CENTER_CENTER, "Resume", crate::style::medium(12.0), ink);
+    let hover = if s.title.is_empty() { s.id.clone() } else { format!("{}\n{}", s.title, s.id) };
+    let clicked = cr.clicked();
+    resp.on_hover_text(hover);
+    clicked
+}
+
 pub struct ResumeRequest {
     pub cli: Cli,
     pub session: SessionItem,
@@ -173,7 +208,7 @@ impl SessionsPanel {
 
     pub fn show(&mut self, ui: &mut egui::Ui) -> Option<ResumeRequest> {
         let mut out = None;
-        ui.label(egui::RichText::new("Sessions").strong().size(15.0));
+        ui.label(egui::RichText::new("Sessions").font(crate::style::medium(15.0)));
         ui.horizontal(|ui| {
             for cli in Cli::all() {
                 if ui.selectable_label(self.cli == cli, cli.name()).clicked() {
@@ -199,23 +234,11 @@ impl SessionsPanel {
             ui.label(egui::RichText::new("No sessions yet.").color(FAINT));
         }
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-        egui::ScrollArea::vertical().show(ui, |ui| {
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for s in &self.items {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        let title: String = if s.title.is_empty() { s.id.chars().take(8).collect() } else { s.title.chars().take(32).collect() };
-                        let hover = if s.title.is_empty() { s.id.clone() } else { format!("{}\n{}", s.title, s.id) };
-                        ui.add(egui::Label::new(title).truncate()).on_hover_text(hover);
-                        let mut sub = ago(s.modified_ms, now);
-                        if !s.cwd.is_empty() {
-                            sub.push_str(&format!(" · {}", s.cwd.chars().take(28).collect::<String>()));
-                        }
-                        ui.label(egui::RichText::new(sub).small().color(DIM));
-                    });
-                    if ui.small_button("Resume").clicked() {
-                        out = Some(ResumeRequest { cli: self.cli, session: s.clone() });
-                    }
-                });
+                if session_row(ui, s, now) {
+                    out = Some(ResumeRequest { cli: self.cli, session: s.clone() });
+                }
             }
         });
         out
