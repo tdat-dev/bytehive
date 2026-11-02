@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-11-02
+
+### Fixed
+
+- **An update opens one ByteHive, not two.** The installer ran with its pages
+  shown: it reopened ByteHive by itself and the finish page's ticked "Open
+  ByteHive" opened a second one. Updates now install silently and reopen it
+  once.
+
 ## [0.11.3] - 2026-11-02
 
 ### Fixed
