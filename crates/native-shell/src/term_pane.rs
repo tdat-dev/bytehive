@@ -225,13 +225,15 @@ impl Pane {
             self.last_sel = None;
         }
         let picked = crate::term_select::mouse(&mut self.term, &resp, rect, cell);
+        // Letting go of a selection copies it, as in a console window.
         if resp.drag_stopped() || resp.double_clicked() {
             self.last_sel = self.term.selection_to_string().filter(|t| !t.trim().is_empty());
+            if let Some(t) = &self.last_sel {
+                ui.ctx().copy_text(t.clone());
+            }
         }
-        match picked {
-            Some(crate::term_select::MenuPick::Copy) => self.copy_selection(ui.ctx()),
-            Some(crate::term_select::MenuPick::Paste) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
-            None => {}
+        if let Some(crate::term_select::MenuPick::Paste) = picked {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
         }
         // Files dropped from Explorer onto this pane: type their paths.
         let (dropped, at) = ui.ctx().input(|i| (i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect::<Vec<_>>(), i.pointer.hover_pos()));

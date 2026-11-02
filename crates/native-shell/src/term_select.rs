@@ -1,7 +1,6 @@
-//! Mouse work on a terminal: drag to select text (Ctrl+C then copies it
-//! instead of interrupting), double-click a word, a right-click menu (Copy,
-//! Paste, Select all), and dropping files from Explorer types their paths in,
-//! quoted when they hold a space, the way the web app's terminal took a drop.
+//! Mouse work on a terminal, as in a console window: drag (or double-click a
+//! word) to select, and letting go copies it; a right-click pastes. Dropping
+//! files from Explorer types their paths in, quoted when they hold a space.
 
 use alacritty_terminal::event::EventListener;
 use alacritty_terminal::grid::Dimensions;
@@ -35,14 +34,14 @@ pub fn drop_text(paths: &[std::path::PathBuf]) -> String {
         .join(" ")
 }
 
-/// What the right-click menu asked for.
+/// What the mouse asked for beyond selecting.
 pub enum MenuPick {
-    Copy,
+    /// A right-click: paste the clipboard.
     Paste,
 }
 
 /// Start, extend or clear a selection from this frame's pointer, and show
-/// the right-click menu. Returns a menu pick.
+/// say whether a right-click asked to paste.
 pub fn mouse<T: EventListener>(term: &mut Term<T>, resp: &egui::Response, rect: Rect, cell: (f32, f32)) -> Option<MenuPick> {
     // A press starts a new selection where it lands (an empty one reads as
     // none, so a plain click clears), a drag stretches it, a double-click
@@ -64,31 +63,8 @@ pub fn mouse<T: EventListener>(term: &mut Term<T>, resp: &egui::Response, rect: 
             }
         }
     }
-    let has = term.selection.as_ref().is_some_and(|s| !s.is_empty());
-    let mut pick = None;
-    let mut all = false;
-    resp.context_menu(|ui| {
-        if ui.add_enabled(has, egui::Button::new("Copy")).clicked() {
-            pick = Some(MenuPick::Copy);
-            ui.close();
-        }
-        if ui.button("Paste").clicked() {
-            pick = Some(MenuPick::Paste);
-            ui.close();
-        }
-        if ui.button("Select all").clicked() {
-            all = true;
-            ui.close();
-        }
-    });
-    if all {
-        let top = Point::new(Line(-(term.history_size() as i32)), Column(0));
-        let bottom = Point::new(Line(term.screen_lines() as i32 - 1), Column(term.columns().saturating_sub(1)));
-        let mut s = Selection::new(SelectionType::Simple, top, Side::Left);
-        s.update(bottom, Side::Right);
-        term.selection = Some(s);
-    }
-    pick
+    // A right-click pastes, no menu in the way.
+    resp.secondary_clicked().then_some(MenuPick::Paste)
 }
 
 #[cfg(test)]
