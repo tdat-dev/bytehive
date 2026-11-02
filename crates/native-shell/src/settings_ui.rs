@@ -243,12 +243,12 @@ impl SettingsSheet {
         ch |= crate::browser_prefs::browser_rows(ui, p, browser);
         ui.add_space(18.0);
         self.heading(ui, 4);
-        ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time, and the agents that were running, each in its own conversation.", |ui| switch(ui, &mut p.reopen_projects).changed());
+        ch |= row(ui, "Reopen projects on start", "Opens the same project folders as last time, with last time's agents in the list, stopped: Resume carries each one on.", |ui| switch(ui, &mut p.reopen_projects).changed());
         ch |= row(ui, "Hide to tray when minimized", "Agents keep working; click the tray icon to come back.", |ui| switch(ui, &mut p.hide_to_tray).changed());
         ch |= row(ui, "Tell me when an agent needs me", "A Windows notification while ByteHive is in the background.", |ui| switch(ui, &mut p.notify_needs).changed());
         ch |= row(ui, "Tell me when an agent finishes", "Done, ready to review, or stopped with an error.", |ui| switch(ui, &mut p.notify_done).changed());
         ch |= row(ui, "Tell me about usage limits", "When an agent runs out, and when it is back at work.", |ui| switch(ui, &mut p.limit_notify).changed());
-        ch |= row(ui, "Check for updates", "A little after start and every six hours; a new version shows on the top bar.", |ui| switch(ui, &mut p.update_check).changed());
+        ch |= row(ui, "Update by itself", "Checks a little after start and every six hours, and installs a new version once no agent is in the middle of work.", |ui| switch(ui, &mut p.update_check).changed());
         let status = if self.update_status.is_empty() { format!("ByteHive {}", crate::updater::current()) } else { self.update_status.clone() };
         row(ui, "Version", &status, |ui| {
             self.want_update_check |= ui.button(RichText::new("Check now").size(12.5)).clicked();

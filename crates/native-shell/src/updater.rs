@@ -92,6 +92,9 @@ pub struct Updater {
     pub busy: bool,
     /// Asking before closing the agents for an install.
     pub asking: bool,
+    /// The automatic install was started once (a failure is not retried
+    /// in a loop; the button still works).
+    auto_tried: bool,
     started: Instant,
     last: Option<Instant>,
     tx: Sender<Msg>,
@@ -101,7 +104,7 @@ pub struct Updater {
 impl Default for Updater {
     fn default() -> Self {
         let (tx, rx) = channel();
-        Updater { available: None, status: String::new(), busy: false, asking: false, started: Instant::now(), last: None, tx, rx }
+        Updater { available: None, status: String::new(), busy: false, asking: false, auto_tried: false, started: Instant::now(), last: None, tx, rx }
     }
 }
 
@@ -167,6 +170,15 @@ impl ShellApp {
                 },
             }
         }
+        // A new version installs by itself once no agent is in the middle of
+        // work; they come back stopped in the list and Resume carries each on.
+        let now = crate::app::now_ms();
+        let working = self.panes.iter().any(|p| p.cli.is_some() && p.exit_code.is_none() && crate::states::pane_status(p, now, None).state == supervise::task_state::TaskState::Working);
+        let u = &mut self.extras.updates;
+        if self.prefs.update_check && !dev_build() && !cfg!(test) && u.available.is_some() && !u.busy && !u.auto_tried && !working {
+            u.auto_tried = true;
+            u.install(ctx);
+        }
     }
 
     /// "Update to x.y.z" on the top bar, and its ask when agents run.
@@ -187,7 +199,7 @@ impl ShellApp {
             egui::Modal::new(egui::Id::unique("update-ask")).show(ui.ctx(), |ui| {
                 ui.set_width(380.0);
                 ui.label(egui::RichText::new(format!("Install ByteHive {}?", r.version)).size(15.0));
-                ui.label(egui::RichText::new("ByteHive closes to update and the agents stop with it. They come back in their own conversations when it opens again.").size(12.5).color(crate::theme::INK3));
+                ui.label(egui::RichText::new("ByteHive closes to update and the agents stop with it. They are back in the list when it opens; Resume carries each one on.").size(12.5).color(crate::theme::INK3));
                 ui.horizontal(|ui| {
                     if ui.button("Update now").clicked() {
                         self.extras.updates.install(ui.ctx());
