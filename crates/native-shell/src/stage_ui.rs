@@ -1,14 +1,11 @@
 //! The stage: one agent, large. A header with its face, its CLI and where it
 //! works, its name (or what it is on), its state, More, Rename and Stop, and
-//! the tabs Commands, Model, Changes, History; then its live terminal, and
-//! when it asks you something, the decision card under it (the options as
-//! buttons, or an answer in your own words).
+//! the tabs Commands, Model, Changes, History; then its live terminal, where
+//! its questions are answered.
 
-use std::collections::{HashMap, HashSet};
 
 use agent_core::lock;
 use eframe::egui::{self, Color32, FontId, Pos2, Rect, RichText, Vec2};
-use supervise::ask::Ask;
 use supervise::task_state::TaskState;
 
 use crate::app::{now_ms, ShellApp};
@@ -16,20 +13,15 @@ use crate::grid::GridOut;
 use crate::icons::Icon;
 use crate::inbox::panel_ring;
 use crate::projects::{pane_home, project_name};
-use crate::queue_ui::{answer_bytes, free_answer_bytes};
 use crate::states::pane_status;
 use crate::sessions_ui::Cli;
-use crate::style::{hbtn, icon_btn, medium, primary, tint, GUTTER, RAISE};
+use crate::style::{icon_btn, medium, primary, tint, GUTTER};
 use crate::term_pane::Pane;
 use crate::theme::{ADD, AMBER, DIM, FOCUS, INK3, TEXT};
 
 #[derive(Default)]
 pub struct StageState {
     pub history: bool,
-    /// A typed answer per agent.
-    answers: HashMap<String, String>,
-    /// Agents whose question card you hid (type in the terminal instead).
-    hidden_ask: HashSet<String>,
     /// The title being typed after the pencil, while it is.
     pub renaming: Option<String>,
     /// The plan meter's height at the foot of the left panel, last frame.
@@ -304,10 +296,10 @@ impl ShellApp {
     }
 
     fn stage_body(&mut self, ui: &mut egui::Ui, i: usize) {
-        let ask = pane_status(&self.panes[i], now_ms(), None).ask.filter(|_| !self.extras.stage.hidden_ask.contains(&self.panes[i].id));
-        let card_h = ask.as_ref().map_or(0.0, |a| 150.0 + 36.0 * a.options.len().min(4) as f32);
+        // The terminal takes the whole stage: a question is answered in it, as
+        // the CLI asks it, with no form of ByteHive's own on top.
         let avail = ui.available_rect_before_wrap();
-        let term = Rect::from_min_max(Pos2::new(avail.left() + 24.0, avail.top() + 4.0), Pos2::new(avail.right() - 24.0, avail.bottom() - 12.0 - card_h));
+        let term = Rect::from_min_max(Pos2::new(avail.left() + 24.0, avail.top() + 4.0), Pos2::new(avail.right() - 24.0, avail.bottom() - 12.0));
         let cell = {
             crate::term_pane::cell_metrics(ui.painter(), &self.font)
         };
@@ -320,53 +312,6 @@ impl ShellApp {
             self.focus_pane = None;
         }
         self.panes[i].claim_focus(ui);
-        if let Some(a) = ask {
-            let card = Rect::from_min_max(Pos2::new(term.left(), term.bottom() + 12.0), Pos2::new(term.right(), avail.bottom() - 12.0));
-            ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| self.decision(ui, i, &a));
-        }
         ui.allocate_rect(avail, egui::Sense::hover());
-    }
-
-    /// The question an agent waits on: its options, or your own words.
-    fn decision(&mut self, ui: &mut egui::Ui, i: usize, a: &Ask) {
-        let id = self.panes[i].id.clone();
-        let name = self.panes[i].name.clone();
-        let mut send: Option<Vec<u8>> = None;
-        egui::Frame::new().fill(RAISE).corner_radius(16.0).stroke(egui::Stroke::new(1.0, tint(AMBER).gamma_multiply(2.2))).inner_margin(egui::Margin { left: 18, right: 18, top: 14, bottom: 14 }).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("\u{25C6}  {name} asks you")).size(12.5).color(AMBER));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if hbtn(ui, "Hide \u{00B7} type in terminal", false).clicked() {
-                        self.extras.stage.hidden_ask.insert(id.clone());
-                    }
-                });
-            });
-            ui.label(RichText::new(&a.prompt).font(medium(16.0)).color(TEXT));
-            if let Some(d) = &a.detail {
-                egui::Frame::new().fill(Color32::from_rgb(10, 10, 12)).corner_radius(10.0).inner_margin(egui::Margin::symmetric(14, 9)).show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.label(RichText::new(d).font(FontId::monospace(13.0)).color(TEXT));
-                });
-            }
-            ui.horizontal_wrapped(|ui| {
-                for o in &a.options {
-                    let label = if o.always { format!("{}  (always)", o.label) } else { o.label.clone() };
-                    let r = if o.n == 1 { primary(ui, &label, Some(&o.n.to_string()), 34.0) } else { hbtn(ui, &format!("{label}  {}", o.n), false) };
-                    if r.clicked() {
-                        send = answer_bytes(a, o.n);
-                    }
-                }
-            });
-            let text = self.extras.stage.answers.entry(id.clone()).or_default();
-            let r = ui.add(egui::TextEdit::singleline(text).hint_text(format!("Or tell {name} what to do instead\u{2026}")).desired_width(f32::INFINITY));
-            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !text.trim().is_empty() {
-                send = Some(free_answer_bytes(Some(a), text.trim()));
-                text.clear();
-            }
-        });
-        if let Some(bytes) = send {
-            let _ = lock(&self.registry).write_input(&id, &bytes);
-        }
     }
 }

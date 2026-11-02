@@ -4,7 +4,6 @@
 
 use std::collections::HashMap;
 
-use supervise::ask::{free_text_keys, Ask};
 use supervise::clash::{clash_short, ClashNote};
 use supervise::stuck::StuckEvidence;
 use supervise::task_state::{state_rank, status_line, TaskState, TaskStatus};
@@ -57,22 +56,10 @@ pub fn is_attention(state: TaskState) -> bool {
     matches!(state, TaskState::Needs | TaskState::Blocked)
 }
 
-/// The bytes picking option `n` of an ask, or none when it has no such row.
-pub fn answer_bytes(ask: &Ask, n: u32) -> Option<Vec<u8>> {
-    ask.options.iter().find(|o| o.n == n).map(|o| o.key.as_bytes().to_vec())
-}
-
-/// The bytes answering in free text: the CLI's "type something" row when it
-/// has one, then the text, then Enter.
-pub fn free_answer_bytes(ask: Option<&Ask>, text: &str) -> Vec<u8> {
-    free_text_keys(ask, text).concat().into_bytes()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use agent_core::launch::launch_spec;
-    use supervise::ask::{parse_ask, AskKind};
     use supervise::task_state::TaskState;
 
     fn pane(name: &str) -> Pane {
@@ -94,23 +81,6 @@ mod tests {
         assert_eq!(names, vec!["zulu", "alpha", "mike"]);
         assert_eq!(rows[0].status.state, TaskState::Needs);
         assert!(rows[0].line.contains("zulu"));
-    }
-
-    #[test]
-    fn answer_bytes_pick_the_option_key() {
-        let ask = parse_ask("\n Would you like to run the following command?\n\n $ npm run build\n\n\u{203A} 1. Yes, proceed (y)\n  2. No (esc)\n\n Press enter to confirm or esc to cancel\n").unwrap();
-        assert_eq!(ask.kind, AskKind::Run);
-        assert_eq!(answer_bytes(&ask, 1), Some(b"y".to_vec()));
-        assert_eq!(answer_bytes(&ask, 2), Some(b"\x1b".to_vec()));
-        assert_eq!(answer_bytes(&ask, 9), None);
-    }
-
-    #[test]
-    fn free_answer_routes_through_type_something() {
-        let ask = parse_ask("\nPick one?\n> 1. Alpha\n  2. Type something.\nEnter to select \u{00B7} Esc to cancel\n").unwrap();
-        assert_eq!(ask.free_text_option, Some(2));
-        assert_eq!(free_answer_bytes(Some(&ask), "my words"), b"2my words\r".to_vec());
-        assert_eq!(free_answer_bytes(None, "go"), b"go\r".to_vec());
     }
 
     #[test]
