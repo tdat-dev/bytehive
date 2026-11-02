@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.8] - 2026-11-02
+
+### Fixed
+
+- **The start screen is a page of its own.** The house no longer leaves a
+  project tab lit and an empty agent list beside it; the start screen takes
+  the whole width, its composer starts in the project you came from, and
+  any tab (the one you came from too) takes you back.
+
 ## [0.11.7] - 2026-11-02
 
 ### Changed
