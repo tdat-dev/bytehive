@@ -113,7 +113,9 @@ impl FilesDrawer {
         ctx.request_repaint_after(REFRESH);
         let mut picked = None;
         let screen = ctx.content_rect();
-        let size = egui::vec2(360.0_f32.min(screen.width() - 32.0), screen.height() - 32.0);
+        // Under the top bar (its window buttons stay reachable) and above the dock.
+        let top = 68.0;
+        let size = egui::vec2(360.0_f32.min(screen.width() - 32.0), (screen.height() - top - crate::style::DOCK_H).max(200.0));
         let frame = egui::Frame::new()
             .fill(SHEET)
             .corner_radius(R_XL)
@@ -121,7 +123,7 @@ impl FilesDrawer {
             .shadow(egui::Shadow { offset: [0, 18], blur: 40, spread: 0, color: Color32::from_black_alpha(140) });
         egui::Area::new(egui::Id::unique("files-drawer"))
             .order(egui::Order::Foreground)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-16.0, 16.0))
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-crate::style::GUTTER, top))
             .show(ctx, |ui| {
                 frame.show(ui, |ui| {
                     ui.set_min_size(size);
@@ -140,7 +142,9 @@ impl FilesDrawer {
         egui::Frame::NONE.inner_margin(egui::Margin { left: 18, right: 14, top: 16, bottom: 8 }).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(RichText::new("Files").size(15.0).color(TEXT));
+                    let mut job = egui::text::LayoutJob::default();
+                    job.append("Files", 0.0, crate::style::tight(crate::style::medium(20.0), TEXT, -0.02));
+                    ui.label(job);
                     let label = sources.iter().find(|s| Some(&s.dir) == self.source.as_ref()).map_or("pick a folder".to_string(), |s| s.label.clone());
                     let branch = self.listing.as_ref().and_then(|l| l.branch.clone()).unwrap_or_default();
                     egui::ComboBox::from_id_salt("files-source")
@@ -158,7 +162,7 @@ impl FilesDrawer {
                         });
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    if ui.add(egui::Button::new(RichText::new("Close").size(12.5).color(INK3)).frame(false)).clicked() {
+                    if crate::newtask_props::round_x(ui).on_hover_text("Close (Esc)").clicked() {
                         self.open = false;
                     }
                 });
