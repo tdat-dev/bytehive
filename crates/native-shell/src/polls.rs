@@ -21,8 +21,12 @@ pub(crate) struct StuckRead {
 
 impl ShellApp {
     pub(crate) fn poll_git(&mut self) {
-        while let Ok((cwd, files)) = self.git_rx.try_recv() {
-            self.git_changed.insert(cwd.clone(), files);
+        while let Ok((cwd, read)) = self.git_rx.try_recv() {
+            // What was already dirty when each agent here first looked is not its work.
+            let here = self.panes.iter().filter(|p| p.cli.is_some() && pane_cwd(p) == cwd).map(|p| (p.id.as_str(), p.started_ms));
+            crate::touched::fill_baselines(&mut self.extras.git_base, &read, here);
+            self.git_changed.insert(cwd.clone(), read.files.clone());
+            self.extras.git_reads.insert(cwd.clone(), read);
             self.git_pending.remove(&cwd);
         }
         if self.git_last.elapsed() < Duration::from_secs(5) {
@@ -33,6 +37,7 @@ impl ShellApp {
             // Everything known: re-read the stalest next round.
             if self.git_pending.is_empty() {
                 self.git_changed.clear();
+                self.extras.git_reads.clear();
             }
             self.git_last = Instant::now();
             return;
@@ -41,8 +46,8 @@ impl ShellApp {
         self.git_last = Instant::now();
         let tx = self.git_tx.clone();
         std::thread::spawn(move || {
-            let files = agent_core::git::changed_files(std::path::Path::new(&cwd));
-            let _ = tx.send((cwd, files));
+            let read = crate::touched::read(std::path::Path::new(&cwd));
+            let _ = tx.send((cwd, read));
         });
     }
 
@@ -55,8 +60,7 @@ impl ShellApp {
             if pane.run != read.run {
                 continue; // restarted while reading
             }
-            let changed = self.git_changed.get(&pane_cwd(pane)).map(|f| f.len() as u32);
-            let state = pane_status(pane, now_ms(), changed).state;
+            let state = pane_status(pane, now_ms(), self.changed_count(pane)).state;
             let snap = StuckSnap {
                 run: read.run,
                 state,
@@ -98,7 +102,7 @@ impl ShellApp {
             // A plain shell edits nothing of its own, so it overlaps no one.
             .filter(|p| p.cli.is_some())
             .map(|p| {
-                let paths = self.git_changed.get(&pane_cwd(p)).cloned().unwrap_or_default();
+                let paths = self.touched_files(p).unwrap_or_default();
                 let status = pane_status(p, now_ms(), Some(paths.len() as u32));
                 ClashInput {
                     pane_id: p.id.clone(),
@@ -113,5 +117,22 @@ impl ShellApp {
             })
             .collect();
         clash_notes(&inputs)
+    }
+
+    /// The changed files that are this agent's own work (touched.rs), none
+    /// until its folder was read.
+    pub(crate) fn touched_files(&self, p: &crate::term_pane::Pane) -> Option<Vec<String>> {
+        let read = self.extras.git_reads.get(&pane_cwd(p))?;
+        Some(crate::touched::touched(read, p.started_ms, self.extras.git_base.get(&p.id)))
+    }
+
+    /// How many files this agent changed: what its state reads as Review.
+    pub(crate) fn changed_count(&self, p: &crate::term_pane::Pane) -> Option<u32> {
+        self.touched_files(p).map(|f| f.len() as u32)
+    }
+
+    /// [`Self::changed_count`] for every pane, by pane id.
+    pub(crate) fn changed_counts(&self) -> HashMap<String, u32> {
+        self.panes.iter().filter_map(|p| Some((p.id.clone(), self.changed_count(p)?))).collect()
     }
 }

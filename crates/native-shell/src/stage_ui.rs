@@ -17,7 +17,7 @@ use crate::icons::Icon;
 use crate::inbox::panel_ring;
 use crate::projects::{pane_home, project_name};
 use crate::queue_ui::{answer_bytes, free_answer_bytes};
-use crate::states::{pane_cwd, pane_status};
+use crate::states::pane_status;
 use crate::sessions_ui::Cli;
 use crate::style::{hbtn, icon_btn, medium, primary, tint, GUTTER, RAISE};
 use crate::term_pane::Pane;
@@ -144,7 +144,7 @@ impl ShellApp {
 
     fn stage_head(&mut self, ui: &mut egui::Ui, i: usize, out: &mut GridOut) {
         let p = &self.panes[i];
-        let changed = self.git_changed.get(&pane_cwd(p)).map(|f| f.len() as u32);
+        let changed = self.changed_count(p);
         let state = if p.merged { TaskState::Merged } else { pane_status(p, now_ms(), changed).state };
         let (id, exited, cli, name) = (p.id.clone(), p.exit_code.is_some(), p.cli, p.name.clone());
         let home = pane_home(p);

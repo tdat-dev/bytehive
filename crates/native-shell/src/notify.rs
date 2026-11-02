@@ -13,7 +13,7 @@ use supervise::finish::{finish_note, Burst, FinishSnap, FinishWatch};
 
 use crate::app::{now_ms, ShellApp};
 use crate::projects::{pane_home, project_name};
-use crate::states::{pane_cwd, pane_status};
+use crate::states::pane_status;
 
 /// The Start-menu identity toasts are filed under: the installed app's, or
 /// PowerShell's for a build run from target\ (it has no shortcut of its own).
@@ -81,7 +81,7 @@ impl ShellApp {
             .iter()
             .filter(|p| p.cli.is_some())
             .map(|p| {
-                let changed = self.git_changed.get(&pane_cwd(p)).map(|f| f.len() as u32);
+                let changed = self.changed_count(p);
                 let state = pane_status(p, now, changed).state;
                 FinishSnap { pane_id: p.id.clone(), name: p.name.clone(), project: project_name(&pane_home(p)), state, limited: p.limit.is_some(), files: changed, exit_code: p.exit_code, stop_asked: false }
             })

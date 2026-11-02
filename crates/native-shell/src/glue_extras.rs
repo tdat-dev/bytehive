@@ -36,6 +36,12 @@ pub struct Extras {
     pub start: crate::start_ui::Home,
     /// CLIs found on PATH, looked up once.
     pub clis: Option<Vec<crate::sessions_ui::Cli>>,
+    /// The last git read per folder, with file times (touched.rs).
+    pub git_reads: std::collections::HashMap<String, crate::touched::FolderRead>,
+    /// Files already dirty when each agent (by pane id) first looked.
+    pub git_base: std::collections::HashMap<String, std::collections::HashSet<String>>,
+    /// The Grid's big tile, apart from the Focus view's stage.
+    pub grid_focus: Option<String>,
 }
 
 impl ShellApp {

@@ -136,7 +136,7 @@ impl ShellApp {
             .into_iter()
             .map(|i| {
                 let p = &self.panes[i];
-                let changed = self.git_changed.get(&pane_cwd(p)).map(|f| f.len() as u32);
+                let changed = self.changed_count(p);
                 let screen = p.screen_text();
                 let tail: String = screen.chars().rev().take(2000).collect::<Vec<_>>().into_iter().rev().collect();
                 let mut a = json!({ "id": p.id, "name": p.name, "status": status_word(pane_status(p, now, changed).state), "workspace": project_name(dir), "screen": tail, "folder": pane_cwd(p), "since": p.started_ms });

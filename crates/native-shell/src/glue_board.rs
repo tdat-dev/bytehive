@@ -12,7 +12,7 @@ use crate::board_ui::AgentCard;
 use crate::grid::GridOut;
 use crate::plan_board::board_path;
 use crate::projects::{pane_home, project_name};
-use crate::states::{pane_cwd, pane_status};
+use crate::states::pane_status;
 
 impl ShellApp {
     fn agent_cards(&self, hidden: &HashSet<String>) -> Vec<AgentCard> {
@@ -21,7 +21,7 @@ impl ShellApp {
             .iter()
             .filter(|p| !hidden.contains(&p.id))
             .map(|p| {
-                let changed = self.git_changed.get(&pane_cwd(p)).map(|f| f.len() as u32);
+                let changed = self.changed_count(p);
                 let state = if p.merged { supervise::task_state::TaskState::Merged } else { pane_status(p, now, changed).state };
                 let home = pane_home(p);
                 let project = self.projects.owner(&home).map(project_name).unwrap_or_else(|| project_name(&home));

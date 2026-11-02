@@ -9,7 +9,7 @@ use supervise::clash::{clash_short, ClashNote};
 use supervise::stuck::StuckEvidence;
 use supervise::task_state::{state_rank, status_line, TaskState, TaskStatus};
 
-use crate::states::{pane_cwd, pane_status};
+use crate::states::pane_status;
 use crate::term_pane::Pane;
 
 /// One queue row, computed from a pane: sort rank, status, and its line.
@@ -24,14 +24,14 @@ pub struct QueueRow {
 pub fn queue_rows(
     panes: &[Pane],
     now: u64,
-    git: &HashMap<String, Vec<String>>,
+    changed_by: &HashMap<String, u32>,
     stuck: &HashMap<String, StuckEvidence>,
     clash: &HashMap<String, ClashNote>,
 ) -> Vec<QueueRow> {
     let mut rows: Vec<QueueRow> = panes
         .iter()
         .map(|p| {
-            let changed = git.get(&pane_cwd(p)).map(|f| f.len() as u32);
+            let changed = changed_by.get(&p.id).copied();
             let mut status = pane_status(p, now, changed);
             status.stuck = stuck.get(&p.id).cloned();
             status.clash = clash.get(&p.id).cloned();

@@ -17,7 +17,7 @@ use supervise::task_state::TaskState;
 use crate::app::{now_ms, ShellApp};
 use crate::projects::{normalize, pane_home, project_name};
 use crate::remote_ui::{RemoteCmd, RemoteForm};
-use crate::states::{pane_cwd, pane_status};
+use crate::states::pane_status;
 
 const PUSH_EVERY: Duration = Duration::from_secs(2);
 /// Rows of each agent's screen the page shows.
@@ -261,7 +261,7 @@ impl ShellApp {
         let mut rows = Vec::new();
         let mut output = serde_json::Map::new();
         for p in &self.panes {
-            let changed = self.git_changed.get(&pane_cwd(p)).map(|f| f.len() as u32);
+            let changed = self.changed_count(p);
             let st = pane_status(p, now, changed);
             let running = p.exit_code.is_none();
             let status = status_word(st.state, running);

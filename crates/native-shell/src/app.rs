@@ -29,9 +29,6 @@ use crate::changes_ui::ChangesPanel;
 use crate::files_ui::FilesDrawer;
 use crate::board_ui::BoardView;
 
-pub(crate) const HEADER_H: f32 = 24.0;
-/// Avatar rail width when a pane owns the stage.
-pub(crate) const RAIL_W: f32 = 76.0;
 
 pub(crate) fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -62,8 +59,8 @@ pub struct ShellApp {
     /// Changed-file paths per folder, read off the UI thread.
     pub(crate) git_changed: HashMap<String, Vec<String>>,
     pub(crate) git_pending: HashSet<String>,
-    pub(crate) git_tx: Sender<(String, Vec<String>)>,
-    pub(crate) git_rx: Receiver<(String, Vec<String>)>,
+    pub(crate) git_tx: Sender<(String, crate::touched::FolderRead)>,
+    pub(crate) git_rx: Receiver<(String, crate::touched::FolderRead)>,
     pub(crate) git_last: Instant,
     pub(crate) stuck_watch: StuckWatch,
     pub(crate) stuck_evidence: HashMap<String, StuckEvidence>,
@@ -262,7 +259,7 @@ impl eframe::App for ShellApp {
 
         let clashes = self.clash_map();
         let hidden = self.hidden_panes();
-        let mut rows = queue_rows(&self.panes, now_ms(), &self.git_changed, &self.stuck_evidence, &clashes);
+        let mut rows = queue_rows(&self.panes, now_ms(), &self.changed_counts(), &self.stuck_evidence, &clashes);
         rows.retain(|r| !hidden.contains(&r.pane_id));
 
         // Ctrl/Cmd+1..9 jumps straight to that Queue row's pane, no palette.

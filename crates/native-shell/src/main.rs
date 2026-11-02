@@ -71,6 +71,7 @@ mod term_search;
 mod term_select;
 mod theme;
 mod topbar;
+mod touched;
 mod tray;
 mod updater;
 mod usage_watch;
