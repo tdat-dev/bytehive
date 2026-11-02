@@ -6,7 +6,13 @@
 
 use eframe::egui::{self, Align2, Color32, Key, Modifiers, Order};
 
-use crate::theme::{BORDER, DIM, SURFACE};
+use crate::theme::{DIM, INK3, R_XL, SHEET, TEXT};
+
+/// Whether the arrow keys moved the selection this frame: only then is the
+/// picked row scrolled into view, so the wheel still scrolls freely.
+fn arrows_moved(ui: &egui::Ui) -> bool {
+    ui.input(|i| i.key_down(Key::ArrowDown) || i.key_down(Key::ArrowUp) || i.key_released(Key::ArrowDown) || i.key_released(Key::ArrowUp))
+}
 
 /// What a palette row does when chosen: focus an existing agent pane, or run a
 /// command. The row's `key` is read against this: a pane id for `Agent`, a
@@ -146,51 +152,75 @@ impl Palette {
         }
 
         let mut chosen: Option<PalettePick> = None;
+        let screen = ui.ctx().content_rect();
+        // The page dims behind it, like the web app's palette.
+        ui.ctx().layer_painter(egui::LayerId::new(Order::Middle, egui::Id::unique("palette-dim"))).rect_filled(screen, 0.0, Color32::from_black_alpha(120));
         let frame = egui::Frame::NONE
-            .fill(SURFACE)
-            .stroke(egui::Stroke::new(1.0, BORDER))
-            .inner_margin(10.0)
-            .corner_radius(8.0);
-        egui::Area::new(egui::Id::unique("command-palette"))
+            .fill(SHEET)
+            .stroke(egui::Stroke::new(1.0, Color32::from_white_alpha(20)))
+            .shadow(egui::Shadow { offset: [0, 18], blur: 40, spread: 0, color: Color32::from_black_alpha(140) })
+            .inner_margin(egui::Margin::same(8))
+            .corner_radius(R_XL);
+        let area = egui::Area::new(egui::Id::unique("command-palette"))
             .order(Order::Foreground)
-            .anchor(Align2::CENTER_TOP, egui::vec2(0.0, 80.0))
+            .anchor(Align2::CENTER_TOP, egui::vec2(0.0, 96.0))
             .show(ui.ctx(), |ui| {
                 frame.show(ui, |ui| {
-                    ui.set_width(460.0);
-                    let edit = egui::TextEdit::singleline(&mut self.query)
-                        .hint_text("Jump to agent or run a command…")
-                        .desired_width(f32::INFINITY);
-                    let resp = ui.add(edit);
-                    if self.just_opened {
-                        resp.request_focus();
-                        self.just_opened = false;
-                    }
-                    ui.add_space(6.0);
-                    if filtered.is_empty() {
-                        ui.label(egui::RichText::new("Nothing matches").color(DIM));
-                    }
-                    for (row, it) in filtered.iter().enumerate() {
-                        let on = row == self.sel;
-                        let bg = if on { Color32::from_rgb(40, 44, 54) } else { Color32::TRANSPARENT };
-                        let inner = egui::Frame::NONE.fill(bg).inner_margin(egui::vec2(8.0, 5.0)).corner_radius(5.0);
-                        let r = inner
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(&it.name).strong());
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(egui::RichText::new(&it.word).small().color(DIM));
-                                    });
-                                })
-                                .response
-                            })
-                            .response
-                            .interact(egui::Sense::click());
-                        if r.clicked() {
-                            chosen = Some(PalettePick { key: it.key.clone(), kind: it.kind });
+                    ui.set_width(560.0_f32.min(screen.width() - 48.0));
+                    // The field: a magnifier and the query, on one quiet row.
+                    ui.horizontal(|ui| {
+                        let (ir, _) = ui.allocate_exact_size(egui::vec2(34.0, 40.0), egui::Sense::hover());
+                        crate::icons::paint_in(ui.painter(), ir, 15.0, crate::icons::Icon::Search, INK3, 2.0);
+                        let edit = egui::TextEdit::singleline(&mut self.query)
+                            .hint_text("Jump to an agent or run a command")
+                            .font(egui::FontId::proportional(15.0))
+                            .frame(egui::Frame::NONE)
+                            .desired_width(f32::INFINITY);
+                        let resp = ui.add(edit);
+                        if self.just_opened {
+                            resp.request_focus();
+                            self.just_opened = false;
                         }
+                    });
+                    let line = ui.available_rect_before_wrap();
+                    ui.painter().hline(line.x_range(), line.top() + 2.0, egui::Stroke::new(1.0, Color32::from_white_alpha(15)));
+                    ui.add_space(8.0);
+                    if filtered.is_empty() {
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new("   Nothing matches").size(13.0).color(DIM));
+                        ui.add_space(6.0);
                     }
+                    let max_h = (screen.height() * 0.6).min(440.0);
+                    egui::ScrollArea::vertical().max_height(max_h).show(ui, |ui| {
+                        for (row, it) in filtered.iter().enumerate() {
+                            let on = row == self.sel;
+                            let (rect, r) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 36.0), egui::Sense::click());
+                            if on {
+                                ui.painter().rect_filled(rect, 10.0, Color32::from_white_alpha(15));
+                                if arrows_moved(ui) {
+                                    r.scroll_to_me(None);
+                                }
+                            }
+                            let word = ui.painter().layout_no_wrap(it.word.clone(), egui::FontId::proportional(12.0), INK3);
+                            let mut job = egui::text::LayoutJob::single_section(it.name.clone(), egui::TextFormat::simple(egui::FontId::proportional(13.5), if on { TEXT } else { DIM }));
+                            job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - word.size().x - 40.0);
+                            let name = ui.painter().layout_job(job);
+                            ui.painter().galley(egui::pos2(rect.left() + 12.0, rect.center().y - name.size().y / 2.0), name, TEXT);
+                            ui.painter().galley(egui::pos2(rect.right() - 12.0 - word.size().x, rect.center().y - word.size().y / 2.0), word, INK3);
+                            if r.hovered() && ui.input(|i| i.pointer.delta() != egui::Vec2::ZERO) {
+                                self.sel = row;
+                            }
+                            if r.clicked() {
+                                chosen = Some(PalettePick { key: it.key.clone(), kind: it.kind });
+                            }
+                        }
+                    });
                 });
             });
+        // A click outside closes it.
+        if ui.input(|i| i.pointer.any_pressed()) && ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| !area.response.rect.contains(p)) {
+            self.open = false;
+        }
 
         if let Some(pick) = chosen {
             self.open = false;

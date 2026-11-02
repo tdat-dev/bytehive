@@ -14,7 +14,7 @@ use supervise::diff_file::{parse_diff, DiffFile};
 use supervise::done_check::{describe_done, describe_secrets, scan_done_diff, scan_secrets, DoneFinding, SecretFinding};
 
 use crate::term_pane::{Pane, WorktreeInfo};
-use crate::theme::{ADD, DEL, DIM, FAINT};
+use crate::theme::{ADD, DEL, DIM, FAINT, INK3, TEXT};
 
 /// Everything Review shows for one folder, read in one go off the UI thread.
 pub struct ReviewSnapshot {
@@ -109,6 +109,32 @@ pub fn load_worktree_snapshot(w: &WorktreeInfo) -> ReviewSnapshot {
     ReviewSnapshot::from_files(Some(w.branch.clone()), changed, files)
 }
 
+/// One changed file as a row: its path cut to fit, +adds and -dels at the
+/// right edge. True when clicked (read its diff).
+fn file_row(ui: &mut egui::Ui, f: &DiffFile) -> bool {
+    let w = ui.available_width().min(ui.clip_rect().right() - ui.cursor().left() - 6.0);
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(w, 30.0), egui::Sense::click());
+    let p = ui.painter_at(rect);
+    if r.hovered() {
+        p.rect_filled(rect, 8.0, egui::Color32::from_white_alpha(10));
+    }
+    let mono = egui::FontId::monospace(12.0);
+    let mut right = rect.right() - 8.0;
+    for (n, sign, color) in [(f.deletions, "\u{2212}", DEL), (f.additions, "+", ADD)] {
+        if n > 0 {
+            let g = p.layout_no_wrap(format!("{sign}{n}"), mono.clone(), color);
+            right -= g.size().x;
+            p.galley(egui::pos2(right, rect.center().y - g.size().y / 2.0), g, color);
+            right -= 8.0;
+        }
+    }
+    let mut job = egui::text::LayoutJob::single_section(f.path.clone(), egui::TextFormat::simple(mono, DIM));
+    job.wrap = egui::text::TextWrapping::truncate_at_width(right - rect.left() - 16.0);
+    let g = p.layout_job(job);
+    p.galley(egui::pos2(rect.left() + 8.0, rect.center().y - g.size().y / 2.0), g, DIM);
+    r.on_hover_text(format!("{}\nClick to read its diff", f.path)).clicked()
+}
+
 enum ReviewMsg {
     Snapshot(String, ReviewSnapshot),
     Checkpoint(Option<String>),
@@ -172,7 +198,7 @@ impl ReviewPanel {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, panes: &mut [Pane]) {
-        ui.label(egui::RichText::new("Review").strong().size(15.0));
+        ui.label(egui::RichText::new("Review").font(crate::style::medium(15.0)));
         if panes.is_empty() {
             ui.label(egui::RichText::new("No agents yet.").color(FAINT));
             return;
@@ -182,10 +208,12 @@ impl ReviewPanel {
             self.snapshot = None;
         }
         let mut changed = false;
+        ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
             for p in panes.iter() {
                 let sel = self.selected.as_deref() == Some(p.id.as_str());
-                if ui.selectable_label(sel, &p.name).clicked() {
+                if crate::newtask_props::choice(ui, &p.name, sel, true).clicked() {
                     self.selected = Some(p.id.clone());
                     self.snapshot = None;
                     self.checkpoint_msg = None;
@@ -213,11 +241,13 @@ impl ReviewPanel {
         if changed || (self.snapshot.is_none() && !self.loading) {
             self.request_load(&pane_id, panes);
         }
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if ui.small_button("Refresh").clicked() {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            if crate::newtask_props::im_btn(ui, "Refresh", false).on_hover_text("Read the diff again").clicked() {
                 self.request_load(&pane_id, panes);
             }
-            if ui.small_button("Checkpoint").clicked() {
+            if crate::newtask_props::im_btn(ui, "Checkpoint", false).on_hover_text("Keep a commit of where it is now").clicked() {
                 if let Some(cwd) = Self::cwd_of(panes, &pane_id) {
                     let tx = self.tx.clone();
                     std::thread::spawn(move || {
@@ -227,7 +257,7 @@ impl ReviewPanel {
                 }
             }
             if let Some(msg) = self.checkpoint_msg.as_deref() {
-                ui.label(egui::RichText::new(msg).small().color(DIM));
+                ui.label(egui::RichText::new(msg).size(12.0).color(DIM));
             }
         });
         let out = panes.iter().find(|p| Some(p.id.as_str()) == self.selected.as_deref()).and_then(|p| self.land.show(ui, p));
@@ -242,7 +272,7 @@ impl ReviewPanel {
             Some(o) => self.land_out = Some(o),
             None => {}
         }
-        ui.separator();
+        ui.add_space(10.0);
         if self.loading && self.snapshot.is_none() {
             ui.label(egui::RichText::new("Reading the diff…").color(FAINT));
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
@@ -253,39 +283,36 @@ impl ReviewPanel {
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
         }
         let branch = snap.branch.as_deref().unwrap_or("(no branch)");
-        ui.label(egui::RichText::new(format!("{} · {} file{} changed", branch, snap.changed.len(), if snap.changed.len() == 1 { "" } else { "s" })).strong());
-        let done_line = describe_done(&snap.done);
-        ui.label(egui::RichText::new(if done_line.is_empty() { "Done gate: clean".to_string() } else { format!("Done gate: {done_line}") }).small());
-        let secrets_line = describe_secrets(&snap.secrets);
-        ui.label(
-            egui::RichText::new(if secrets_line.is_empty() { "Secrets: clean".to_string() } else { format!("Secrets: {secrets_line}") })
-                .small()
-                .color(if secrets_line.is_empty() { DIM } else { DEL }),
-        );
-        ui.separator();
-        if !snap.files.is_empty() && ui.button("Open changes").on_hover_text("The full diff, file by file (V marks viewed)").clicked() {
+        let n = snap.changed.len();
+        ui.label(egui::RichText::new(format!("{n} file{} changed", if n == 1 { "" } else { "s" })).font(crate::style::w500(13.5)).color(TEXT));
+        ui.add(egui::Label::new(egui::RichText::new(branch).font(egui::FontId::monospace(12.0)).color(INK3)).truncate());
+        ui.add_space(4.0);
+        for (what, line) in [("Done gate", describe_done(&snap.done)), ("Secrets", describe_secrets(&snap.secrets))] {
+            let clean = line.is_empty();
+            ui.horizontal(|ui| {
+                let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 14.0), egui::Sense::hover());
+                ui.painter().circle_filled(r.center(), 3.0, if clean { ADD } else { DEL });
+                let text = if clean { format!("{what}: clean") } else { format!("{what}: {line}") };
+                ui.label(egui::RichText::new(text).size(12.0).color(if clean { DIM } else { DEL }));
+            });
+        }
+        ui.add_space(8.0);
+        if !snap.files.is_empty() && crate::newtask_props::im_btn(ui, "Open changes", true).on_hover_text("The full diff, file by file (V marks viewed)").clicked() {
             self.open_changes = Some(0);
         }
-        egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.add_space(6.0);
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for (i, f) in snap.files.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    let name = egui::Label::new(egui::RichText::new(&f.path).monospace().small()).truncate().sense(egui::Sense::click());
-                    if ui.add(name).on_hover_text(format!("{}\nClick to read its diff", f.path)).clicked() {
-                        self.open_changes = Some(i);
-                    }
-                    if f.additions > 0 {
-                        ui.label(egui::RichText::new(format!("+{}", f.additions)).monospace().small().color(ADD));
-                    }
-                    if f.deletions > 0 {
-                        ui.label(egui::RichText::new(format!("-{}", f.deletions)).monospace().small().color(DEL));
-                    }
-                });
+                if file_row(ui, f) {
+                    self.open_changes = Some(i);
+                }
             }
             let untracked: Vec<&String> = snap.changed.iter().filter(|c| !snap.files.iter().any(|f| &f.path == *c)).collect();
             if !untracked.is_empty() {
-                ui.label(egui::RichText::new("Untracked (not in the diff):").small().strong());
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new("Untracked (not in the diff)").size(12.0).color(INK3));
                 for u in untracked {
-                    ui.label(egui::RichText::new(format!("? {u}")).monospace().small().color(DIM));
+                    ui.add(egui::Label::new(egui::RichText::new(u.as_str()).font(egui::FontId::monospace(12.0)).color(DIM)).truncate());
                 }
             }
         });

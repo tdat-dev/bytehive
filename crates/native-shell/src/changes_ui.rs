@@ -42,31 +42,36 @@ impl ChangesPanel {
         if !self.open {
             return;
         }
-        egui::Panel::right("changes").default_size(600.0).size_range(380.0..=1000.0).show(ui, |ui| {
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Changes on this branch").size(12.5).color(INK3));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(RichText::new("Close").size(12.5).color(INK3)).frame(false)).clicked() {
-                        self.open = false;
+        // A floating panel like the stage, at the right gutter.
+        let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: 12, right: crate::style::GUTTER as i8, top: 0, bottom: 0 });
+        egui::Panel::right("changes").default_size(600.0).size_range(380.0..=1000.0).frame(frame).show_separator_line(false).show(ui, |ui| {
+            crate::inbox::panel(ui, |ui| {
+                egui::Frame::NONE.inner_margin(egui::Margin { left: 18, right: 14, top: 12, bottom: 12 }).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Changes on this branch").size(12.5).color(INK3));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if crate::newtask_props::round_x(ui).on_hover_text("Close").clicked() {
+                                self.open = false;
+                            }
+                        });
+                    });
+                    let Some(files) = v.files else {
+                        empty(ui, "Reading the diff\u{2026}", "");
+                        ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+                        return;
+                    };
+                    if files.is_empty() {
+                        empty(ui, "Nothing to review", &format!("No changes in {}'s folder yet.", v.pane_name));
+                        return;
                     }
+                    self.cur = self.cur.min(files.len() - 1);
+                    self.keys(ui, v.pane_id, files);
+                    self.head(ui, &v, files);
+                    self.file_list(ui, v.pane_id, files);
+                    ui.add_space(4.0);
+                    diff_body(ui, &files[self.cur]);
                 });
             });
-            let Some(files) = v.files else {
-                empty(ui, "Reading the diff\u{2026}", "");
-                ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
-                return;
-            };
-            if files.is_empty() {
-                empty(ui, "Nothing to review", &format!("No changes in {}'s folder yet.", v.pane_name));
-                return;
-            }
-            self.cur = self.cur.min(files.len() - 1);
-            self.keys(ui, v.pane_id, files);
-            self.head(ui, &v, files);
-            self.file_list(ui, v.pane_id, files);
-            ui.add_space(4.0);
-            diff_body(ui, &files[self.cur]);
         });
     }
 

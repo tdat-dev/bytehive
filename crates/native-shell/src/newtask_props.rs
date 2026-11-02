@@ -27,7 +27,7 @@ pub(crate) fn label(ui: &mut egui::Ui, text: &str) {
 }
 
 /// A choice pill (.im-choice): outlined, white when picked.
-fn choice(ui: &mut egui::Ui, text: &str, on: bool, enabled: bool) -> egui::Response {
+pub(crate) fn choice(ui: &mut egui::Ui, text: &str, on: bool, enabled: bool) -> egui::Response {
     let font = if on { on_white(13.0) } else { FontId::proportional(13.0) };
     let g = ui.painter().layout_no_wrap(text.to_string(), font, DIM);
     let (rect, r) = ui.allocate_exact_size(Vec2::new(g.size().x + 24.0, 32.0), if enabled { Sense::click() } else { Sense::hover() });

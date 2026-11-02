@@ -116,7 +116,7 @@ impl HistoryPanel {
     /// `stage` is the agent on stage (followed when it changes), `home` the
     /// project of a pane.
     pub fn show(&mut self, ui: &mut egui::Ui, panes: &[Pane], stage: Option<&str>, schedules: &[crate::schedule::Schedule], home: impl Fn(&Pane) -> String) -> Option<HistAction> {
-        ui.label(egui::RichText::new("History").strong().size(15.0));
+        ui.label(egui::RichText::new("History").font(crate::style::medium(15.0)));
         let agents: Vec<&Pane> = panes.iter().filter(|p| p.cli.is_some()).collect();
         if agents.is_empty() {
             ui.label(egui::RichText::new("No agent panes yet. Plain shells have no transcript.").color(FAINT));
@@ -132,10 +132,12 @@ impl HistoryPanel {
         if self.selected.as_ref().is_none_or(|id| agents.iter().all(|p| &p.id != id)) {
             self.selected = Some(agents[0].id.clone());
         }
+        ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
             for p in &agents {
                 let sel = self.selected.as_deref() == Some(p.id.as_str());
-                if ui.selectable_label(sel, &p.name).clicked() {
+                if crate::newtask_props::choice(ui, &p.name, sel, true).clicked() {
                     self.selected = Some(p.id.clone());
                 }
             }
@@ -157,14 +159,13 @@ impl HistoryPanel {
         let pane_id = self.selected.clone().unwrap_or_default();
         let pane = panes.iter().find(|p| p.id == pane_id);
         let mut force = false;
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if ui.small_button("Refresh").clicked() {
-                if pane.is_some() {
-                    force = true;
-                }
+            if crate::newtask_props::im_btn(ui, "Refresh", false).on_hover_text("Read the transcript again").clicked() && pane.is_some() {
+                force = true;
             }
             if self.loading {
-                ui.label(egui::RichText::new("reading…").small().color(FAINT));
+                ui.label(egui::RichText::new("Reading\u{2026}").size(12.0).color(FAINT));
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
             }
         });
