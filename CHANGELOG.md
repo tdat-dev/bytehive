@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-11-03
+
+### Added
+
+- **Agents can watch a page without screenshots.**
+  - `browser_wait` waits until text or an element shows (or goes), the
+    address changes, the network goes quiet, or the page stops changing,
+    instead of sleeping and taking pictures to check.
+  - `browser_observe` watches part of a page for some seconds and returns each
+    new line of text with the second it came: a chat reply streaming in,
+    prices, a status. It can stop at a given word.
+  - `browser_video_frames` takes frames from a video on the page (at given
+    times, spread over it, or every few seconds) and returns them as one
+    labelled grid picture: many frames for the cost of one image, read from
+    the decoded video without lagging the machine, and the video is left as
+    it was.
+
 ## [0.12.2] - 2026-11-03
 
 ### Changed
