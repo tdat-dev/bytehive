@@ -29,7 +29,7 @@ impl ShellApp {
                     Some(w) => format!("{project} / {}", w.branch),
                     None => project,
                 };
-                let title = p.task.clone().unwrap_or_else(|| crate::theme::state_word(state).to_string());
+                let title = p.task.clone().unwrap_or_else(|| crate::inbox::state_label(state).to_string());
                 let cost = p.usage.as_ref().and_then(|u| u.usd).map(supervise::pricing::money).unwrap_or_default();
                 AgentCard { pane_id: p.id.clone(), name: p.name.clone(), cli: p.cli.map_or("Shell", |c| c.name()).to_string(), title, where_, state, cost }
             })
@@ -47,12 +47,16 @@ impl ShellApp {
         let cards = self.agent_cards(hidden);
         let plan = self.plan_path();
         let mut picked = None;
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(crate::theme::BG)).show(ui, |ui| {
-            let (path, name) = match &plan {
-                Some((p, n)) => (Some(p.as_path()), n.as_str()),
-                None => (None, ""),
-            };
-            picked = self.board.show(ui, &cards, path, name);
+        // On the same floating panel as the stage, not bare on the ground.
+        let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: 16, right: crate::style::GUTTER as i8, top: 0, bottom: 0 });
+        egui::CentralPanel::default().frame(frame).show(ui, |ui| {
+            crate::inbox::panel(ui, |ui| {
+                let (path, name) = match &plan {
+                    Some((p, n)) => (Some(p.as_path()), n.as_str()),
+                    None => (None, ""),
+                };
+                picked = self.board.show(ui, &cards, path, name);
+            });
         });
         if let Some((id, task)) = self.board.give.take() {
             self.tell(id, task);

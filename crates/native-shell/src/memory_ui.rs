@@ -112,9 +112,12 @@ impl MemorySheet {
             ui.set_width(720.0_f32.min(screen.width() - 72.0));
             let mut close = false;
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Project memory").size(16.0).color(TEXT));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| close = button(ui, "Close  Esc", INK3));
+                let mut job = egui::text::LayoutJob::default();
+                job.append("Project memory", 0.0, crate::style::tight(crate::style::medium(20.0), TEXT, -0.02));
+                ui.label(job);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| close = crate::newtask_props::round_x(ui).on_hover_text("Close (Esc)").clicked());
             });
+            ui.add_space(2.0);
             ui.label(RichText::new(format!("What every agent in {} knows when it starts. Agents add to it as they learn.", project_name(&self.project))).size(12.5).color(INK3));
             if projects.len() > 1 {
                 ui.horizontal_wrapped(|ui| {

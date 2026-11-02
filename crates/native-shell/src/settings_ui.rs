@@ -19,6 +19,8 @@ pub struct SettingsSheet {
     pub open: bool,
     section: usize,
     scroll_to: Option<usize>,
+    /// The last heading scrolled past the top: the section in view.
+    spy: usize,
     /// What the updater last said, and a Check now press for the app.
     pub update_status: String,
     pub want_update_check: bool,
@@ -112,7 +114,9 @@ impl SettingsSheet {
             ui.scope_builder(egui::UiBuilder::new().max_rect(nav.shrink2(egui::vec2(10.0, 18.0))).layout(top_down), |ui| {
                 ui.horizontal(|ui| {
                     ui.add_space(10.0);
-                    ui.label(RichText::new("Settings").size(15.0).color(TEXT));
+                    let mut job = egui::text::LayoutJob::default();
+                    job.append("Settings", 0.0, crate::style::tight(crate::style::medium(20.0), TEXT, -0.02));
+                    ui.label(job);
                 });
                 ui.add_space(10.0);
                 for (i, name) in SECTIONS.iter().enumerate() {
@@ -131,13 +135,18 @@ impl SettingsSheet {
             let inner = egui::Rect::from_min_max(body.min + egui::vec2(24.0, 14.0), body.max - egui::vec2(20.0, 14.0));
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(top_down), |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                    if ui.add(egui::Button::new(RichText::new("Close  Esc").size(12.5).color(INK3)).frame(false)).clicked() {
-                        close = true;
-                    }
+                    close = crate::newtask_props::round_x(ui).on_hover_text("Close (Esc)").clicked();
                 });
+                self.spy = 0;
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     changed |= self.body(ui, prefs, store, remote, browser);
+                    // Room for the last section to reach the top, so its nav entry can.
+                    ui.add_space((ui.clip_rect().height() - 160.0).max(0.0));
                 });
+                // The nav follows the scroll, not only clicks.
+                if self.scroll_to.is_none() {
+                    self.section = self.spy;
+                }
             });
             close
         });
@@ -149,6 +158,9 @@ impl SettingsSheet {
 
     fn heading(&mut self, ui: &mut egui::Ui, i: usize) {
         let r = ui.label(RichText::new(SECTIONS[i]).size(12.5).color(INK3));
+        if r.rect.top() <= ui.clip_rect().top() + 40.0 {
+            self.spy = i;
+        }
         if self.scroll_to == Some(i) {
             r.scroll_to_me(Some(egui::Align::TOP));
             self.scroll_to = None;

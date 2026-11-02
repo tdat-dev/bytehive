@@ -67,18 +67,27 @@ impl ReplaySheet {
                 ctx.request_repaint();
             }
         }
-        let frame = egui::Frame::new().fill(SHEET).corner_radius(R_XL).stroke(Stroke::new(1.0, Color32::from_white_alpha(20))).inner_margin(egui::Margin::same(20));
+        let frame = egui::Frame::new()
+            .fill(SHEET)
+            .corner_radius(R_XL)
+            .stroke(Stroke::new(1.0, Color32::from_white_alpha(20)))
+            .shadow(egui::Shadow { offset: [0, 18], blur: 40, spread: 0, color: Color32::from_black_alpha(140) })
+            .inner_margin(egui::Margin::same(22));
         let screen = ctx.content_rect();
         let modal = egui::Modal::new(egui::Id::unique("replay-sheet")).frame(frame).show(ctx, |ui| {
-            ui.set_width(920.0_f32.min(screen.width() - 72.0));
+            // The list is a small dialog, like New agent; a playing replay needs room.
+            let w: f32 = if self.player.is_some() { 920.0 } else { 560.0 };
+            ui.set_width(w.min(screen.width() - 72.0));
             let mut close = false;
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Replays").size(16.0).color(TEXT));
+                let mut job = egui::text::LayoutJob::default();
+                job.append("Replays", 0.0, crate::style::tight(crate::style::medium(20.0), TEXT, -0.02));
+                ui.label(job);
                 if let Some(p) = &self.player {
                     ui.label(RichText::new(&p.label).size(12.5).color(INK3));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    close = ui.add(egui::Button::new(RichText::new("Close  Esc").size(12.0).color(INK3)).frame(false)).clicked();
+                    close = crate::newtask_props::round_x(ui).on_hover_text("Close (Esc)").clicked();
                     if self.player.is_some() && ui.add(egui::Button::new(RichText::new("All recordings").size(12.0).color(INK3)).frame(false)).clicked() {
                         self.player = None;
                         self.recs = list(&self.project);

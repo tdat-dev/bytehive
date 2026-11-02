@@ -143,7 +143,8 @@ impl ShellApp {
                     self.board.open = false;
                     self.extras.home = false;
                 }
-                let sw = if narrow { 220.0 } else { 320.0_f32.min(ui.ctx().content_rect().width() * 0.24) };
+                // Narrow drops the key hint, not the words: the whole hint fits in 280.
+                let sw = if narrow { 280.0 } else { 320.0_f32.min(ui.ctx().content_rect().width() * 0.24) };
                 if search(ui, sw, narrow) {
                     self.palette.toggle();
                 }

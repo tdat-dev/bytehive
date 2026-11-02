@@ -44,7 +44,7 @@ pub fn line_color(state: TaskState) -> Color32 {
 }
 
 /// The state as a row says it.
-fn state_label(state: TaskState) -> &'static str {
+pub(crate) fn state_label(state: TaskState) -> &'static str {
     match state {
         TaskState::Needs => "Needs you",
         TaskState::Blocked => "Blocked",

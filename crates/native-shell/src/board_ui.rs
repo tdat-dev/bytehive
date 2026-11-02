@@ -230,7 +230,7 @@ fn agent_columns(ui: &mut egui::Ui, agents: &[AgentCard]) -> Option<String> {
                 let mine: Vec<&AgentCard> = agents.iter().filter(|a| states.contains(&a.state)).collect();
                 column(ui, title, mine.len(), |ui| {
                     if mine.is_empty() {
-                        ui.label(RichText::new("None").size(12.5).color(INK3));
+                        ui.label(RichText::new("Nothing here.").size(12.5).color(crate::theme::FAINT));
                     }
                     for a in mine {
                         let r = card_frame(ui, |ui| {
