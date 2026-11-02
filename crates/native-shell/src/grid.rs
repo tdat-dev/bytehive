@@ -18,6 +18,8 @@ use crate::theme::{state_dot, ADD, AMBER, DEL, DIM, INK3, TEXT};
 pub(crate) struct GridOut {
     pub restart: Option<usize>,
     pub kill: Vec<String>,
+    /// Stopped but kept, with Resume, like the web app's stop.
+    pub stop: Vec<String>,
 }
 
 /// Header height inside a tile, and the gap between tiles.

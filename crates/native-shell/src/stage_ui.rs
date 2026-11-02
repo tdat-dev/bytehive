@@ -216,7 +216,7 @@ impl ShellApp {
                             if model_command(cli).is_some() {
                                 items.push(("Model", false));
                             }
-                        } else {
+                        } else if cli.is_some() {
                             items.push(("Hand over", false));
                         }
                         items.push(("Changes", self.changes.open));
@@ -243,6 +243,10 @@ impl ShellApp {
                     let more = icon_btn(ui, Icon::Dots, 30.0, false, false).on_hover_text("More");
                     egui::Popup::menu(&more).show(|ui| {
                         for (key, label) in [("handoff", "Hand over to another CLI"), ("record", "Record (start or stop)"), ("files", "Files on this branch"), ("memory", "Project memory"), ("restart", "Restart")] {
+                            // A plain shell has no task to hand over.
+                            if key == "handoff" && cli.is_none() {
+                                continue;
+                            }
                             if ui.button(label).clicked() {
                                 act = Some(key);
                             }
@@ -254,7 +258,9 @@ impl ShellApp {
             });
         });
         match act {
-            Some("kill") => out.kill.push(id.clone()),
+            // A running agent stops and stays (Resume); a stopped one goes.
+            Some("kill") if exited => out.kill.push(id.clone()),
+            Some("kill") => out.stop.push(id.clone()),
             Some("restart") => out.restart = Some(i),
             // One tab at a time: the terminal, the history, or the changes.
             Some("commands") => {

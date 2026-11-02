@@ -319,6 +319,12 @@ impl eframe::App for ShellApp {
             drop(gone);
         }
         self.panes.retain(|p| !kill.contains(&p.id));
+        for id in &grid_out.stop {
+            drop(lock(&self.registry).take(id));
+            if let Some(p) = self.panes.iter_mut().find(|p| &p.id == id) {
+                p.exit_code.get_or_insert(0);
+            }
+        }
 
         // The palette floats over everything; a pick focuses a pane or runs a
         // command.

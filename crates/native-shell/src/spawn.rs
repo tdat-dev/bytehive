@@ -136,8 +136,14 @@ impl ShellApp {
         // Restart carries the conversation on when one is known.
         if let (Some(cli), Some(sid)) = (pane.cli, pane.session_id.clone()) {
             let cwd = pane.spec.cwd.clone().unwrap_or_default();
-            let item = agent_core::transcript::SessionItem { id: sid, title: String::new(), cwd, modified_ms: 0 };
-            let (spec, kept) = resume_spec(cli, &item, &pane.extra_args);
+            // Stopped before its first message, Claude never saved the session:
+            // --resume would fail, so boot fresh under the same id instead.
+            let (spec, kept) = if cli == Cli::Claude && !agent_core::claude::session_exists(&cwd, &sid) {
+                fresh_spec(cli, &cwd, &pane.extra_args, || sid.clone())
+            } else {
+                let item = agent_core::transcript::SessionItem { id: sid, title: String::new(), cwd, modified_ms: 0 };
+                resume_spec(cli, &item, &pane.extra_args)
+            };
             pane.spec = agent_spec(spec, &pane.name, Some(cli));
             pane.session_id = kept;
         }
