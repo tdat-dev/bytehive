@@ -73,6 +73,7 @@ mod style;
 mod system;
 mod taskopts;
 mod tasks;
+mod term_paint;
 mod term_pane;
 mod term_search;
 mod term_select;
