@@ -37,14 +37,14 @@ fn path() -> Option<PathBuf> {
 /// An agent in the list as the file keeps it, running or stopped (a stopped
 /// one keeps its Resume); shells are not kept.
 pub fn saved(p: &Pane) -> Option<Value> {
-    let cli = p.cli?;
-    if p.merged {
-        return None; // landed and done
+    if p.merged || (p.cli.is_none() && p.custom.is_none()) {
+        return None; // landed and done, or a plain shell
     }
     let wt = p.worktree.as_ref().map(|w| json!({ "repo": w.repo, "branch": w.branch, "base": w.base, "path": w.path }));
     Some(json!({
         "name": p.name,
-        "cli": cli.name(),
+        "cli": p.cli.map(|c| c.name()),
+        "custom": p.custom,
         "session": p.session_id,
         "cwd": p.spec.cwd.clone().unwrap_or_default(),
         "extra": p.extra_args,
@@ -98,7 +98,11 @@ impl ShellApp {
     fn reopen_one(&mut self, a: &Value) -> Result<(), String> {
         let s = |k: &str| a[k].as_str().unwrap_or_default().to_string();
         let (name, cwd) = (s("name"), s("cwd"));
-        let cli = cli_named(&s("cli")).ok_or_else(|| format!("{name}: unknown CLI {}", s("cli")))?;
+        let custom = a["custom"].as_str().filter(|c| !c.trim().is_empty()).map(String::from);
+        let cli = cli_named(&s("cli"));
+        if cli.is_none() && custom.is_none() {
+            return Err(format!("{name}: unknown CLI {}", s("cli")));
+        }
         if cwd.is_empty() || !std::path::Path::new(&cwd).is_dir() {
             return Err(format!("{name} was not reopened: {cwd} is gone."));
         }
@@ -110,17 +114,19 @@ impl ShellApp {
         let session = a["session"].as_str().filter(|s| !s.is_empty()).map(String::from);
         // Resume rebuilds the launch from the session; with none known it
         // starts the CLI fresh in the same place.
-        let (spec, kept) = match &session {
-            Some(sid) => {
+        let (spec, kept) = match (cli, &session) {
+            (None, _) => (crate::custom::spec(custom.as_deref().unwrap_or_default(), &cwd).ok_or("empty command")?, None),
+            (Some(cli), Some(sid)) => {
                 let item = agent_core::transcript::SessionItem { id: sid.clone(), title: String::new(), cwd: cwd.clone(), modified_ms: 0 };
                 resume_spec(cli, &item, &extra)
             }
-            None => fresh_spec(cli, &cwd, &extra, || uuid::Uuid::new_v4().to_string()),
+            (Some(cli), None) => fresh_spec(cli, &cwd, &extra, || uuid::Uuid::new_v4().to_string()),
         };
         let id = format!("pane-{}", self.next_id);
         self.next_id += 1;
-        let mut pane = Pane::new(id, name.clone(), crate::spawn::agent_spec(spec, &name, Some(cli)), 80, 24);
-        pane.cli = Some(cli);
+        let mut pane = Pane::new(id, name.clone(), crate::spawn::agent_spec(spec, &name, cli), 80, 24);
+        pane.cli = cli;
+        pane.custom = custom;
         pane.session_id = kept;
         pane.extra_args = extra;
         pane.worktree = worktree;
@@ -171,6 +177,23 @@ mod tests {
         assert!(p.exit_code.is_some(), "stopped: nothing runs until Resume");
         assert!(agent_core::lock(&app.registry).take(&p.id).is_none(), "no process was started");
         assert_eq!(p.task.as_deref(), Some("Fix it"));
+    }
+
+    #[test]
+    fn a_custom_agent_comes_back_with_its_command() {
+        let mut app = ShellApp::new().unwrap();
+        let p = &mut app.panes[0];
+        p.custom = Some("ollama run llama3.1".into());
+        p.name = "Eve".into();
+        let v = saved(p).expect("a custom agent is kept");
+        assert_eq!(v["custom"], "ollama run llama3.1");
+        let dir = std::env::temp_dir().to_string_lossy().into_owned();
+        let a = json!({ "name": "Eve", "cli": null, "custom": "ollama run llama3.1", "cwd": dir });
+        app.reopen_one(&a).unwrap();
+        let p = app.panes.last().unwrap();
+        assert_eq!(p.cli, None);
+        assert_eq!(p.custom.as_deref(), Some("ollama run llama3.1"));
+        assert!(p.exit_code.is_some(), "stopped until Resume");
     }
 
     #[test]

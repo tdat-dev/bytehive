@@ -1,7 +1,7 @@
-//! Each agent's mark: a small pixel face of its own, worked out from its
-//! name, in its CLI's color. Four parts (head, top, eyes, mouth), 192 faces
-//! in all, so agents side by side look different at a glance and the same
-//! agent always looks the same. Same faces as the web app had.
+//! Each agent's mark: its CLI's own logo (see brand.rs). A plain shell, or a
+//! custom command without a known logo, gets a small pixel face worked out
+//! from its name instead: four parts (head, top, eyes, mouth), 192 faces in
+//! all, the same faces the web app had.
 
 use eframe::egui::{Color32, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
@@ -97,14 +97,22 @@ pub fn cli_color(cli: Option<Cli>) -> Color32 {
     }
 }
 
-/// The avatar tile: the CLI color mixed 22% into near-black, a ring of it at
-/// 38%, and the face over 66% of the tile. Dimmed for a stopped agent.
-pub fn avatar(p: &Painter, at: Rect, cli: Option<Cli>, name: &str, radius: f32, dim: bool) {
-    let c = cli_color(cli);
+/// The avatar tile: the brand color mixed 22% into near-black and a ring of
+/// it at 38%, with the CLI's own logo; a custom command nobody knows and a
+/// plain shell get a pixel face. Dimmed for a stopped agent.
+pub fn avatar(p: &Painter, at: Rect, cli: Option<Cli>, custom: Option<&str>, name: &str, radius: f32, dim: bool) {
+    let brand = cli.map(crate::brand::of_cli).or_else(|| custom.and_then(crate::brand::of_command));
+    let c = brand.map_or(cli_color(None), |b| b.color);
     let a = if dim { 0.55 } else { 1.0 };
     let base = Color32::from_rgb(17, 17, 20).lerp_to_gamma(c, 0.22);
     p.rect_filled(at, radius, base.gamma_multiply(a));
     p.rect_stroke(at, radius, Stroke::new(1.0, c.gamma_multiply(0.38 * a)), StrokeKind::Inside);
+    if let Some(b) = brand {
+        let r = Rect::from_center_size(at.center(), Vec2::splat((at.width() * 0.66).round()));
+        let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+        p.image(crate::brand::texture(p.ctx(), b), r, uv, Color32::WHITE.gamma_multiply(a));
+        return;
+    }
     let side = (at.width() * 0.66).round();
     let cell = side / 8.0;
     let o = (at.center() - Vec2::splat(side / 2.0)).round();

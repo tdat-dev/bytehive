@@ -74,7 +74,10 @@ impl ShellApp {
     }
 
     fn boot_launch(&mut self, l: Launch, dir: &str, worktree: Option<WorktreeInfo>, reveal: bool) -> Result<(), String> {
-        let id = self.boot_agent(l.cli, dir, l.name, l.extra_args, worktree)?;
+        let id = match &l.custom {
+            Some(cmd) => self.boot_custom(cmd, dir, l.name, worktree)?,
+            None => self.boot_agent(l.cli, dir, l.name, l.extra_args, worktree)?,
+        };
         let title: String = l.task.lines().map(str::trim).find(|s| !s.is_empty()).unwrap_or("").chars().take(80).collect();
         if let Some(p) = self.panes.iter_mut().find(|p| p.id == id) {
             p.task = Some(title).filter(|t| !t.is_empty());
@@ -179,7 +182,7 @@ mod tests {
         let repo = dir.to_string_lossy().into_owned();
         let wts = dir.join("wts");
         let path_for = |_: &str, b: &str| wts.join(b.replace('/', "_"));
-        let launch = |name: &str| Launch { name: name.into(), cli: Cli::Claude, branch: Some("ana/fix".into()), extra_args: vec![], task: "fix".into() };
+        let launch = |name: &str| Launch { name: name.into(), cli: Cli::Claude, branch: Some("ana/fix".into()), extra_args: vec![], custom: None, task: "fix".into() };
         let LaunchMsg::Ready { worktree: first, .. } = make_worktree(&repo, "HEAD", launch("Ana"), path_for) else { panic!("first worktree") };
         let LaunchMsg::Ready { launch: l, worktree: second } = make_worktree(&repo, "HEAD", launch("Bob"), path_for) else { panic!("second worktree") };
         assert_eq!(first.branch, "ana/fix");

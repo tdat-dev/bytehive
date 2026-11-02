@@ -44,6 +44,35 @@ pub(crate) fn choice(ui: &mut egui::Ui, text: &str, on: bool, enabled: bool) -> 
     r
 }
 
+/// An agent choice with its CLI's logo before the name.
+pub(crate) fn logo_choice(ui: &mut egui::Ui, brand: Option<&crate::brand::Brand>, text: &str, on: bool, enabled: bool) -> egui::Response {
+    let font = if on { on_white(13.0) } else { FontId::proportional(13.0) };
+    let g = ui.painter().layout_no_wrap(text.to_string(), font, DIM);
+    let lead = if brand.is_some() { 22.0 } else { 0.0 };
+    let (rect, r) = ui.allocate_exact_size(Vec2::new(g.size().x + 24.0 + lead, 32.0), if enabled { Sense::click() } else { Sense::hover() });
+    let p = ui.painter();
+    let fade = if enabled { 1.0 } else { 0.4 };
+    let ink = if on {
+        p.rect_filled(rect, 16.0, Color32::WHITE);
+        Color32::BLACK
+    } else {
+        p.rect_stroke(rect, 16.0, Stroke::new(1.0, Color32::from_white_alpha(if r.hovered() && enabled { 46 } else { 26 })), egui::StrokeKind::Inside);
+        if r.hovered() && enabled { TEXT } else { DIM }
+    };
+    if let Some(b) = brand {
+        let at = egui::Rect::from_center_size(egui::pos2(rect.left() + 12.0 + 8.0, rect.center().y), Vec2::splat(16.0));
+        // Light logos vanish on the white chip: give them a dark disc.
+        if on {
+            p.circle_filled(at.center(), 10.5, Color32::from_rgb(22, 23, 27));
+        }
+        let uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0));
+        p.image(crate::brand::texture(p.ctx(), b), at, uv, Color32::WHITE.gamma_multiply(fade));
+    }
+    let at = egui::pos2(rect.left() + 12.0 + lead, rect.center().y - g.size().y / 2.0);
+    p.galley_with_override_text_color(at, g, ink.gamma_multiply(fade));
+    r
+}
+
 /// A dialog button (.im-btn): quiet pill, or white when primary.
 pub(crate) fn im_btn(ui: &mut egui::Ui, text: &str, primary: bool) -> egui::Response {
     let font = if primary { on_white(13.0) } else { medium(13.0) };
@@ -113,15 +142,37 @@ impl NewTaskSheet {
             ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
             for cli in Cli::all() {
                 let here = self.installed.as_ref().is_none_or(|v| v.contains(&cli));
-                let r = choice(ui, cli.name(), self.form.cli == cli, here);
+                let on = self.form.cli == cli && self.form.custom.is_none();
+                let r = logo_choice(ui, Some(crate::brand::of_cli(cli)), cli.name(), on, here);
                 if r.clicked() {
                     self.form.cli = cli;
+                    self.form.custom = None;
                 }
                 if !here {
                     r.on_hover_text(format!("Not installed: {} isn't on PATH", cli.program()));
                 }
             }
+            let brand = self.form.custom.as_deref().and_then(crate::brand::of_command);
+            let r = logo_choice(ui, brand, "Custom", self.form.custom.is_some(), true).on_hover_text("Run any command on your PATH: gemini, grok, ollama run llama3.1\u{2026}");
+            if r.clicked() && self.form.custom.is_none() {
+                self.form.custom = Some(self.recent.first().cloned().unwrap_or_default());
+            }
         });
+        if let Some(cmd) = self.form.custom.as_mut() {
+            ui.add_space(8.0);
+            ui.add(egui::TextEdit::singleline(cmd).hint_text("Command, e.g. gemini or ollama run llama3.1").font(FontId::monospace(13.0)).desired_width(f32::INFINITY));
+            if !self.recent.is_empty() {
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+                    for c in &self.recent {
+                        if logo_choice(ui, crate::brand::of_command(c), c, cmd.trim() == c, true).clicked() {
+                            *cmd = c.clone();
+                        }
+                    }
+                });
+            }
+        }
     }
 
     /// How many (.im-seg), then how it works: flow and permissions.

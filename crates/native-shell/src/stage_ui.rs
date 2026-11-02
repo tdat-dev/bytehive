@@ -148,7 +148,13 @@ impl ShellApp {
         };
         let cost = p.usage.as_ref().and_then(|u| u.usd).map(supervise::pricing::money);
         let task = p.task.clone();
-        let cli_word = cli.map_or("shell", |c| c.program());
+        let custom = p.custom.clone();
+        let cli_word = match (cli, &custom) {
+            (Some(c), _) => c.program().to_string(),
+            (None, Some(cmd)) => crate::custom::program_name(cmd),
+            _ => "shell".to_string(),
+        };
+        let cli_word = cli_word.as_str();
         let mut act: Option<&str> = None;
         egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 20, top: 20, bottom: 8 }).show(ui, |ui| {
             ui.horizontal_top(|ui| {
@@ -164,7 +170,7 @@ impl ShellApp {
                 if let Some(c) = ring {
                     ui.painter().rect_stroke(face.expand(3.0), 12.0, egui::Stroke::new(2.0, c), egui::StrokeKind::Middle);
                 }
-                crate::face::avatar(ui.painter(), face, cli, &name, 10.0, exited);
+                crate::face::avatar(ui.painter(), face, cli, custom.as_deref(), &name, 10.0, exited);
                 ui.add_space(4.0);
                 let right_w = 330.0_f32.min(ui.available_width() * 0.45);
                 ui.allocate_ui_with_layout(Vec2::new(ui.available_width() - right_w, 76.0), egui::Layout::top_down(egui::Align::Min), |ui| {

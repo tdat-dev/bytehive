@@ -82,6 +82,17 @@ impl ShellApp {
         }
     }
 
+    /// Boot a custom command in `dir` under `name`.
+    pub(crate) fn boot_custom(&mut self, cmd: &str, dir: &str, name: String, worktree: Option<WorktreeInfo>) -> Result<String, String> {
+        let spec = crate::custom::spec(cmd, dir).ok_or("Type the command to run.")?;
+        let id = self.spawn_named(name, spec, None, None).map_err(|e| format!("Could not start {cmd}: {e:?}"))?;
+        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == id) {
+            pane.custom = Some(cmd.to_string());
+            pane.worktree = worktree;
+        }
+        Ok(id)
+    }
+
     /// Boot a fresh agent in `dir` under `name`, with `extra` launch flags,
     /// learning its session id afterwards when the CLI can't be told one.
     pub(crate) fn boot_agent(&mut self, cli: Cli, dir: &str, name: String, extra: Vec<String>, worktree: Option<WorktreeInfo>) -> Result<String, String> {

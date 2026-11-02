@@ -38,12 +38,14 @@ pub struct Home {
     pub job: String,
     pub dir: Option<String>,
     pub cli: Cli,
+    /// A custom command to run instead of `cli`.
+    pub custom: Option<String>,
     pub count: usize,
 }
 
 impl Default for Home {
     fn default() -> Self {
-        Home { job: String::new(), dir: None, cli: Cli::Claude, count: 1 }
+        Home { job: String::new(), dir: None, cli: Cli::Claude, custom: None, count: 1 }
     }
 }
 
@@ -64,6 +66,8 @@ pub struct HomeView<'a> {
     pub working: usize,
     pub review: usize,
     pub installed: &'a [Cli],
+    /// Custom commands started lately.
+    pub recent: &'a [String],
     /// How much room the chosen CLI's plan has, when little.
     pub room: String,
     pub hour: u32,
@@ -308,15 +312,8 @@ fn composer(ui: &mut egui::Ui, home: &mut Home, v: &HomeView, out: &mut Option<S
                             }
                         }
                     });
-                    chip_menu(ui, "st-cli", None, home.cli.name(), |ui| {
-                        for c in Cli::all() {
-                            let ok = v.installed.is_empty() || v.installed.contains(&c);
-                            let label = if ok { c.name().to_string() } else { format!("{}  (not installed)", c.name()) };
-                            if ui.add_enabled(ok, egui::Button::new(label)).clicked() {
-                                home.cli = c;
-                            }
-                        }
-                    });
+                    let who = home.custom.as_deref().map_or_else(|| home.cli.name().to_string(), crate::custom::program_name);
+                    chip_menu(ui, "st-cli", None, &who, |ui| crate::custom::home_menu(ui, v.installed, &mut home.cli, &mut home.custom, v.recent));
                     let count = if home.count == 1 { "1 agent".to_string() } else { format!("{} agents, same job", home.count) };
                     chip_menu(ui, "st-count", None, &count, |ui| {
                         for n in 1..=3 {
@@ -363,6 +360,7 @@ fn start(home: &mut Home) -> Option<StartAction> {
     let mut t = NewTask::new(dir.clone());
     t.prompt = home.job.trim().to_string();
     t.cli = home.cli;
+    t.custom = home.custom.clone();
     t.set_count(home.count);
     // In the folder itself; only a race needs a branch per agent.
     t.worktree = t.count > 1 && agent_core::git::repo_root(std::path::Path::new(&dir)).is_some();
@@ -438,7 +436,7 @@ mod tests {
     use super::*;
 
     fn view<'a>(projects: &'a [ProjectCard], waiting: &'a [Waiting]) -> HomeView<'a> {
-        HomeView { projects, waiting, working: 0, review: 0, installed: &[], room: String::new(), hour: 9 }
+        HomeView { projects, waiting, working: 0, review: 0, installed: &[], recent: &[], room: String::new(), hour: 9 }
     }
 
     #[test]

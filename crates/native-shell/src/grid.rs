@@ -94,7 +94,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
                 if r.hovered() {
                     ui.painter().rect_filled(at.expand(4.0), 14.0, Color32::from_white_alpha(15));
                 }
-                crate::face::avatar(ui.painter(), at, p.cli, &p.name, 12.0, p.exit_code.is_some());
+                crate::face::avatar(ui.painter(), at, p.cli, p.custom.as_deref(), &p.name, 12.0, p.exit_code.is_some());
                 ui.painter().circle_filled(at.right_bottom() - Vec2::splat(4.0), 5.0, state_dot(states[i]));
                 if r.on_hover_text(format!("{}: {}", p.name, state_label(states[i]))).clicked() {
                     toggle = Some(p.id.clone());
@@ -123,7 +123,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             // Head: face, name, state; the buttons from the right edge in.
             let head = Rect::from_min_size(tile.min, Vec2::new(tile.width(), HEAD));
             let face = Rect::from_min_size(Pos2::new(head.left() + 14.0, head.center().y - 13.0), Vec2::splat(26.0));
-            crate::face::avatar(ui.painter(), face, pane.cli, &pane.name, 8.0, !running);
+            crate::face::avatar(ui.painter(), face, pane.cli, pane.custom.as_deref(), &pane.name, 8.0, !running);
             let mut bx = head.right() - 12.0;
             let mut button = |ui: &mut egui::Ui, icon: Icon, danger: bool, key: &str, tip: &str| {
                 bx -= 28.0;

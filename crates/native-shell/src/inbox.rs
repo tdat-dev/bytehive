@@ -128,7 +128,7 @@ fn row(ui: &mut egui::Ui, i: usize, p: &Pane, r: &QueueRow, on: bool, now: u64) 
     }
     let inner = rect.shrink(10.0);
     let face = Rect::from_min_size(inner.min + Vec2::new(0.0, 2.0), Vec2::splat(24.0));
-    crate::face::avatar(&painter, face, p.cli, &p.name, 7.0, stopped);
+    crate::face::avatar(&painter, face, p.cli, p.custom.as_deref(), &p.name, 7.0, stopped);
     // The state dot at the face's corner, ringed in the row's ground.
     let dot = face.right_bottom() + Vec2::new(-1.5, -1.5);
     let ground = if on { RAISE } else { PANEL };

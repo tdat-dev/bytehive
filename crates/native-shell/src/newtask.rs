@@ -68,6 +68,8 @@ pub struct NewTask {
     pub prompt: String,
     pub dir: String,
     pub cli: Cli,
+    /// A custom command to run instead of `cli` (`gemini`, `ollama run x`).
+    pub custom: Option<String>,
     pub count: usize,
     pub worktree: bool,
     pub perm: Perm,
@@ -82,12 +84,14 @@ pub struct Launch {
     /// The branch to work on in its own worktree; none works in the folder.
     pub branch: Option<String>,
     pub extra_args: Vec<String>,
+    /// Runs this command instead of the CLI.
+    pub custom: Option<String>,
     pub task: String,
 }
 
 impl NewTask {
     pub fn new(dir: String) -> NewTask {
-        NewTask { prompt: String::new(), dir, cli: Cli::Claude, count: 1, worktree: false, perm: Perm::Ask, flow: Flow::Direct }
+        NewTask { prompt: String::new(), dir, cli: Cli::Claude, custom: None, count: 1, worktree: false, perm: Perm::Ask, flow: Flow::Direct }
     }
 
     pub fn set_count(&mut self, n: usize) {
@@ -99,6 +103,9 @@ impl NewTask {
     pub fn problem(&self) -> Option<String> {
         if self.dir.trim().is_empty() {
             return Some("Pick a project folder.".to_string());
+        }
+        if self.custom.as_ref().is_some_and(|c| c.trim().is_empty()) {
+            return Some("Type the command to run.".to_string());
         }
         if self.count > 1 && !self.worktree {
             return Some(help_line(self.count, false, Flow::Direct));
@@ -112,13 +119,15 @@ impl NewTask {
         let words = self.prompt.trim().to_string();
         // No job, nothing to type: the flow's wording wraps a job, never stands alone.
         let task = if words.is_empty() { String::new() } else { self.flow.shape(&words) };
-        let extra = self.perm.args(self.cli);
+        // A custom command takes no flags of ours.
+        let extra = if self.custom.is_some() { Vec::new() } else { self.perm.args(self.cli) };
+        let custom = self.custom.as_ref().map(|c| c.trim().to_string());
         (0..self.count)
             .map(|_| {
                 let name = persona(&taken);
                 taken.push(name.clone());
                 let branch = self.worktree.then(|| branch_for(&name, &words));
-                Launch { name, cli: self.cli, branch, extra_args: extra.clone(), task: task.clone() }
+                Launch { name, cli: self.cli, branch, extra_args: extra.clone(), custom: custom.clone(), task: task.clone() }
             })
             .collect()
     }
@@ -130,6 +139,19 @@ mod tests {
 
     fn taken(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_custom_command_runs_without_our_flags() {
+        let mut t = NewTask::new("D:/x".into());
+        t.perm = Perm::Bypass;
+        t.custom = Some("  ".into());
+        assert_eq!(t.problem().as_deref(), Some("Type the command to run."));
+        t.custom = Some(" gemini -m pro ".into());
+        assert!(t.problem().is_none());
+        let l = t.launches(&[]);
+        assert_eq!(l[0].custom.as_deref(), Some("gemini -m pro"));
+        assert!(l[0].extra_args.is_empty());
     }
 
     #[test]

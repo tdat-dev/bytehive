@@ -32,7 +32,7 @@ impl ShellApp {
                     if on || resp.hovered() {
                         ui.painter().rect_filled(at.expand(4.0), 12.0, Color32::from_white_alpha(if on { 22 } else { 12 }));
                     }
-                    crate::face::avatar(ui.painter(), at, p.cli, &p.name, 10.0, p.exit_code.is_some());
+                    crate::face::avatar(ui.painter(), at, p.cli, p.custom.as_deref(), &p.name, 10.0, p.exit_code.is_some());
                     let dot = at.right_bottom() - Vec2::splat(3.0);
                     ui.painter().circle(dot, 4.5, state_dot(r.status.state), Stroke::new(2.0, crate::style::PANEL));
                     if resp.on_hover_text(format!("{} \u{00B7} {}", p.name, state_word(r.status.state))).clicked() {

@@ -68,6 +68,8 @@ pub struct Prefs {
     /// CLI a New task starts with; none means the last one used.
     pub default_cli: Option<Cli>,
     pub last_cli: Cli,
+    /// Custom commands started lately, newest first.
+    pub custom_cmds: Vec<String>,
     pub default_count: usize,
     pub worktree: bool,
     pub perm: Perm,
@@ -107,6 +109,7 @@ impl Default for Prefs {
             backdrop: Backdrop::Cinema,
             default_cli: None,
             last_cli: Cli::Claude,
+            custom_cmds: Vec::new(),
             default_count: 1,
             worktree: false,
             perm: Perm::Ask,
@@ -155,6 +158,14 @@ impl Prefs {
         self.default_cli.unwrap_or(self.last_cli)
     }
 
+    /// Keep `cmd` first among the recent custom commands (six at most).
+    pub fn remember_custom(&mut self, cmd: &str) {
+        let cmd = cmd.trim().to_string();
+        self.custom_cmds.retain(|c| c != &cmd);
+        self.custom_cmds.insert(0, cmd);
+        self.custom_cmds.truncate(6);
+    }
+
     pub fn job_delay_ms(&self) -> u64 {
         self.job_delay_s * 1000
     }
@@ -165,6 +176,7 @@ impl Prefs {
             "backdrop": self.backdrop.label(),
             "defaultCli": self.default_cli.map_or("last", |c| c.program()),
             "lastCli": self.last_cli.program(),
+            "customCmds": self.custom_cmds,
             "defaultCount": self.default_count,
             "ownWorktree": self.worktree,
             "perm": self.perm.key(),
@@ -195,6 +207,7 @@ impl Prefs {
             backdrop: v["backdrop"].as_str().map_or(d.backdrop, Backdrop::from_label),
             default_cli: v["defaultCli"].as_str().and_then(cli_from_key),
             last_cli: v["lastCli"].as_str().and_then(cli_from_key).unwrap_or(d.last_cli),
+            custom_cmds: v["customCmds"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
             default_count: v["defaultCount"].as_u64().map_or(d.default_count, |n| (n as usize).clamp(1, crate::newtask::MAX_AGENTS)),
             // "ownWorktree", not the old "worktree" (on for everyone by default).
             worktree: v["ownWorktree"].as_bool().unwrap_or(d.worktree),
@@ -276,6 +289,16 @@ mod tests {
         p.save_crew(crew(3));
         assert_eq!(p.crews.len(), 1);
         assert_eq!(p.crews[0].count, 3);
+    }
+
+    #[test]
+    fn recent_custom_commands_stay_unique_and_few() {
+        let mut p = Prefs::default();
+        for c in ["a", "b", "a", "c", "d", "e", "f", "g"] {
+            p.remember_custom(c);
+        }
+        assert_eq!(p.custom_cmds, ["g", "f", "e", "d", "c", "a"]);
+        assert_eq!(Prefs::from_json(&p.to_json()).custom_cmds, p.custom_cmds);
     }
 
     #[test]

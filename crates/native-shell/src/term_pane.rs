@@ -90,6 +90,8 @@ pub struct Pane {
     pub merged: bool,
     /// Launch flags kept across restarts (a skip-permissions flag).
     pub extra_args: Vec<String>,
+    /// The command a custom agent runs (`gemini`, `ollama run llama3.1`).
+    pub custom: Option<String>,
     /// The task it was started on (first line), for the Board.
     pub task: Option<String>,
     /// When it was spawned, to find its own session among the CLI's.
@@ -124,7 +126,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), custom: None, task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None }
     }
 
     /// The visible screen as text, newest row last: what the state reads.

@@ -40,6 +40,8 @@ pub struct NewTaskSheet {
     pub room: String,
     /// The CLIs found on PATH when the sheet opened; None until looked.
     pub installed: Option<Vec<Cli>>,
+    /// Custom commands started lately, offered under Custom.
+    pub(crate) recent: Vec<String>,
 }
 
 /// The CLIs whose program is on PATH (`where`-style, with PATHEXT).
@@ -51,7 +53,7 @@ pub fn installed_clis() -> Vec<Cli> {
 
 impl NewTaskSheet {
     pub fn new(dir: String) -> NewTaskSheet {
-        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None, sched_on: false, sched_time: "09:00".to_string(), sched_daily: true, room: String::new(), installed: None }
+        NewTaskSheet { open: false, form: NewTask::new(dir), more: false, error: None, just_opened: false, crew_name: String::new(), out: None, sched_on: false, sched_time: "09:00".to_string(), sched_daily: true, room: String::new(), installed: None, recent: Vec::new() }
     }
 
     /// Open on `dir` with the settings' defaults; `count` overrides theirs
@@ -66,6 +68,7 @@ impl NewTaskSheet {
             self.form.cli = installed[0];
         }
         self.installed = Some(installed);
+        self.recent = prefs.custom_cmds.clone();
         self.form.worktree = prefs.worktree;
         self.form.perm = prefs.perm;
         self.form.flow = prefs.flow;
@@ -209,5 +212,25 @@ mod tests {
         assert_eq!(form.prompt, "Fix the login form");
         sheet.started();
         assert!(!sheet.open, "closes unless Create more");
+    }
+
+    #[test]
+    fn a_custom_command_starts_from_the_sheet() {
+        let mut sheet = NewTaskSheet::new("D:\\maestro".to_string());
+        let mut prefs = Prefs::default();
+        prefs.remember_custom("grok");
+        sheet.open_with("D:\\maestro", Some(1), &prefs);
+        assert_eq!(sheet.recent, ["grok"]);
+        sheet.form.custom = Some("gemini".to_string());
+        let ctx = egui::Context::default();
+        let mut got = None;
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::COMMAND });
+        ctx.run_ui(input, |ui| {
+            got = sheet.show(ui.ctx(), &[r"D:\maestro".to_string()], &[]);
+        })
+        .drop_without_applying_deltas();
+        let Some(SheetOut::Start(form)) = got else { panic!("Ctrl+Enter starts") };
+        assert_eq!(form.custom.as_deref(), Some("gemini"));
     }
 }

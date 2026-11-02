@@ -49,7 +49,10 @@ impl ShellApp {
                 Ok(()) => {
                     self.projects.open(&form.dir);
                     self.save_projects();
-                    self.prefs.last_cli = form.cli;
+                    match &form.custom {
+                        Some(cmd) => self.prefs.remember_custom(cmd),
+                        None => self.prefs.last_cli = form.cli,
+                    }
                     self.save_prefs();
                     if self.new_task.more {
                         // Keep typing in the sheet, not in the new pane.
@@ -139,7 +142,8 @@ impl ShellApp {
         let installed = self.extras.clis.get_or_insert_with(crate::newtask_ui::installed_clis).clone();
         let room = self.extras.plan.room_note(self.extras.start.cli, now as i64);
         let hour = chrono::Timelike::hour(&chrono::Local::now());
-        let view = HomeView { projects: &projects, waiting: &waiting, working: count(TaskState::Working), review: count(TaskState::Review), installed: &installed, room, hour };
+        let recent = self.prefs.custom_cmds.clone();
+        let view = HomeView { projects: &projects, waiting: &waiting, working: count(TaskState::Working), review: count(TaskState::Review), installed: &installed, recent: &recent, room, hour };
         let mut act = None;
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
             act = show_start(ui, &mut self.extras.start, &view);
@@ -157,6 +161,10 @@ impl ShellApp {
                 Ok(()) => {
                     self.projects.open(&task.dir);
                     self.save_projects();
+                    if let Some(cmd) = &task.custom {
+                        self.prefs.remember_custom(cmd);
+                        self.save_prefs();
+                    }
                 }
                 Err(e) => {
                     self.extras.home = true;
