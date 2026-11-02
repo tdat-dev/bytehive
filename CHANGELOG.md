@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-03
+
+### Changed
+
+- **Select to copy, right-click to paste** in a terminal, as in a console
+  window: letting go of a selection (or a double-clicked word) copies it,
+  and a right-click pastes. The right-click menu is gone.
+- **You can see what an agent does in Chrome.** Its cursor stays while it
+  works (it fades after a minute with nothing to do, not six seconds) and the
+  pill at the top says what it does now: Opening github.com, Reading the
+  page, Looking for "clone", Clicking "Code", Typing "...", Scrolling down.
+  The two steps before stay under it, and come back on a new page. What it
+  is about to press or fill gets a frame in its colour first.
+
 ## [0.12.1] - 2026-11-03
 
 ### Fixed
