@@ -45,56 +45,10 @@ pub fn tile_to_fit(n: usize, width: f32, height: f32, gap: f32, margin: f32, top
     out
 }
 
-/// Tiling with the web app's defaults: flush, 10px outer breathing room.
-pub fn tidy_tiles(n: usize, width: f32, height: f32) -> Vec<Tile> {
-    tile_to_fit(n, width, height, 0.0, 10.0, 10.0, 10.0)
-}
-
 /// Density zoom bounds: never smaller than a readable floor, never so big
 /// one pane eats the stage.
 pub fn clamp_zoom(z: f32) -> f32 {
     z.clamp(0.6, 2.0)
-}
-
-/// The header label cut to fit what's left of the chrome on the right.
-pub fn fit_header(label: &str, head_width: f32, reserve_right: f32) -> String {
-    let max_chars = ((head_width - reserve_right) / 7.0).floor().max(8.0) as usize;
-    if label.chars().count() > max_chars {
-        format!("{}…", label.chars().take(max_chars.saturating_sub(1)).collect::<String>())
-    } else {
-        label.to_string()
-    }
-}
-
-/// One header button's slot, laid from the header's right edge inward.
-#[derive(Debug, PartialEq)]
-pub struct HeaderButton {
-    pub x: f32,
-    pub w: f32,
-}
-
-/// Everything positioned on the right side of a pane header: the cut label,
-/// the badge word slot, and one slot per button from the edge inward.
-/// Pure math so tests pin the lockup: labels never wrap into the chrome and
-/// buttons never overlap each other.
-#[derive(Debug)]
-pub struct HeaderLayout {
-    pub label: String,
-    pub word_x: f32,
-    pub buttons: Vec<HeaderButton>,
-}
-
-pub fn header_layout(label: &str, head_left: f32, head_width: f32, word_w: f32, btn_ws: &[f32]) -> HeaderLayout {
-    let chrome: f32 = btn_ws.iter().sum::<f32>() + 4.0 * btn_ws.len() as f32;
-    let label = fit_header(label, head_width, chrome + 78.0);
-    let word_x = (head_left + head_width - chrome - 8.0 - word_w).max(head_left + 8.0);
-    let mut bx = head_left + head_width;
-    let mut buttons = Vec::with_capacity(btn_ws.len());
-    for w in btn_ws {
-        bx -= w + 4.0;
-        buttons.push(HeaderButton { x: bx, w: *w });
-    }
-    HeaderLayout { label, word_x, buttons }
 }
 
 /// First row-major grid position not colliding with `existing` top-lefts.
@@ -139,7 +93,7 @@ mod tests {
 
     #[test]
     fn no_double_reserve_at_the_bottom_with_defaults() {
-        let tiles = tidy_tiles(4, 1000.0, 800.0);
+        let tiles = tile_to_fit(4, 1000.0, 800.0, 0.0, 10.0, 10.0, 10.0);
         let bottom = tiles.iter().map(|t| t.y + t.h).fold(0.0_f32, f32::max);
         assert!(800.0 - bottom <= 20.0, "bottom-most edge leaves too much room");
     }
@@ -153,7 +107,7 @@ mod tests {
     #[test]
     fn neighbours_share_an_edge_exactly_at_gap_zero() {
         for n in [2, 4, 6, 9] {
-            let tiles = tidy_tiles(n, 1001.0, 733.0);
+            let tiles = tile_to_fit(n, 1001.0, 733.0, 0.0, 10.0, 10.0, 10.0);
             let (cols, _) = grid_dims_for(n);
             for i in 0..n {
                 if i % cols != cols - 1 && i + 1 < n {
@@ -168,7 +122,7 @@ mod tests {
 
     #[test]
     fn cluster_stays_inside_at_default_margin() {
-        for t in tidy_tiles(4, 1000.0, 800.0) {
+        for t in tile_to_fit(4, 1000.0, 800.0, 0.0, 10.0, 10.0, 10.0) {
             assert!(t.x >= 10.0 && t.x + t.w <= 1000.0 - 10.0, "{t:?}");
             assert!(t.y + t.h <= 800.0 - 10.0, "{t:?}");
         }
@@ -185,35 +139,5 @@ mod tests {
         assert_eq!(clamp_zoom(1.0), 1.0);
         assert_eq!(clamp_zoom(5.0), 2.0);
         assert_eq!(clamp_zoom(0.1), 0.6);
-    }
-
-    #[test]
-    fn header_label_fits_beside_badge_and_buttons() {
-        assert_eq!(fit_header("shell 1", 700.0, 340.0), "shell 1");
-        let long = "agent-with-a-long-name · feat/branch · abcdef12 · exited (1)";
-        let cut = fit_header(long, 700.0, 340.0);
-        assert!(cut.ends_with('…') && cut.chars().count() == 51, "{cut}");
-        assert_eq!(fit_header(long, 200.0, 340.0).chars().count(), 8);
-        assert_eq!(fit_header(long, 900.0, 0.0), long);
-    }
-
-    #[test]
-    fn header_chrome_never_overlaps() {
-        // Real numbers from a staged pane: buttons right-aligned, the word
-        // clear of the leftmost button, the label cut to fit what's left.
-        let laid = header_layout("shell 1", 0.0, 1035.0, 55.0, &[52.0, 60.0, 68.0]);
-        assert_eq!(laid.label, "shell 1");
-        let mut right = 1035.0;
-        for b in &laid.buttons {
-            assert!(b.x + b.w <= right + 0.01, "{laid:?}");
-            assert!(b.x >= 0.0, "{laid:?}");
-            right = b.x;
-        }
-        assert!(laid.word_x + 55.0 <= right + 0.01, "{laid:?}");
-        assert!(laid.word_x >= 8.0);
-        // Narrow header: everything still inside, label shrinks instead.
-        let small = header_layout("a very long pane name indeed", 0.0, 200.0, 55.0, &[52.0]);
-        assert!(small.buttons.iter().all(|b| b.x >= 0.0), "{small:?}");
-        assert_eq!(small.label, "a very l…");
     }
 }

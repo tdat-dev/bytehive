@@ -1,11 +1,9 @@
 //! Pane states for the shell: what each pane is doing, read from its own
-//! screen and process, plus the one-line badge the grid header shows.
+//! screen and process.
 
-use eframe::egui::Color32;
-use supervise::task_state::{derive_task_state, TaskFacts, TaskState, TaskStatus};
+use supervise::task_state::{derive_task_state, TaskFacts, TaskStatus};
 
 use crate::term_pane::Pane;
-use crate::theme::{state_dot, state_word};
 
 /// The folder a pane works in: its spawn dir, else the shell's own.
 pub fn pane_cwd(pane: &Pane) -> String {
@@ -30,14 +28,10 @@ pub fn pane_status(pane: &Pane, now: u64, changed: Option<u32>) -> TaskStatus {
     derive_task_state(&pane_facts(pane, changed), now)
 }
 
-/// Header badge: a dot color and a short word per state.
-pub fn state_badge(state: TaskState) -> (Color32, &'static str) {
-    (state_dot(state), state_word(state))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use supervise::task_state::TaskState;
     use agent_core::launch::launch_spec;
 
     fn pane() -> Pane {
@@ -96,11 +90,4 @@ mod tests {
         assert_eq!(s.state, TaskState::Stopped);
     }
 
-    #[test]
-    fn every_state_has_a_badge() {
-        for state in [TaskState::Needs, TaskState::Blocked, TaskState::Review, TaskState::Working, TaskState::Idle, TaskState::Stopped, TaskState::Merged] {
-            let (_, word) = state_badge(state);
-            assert!(!word.is_empty());
-        }
-    }
 }
