@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ByteHive logo motion</title>
+<style>
+:root{--bg:#0e0f12;--fg:#e8eaee;--mute:#8b909a;--card:#16171b;--line:#24262c}
+*{margin:0;box-sizing:border-box}
+body{min-height:100vh;background:radial-gradient(900px 480px at 50% 10%,rgba(245,165,36,.07),transparent 62%),var(--bg);
+  color:var(--fg);font-family:"Segoe UI",system-ui,sans-serif;padding:40px 24px}
+h1{font-size:15px;font-weight:600;text-align:center;margin-bottom:6px}
+p.sub{font-size:13px;color:var(--mute);text-align:center;margin-bottom:36px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;max-width:1400px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px 18px 18px;display:flex;flex-direction:column;align-items:center;gap:16px}
+.card b{font-size:20px;color:#f5a524}
+.card .name{font-size:14px;font-weight:600}
+.card .what{font-size:12.5px;color:var(--mute);text-align:center;line-height:1.5;min-height:56px}
+.sizes{display:flex;align-items:center;gap:18px;padding-top:6px;border-top:1px solid var(--line);width:100%;justify-content:center}
+
+/* shared: glow halo + breathe, the Maestro motion */
+.bh{--s:150px;position:relative;isolation:isolate;width:var(--s);height:var(--s);display:grid;place-items:center}
+.bh svg{width:82%;height:82%;overflow:visible}
+.bh.halo::before{content:"";position:absolute;top:50%;left:50%;width:150%;height:150%;transform:translate(-50%,-50%);
+  border-radius:50%;z-index:-1;pointer-events:none;
+  background:radial-gradient(circle,rgba(245,165,36,.34),rgba(255,216,92,.10) 45%,transparent 70%);
+  animation:glow 4.2s ease-in-out infinite}
+.bh.breathe svg{animation:breathe 4.2s ease-in-out infinite;
+  filter:drop-shadow(0 0 calc(var(--s)*.15) rgba(245,165,36,.42)) drop-shadow(0 0 calc(var(--s)*.05) rgba(255,216,92,.3))}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+@keyframes glow{0%,100%{opacity:.32;transform:translate(-50%,-50%) scale(.95)}50%{opacity:.68;transform:translate(-50%,-50%) scale(1.06)}}
+
+.flow{fill:none;stroke-dasharray:.16 .84;stroke-dashoffset:1;animation:flow 3.2s linear infinite}
+.flow.rev{animation-direction:reverse;animation-duration:4.6s}
+@keyframes flow{to{stroke-dashoffset:0}}
+.blink{animation:blink 1.05s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.cell{fill:#fff6d0;opacity:0;animation:cell 3.6s ease-in-out infinite}
+@keyframes cell{0%,100%{opacity:0}18%{opacity:.55}40%{opacity:0}}
+.sweep{animation:sweep 3.8s cubic-bezier(.45,0,.25,1) infinite}
+@keyframes sweep{0%{transform:translateX(-30px)}55%,100%{transform:translateX(30px)}}
+.ring{fill:none;stroke:#ffd85c;transform-origin:12px 12px;animation:ring 3s ease-out infinite}
+@keyframes ring{0%{transform:scale(.92);opacity:.7;stroke-width:.7}100%{transform:scale(1.32);opacity:0;stroke-width:.15}}
+.trace{fill:none;stroke:#fff6d0;stroke-dasharray:1;stroke-dashoffset:1;animation:trace 3.4s ease-in-out infinite}
+@keyframes trace{0%{stroke-dashoffset:1;opacity:1}45%{stroke-dashoffset:0;opacity:1}70%,100%{stroke-dashoffset:0;opacity:0}}
+</style>
+</head>
+<body>
+<h1>ByteHive logo, hiệu ứng kiểu Maestro</h1>
+<p class="sub">Giữ nguyên logo 2C (ô mật, vân tổ ong, ›_ khoét). Mỗi bản thêm một kiểu chuyển động. Hàng dưới là cỡ 44px (màn Home) và 24px.</p>
+<div class="grid" id="grid"></div>
+
+<script>
+const HEX = "M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z";
+const CHEV = "M8 8.8 11.39 12.19 8 15.58", BAR = "M13.65 15.58H17.49";
+const cellPath = (cx, cy) => `M${cx} ${cy-2.6} ${cx+2.2517} ${cy-1.3}V${cy+1.3}L${cx} ${cy+2.6} ${cx-2.2517} ${cy+1.3}V${cy-1.3}Z`;
+
+// one SVG per variant; ids get a suffix so several logos live on one page
+function logo(id, opt) {
+  const k = id;
+  const cells = [];
+  if (opt.cells) {
+    const order = [[0,0],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1],[2,0],[-2,0]];
+    order.forEach(([i, j], n) => {
+      cells.push(`<path class="cell" d="${cellPath(12 + 4.5033 * i, 12 + 7.8 * j)}" style="animation-delay:${(n * 0.16).toFixed(2)}s"/>`);
+    });
+  }
+  return `<svg viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="h${k}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd85c"/><stop offset=".5" stop-color="#f5a524"/><stop offset="1" stop-color="#c86a12"/>
+    </linearGradient>
+    <linearGradient id="sw${k}" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff6d0" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="c${k}" width="4.5033" height="7.8" patternUnits="userSpaceOnUse" x="9.748" y="9.4">
+      <path d="M2.2517 0 4.5033 1.3V3.9L2.2517 5.2 0 3.9V1.3ZM2.2517 5.2V7.8" fill="none" stroke="#0e0f12" stroke-opacity=".22" stroke-width=".32"/>
+    </pattern>
+    <clipPath id="x${k}"><path d="${HEX}"/></clipPath>
+    <mask id="m${k}">
+      <rect x="-4" y="-4" width="32" height="32" fill="#fff"/>
+      <g fill="none" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="${CHEV}"/><path d="${BAR}" class="${opt.blink ? "blink" : ""}"/>
+      </g>
+    </mask>
+  </defs>
+  ${opt.ring ? `<path class="ring" d="${HEX}"/><path class="ring" d="${HEX}" style="animation-delay:1.5s"/>` : ""}
+  <g mask="url(#m${k})">
+    <path d="${HEX}" fill="url(#h${k})"/>
+    <path d="${HEX}" fill="url(#c${k})"/>
+    <g clip-path="url(#x${k})">
+      ${cells.join("")}
+      ${opt.sweep ? `<g transform="skewX(-18)"><rect class="sweep" x="-2" y="-2" width="12" height="28" fill="url(#sw${k})"/></g>` : ""}
+      ${opt.rim ? `<path class="flow" pathLength="1" d="${HEX}" stroke="#fff6d0" stroke-width="1.5" stroke-linecap="round"/>` : ""}
+      ${opt.rim2 ? `<path class="flow rev" pathLength="1" d="${HEX}" stroke="#ffe9a6" stroke-width="1.1" stroke-linecap="round" opacity=".8"/>` : ""}
+    </g>
+  </g>
+  ${opt.trace ? `<g stroke-width=".7" stroke-linecap="round" stroke-linejoin="round">
+      <path class="trace" pathLength="1" d="${CHEV}"/><path class="trace" pathLength="1" d="${BAR}" style="animation-delay:.5s"/></g>` : ""}
+</svg>`;
+}
+
+const V = [
+  { n: "A", name: "Maestro gốc", what: "Thở nhẹ, quầng sáng mật ong nhấp nháy, một vệt sáng chạy quanh viền ô mật y như chữ M của Maestro.",
+    cls: "halo breathe", opt: { rim: true } },
+  { n: "B", name: "Con trỏ nhấp nháy", what: "Thở + quầng sáng, dấu _ nhấp nháy như con trỏ terminal đang chờ lệnh, vệt sáng chạy viền.",
+    cls: "halo breathe", opt: { rim: true, blink: true } },
+  { n: "C", name: "Tổ ong chạy dữ liệu", what: "Các ô tổ ong sáng lần lượt như dữ liệu đi qua tổ, kèm thở và quầng sáng.",
+    cls: "halo breathe", opt: { cells: true } },
+  { n: "D", name: "Ánh mật quét", what: "Một dải sáng xiên quét ngang ô mật như mật ong phản chiếu, viền có hai vệt chạy ngược chiều.",
+    cls: "halo breathe", opt: { sweep: true, rim: true, rim2: true } },
+  { n: "E", name: "Sóng phát tín hiệu", what: "Viền lục giác tỏa sóng ra ngoài như tổ đang phát lệnh, nét ›_ được vẽ sáng lại theo nhịp.",
+    cls: "breathe", opt: { ring: true, trace: true } },
+];
+
+document.getElementById("grid").innerHTML = V.map((v) => `
+  <div class="card">
+    <b>${v.n}</b>
+    <div class="bh ${v.cls}">${logo(v.n + "big", v.opt)}</div>
+    <div class="name">${v.name}</div>
+    <div class="what">${v.what}</div>
+    <div class="sizes">
+      <div class="bh ${v.cls}" style="--s:44px">${logo(v.n + "m", v.opt)}</div>
+      <div class="bh ${v.cls}" style="--s:24px">${logo(v.n + "s", v.opt)}</div>
+    </div>
+  </div>`).join("");
+</script>
+</body>
+</html>

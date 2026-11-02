@@ -34,6 +34,7 @@ mod history_ui;
 mod keys;
 mod land_ui;
 mod laws;
+mod logo;
 mod layout;
 mod logic;
 mod memory;

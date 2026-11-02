@@ -104,19 +104,6 @@ pub fn short_path(dir: &str) -> String {
     dir.to_string()
 }
 
-fn logo(ui: &egui::Ui) -> egui::TextureId {
-    let id = egui::Id::unique("bytehive-logo-128");
-    if let Some(t) = ui.ctx().data(|d| d.get_temp::<egui::TextureHandle>(id)) {
-        return t.id();
-    }
-    let img = image::load_from_memory(include_bytes!("../assets/icons/128x128.png")).map(|i| i.into_rgba8()).unwrap_or_default();
-    let color = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
-    let t = ui.ctx().load_texture("logo-128", color, egui::TextureOptions::LINEAR);
-    let tid = t.id();
-    ui.ctx().data_mut(|d| d.insert_temp(id, t));
-    tid
-}
-
 /// A pill chip of the composer bar (.st-chip) holding a menu.
 fn chip_menu(ui: &mut egui::Ui, id: &str, icon: Option<Icon>, text: &str, add: impl FnOnce(&mut egui::Ui)) {
     let g = ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(13.0), DIM);
@@ -213,7 +200,7 @@ pub fn show_start(ui: &mut egui::Ui, home: &mut Home, v: &HomeView) -> Option<St
 fn body(ui: &mut egui::Ui, home: &mut Home, v: &HomeView, first_run: bool, width: f32, out: &mut Option<StartAction>) {
     ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
     ui.horizontal(|ui| {
-        ui.add(egui::Image::new((logo(ui), Vec2::splat(44.0))));
+        crate::logo::hive_logo(ui, 44.0, v.working);
         ui.add_space(4.0);
         ui.label(RichText::new("ByteHive").font(medium(22.0)).extra_letter_spacing(-0.44).color(TEXT));
     });
