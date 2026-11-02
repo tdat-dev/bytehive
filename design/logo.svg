@@ -1,11 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512">
+  <!-- ByteHive: a honey cell with a faint comb, a terminal prompt cut out of it. -->
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#c6f135"/>
-      <stop offset=".5" stop-color="#27b9a3"/>
-      <stop offset="1" stop-color="#0f7a3e"/>
+    <linearGradient id="honey" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd85c"/>
+      <stop offset=".5" stop-color="#f5a524"/>
+      <stop offset="1" stop-color="#c86a12"/>
     </linearGradient>
+    <pattern id="comb" width="4.5033" height="7.8" patternUnits="userSpaceOnUse" x="9.748" y="9.4">
+      <path d="M2.2517 0 4.5033 1.3V3.9L2.2517 5.2 0 3.9V1.3ZM2.2517 5.2V7.8" fill="none" stroke="#0e0f12" stroke-opacity=".22" stroke-width=".32"/>
+    </pattern>
+    <mask id="prompt">
+      <rect width="24" height="24" fill="#fff"/>
+      <g fill="none" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 8.8 11.39 12.19 8 15.58"/>
+        <path d="M13.65 15.58H17.49"/>
+      </g>
+    </mask>
   </defs>
-  <rect width="24" height="24" rx="5" fill="#11161d"/>
-  <path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" fill="none" stroke="url(#g)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="miter"/>
+  <g mask="url(#prompt)">
+    <path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#honey)"/>
+    <path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#comb)"/>
+  </g>
 </svg>
