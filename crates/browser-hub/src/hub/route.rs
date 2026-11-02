@@ -126,6 +126,9 @@ pub(super) fn serve(hub: Arc<Hub>, stream: TcpStream) {
         hub.remove(id);
         return;
     }
+    // Idle naps grow from 1 to 20 ms: quick in a burst of calls, and about 50
+    // wake-ups a second per peer when nothing happens (was 250).
+    let mut nap = 1u64;
     'conn: loop {
         let mut idle = true;
         loop {
@@ -156,7 +159,10 @@ pub(super) fn serve(hub: Arc<Hub>, stream: TcpStream) {
             Err(_) => break 'conn,
         }
         if idle {
-            std::thread::sleep(Duration::from_millis(4));
+            std::thread::sleep(Duration::from_millis(nap));
+            nap = (nap * 2).min(20);
+        } else {
+            nap = 1;
         }
     }
     hub.remove(id);

@@ -90,6 +90,9 @@ pub fn run() -> ! {
                 if let Some(i) = &info {
                     let _ = ws.write(Message::Text(i.clone()));
                 }
+                // Idle naps grow from 1 to 20 ms: quick in a burst of calls,
+                // and about 50 wake-ups a second when nothing happens.
+                let mut nap = 1u64;
                 'relay: loop {
                     let mut idle = true;
                     loop {
@@ -127,7 +130,10 @@ pub fn run() -> ! {
                         Err(_) => break 'relay,
                     }
                     if idle {
-                        std::thread::sleep(Duration::from_millis(4));
+                        std::thread::sleep(Duration::from_millis(nap));
+                        nap = (nap * 2).min(20);
+                    } else {
+                        nap = 1;
                     }
                 }
                 to_chrome(&json!({ "type": "hub_down", "detail": "ByteHive closed" }).to_string());
