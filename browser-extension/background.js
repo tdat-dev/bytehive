@@ -9,7 +9,7 @@
  * screenshots and page JavaScript go through chrome.debugger (the Chrome
  * DevTools Protocol), so clicks and keys are real browser input. */
 
-import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf, markForUpload, unmarkUpload, armDelta, settleDelta } from "./page.js";
+import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf, markForUpload, unmarkUpload, armDelta, settleDelta, waitInPage, observeText, videoFrames, seekVideo } from "./page.js";
 import { GIFEncoder, quantize, applyPalette } from "./vendor/gifenc.esm.js";
 import { cursorAct } from "./cursor.js";
 
@@ -253,7 +253,7 @@ chrome.debugger.onEvent.addListener((src, method, p) => {
     push(consoleLog, tabId, { level: "exception", text: d.exception?.description ?? d.text, at: Date.now() }, MAX_CONSOLE);
   } else if (method === "Network.requestWillBeSent") {
     const m = networkLog.get(tabId) ?? new Map();
-    m.set(p.requestId, { method: p.request.method, url: p.request.url, type: p.type, status: 0 });
+    m.set(p.requestId, { method: p.request.method, url: p.request.url, type: p.type, status: 0, at: Date.now() });
     if (m.size > MAX_NETWORK) m.delete(m.keys().next().value);
     networkLog.set(tabId, m);
   } else if (method === "Network.responseReceived") {
@@ -719,6 +719,98 @@ async function run(agent, tool, a) {
       await mouse(t.id, x, y, { button, clicks });
       // No fixed wait: afterAction waits for the page to settle instead.
       return afterAction(t, `${act} ${name ? `"${name}" ` : ""}at ${ax},${ay}.`);
+    }
+    case "wait": {
+      // Wait for the page itself, without screenshots.
+      const t = await tabFor(agent, a.tabId);
+      await awake(t.id);
+      const ms = Math.min(60, Math.max(1, Number(a.timeout) || 10)) * 1000;
+      const what = a.text ? `"${quote(a.text)}"` : a.selector ? `"${quote(a.selector)}"` : a.url ? `a page at ${quote(a.url)}` : a.network ? "the network to go quiet" : "the page to settle";
+      note(t.id, agent, `Waiting for ${a.gone ? `${what} to go` : what}`);
+      const t0 = Date.now();
+      let ok = false;
+      if (a.url) {
+        // The address can change with no load at all (a single-page app).
+        while (Date.now() - t0 < ms && !ok) {
+          const now = await chrome.tabs.get(t.id);
+          ok = (now.url ?? "").includes(a.url) !== !!a.gone;
+          if (!ok) await sleep(250);
+        }
+      } else if (a.network) {
+        await dbg(t.id);
+        // Quiet: no request in flight for half a second.
+        let quietSince = Date.now();
+        while (Date.now() - t0 < ms) {
+          const busy = [...(networkLog.get(t.id)?.values() ?? [])].some((e) => !e.status && !e.error && Date.now() - (e.at ?? 0) < 30000);
+          if (busy) quietSince = Date.now();
+          else if (Date.now() - quietSince >= 500) { ok = true; break; }
+          await sleep(100);
+        }
+      } else {
+        const r = await inPage(t.id, waitInPage, [{ text: a.text, selector: a.selector, gone: !!a.gone, settle: !a.text && !a.selector, ms }]);
+        ok = r.ok;
+      }
+      const now = await chrome.tabs.get(t.id);
+      const secs = ((Date.now() - t0) / 1000).toFixed(1);
+      return withBlocker(t.id, text(ok ? `Done after ${secs}s. On "${now.title ?? ""}" ${now.url}.` : `Still waiting after ${secs}s: ${what} did not happen. On "${now.title ?? ""}" ${now.url}.`));
+    }
+    case "observe": {
+      // Watch part of the page and report the text that appears in it.
+      const t = await tabFor(agent, a.tabId);
+      await awake(t.id);
+      const ms = Math.min(60, Math.max(1, Number(a.duration) || 10)) * 1000;
+      note(t.id, agent, `Watching ${a.selector || a.ref ? "part of the page" : "the page"} for ${ms / 1000}s`);
+      const r = await inPage(t.id, observeText, [{ selector: a.selector, ref: a.ref, ms, until: a.until }]);
+      const end = r.why === "until" ? `Stopped at "${quote(a.until)}" after ${(r.ms / 1000).toFixed(1)}s.` : `Watched ${(r.ms / 1000).toFixed(1)}s.`;
+      if (!r.events.length) return text(`Nothing new appeared. ${end}`);
+      return text(`${r.events.join("\n")}${r.more ? `\n… ${r.more} more lines` : ""}\n${end}`);
+    }
+    case "video_frames": {
+      // Frames of a video in one picture: drawn in the page when the video
+      // allows it, else photographed from the tab one frame at a time.
+      const t = await shown(await tabFor(agent, a.tabId));
+      await awake(t.id);
+      note(t.id, agent, "Taking frames from the video");
+      const o = { selector: a.selector, ref: a.ref, times: a.times, every: a.every, from: a.from, count: a.count, width: a.width };
+      const r = await inPage(t.id, videoFrames, [o]);
+      let data = r.data?.split(",")[1], size = r.size;
+      if (r.tainted) {
+        // Another site's video: seek, then copy what the tab shows of it.
+        const tab = await chrome.tabs.get(t.id);
+        const w = Math.min(480, Math.max(120, Number(a.width) || 320));
+        const shots = [];
+        for (const sec of r.times) {
+          const box = await inPage(t.id, seekVideo, [o, sec]);
+          await cursor(t.id, agent, "hide");
+          try { shots.push(await grab(tab, w, 70, box)); } finally { void cursor(t.id, agent, "unhide"); }
+          await sleep(520); // Chrome copies a tab about twice a second
+        }
+        const h = shots[0]?.height ?? Math.round(w * 9 / 16);
+        const cols = Math.ceil(Math.sqrt(shots.length)), rows = Math.ceil(shots.length / cols);
+        const c = new OffscreenCanvas(cols * w, rows * h);
+        const g = c.getContext("2d");
+        for (let i = 0; i < shots.length; i++) {
+          const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${shots[i].data}`)).blob());
+          const x = (i % cols) * w, y = Math.floor(i / cols) * h;
+          g.drawImage(bmp, x, y, w, h);
+          bmp.close();
+          g.fillStyle = "rgba(0,0,0,.6)"; g.fillRect(x + 4, y + 4, 46, 18);
+          g.fillStyle = "#fff"; g.font = "12px system-ui, sans-serif"; g.fillText(r.stamps[i], x + 9, y + 17);
+        }
+        const bytes = new Uint8Array(await (await c.convertToBlob({ type: "image/jpeg", quality: 0.72 })).arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        data = btoa(bin);
+        size = `${c.width}x${c.height}`;
+      }
+      if (!data) throw new Error("Could not read frames from this video (it may be protected).");
+      const dur = r.duration ? `, video ${Math.floor(r.duration / 60)}:${String(Math.floor(r.duration % 60)).padStart(2, "0")} long` : "";
+      return {
+        content: [
+          { type: "image", data, mimeType: "image/jpeg" },
+          { type: "text", text: `${r.times.length} frames in one ${size} picture, left to right then down, at ${r.stamps.join(", ")}${dur}.` },
+        ],
+      };
     }
     case "javascript": {
       const t = await tabFor(agent, a.tabId);

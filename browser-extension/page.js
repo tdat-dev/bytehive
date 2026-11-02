@@ -276,3 +276,146 @@ export function unmarkUpload(mark) {
   document.querySelector(`[data-bytehive-upload="${mark}"]`)?.removeAttribute("data-bytehive-upload");
   return true;
 }
+
+/** Wait in the page, without screenshots: until `text` or `selector` shows
+ *  (or with `gone`, is no longer there), or with `settle`, until the page has
+ *  been still for 500 ms. A MutationObserver wakes it; checks are debounced,
+ *  so a busy page costs little. Gives up after `ms`. */
+export async function waitInPage(o) {
+  const t0 = performance.now();
+  const took = () => Math.round(performance.now() - t0);
+  if (o.settle) {
+    let last = performance.now();
+    const mo = new MutationObserver(() => { last = performance.now(); });
+    mo.observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+    await new Promise((done) => {
+      const tick = () => { const n = performance.now(); if (n - last >= 500 || n - t0 >= o.ms) done(); else setTimeout(tick, 100); };
+      tick();
+    });
+    mo.disconnect();
+    return { ok: performance.now() - t0 < o.ms, ms: took() };
+  }
+  const low = (o.text ?? "").toLowerCase();
+  const there = () => {
+    if (o.selector) { const el = document.querySelector(o.selector); return !!el && el.getClientRects().length > 0; }
+    return !!low && (document.body?.innerText ?? "").toLowerCase().includes(low);
+  };
+  const want = () => (o.gone ? !there() : there());
+  if (want()) return { ok: true, ms: 0 };
+  return new Promise((done) => {
+    let timer = 0, over = false;
+    const finish = (ok) => { if (over) return; over = true; mo.disconnect(); clearTimeout(timer); clearTimeout(end); clearInterval(poll); done({ ok, ms: took() }); };
+    const check = () => { timer = 0; if (want()) finish(true); };
+    const mo = new MutationObserver(() => { if (!timer) timer = setTimeout(check, 80); });
+    mo.observe(document, { subtree: true, childList: true, characterData: true });
+    // Style changes (shown, hidden) do not always touch the DOM tree.
+    const poll = setInterval(check, 500);
+    const end = setTimeout(() => finish(false), o.ms);
+  });
+}
+
+/** Watch part of the page for `ms` and say what text appears in it, line by
+ *  line with the second it came: a chat reply, a price, a status. Stops early
+ *  when a line holds `until`. Text only: no screenshots. */
+export async function observeText(o) {
+  const S = globalThis.__bytehive ?? {};
+  const el = o.ref ? S.refs?.get(String(o.ref).replace(/^ref_/, "e"))?.deref() : o.selector ? document.querySelector(o.selector) : document.body;
+  if (!el || !el.isConnected) return { error: "Nothing to watch: no element matches. Give a selector, or a ref from browser_read_page." };
+  const lines = () => (el.innerText ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const seen = new Set(lines());
+  const until = (o.until ?? "").toLowerCase();
+  const t0 = performance.now();
+  const events = [];
+  let chars = 0, more = 0;
+  return new Promise((done) => {
+    let timer = 0, over = false;
+    const finish = (why) => { if (over) return; over = true; mo.disconnect(); clearTimeout(timer); clearTimeout(end); done({ events, more, why, ms: Math.round(performance.now() - t0) }); };
+    const take = () => {
+      timer = 0;
+      for (const l of lines()) {
+        if (seen.has(l)) continue;
+        seen.add(l);
+        if (chars < 4000) { events.push(`+${((performance.now() - t0) / 1000).toFixed(1)}s ${l.slice(0, 200)}`); chars += Math.min(200, l.length); } else more++;
+        if (until && l.toLowerCase().includes(until)) return finish("until");
+      }
+    };
+    // Changes are read at most four times a second, however busy the page.
+    const mo = new MutationObserver(() => { if (!timer) timer = setTimeout(take, 250); });
+    mo.observe(el, { subtree: true, childList: true, characterData: true });
+    const end = setTimeout(() => { take(); finish("time"); }, o.ms);
+  });
+}
+
+/** Frames of a video as one contact sheet (a grid with each frame's time),
+ *  drawn in the page from the decoded video: one small image, no screenshots,
+ *  nothing heavy. `times` in seconds, or `count` spread over the video, or
+ *  one `every` seconds from `from`. The video's place and play state come back
+ *  as they were. A video another site serves without CORS cannot be read
+ *  here: then `tainted` says so and the extension photographs it instead. */
+export async function videoFrames(o) {
+  // The ref or selector given (or a video in it), else the largest video.
+  const S0 = globalThis.__bytehive ?? {};
+  let v = o.ref ? S0.refs?.get(String(o.ref).replace(/^ref_/, "e"))?.deref() : o.selector ? document.querySelector(o.selector) : null;
+  if (v && v.tagName !== "VIDEO") v = v.querySelector("video");
+  v ??= [...document.querySelectorAll("video")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0] ?? null;
+  if (!v) return { error: "No video on this page." };
+  if (v.readyState < 1) await new Promise((r) => { v.addEventListener("loadedmetadata", r, { once: true }); setTimeout(r, 4000); });
+  const dur = Number.isFinite(v.duration) ? v.duration : 0;
+  const n = Math.min(16, Math.max(1, Number(o.count) || 6));
+  let times = (o.times ?? []).map(Number).filter((t) => t >= 0 && (!dur || t <= dur));
+  if (!times.length && o.every && dur) for (let t = Number(o.from) || 0; t <= dur && times.length < n; t += Number(o.every)) times.push(t);
+  if (!times.length) times = dur ? Array.from({ length: n }, (_, i) => (dur * (i + 0.5)) / n) : [v.currentTime];
+  times = times.slice(0, 16);
+  const was = { t: v.currentTime, paused: v.paused };
+  v.pause();
+  const seek = (t) => new Promise((r) => {
+    if (Math.abs(v.currentTime - t) < 0.01 && v.readyState >= 2) return r();
+    const ok = () => { clearTimeout(slow); r(); };
+    const slow = setTimeout(ok, 3000);
+    v.addEventListener("seeked", ok, { once: true });
+    v.currentTime = t;
+  });
+  const w = Math.min(480, Math.max(120, Number(o.width) || 320));
+  const h = Math.round((w * (v.videoHeight || 9)) / (v.videoWidth || 16));
+  const cols = Math.ceil(Math.sqrt(times.length)), rows = Math.ceil(times.length / cols);
+  const c = document.createElement("canvas");
+  c.width = cols * w;
+  c.height = rows * h;
+  const g = c.getContext("2d");
+  // A short video in tenths of a second, so two frames never share a label.
+  const stamp = (t) => (dur && dur < 60 ? `${t.toFixed(1)}s` : `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`);
+  let data = null, tainted = false;
+  try {
+    for (let i = 0; i < times.length; i++) {
+      await seek(times[i]);
+      const x = (i % cols) * w, y = Math.floor(i / cols) * h;
+      g.drawImage(v, x, y, w, h);
+      g.fillStyle = "rgba(0,0,0,.6)";
+      g.fillRect(x + 4, y + 4, 46, 18);
+      g.fillStyle = "#fff";
+      g.font = "12px system-ui, sans-serif";
+      g.fillText(stamp(times[i]), x + 9, y + 17);
+    }
+    data = c.toDataURL("image/jpeg", 0.72);
+  } catch {
+    tainted = true;
+  }
+  v.currentTime = was.t;
+  if (!was.paused) v.play().catch(() => {});
+  return { data, tainted, times, stamps: times.map(stamp), duration: dur, size: `${c.width}x${c.height}` };
+}
+
+/** For a video that can't be read in the page: show the frame at `t` and say
+ *  where the video sits, so the extension can photograph that part. */
+export async function seekVideo(o, t) {
+  const S0 = globalThis.__bytehive ?? {};
+  let v = o.ref ? S0.refs?.get(String(o.ref).replace(/^ref_/, "e"))?.deref() : o.selector ? document.querySelector(o.selector) : null;
+  if (v && v.tagName !== "VIDEO") v = v.querySelector("video");
+  v ??= [...document.querySelectorAll("video")].sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0] ?? null;
+  if (!v) return { error: "No video on this page." };
+  v.pause();
+  await new Promise((r) => { const ok = () => { clearTimeout(s); r(); }; const s = setTimeout(ok, 3000); v.addEventListener("seeked", ok, { once: true }); v.currentTime = t; });
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const b = v.getBoundingClientRect();
+  return { x: b.left, y: b.top, w: b.width, h: b.height };
+}

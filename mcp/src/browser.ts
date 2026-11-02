@@ -252,6 +252,41 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
     "computer",
   );
   tool(
+    "browser_wait",
+    "Wait until something happens on the page instead of sleeping or taking screenshots: text or a CSS selector appears (or with gone=true disappears), the URL contains url, the network goes quiet (network=true), or with none of these the page stops changing. timeout in seconds (default 10, at most 60).",
+    {
+      text: z.string().optional(),
+      selector: z.string().optional(),
+      url: z.string().optional(),
+      gone: z.boolean().optional(),
+      network: z.boolean().optional(),
+      timeout: z.number().optional(),
+      tabId,
+    },
+    "wait",
+  );
+  tool(
+    "browser_observe",
+    "Watch part of the page (a CSS selector or a ref; the whole page by default) for some seconds and get each new line of text with the second it appeared: a chat reply streaming in, prices, a status or a log. Stops early when a line contains until. No screenshots; duration default 10, at most 60.",
+    { selector: z.string().optional(), ref: z.string().optional(), duration: z.number().optional(), until: z.string().optional(), tabId },
+    "observe",
+  );
+  tool(
+    "browser_video_frames",
+    "Frames of a video on the page as ONE picture (a grid, each frame labelled with its time), cheap and light: at times (seconds), or count frames spread over the video (default 6, at most 16), or one every N seconds from `from`. The video's position and play state are restored. Picks the largest video unless you give a selector or ref.",
+    {
+      selector: z.string().optional(),
+      ref: z.string().optional(),
+      times: z.array(z.number()).optional(),
+      count: z.number().int().optional(),
+      every: z.number().optional(),
+      from: z.number().optional(),
+      width: z.number().int().optional().describe("Width of each frame, 120-480 px, default 320"),
+      tabId,
+    },
+    "video_frames",
+  );
+  tool(
     "browser_javascript",
     "Run JavaScript in the page and get the value of its last expression (await allowed). Long values are cut at max characters (default 4000): return only what you need.",
     { code: z.string(), max: z.number().int().optional(), tabId },
