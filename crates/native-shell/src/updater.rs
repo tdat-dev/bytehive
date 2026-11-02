@@ -155,7 +155,10 @@ impl ShellApp {
                 Msg::Checked(Ok(_)) => u.status = format!("ByteHive {} is up to date.", current()),
                 Msg::Checked(Err(e)) => u.status = e,
                 Msg::Ready(Err(e)) => u.status = e,
-                Msg::Ready(Ok(path)) => match std::process::Command::new(&path).arg("/UPDATE").spawn() {
+                // Silent: the installer opens ByteHive again by itself once
+                // done. With its pages shown, the finish page's ticked "Open
+                // ByteHive" opened a second one on top.
+                Msg::Ready(Ok(path)) => match std::process::Command::new(&path).args(["/S", "/UPDATE"]).spawn() {
                     Ok(_) => {
                         self.extras.system.quit_ok = true;
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
