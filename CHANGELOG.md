@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.11.0] - unreleased
+## [0.11.0] - 2026-11-02
 
 ### Changed
 
@@ -41,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   phone dashboard, Maestro for Chrome, schedules, all in the native app.
 - **Terminal**: select and copy, right-click menu, drop files to type their
   paths, paste pictures, find in output (Ctrl+Shift+F).
+- **New agent without a job**: "What should it do?" is optional. Left empty,
+  the agent opens and waits for you in its terminal.
+
+### Fixed
+
+- A new agent gets its task even when its CLI boots slowly (start-up hooks):
+  the task waits for the screen to settle, and Enter is sent again until the
+  task leaves the input box.
+- Stopping an agent keeps it in the list, and Resume works before its first
+  message.
 
 ## [0.10.10] - 2026-10-26
 
