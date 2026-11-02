@@ -93,6 +93,12 @@ impl ShellApp {
                 let home = crate::style::icon_btn(ui, Icon::House, 30.0, self.extras.home, false);
                 if home.on_hover_text(format!("Start screen\n{lead}{tail}\n{summary}")).clicked() {
                     self.extras.home = !self.extras.home;
+                    // The composer starts in the project of the tab you were on.
+                    if self.extras.home {
+                        if let Some(d) = self.current_project() {
+                            self.extras.start.dir = Some(d);
+                        }
+                    }
                 }
                 ui.add_space(10.0);
                 let room = ui.available_rect_before_wrap();

@@ -115,11 +115,13 @@ impl ShellApp {
         for (t, w) in tabs.iter().zip(&want) {
             let w = (w * scale).max(40.0);
             let rect = Rect::from_min_size(Pos2::new(x, strip.bottom() - TAB_H), Vec2::new(w, TAB_H));
-            let on = match (&t.dir, &self.projects.filter) {
-                (None, None) => true,
-                (Some(d), Some(f)) => d.eq_ignore_ascii_case(f),
-                _ => false,
-            };
+            // The start screen is a page of its own: no tab is on show there.
+            let on = !self.extras.home
+                && match (&t.dir, &self.projects.filter) {
+                    (None, None) => true,
+                    (Some(d), Some(f)) => d.eq_ignore_ascii_case(f),
+                    _ => false,
+                };
             if let Some(a) = tab(ui, rect, t, on) {
                 act = Some(a);
             }
@@ -142,9 +144,12 @@ impl ShellApp {
             }
         }
         match act {
-            Some(TabAct::Show(dir)) if dir != self.projects.filter => {
+            // Any tab leaves the start screen, the one it came from too.
+            Some(TabAct::Show(dir)) => {
                 self.extras.home = false;
-                self.apply_project(ProjectAction::Filter(dir));
+                if dir != self.projects.filter {
+                    self.apply_project(ProjectAction::Filter(dir));
+                }
             }
             Some(TabAct::Close(dir)) => self.apply_project(ProjectAction::Close(dir)),
             _ => {}
