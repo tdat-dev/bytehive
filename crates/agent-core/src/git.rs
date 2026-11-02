@@ -6,8 +6,21 @@
 use std::path::Path;
 use std::process::Command;
 
+/// `git`, without a console window: ByteHive is a windowed app, and every
+/// git it runs would otherwise flash a terminal on screen.
+pub(crate) fn git_cmd() -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new("git");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 pub(crate) fn git(cwd: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git").arg("-C").arg(cwd).args(args).output().ok()?;
+    let out = git_cmd().arg("-C").arg(cwd).args(args).output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -109,7 +122,7 @@ pub fn checkpoint(cwd: &Path, message: &str) -> Option<String> {
     if sha.is_empty() {
         return None;
     }
-    let status = Command::new("git").arg("-C").arg(cwd).args(["stash", "store", "-m", message, &sha]).status().ok()?;
+    let status = git_cmd().arg("-C").arg(cwd).args(["stash", "store", "-m", message, &sha]).status().ok()?;
     if status.success() {
         Some(sha)
     } else {
@@ -120,7 +133,7 @@ pub fn checkpoint(cwd: &Path, message: &str) -> Option<String> {
 /// Create a worktree for an agent at `path`, on a new `branch` from `base`.
 /// Returns the branch when git accepted it.
 pub fn create_worktree(repo: &Path, path: &Path, branch: &str, base: &str) -> Option<String> {
-    let out = Command::new("git")
+    let out = git_cmd()
         .arg("-C")
         .arg(repo)
         .args(["worktree", "add", "-b", branch])
@@ -138,7 +151,7 @@ pub fn create_worktree(repo: &Path, path: &Path, branch: &str, base: &str) -> Op
 /// Remove an agent's worktree after its branch landed. Forced: the branch is
 /// merged, the folder is scratch.
 pub fn remove_worktree(repo: &Path, path: &Path) -> bool {
-    Command::new("git").arg("-C").arg(repo).args(["worktree", "remove", "--force"]).arg(path).status().map(|s| s.success()).unwrap_or(false)
+    git_cmd().arg("-C").arg(repo).args(["worktree", "remove", "--force"]).arg(path).status().map(|s| s.success()).unwrap_or(false)
 }
 
 /// What merging an agent branch into its base came to.
@@ -160,7 +173,7 @@ pub fn merge_branch(repo: &Path, branch: &str, base: &str) -> MergeOutcome {
     if !changed_files(repo).is_empty() {
         return MergeOutcome::DirtyMain;
     }
-    let run = |args: &[&str]| Command::new("git").arg("-C").arg(repo).args(args).output().ok();
+    let run = |args: &[&str]| git_cmd().arg("-C").arg(repo).args(args).output().ok();
     let prev = current_branch(repo).unwrap_or_else(|| base.to_string());
     let back = || {
         let _ = run(&["checkout", "--quiet", &prev]);

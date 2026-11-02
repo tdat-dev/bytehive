@@ -1,4 +1,7 @@
 //! ByteHive native shell: egui UI over the headless agent-core.
+// A windowed app: no console window opens beside it. Debug builds keep the
+// console for their logs.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
 mod board_ui;
