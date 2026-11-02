@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-02
+
+### Changed
+
+- **A new logo for ByteHive**: a honey cell with a faint comb and a terminal
+  prompt cut out of it, in place of Maestro's M. It shows on the window, the
+  taskbar, the tray, the installer, the start screen and Maestro for Chrome.
+
 ## [0.11.0] - 2026-11-02
 
 ### Changed
