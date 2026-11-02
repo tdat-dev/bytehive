@@ -34,6 +34,9 @@ pub fn key_bytes(key: Key, mods: Modifiers) -> Option<&'static [u8]> {
             Key::OpenBracket => b"\x1b",
             Key::Backslash => b"\x1c",
             Key::CloseBracket => b"\x1d",
+            // Ctrl+Backspace rubs out the word before the cursor: Ctrl+W,
+            // which Claude Code, Codex and readline all read.
+            Key::Backspace => b"\x17",
             _ => return None,
         });
     }
@@ -54,6 +57,57 @@ pub fn key_bytes(key: Key, mods: Modifiers) -> Option<&'static [u8]> {
         Key::PageDown => b"\x1b[6~",
         _ => return None,
     })
+}
+
+/// The arrows a program asked for in application cursor mode (DECCKM):
+/// full-screen CLIs read `ESC O A`, not `ESC [ A`.
+pub fn app_cursor_bytes(key: Key, mods: Modifiers) -> Option<&'static [u8]> {
+    if !mods.is_none() {
+        return None;
+    }
+    Some(match key {
+        Key::ArrowUp => b"\x1bOA",
+        Key::ArrowDown => b"\x1bOB",
+        Key::ArrowRight => b"\x1bOC",
+        Key::ArrowLeft => b"\x1bOD",
+        Key::Home => b"\x1bOH",
+        Key::End => b"\x1bOF",
+        _ => return None,
+    })
+}
+
+/// What the mouse wheel does to a program, as a real terminal does it: a
+/// program that took the mouse gets wheel reports, a full-screen one gets
+/// arrow keys, and otherwise (None) the view scrolls through history.
+/// `cell` is the 1-based (column, row) under the pointer.
+pub fn wheel_bytes(mode: alacritty_terminal::term::TermMode, up: bool, lines: usize, cell: (usize, usize)) -> Option<Vec<u8>> {
+    use alacritty_terminal::term::TermMode;
+    let mut out = Vec::new();
+    if mode.intersects(TermMode::MOUSE_MODE) {
+        let button = if up { 64 } else { 65 };
+        for _ in 0..lines {
+            if mode.contains(TermMode::SGR_MOUSE) {
+                out.extend_from_slice(format!("\x1b[<{button};{};{}M", cell.0, cell.1).as_bytes());
+            } else {
+                let c = |v: usize| (32 + v.min(223)) as u8;
+                out.extend_from_slice(&[0x1b, b'[', b'M', 32 + button, c(cell.0), c(cell.1)]);
+            }
+        }
+        return Some(out);
+    }
+    if mode.contains(TermMode::ALT_SCREEN) && mode.contains(TermMode::ALTERNATE_SCROLL) {
+        let key: &[u8] = match (up, mode.contains(TermMode::APP_CURSOR)) {
+            (true, true) => b"\x1bOA",
+            (false, true) => b"\x1bOB",
+            (true, false) => b"\x1b[A",
+            (false, false) => b"\x1b[B",
+        };
+        for _ in 0..lines {
+            out.extend_from_slice(key);
+        }
+        return Some(out);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -96,5 +150,31 @@ mod tests {
         assert_eq!(key_bytes(Key::A, ctrl), Some(b"\x01".as_slice()));
         assert_eq!(key_bytes(Key::Z, ctrl), Some(b"\x1a".as_slice()));
         assert_eq!(key_bytes(Key::OpenBracket, ctrl), Some(b"\x1b".as_slice()));
+    }
+
+    #[test]
+    fn ctrl_backspace_rubs_out_a_word() {
+        let ctrl = Modifiers { ctrl: true, ..Default::default() };
+        assert_eq!(key_bytes(Key::Backspace, ctrl), Some(b"\x17".as_slice()));
+    }
+
+    #[test]
+    fn the_wheel_goes_where_a_real_terminal_sends_it() {
+        use alacritty_terminal::term::TermMode;
+        // A plain prompt (Claude Code): scroll the history.
+        assert_eq!(wheel_bytes(TermMode::default(), true, 3, (1, 1)), None);
+        // A program that took the mouse gets SGR wheel reports.
+        let sgr = TermMode::MOUSE_REPORT_CLICK | TermMode::SGR_MOUSE;
+        assert_eq!(wheel_bytes(sgr, true, 1, (5, 7)).unwrap(), b"\x1b[<64;5;7M");
+        assert_eq!(wheel_bytes(sgr, false, 2, (5, 7)).unwrap(), b"\x1b[<65;5;7M\x1b[<65;5;7M");
+        // Full screen without the mouse: arrow keys.
+        let alt = TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL | TermMode::APP_CURSOR;
+        assert_eq!(wheel_bytes(alt, false, 2, (1, 1)).unwrap(), b"\x1bOB\x1bOB");
+    }
+
+    #[test]
+    fn arrows_follow_application_cursor_mode() {
+        assert_eq!(app_cursor_bytes(Key::ArrowUp, Modifiers::default()), Some(b"\x1bOA".as_slice()));
+        assert_eq!(app_cursor_bytes(Key::Enter, Modifiers::default()), None);
     }
 }

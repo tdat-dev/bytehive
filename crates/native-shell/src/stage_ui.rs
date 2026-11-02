@@ -319,6 +319,7 @@ impl ShellApp {
             ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &self.panes[i].id))));
             self.focus_pane = None;
         }
+        self.panes[i].claim_focus(ui);
         if let Some(a) = ask {
             let card = Rect::from_min_max(Pos2::new(term.left(), term.bottom() + 12.0), Pos2::new(term.right(), avail.bottom() - 12.0));
             ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| self.decision(ui, i, &a));

@@ -105,6 +105,8 @@ pub struct Pane {
     pub recording: Option<std::path::PathBuf>,
     /// Find in output (Ctrl+Shift+F).
     pub find: crate::term_search::FindBar,
+    /// Wheel travel not yet a whole line (touchpads scroll in points).
+    wheel: f32,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -122,7 +124,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default() }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0 }
     }
 
     /// The visible screen as text, newest row last: what the state reads.
@@ -177,6 +179,16 @@ impl Pane {
         self.term.selection = None;
     }
 
+    /// Take the keyboard back when nothing else holds it, as a terminal
+    /// window does: a click on the top bar or the list let go of the focus
+    /// and the next keys went nowhere. Call right after `paint`.
+    pub fn claim_focus(&self, ui: &egui::Ui) {
+        let id = ui.make_persistent_id(("term", &self.id));
+        if ui.memory(|m| m.focused().is_none()) && !egui::Popup::is_any_open(ui.ctx()) {
+            ui.memory_mut(|m| m.request_focus(id));
+        }
+    }
+
     /// Paint the pane into `rect`: focus, resize, input, grid, cursor.
     pub fn paint(&mut self, ui: &mut egui::Ui, rect: Rect, registry: &mut Registry, font: &FontId, cell: (f32, f32)) {
         let (cell_w, cell_h) = cell;
@@ -210,16 +222,54 @@ impl Pane {
             resp.request_focus();
         }
 
+        // The wheel works wherever the pointer is, focused or not.
+        let hovered = ui.ctx().input(|i| i.pointer.hover_pos()).is_some_and(|p| rect.contains(p));
+        if hovered {
+            let wheel: Vec<(egui::MouseWheelUnit, f32, Pos2)> = ui.ctx().input(|i| {
+                let at = i.pointer.hover_pos().unwrap_or(rect.min);
+                i.events.iter().filter_map(|e| if let egui::Event::MouseWheel { unit, delta, .. } = e { Some((*unit, delta.y, at)) } else { None }).collect()
+            });
+            for (unit, dy, at) in wheel {
+                // Three lines a notch, as terminals scroll.
+                self.wheel += match unit {
+                    egui::MouseWheelUnit::Line => dy * 3.0,
+                    egui::MouseWheelUnit::Page => dy * self.rows as f32,
+                    egui::MouseWheelUnit::Point => dy / cell_h,
+                };
+                let lines = self.wheel.trunc();
+                if lines == 0.0 {
+                    continue;
+                }
+                self.wheel -= lines;
+                let cell_at = (((at.x - rect.left()) / cell_w) as usize + 1, ((at.y - rect.top()) / cell_h) as usize + 1);
+                match crate::keys::wheel_bytes(*self.term.mode(), lines > 0.0, lines.abs() as usize, cell_at) {
+                    Some(b) => {
+                        let _ = registry.write_input(&self.id, &b);
+                    }
+                    None => self.term.scroll_display(Scroll::Delta(lines as i32)),
+                }
+            }
+        }
+
         if resp.has_focus() {
+            // Arrows, Tab and Esc belong to the program, not to egui's focus
+            // moves: without this the first arrow in a CLI's menu took the
+            // focus away and the next keys never reached it.
+            ui.memory_mut(|m| m.set_focus_lock_filter(id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
+            let app_cursor = self.term.mode().contains(alacritty_terminal::term::TermMode::APP_CURSOR);
             let events: Vec<egui::Event> = ui.ctx().input(|i| i.events.clone());
             for ev in &events {
                 match ev {
                     egui::Event::Text(t) => {
+                        // Typing while scrolled back jumps to the prompt.
+                        self.term.scroll_display(Scroll::Bottom);
                         let _ = registry.write_input(&self.id, t.as_bytes());
                     }
                     egui::Event::Key { key: egui::Key::F, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => self.find.toggle(),
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
-                        if let Some(b) = key_bytes(*key, *modifiers) {
+                        let app = if app_cursor { crate::keys::app_cursor_bytes(*key, *modifiers) } else { None };
+                        if let Some(b) = app.or_else(|| key_bytes(*key, *modifiers)) {
+                            self.term.scroll_display(Scroll::Bottom);
                             let _ = registry.write_input(&self.id, b);
                         }
                     }
@@ -228,12 +278,6 @@ impl Pane {
                     egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) | egui::Event::PasteImage(_) => {
                         if let Some(bytes) = crate::paste::clipboard_bytes(ev, bracketed) {
                             let _ = registry.write_input(&self.id, &bytes);
-                        }
-                    }
-                    egui::Event::MouseWheel { delta, .. } => {
-                        let lines = (delta.y / 20.0).round() as i32;
-                        if lines != 0 {
-                            self.term.scroll_display(Scroll::Delta(lines));
                         }
                     }
                     _ => {}
