@@ -30,6 +30,10 @@ const CALL_TIMEOUT_MS = 90_000;
 const CONNECT_TIMEOUT_MS = 5_000;
 /** How long a click held for the user's OK may wait. */
 const HOLD_TIMEOUT_MS = 10 * 60_000;
+/** Calls that only look, so running one again after a dropped connection can
+ *  never do a thing twice. */
+const READ_ONLY = new Set(["list_browsers", "tabs", "read_page", "find", "page_text", "console", "network"]);
+const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class HubClient {
   private ws: WebSocket | null = null;
@@ -63,7 +67,7 @@ export class HubClient {
         this.ready = null;
         for (const [, w] of this.waiting) {
           clearTimeout(w.timer);
-          w.resolve(err(why));
+          w.resolve({ ...err(why), dropped: true } as ToolResult);
         }
         this.waiting.clear();
       };
@@ -112,11 +116,29 @@ export class HubClient {
     else w.resolve(err(m.error ?? "The browser did not answer."));
   }
 
+  /** One call, tried again once when the connection was the problem: always
+   *  when nothing was sent yet, and for a call that only looks (a screenshot
+   *  included) when it dropped mid-way. */
   async call(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
+    let r = await this.once(tool, args);
+    const dropped = (r as { dropped?: boolean }).dropped;
+    const unsent = (r as { unsent?: boolean }).unsent;
+    if (unsent || (dropped && (READ_ONLY.has(tool) || (tool === "computer" && args.action === "screenshot")))) {
+      await nap(800);
+      r = await this.once(tool, args);
+    }
+    const { dropped: _d, unsent: _u, ...clean } = r as ToolResult & { dropped?: boolean; unsent?: boolean };
+    return clean as ToolResult;
+  }
+
+  private async once(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
     try {
       await this.open();
     } catch (e) {
-      return err(e instanceof Error ? e.message : String(e));
+      // Forget the failed attempt, or every later call would get the same
+      // rejection (an agent started before ByteHive never reached it).
+      this.ready = null;
+      return { ...err(e instanceof Error ? e.message : String(e)), unsent: true } as ToolResult;
     }
     const id = this.next++;
     return new Promise<ToolResult>((resolve) => {

@@ -12,6 +12,18 @@ describe("browser tools", () => {
     expect(r.content[0]).toMatchObject({ type: "text", text: expect.stringContaining("ByteHive isn't running") });
   });
 
+  it("tries once more when nothing was sent yet, and says why it stopped", async () => {
+    let tries = 0;
+    const hub = new HubClient("Ana", () => {
+      tries++;
+      throw new Error("ENOENT");
+    });
+    const r = await hub.call("computer", { action: "left_click", ref: "e1" });
+    expect(tries).toBe(2);
+    expect(r.isError).toBe(true);
+    expect(Object.keys(r)).not.toContain("unsent");
+  });
+
   it("reports a closed port as a connection problem, not a hang", async () => {
     const hub = new HubClient("Ana", () => ({ port: 1, token: "t" }));
     const r = await hub.call("tabs", {});
