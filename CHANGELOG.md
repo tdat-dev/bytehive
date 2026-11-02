@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-02
+
+### Changed
+
+- **ByteHive for Chrome costs agents far less quota.** Measured on Hacker
+  News, Wikipedia, GitHub and Amazon:
+  - Reading a page lists what is on screen in short lines: 36 to 86% fewer
+    characters on a first read. Reading the same page again sends only what
+    changed: about 99% fewer.
+  - Page text comes 6,000 characters at a time instead of 40,000.
+  - Screenshots are at most 1024 px wide (about half the image tokens), with a
+    zoomed crop of a region for small text; click positions still line up.
+  - Every click, key, typing, scroll and form fill answers what came of it (a
+    new page, how much changed, what has the focus, a dialog), so agents no
+    longer need a screenshot after each step.
+  - JavaScript, console and network output is capped, and JSON is compact.
+- **Lighter on the machine.** Page reads stop after 150 ms on huge pages
+  (open dialogs are read first), find no longer forces a layout per element,
+  and clicks wait for the page to settle instead of a fixed 400 ms.
+
 ## [0.11.9] - 2026-11-02
 
 ### Changed
