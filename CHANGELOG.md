@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-11-02
+
+### Changed
+
+- **Last time's agents wait for you.** When ByteHive opens they are back in
+  the list, stopped, and nothing runs until you press Resume (or Resume
+  all), which carries each one's conversation on.
+- **Updates install by themselves** once no agent is in the middle of work
+  (Settings, Update by itself).
+
+### Fixed
+
+- **Only one ByteHive runs.** Starting it again (or an installer opening it
+  as well) brings the open one to the front instead of a second copy.
+
 ## [0.11.5] - 2026-11-02
 
 ### Fixed
