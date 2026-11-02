@@ -195,6 +195,48 @@ mod tests {
     use super::*;
     use crate::sessions_ui::WorktreeRequest;
 
+    /// Stop a real Claude agent the way the Stop button does, then Resume it.
+    /// Spends a little quota: run by hand with --ignored.
+    #[test]
+    #[ignore]
+    fn a_stopped_claude_agent_resumes() {
+        use crate::deliver::Delivery;
+        let mut app = ShellApp::new().unwrap();
+        let dir = std::env::current_dir().unwrap().display().to_string();
+        let id = app.boot_agent(Cli::Claude, &dir, "Tess".into(), Vec::new(), None).unwrap();
+        let i = app.panes.iter().position(|p| p.id == id).unwrap();
+        app.deliveries.push(Delivery::new(id.clone(), "reply with only the word plum and use no tools".into(), crate::app::now_ms(), 3000));
+        let pump = |app: &mut ShellApp, secs: u64, until: &dyn Fn(&ShellApp) -> bool| {
+            let end = Instant::now() + Duration::from_secs(secs);
+            while Instant::now() < end && !until(app) {
+                let ShellApp { panes, registry, .. } = &mut *app;
+                for p in panes.iter_mut() {
+                    p.drain(&mut agent_core::lock(registry));
+                }
+                app.poll_deliveries();
+                app.poll_captures();
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        };
+        pump(&mut app, 120, &|a| a.panes[i].screen_text().lines().any(|l| l.contains("plum") && !l.contains("reply with")));
+        let before = app.panes[i].screen_text();
+        assert!(before.lines().any(|l| l.contains("plum") && !l.contains("reply with")), "never answered:\n{before}");
+        let sid = app.panes[i].session_id.clone();
+        eprintln!("session before stop: {sid:?}");
+        // Stop, as the stage's Stop does.
+        drop(agent_core::lock(&app.registry).take(&id));
+        app.panes[i].exit_code.get_or_insert(0);
+        pump(&mut app, 2, &|_| false);
+        // Resume.
+        app.restart_pane(i);
+        eprintln!("resume args: {:?}", app.panes[i].spec.args);
+        pump(&mut app, 60, &|a| a.panes[i].screen_text().contains("plum"));
+        let after = app.panes[i].screen_text();
+        eprintln!("exit after resume: {:?}\n---screen---\n{after}", app.panes[i].exit_code);
+        assert!(app.panes[i].exit_code.is_none(), "it stopped again:\n{after}");
+        assert!(after.contains("plum"), "the conversation did not come back:\n{after}");
+    }
+
     #[test]
     fn worktree_spawn_fails_clean_on_a_bad_repo() {
         let mut app = ShellApp::new().unwrap();
