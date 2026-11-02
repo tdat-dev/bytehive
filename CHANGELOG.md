@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-11-02
+
+### Fixed
+
+- **The terminal hands every key to the CLI again.** Arrow keys, Tab and Esc
+  no longer move the app's focus away, so choosing an option in Claude's
+  menus works; Ctrl+Backspace deletes the word before the cursor; arrows
+  follow a program's application cursor mode.
+- **Scrolling back works.** The mouse wheel scrolls three lines a notch
+  wherever the pointer is; a CLI that takes the mouse or runs full screen
+  gets the wheel the way a real terminal sends it; typing jumps back to the
+  prompt.
+- The agent on stage takes the keyboard back after a click elsewhere left
+  nothing focused.
+
 ## [0.11.1] - 2026-11-02
 
 ### Changed
