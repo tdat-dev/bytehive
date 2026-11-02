@@ -236,6 +236,7 @@ const cdp = (tabId, method, params = {}) => chrome.debugger.sendCommand({ tabId 
 chrome.debugger.onDetach.addListener((src) => attached.delete(src.tabId));
 chrome.tabs.onRemoved.addListener((tabId) => {
   lastPos.delete(tabId);
+  stepsOf.delete(tabId);
   attached.delete(tabId);
   consoleLog.delete(tabId);
   networkLog.delete(tabId);
@@ -521,6 +522,19 @@ async function encodeGif(frames) {
 
 /** Where each tab's cursor last was, so a new page starts it there. */
 const lastPos = new Map();
+/** Each tab's last three steps, newest first: the pill shows the newest, the
+ *  ones before under it, and a new page shows them again. */
+const stepsOf = new Map();
+
+/** Say what the agent does now, on its cursor's pill (never fails a tool). */
+function note(tabId, agent, what) {
+  const t = String(what).replace(/\s+/g, " ").trim();
+  const short = t.length > 64 ? `${t.slice(0, 63)}…` : t;
+  stepsOf.set(tabId, [short, ...(stepsOf.get(tabId) ?? [])].slice(0, 3));
+  void cursor(tabId, agent, "step");
+}
+const quote = (s, n = 32) => { const t = String(s ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+const hostOf = (url) => { try { return new URL(url).host || url; } catch { return url; } };
 
 /** Drive the agent's cursor in the page (see cursor.js). Never fails a tool:
  *  a page that can't be drawn on (chrome://, the Web Store) just has none. */
@@ -529,7 +543,7 @@ async function cursor(tabId, agent, op, extra = {}) {
     const [r] = await chrome.scripting.executeScript({
       target: { tabId },
       func: cursorAct,
-      args: [op, { ...extra, name: agent, color: HEX[colorFor(agent)], from: lastPos.get(tabId) }],
+      args: [op, { ...extra, name: agent, color: HEX[colorFor(agent)], from: lastPos.get(tabId), steps: stepsOf.get(tabId) }],
     });
     if (Array.isArray(r?.result)) lastPos.set(tabId, r.result);
   } catch {}
@@ -592,6 +606,7 @@ async function run(agent, tool, a) {
       }
       const t = await tabFor(agent, a.tabId);
       await awake(t.id);
+      note(t.id, agent, /^(back|forward|reload)$/.test(a.url) ? `Going ${a.url === "reload" ? "to reload the page" : a.url}` : `Opening ${hostOf(withScheme(a.url))}`);
       if (a.url === "back") await chrome.tabs.goBack(t.id);
       else if (a.url === "forward") await chrome.tabs.goForward(t.id);
       else if (a.url === "reload") await chrome.tabs.reload(t.id);
@@ -604,6 +619,7 @@ async function run(agent, tool, a) {
     case "read_page": {
       const t = await shown(await tabFor(agent, a.tabId));
       await awake(t.id);
+      note(t.id, agent, "Reading the page");
       const opts = { scope: a.scope === "page" ? "page" : "view", full: !!a.full, k: kOf(t) };
       const r = await inPage(t.id, snapshotPage, [a.filter === "all" ? "all" : "interactive", a.max ?? 150, opts]);
       const head = r.diff ? "" : `${r.title}\n${r.url}\nviewport ${r.viewport}\n`;
@@ -612,12 +628,14 @@ async function run(agent, tool, a) {
     case "find": {
       const t = await shown(await tabFor(agent, a.tabId));
       await awake(t.id);
+      note(t.id, agent, `Looking for "${quote(a.query)}"`);
       const hits = await inPage(t.id, findInPage, [a.query, 20, kOf(t)]);
       return text(hits.length ? hits.join("\n") : `Nothing on the page matches "${a.query}".`);
     }
     case "page_text": {
       const t = await tabFor(agent, a.tabId);
       await awake(t.id);
+      note(t.id, agent, "Reading the text");
       const r = await inPage(t.id, pageText, [a.max ?? 6000, a.from ?? 0]);
       return text(`${r.title}\n${r.url}\n\n${r.text}`);
     }
@@ -625,7 +643,9 @@ async function run(agent, tool, a) {
       const t = await shown(await tabFor(agent, a.tabId));
       await awake(t.id);
       const at = await inPage(t.id, locateRef, [a.ref]);
+      note(t.id, agent, `Filling in "${quote(a.value)}"`);
       await cursor(t.id, agent, "move", at);
+      void cursor(t.id, agent, "outline", { rect: at.rect });
       void cursor(t.id, agent, "type", { text: typeof a.value === "string" ? a.value : String(a.value) });
       await arm(t.id);
       await inPage(t.id, fillRef, [a.ref, a.value]);
@@ -637,29 +657,39 @@ async function run(agent, tool, a) {
       guardDialog(t.id);
       const act = a.action;
       if (act === "screenshot") {
+        note(t.id, agent, "Looking at the page");
         // The agent sees the page, not its own cursor: hide it, let one
         // frame paint, copy that frame.
         await cursor(t.id, agent, "hide");
         await sleep(50);
         try { return await screenshot(t, a.region); } finally { void cursor(t.id, agent, "unhide"); }
       }
-      if (act === "wait") { await sleep(Math.min(30, a.duration ?? 1) * 1000); return text("Waited."); }
+      if (act === "wait") { const s = Math.min(30, a.duration ?? 1); note(t.id, agent, `Waiting ${s}s for the page`); await sleep(s * 1000); return text("Waited."); }
       if (act === "type") {
+        note(t.id, agent, `Typing "${quote(a.text)}"`);
         void cursor(t.id, agent, "type", { text: String(a.text ?? "") });
         await arm(t.id);
         await cdp(t.id, "Input.insertText", { text: String(a.text ?? "") });
         return afterAction(t, "Typed.");
       }
       if (act === "key") {
+        note(t.id, agent, `Pressing ${prettyKeys(String(a.text ?? ""))}`);
         void cursor(t.id, agent, "key", { text: prettyKeys(String(a.text ?? "")) });
         await arm(t.id);
         await pressKeys(t.id, String(a.text ?? ""));
         return afterAction(t, `Pressed ${a.text}.`);
       }
-      const { x, y } = await point(t, a);
+      const target = await point(t, a);
+      const { x, y } = target;
       const k = kOf(t);
       const ax = Math.round(x / k), ay = Math.round(y / k);
+      const what = (await inPage(t.id, labelAt, [x, y]).catch(() => "")) ?? "";
+      const named = what ? ` "${quote(what)}"` : "";
+      if (act === "hover") note(t.id, agent, `Pointing at${named || " the page"}`);
+      else if (act === "scroll") note(t.id, agent, `Scrolling ${a.scroll_direction ?? "down"}`);
+      else note(t.id, agent, `${act === "right_click" ? "Right-clicking" : act === "double_click" ? "Double-clicking" : "Clicking"}${named || " the page"}`);
       await cursor(t.id, agent, "move", { x, y });
+      if (target.rect && act !== "scroll") void cursor(t.id, agent, "outline", { rect: target.rect });
       if (act === "hover") { await cdp(t.id, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); return text(`Hovering at ${ax},${ay}.`); }
       if (act === "scroll") {
         const n = (a.scroll_amount ?? 3) * 100;
@@ -683,7 +713,7 @@ async function run(agent, tool, a) {
           return r;
         }
       }
-      const name = (await inPage(t.id, labelAt, [x, y]).catch(() => "")) ?? "";
+      const name = what;
       await cursor(t.id, agent, "click", { x, y, button });
       await arm(t.id);
       await mouse(t.id, x, y, { button, clicks });
@@ -693,6 +723,7 @@ async function run(agent, tool, a) {
     case "javascript": {
       const t = await tabFor(agent, a.tabId);
       await dbg(t.id);
+      note(t.id, agent, "Running a script on the page");
       guardDialog(t.id);
       const r = await cdp(t.id, "Runtime.evaluate", { expression: a.code, awaitPromise: true, returnByValue: true, replMode: true, userGesture: true });
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
@@ -740,6 +771,7 @@ async function run(agent, tool, a) {
       await dbg(t.id);
       guardDialog(t.id);
       const files = (a.paths ?? []).map(String);
+      note(t.id, agent, `Attaching ${files.length} file${files.length === 1 ? "" : "s"}`);
       if (!files.length) throw new Error("Give the files to attach (full paths).");
       const mark = "m" + Math.random().toString(36).slice(2);
       const at = await inPage(t.id, markForUpload, [a.ref, mark]);

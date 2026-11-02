@@ -172,7 +172,7 @@ export function locateRef(ref) {
   if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
   el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
   const r = el.getBoundingClientRect();
-  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), rect: { x: r.left, y: r.top, w: r.width, h: r.height } };
 }
 
 /** Set a form control's value the way typing would, so frameworks notice. */
