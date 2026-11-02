@@ -2680,7 +2680,7 @@ dependencies = [
 
 [[package]]
 name = "native-shell"
-version = "0.12.3"
+version = "0.12.4"
 dependencies = [
  "agent-core",
  "alacritty_terminal",

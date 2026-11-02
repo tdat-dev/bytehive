@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.4] - 2026-11-03
+
+### Added
+
+- **Custom CLI agents are back.** New agent and the Home composer have a
+  Custom choice: type any command on your PATH (`gemini`, `grok`,
+  `ollama run llama3.1`) and it starts as an agent, in the folder or its
+  own worktree. The commands you used lately sit under it, one click away,
+  and custom agents come back after a restart like the others.
+- **Agents wear their CLI's logo.** The pixel faces gave way to each CLI's
+  real logo: Claude, Codex, Muse and OpenCode, and for custom commands
+  Gemini, Grok, Cursor, Ollama, Qwen, Copilot, Kimi, DeepSeek, Hermes,
+  Antigravity, Amp, Cline, Kilo, Goose, Mistral Vibe, Trae, Junie, Roo, Kiro,
+  Qoder and CodeBuddy. The Agent choices show them too. A plain shell keeps
+  its face.
+- **The Home logo comes alive while agents work.** Its comb cells light up
+  one after another and it breathes, only while an agent is working or the
+  pointer is on it and the window has focus. Otherwise it is still and costs
+  nothing.
+
 ## [0.12.3] - 2026-11-03
 
 ### Added
