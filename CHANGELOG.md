@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-11-02
+
+### Fixed
+
+- **Agents come back after ByteHive closes.** Closing the app, installing an
+  update or a crash used to lose every agent that was running. ByteHive now
+  writes the running agents down every few seconds and reopens them at start,
+  each carrying on its own conversation in its folder or worktree (Settings,
+  Reopen projects on start).
+
 ## [0.11.2] - 2026-11-02
 
 ### Fixed
