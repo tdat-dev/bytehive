@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.9] - 2026-11-02
+
+### Changed
+
+- **Tabs drawn like Chrome's.** The strip has its own shade, the tab on show
+  wears the page's colour and flares into it, every tab is one width with a
+  folder icon and an x, thin dividers between them, + right after the last.
+- **Fold the agent list** with the sidebar button by the house: it becomes a
+  rail of faces with state dots; a face puts that agent on stage.
+- **The Grid needs no list.** In the Grid the agent list is gone, and under
+  All every tile names its project.
+- **Questions are answered in the terminal.** The card ByteHive drew under
+  an agent that asks something is gone; answer the CLI where it asks.
+
+### Fixed
+
+- **Agents no longer make the PC stutter.** Everything an agent runs (an
+  Android or Rust build, tests, installs) runs at below-normal priority: full
+  speed while the machine is idle, but the mouse, keys and your own apps
+  always go first.
+
 ## [0.11.8] - 2026-11-02
 
 ### Fixed
