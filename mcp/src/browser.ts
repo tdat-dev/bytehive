@@ -134,7 +134,7 @@ const err = (text: string): ToolResult => ({ content: [{ type: "text", text }], 
 
 const tabId = z.number().int().optional().describe("Tab id from browser_tabs; defaults to your most recent tab");
 
-export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in ByteHive; if they say no, don't retry.`;
+export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (refs for what is on screen; a second read sends only what changed), act with browser_computer (click a ref or a coordinate, type, key). Every action answers what came of it (new page, what changed, the focus), so take a screenshot only when you must see layout or images; browser_find and browser_page_text are cheaper. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in ByteHive; if they say no, don't retry.`;
 
 /** Absolute paths for files to upload: relative ones are taken from the
  *  workspace; every file must exist, so the page never gets a bad path. */
@@ -185,20 +185,26 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
   );
   tool(
     "browser_read_page",
-    "Outline of the page: its interactive elements (or with filter=all, headings and images too), each with a ref to use in browser_computer / browser_form_input, and its position.",
-    { tabId, filter: z.enum(["interactive", "all"]).optional(), max: z.number().int().optional() },
+    "The page's interactive elements on screen (filter=all adds headings and images), one line each: ref, role, name, position in screenshot pixels. Refs work in browser_computer and browser_form_input. Reading the same page again returns only what changed (+ changed or new, - gone); full=true for everything, scope=page for off-screen elements too.",
+    {
+      tabId,
+      filter: z.enum(["interactive", "all"]).optional(),
+      scope: z.enum(["view", "page"]).optional().describe("view (default): on screen; page: the whole page"),
+      full: z.boolean().optional().describe("Everything, not just the changes since your last read"),
+      max: z.number().int().optional().describe("Lines at most, default 150"),
+    },
     "read_page",
   );
   tool(
     "browser_find",
-    "Find elements whose text or label contains all the words of a query. Returns refs.",
+    "Find elements whose text or label contains all the words of a query, on-screen controls first. Returns refs and positions; cheaper than reading the whole page.",
     { query: z.string(), tabId },
     "find",
   );
   tool(
     "browser_page_text",
-    "The page's visible text, for reading articles, results or tables.",
-    { tabId, max: z.number().int().optional().describe("Character limit, default 40000") },
+    "The page's visible text, for reading articles, results or tables, in pieces: 6000 characters from `from`; the answer says where the next piece starts.",
+    { tabId, max: z.number().int().optional().describe("Characters, default 6000"), from: z.number().int().optional().describe("Start at this character, default 0") },
     "page_text",
   );
   tool(
@@ -209,7 +215,7 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
   );
   tool(
     "browser_computer",
-    "Real mouse and keyboard in your tab. Actions: screenshot, left_click, right_click, double_click, triple_click, hover, scroll, type (text), key (e.g. \"Enter\", \"ctrl+a\"), wait (duration seconds). Target with ref (from browser_read_page) or coordinate [x, y] (from a screenshot).",
+    "Real mouse and keyboard in your tab. Actions: screenshot, left_click, right_click, double_click, triple_click, hover, scroll, type (text), key (e.g. \"Enter\", \"ctrl+a\"), wait (duration seconds). Target with ref (from browser_read_page/find) or coordinate [x, y] in screenshot pixels. Each action answers what came of it. screenshot with region [x, y, w, h] returns a sharper crop for small text.",
     {
       action: z.enum(["screenshot", "left_click", "right_click", "double_click", "triple_click", "hover", "scroll", "type", "key", "wait"]),
       ref: z.string().optional(),
@@ -218,14 +224,15 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
       scroll_direction: z.enum(["up", "down", "left", "right"]).optional(),
       scroll_amount: z.number().optional(),
       duration: z.number().optional(),
+      region: z.array(z.number()).length(4).optional().describe("screenshot only: [x, y, w, h] to zoom into"),
       tabId,
     },
     "computer",
   );
   tool(
     "browser_javascript",
-    "Run JavaScript in the page and get the value of its last expression (await allowed).",
-    { code: z.string(), tabId },
+    "Run JavaScript in the page and get the value of its last expression (await allowed). Long values are cut at max characters (default 4000): return only what you need.",
+    { code: z.string(), max: z.number().int().optional(), tabId },
     "javascript",
   );
   tool(

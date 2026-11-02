@@ -3,17 +3,22 @@
  * Refs live in that isolated world (globalThis.__bytehive), so the page's own
  * scripts never see them and the DOM is never marked. */
 
-/** A readable outline of the page: interactive elements (or everything
- *  meaningful with filter "all"), each with a ref the other tools accept. */
-export function snapshotPage(filter, maxItems) {
+/** A readable outline of the page, small enough to be cheap for the model:
+ *  interactive elements (or everything meaningful with filter "all"), each
+ *  with a ref the other tools accept, one short line each.
+ *  opts.scope "view" (default) lists what is on screen, "page" everything.
+ *  Unless opts.full, a second read of the same page sends only what changed.
+ *  opts.k divides coordinates into screenshot pixels. A time budget keeps a
+ *  huge page from stalling the tab (and the machine). */
+export function snapshotPage(filter, maxItems, opts = {}) {
   const S = (globalThis.__bytehive ??= { refs: new Map(), next: 1, byEl: new WeakMap() });
-  const W = innerWidth, H = innerHeight;
+  const W = innerWidth, H = innerHeight, k = opts.k || 1, onlyView = opts.scope !== "page";
+  const t0 = performance.now(), BUDGET = 150;
   const INTERACTIVE = new Set(["a", "button", "input", "select", "textarea", "summary", "details", "option"]);
   const ROLES = /^(button|link|checkbox|radio|switch|tab|menuitem|menuitemcheckbox|menuitemradio|option|combobox|textbox|searchbox|slider|spinbutton|treeitem)$/;
   const clean = (s) => (s ?? "").replace(/\s+/g, " ").trim();
-  const cut = (s, n = 80) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-  const visible = (el, r) => {
-    if (r.width < 1 || r.height < 1) return false;
+  const cut = (s, n = 60) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+  const shown = (el) => {
     const cs = getComputedStyle(el);
     return cs.visibility !== "hidden" && cs.display !== "none" && Number(cs.opacity) > 0.05;
   };
@@ -22,14 +27,15 @@ export function snapshotPage(filter, maxItems) {
     if (label) return clean(label);
     const by = el.getAttribute("aria-labelledby");
     if (by) {
-      const t = by.split(/\s+/).map((id) => el.ownerDocument.getElementById(id)?.innerText ?? "").join(" ");
+      const t = by.split(/\s+/).map((id) => el.ownerDocument.getElementById(id)?.textContent ?? "").join(" ");
       if (clean(t)) return clean(t);
     }
-    if (el.labels?.length) return clean([...el.labels].map((l) => l.innerText).join(" "));
+    if (el.labels?.length) return clean([...el.labels].map((l) => l.textContent).join(" "));
     const tag = el.tagName.toLowerCase();
     if (tag === "input" || tag === "textarea") return clean(el.placeholder || el.title || el.name || "");
     if (tag === "img") return clean(el.alt || el.title || "");
-    return clean(el.innerText || el.textContent || el.title || el.getAttribute("alt") || "");
+    // textContent, not innerText: no layout pass per element.
+    return clean(el.textContent || el.title || el.getAttribute("alt") || "");
   };
   const roleOf = (el) => {
     const r = el.getAttribute("role");
@@ -46,15 +52,16 @@ export function snapshotPage(filter, maxItems) {
     if (el.isContentEditable) return "textbox";
     return tag === "summary" ? "button" : tag;
   };
-  const isInteractive = (el) => {
+  // Cheap first: tag, role, attributes. Only then the computed cursor.
+  const plainInteractive = (el) => {
     const tag = el.tagName.toLowerCase();
     if (INTERACTIVE.has(tag)) return !(tag === "a" && !el.hasAttribute("href") && !el.onclick);
     const role = el.getAttribute("role");
     if (role && ROLES.test(role)) return true;
     if (el.isContentEditable && el.parentElement && !el.parentElement.isContentEditable) return true;
-    if (el.hasAttribute("onclick") || el.getAttribute("tabindex") === "0") return true;
-    // Clickable by look only: keep the outermost pointer element, not every
-    // child that inherits the cursor.
+    return el.hasAttribute("onclick") || el.getAttribute("tabindex") === "0";
+  };
+  const pointerOnly = (el) => {
     if (getComputedStyle(el).cursor !== "pointer") return false;
     const up = el.parentElement;
     return !!up && getComputedStyle(up).cursor !== "pointer" && !up.closest("a,button,[role=button],[role=link]");
@@ -62,43 +69,105 @@ export function snapshotPage(filter, maxItems) {
   const isMeaningful = (el) => /^h[1-6]$/i.test(el.tagName) || el.tagName === "IMG" || el.getAttribute("role") === "dialog" || el.getAttribute("role") === "alert";
   const refFor = (el) => {
     let id = S.byEl.get(el);
-    if (!id) { id = "ref_" + S.next++; S.byEl.set(el, id); S.refs.set(id, new WeakRef(el)); }
+    if (!id) { id = "e" + S.next++; S.byEl.set(el, id); S.refs.set(id, new WeakRef(el)); }
     return id;
   };
-  const out = [];
-  let skipped = 0;
+  // Refs of elements long gone are dropped, so the map never grows for ever.
+  if (S.refs.size > 3000) for (const [id, w] of S.refs) { const el = w.deref(); if (!el || !el.isConnected) S.refs.delete(id); }
+  const now = new Map();
+  let below = 0, skipped = 0, late = false;
   const walk = (root) => {
     for (const el of root.querySelectorAll("*")) {
+      if (late || performance.now() - t0 > BUDGET) { late = true; return; }
       if (el.shadowRoot) walk(el.shadowRoot);
-      const want = isInteractive(el) || (filter === "all" && isMeaningful(el));
-      if (!want) continue;
+      if (now.has(S.byEl.get(el)) || el.closest("[data-bytehive-overlay]")) continue;
+      const plain = plainInteractive(el);
+      const meaningful = filter === "all" && isMeaningful(el);
+      if (!plain && !meaningful && !["DIV", "SPAN", "LI", "IMG", "SVG", "LABEL", "TD", "svg"].includes(el.tagName)) continue;
       const r = el.getBoundingClientRect();
-      if (!visible(el, r)) continue;
-      if (out.length >= maxItems) { skipped++; continue; }
+      if (r.width < 1 || r.height < 1) continue;
+      const inView = r.bottom > 0 && r.top < H && r.right > 0 && r.left < W;
+      if (onlyView && !inView) { if (plain) below++; continue; }
+      if (!plain && !meaningful && !pointerOnly(el)) continue;
+      if (!shown(el)) continue;
+      if (now.size >= maxItems) { skipped++; continue; }
       const role = roleOf(el);
-      let line = `[${refFor(el)}] ${role} "${cut(nameOf(el))}"`;
-      if ("value" in el && (role === "textbox" || role === "searchbox" || role === "combobox") && el.value) line += ` value="${cut(String(el.value), 60)}"`;
+      let name = cut(nameOf(el));
+      // A clickable box with no words says nothing: leave it out. An icon
+      // link says where it goes.
+      if (!name && !plain) continue;
+      if (!name && el.tagName === "A") name = cut(el.getAttribute("href") ?? "", 40);
+      let line = `${refFor(el)} ${role} "${name}"`;
+      if ("value" in el && (role === "textbox" || role === "searchbox" || role === "combobox") && el.value) line += ` ="${cut(String(el.value), 40)}"`;
       if (el.checked) line += " checked";
       if (el.disabled || el.getAttribute("aria-disabled") === "true") line += " disabled";
       if (el.getAttribute("aria-expanded")) line += ` expanded=${el.getAttribute("aria-expanded")}`;
-      const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + r.height / 2);
-      line += cy < 0 || cy > H || cx < 0 || cx > W ? " (offscreen)" : ` @${cx},${cy}`;
-      out.push(line);
+      line += inView ? ` @${Math.round((r.left + r.width / 2) / k)},${Math.round((r.top + r.height / 2) / k)}` : " (offscreen)";
+      now.set(S.byEl.get(el), line);
     }
   };
+  // An open dialog first: it is what the user sees, and modals sit at the end
+  // of the page, where a time budget would run out before reaching them.
+  for (const d of document.querySelectorAll("dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true]")) walk(d);
   walk(document);
   const frames = document.querySelectorAll("iframe").length;
-  return {
-    title: document.title,
-    url: location.href,
-    viewport: `${W}x${H}`,
-    lines: out,
-    note: [skipped ? `${skipped} more elements not listed` : "", frames ? `${frames} iframe(s) not included` : ""].filter(Boolean).join("; "),
-  };
+  const notes = [];
+  if (skipped) notes.push(`${skipped} more not listed (raise max)`);
+  if (below) notes.push(`${below} more controls off screen (scroll, or scope "page")`);
+  if (late) notes.push("stopped early on a very large page: scroll, or use browser_find");
+  if (frames) notes.push(`${frames} iframe(s) not included`);
+  // Only what changed since the last read of this page, unless asked for all.
+  const prev = S.prev;
+  let lines = [...now.values()], diff = false;
+  if (!opts.full && prev && prev.url === location.href && prev.scope === onlyView) {
+    diff = true;
+    const added = [...now].filter(([id, l]) => prev.lines.get(id) !== l).map(([, l]) => "+ " + l);
+    const gone = [...prev.lines.keys()].filter((id) => !now.has(id)).map((id) => "- " + id);
+    const same = now.size - added.length;
+    lines = [...added, ...gone];
+    notes.unshift(lines.length ? `changes since your last read; ${same} unchanged` : `no changes since your last read (${same} elements)`);
+  }
+  S.prev = { url: location.href, scope: onlyView, lines: now };
+  return { title: document.title, url: location.href, viewport: `${Math.round(W / k)}x${Math.round(H / k)}`, lines, diff, note: notes.join("; ") };
+}
+
+/** Before an action: start counting page changes (a MutationObserver on
+ *  nodes and text only, disconnected again by settleDelta). */
+export function armDelta() {
+  const S = (globalThis.__bytehive ??= { refs: new Map(), next: 1, byEl: new WeakMap() });
+  S.muts = 0;
+  S.lastMut = performance.now();
+  S.mo?.disconnect();
+  S.mo = new MutationObserver((list) => { S.muts += list.length; S.lastMut = performance.now(); });
+  S.mo.observe(document, { subtree: true, childList: true, characterData: true });
+  return true;
+}
+
+/** After an action: wait until the page has been still for `quiet` ms (at
+ *  most `max`), then say how much changed and what has the focus. */
+export async function settleDelta(quiet, max) {
+  const S = globalThis.__bytehive ?? {};
+  const t0 = performance.now();
+  await new Promise((done) => {
+    const tick = () => {
+      const t = performance.now();
+      if (t - t0 >= max || (t - t0 >= 80 && t - (S.lastMut ?? 0) >= quiet)) done();
+      else setTimeout(tick, 40);
+    };
+    tick();
+  });
+  S.mo?.disconnect();
+  S.mo = null;
+  const a = document.activeElement;
+  const focus = a && a !== document.body && a !== document.documentElement
+    ? `${a.getAttribute("role") || a.tagName.toLowerCase()} "${(a.getAttribute("aria-label") || a.placeholder || a.value || a.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40)}"`
+    : "";
+  return { changes: S.muts ?? 0, focus, url: location.href, title: document.title };
 }
 
 /** The element behind a ref: scrolled into view, with its centre. */
 export function locateRef(ref) {
+  ref = String(ref).replace(/^ref_/, "e");
   const el = globalThis.__bytehive?.refs.get(ref)?.deref();
   if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
   el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
@@ -108,6 +177,7 @@ export function locateRef(ref) {
 
 /** Set a form control's value the way typing would, so frameworks notice. */
 export function fillRef(ref, value) {
+  ref = String(ref).replace(/^ref_/, "e");
   const el = globalThis.__bytehive?.refs.get(ref)?.deref();
   if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
   const fire = (t) => el.dispatchEvent(new Event(t, { bubbles: true }));
@@ -131,34 +201,41 @@ export function fillRef(ref, value) {
   return { ok: true };
 }
 
-/** Elements whose name or text contains every word of the query. */
-export function findInPage(query, maxItems) {
+/** Elements whose name or text contains every word of the query, on-screen
+ *  ones first. Matching reads textContent (no layout); a time budget bounds
+ *  the work on a huge page. Coordinates in screenshot pixels (divided by k). */
+export function findInPage(query, maxItems, k = 1) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const S = (globalThis.__bytehive ??= { refs: new Map(), next: 1, byEl: new WeakMap() });
+  const t0 = performance.now();
   const hits = [];
   const CONTROL = /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/;
+  const has = (t) => { const low = t.toLowerCase(); return words.every((w) => low.includes(w)); };
   for (const el of document.querySelectorAll("a,button,input,select,textarea,[role],[aria-label],label,h1,h2,h3,h4,li,td,span,div,p")) {
-    if (hits.length >= maxItems * 3) break;
-    const text = (el.getAttribute("aria-label") || el.placeholder || el.labels?.[0]?.innerText || el.innerText || "").replace(/\s+/g, " ").trim();
-    if (!text || text.length > 200) continue;
-    const low = text.toLowerCase();
-    if (!words.every((w) => low.includes(w))) continue;
+    if (hits.length >= maxItems * 3 || performance.now() - t0 > 150) break;
+    const text = (el.getAttribute("aria-label") || el.placeholder || el.labels?.[0]?.textContent || el.textContent || "").replace(/\s+/g, " ").trim();
+    if (!text || text.length > 200 || !has(text)) continue;
     // keep the innermost match only
-    if ([...el.children].some((c) => words.every((w) => (c.innerText || "").toLowerCase().includes(w)))) continue;
+    if ([...el.children].some((c) => has(c.textContent || ""))) continue;
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue;
     let id = S.byEl.get(el);
-    if (!id) { id = "ref_" + S.next++; S.byEl.set(el, id); S.refs.set(id, new WeakRef(el)); }
+    if (!id) { id = "e" + S.next++; S.byEl.set(el, id); S.refs.set(id, new WeakRef(el)); }
     const control = CONTROL.test(el.tagName) || /^(button|link|textbox|checkbox|combobox|tab|menuitem)$/.test(el.getAttribute("role") ?? "");
-    hits.push({ control, line: `[${id}] ${el.getAttribute("role") || el.tagName.toLowerCase()} "${text.slice(0, 80)}" @${Math.round(r.left + r.width / 2)},${Math.round(r.top + r.height / 2)}` });
+    const inView = r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+    const at = inView ? `@${Math.round((r.left + r.width / 2) / k)},${Math.round((r.top + r.height / 2) / k)}` : "(offscreen)";
+    hits.push({ rank: (control ? 0 : 2) + (inView ? 0 : 1), line: `${id} ${el.getAttribute("role") || el.tagName.toLowerCase()} "${text.slice(0, 60)}" ${at}` });
   }
-  // Things you can act on first: a field named "Email" before its label.
-  return hits.sort((a, b) => Number(b.control) - Number(a.control)).slice(0, maxItems).map((h) => h.line);
+  // Things you can act on, on screen, first: a field named "Email" before its label.
+  return hits.sort((a, b) => a.rank - b.rank).slice(0, maxItems).map((h) => h.line);
 }
 
-export function pageText(maxChars) {
+/** The page's text from character `from`, at most `maxChars` of it. */
+export function pageText(maxChars, from = 0) {
   const t = document.body?.innerText ?? "";
-  return { title: document.title, url: location.href, text: t.length > maxChars ? t.slice(0, maxChars) + `\n… (${t.length - maxChars} more characters)` : t };
+  const end = from + maxChars;
+  const more = t.length > end ? `\n… ${t.length - end} more characters: call again with from=${end}` : "";
+  return { title: document.title, url: location.href, text: t.slice(from, end) + more };
 }
 
 /** The name of what sits at a point: the button or link a click there hits. */
@@ -182,6 +259,7 @@ export function blockerOf() {
 /** For an upload: mark the file input behind a ref so CDP can find it, or,
  *  when the ref is a button that opens a file chooser, say where to click. */
 export function markForUpload(ref, mark) {
+  ref = String(ref).replace(/^ref_/, "e");
   const el = globalThis.__bytehive?.refs.get(ref)?.deref();
   if (!el || !el.isConnected) return { error: `${ref} is gone from the page. Call browser_read_page again.` };
   const input = el.matches("input[type=file]")

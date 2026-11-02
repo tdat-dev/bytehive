@@ -9,7 +9,7 @@
  * screenshots and page JavaScript go through chrome.debugger (the Chrome
  * DevTools Protocol), so clicks and keys are real browser input. */
 
-import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf, markForUpload, unmarkUpload } from "./page.js";
+import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf, markForUpload, unmarkUpload, armDelta, settleDelta } from "./page.js";
 import { GIFEncoder, quantize, applyPalette } from "./vendor/gifenc.esm.js";
 import { cursorAct } from "./cursor.js";
 
@@ -282,7 +282,9 @@ function guardDialog(tabId) {
 
 // ---------------------------------------------------------------- helpers
 
-const text = (s) => ({ content: [{ type: "text", text: typeof s === "string" ? s : JSON.stringify(s, null, 2) }] });
+const text = (s) => ({ content: [{ type: "text", text: typeof s === "string" ? s : JSON.stringify(s) }] });
+/** A long string cut to `n` characters, saying how much was left out. */
+const cap = (s, n) => (s.length > n ? s.slice(0, n) + `… (${s.length - n} more characters)` : s);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function inPage(tabId, func, args) {
@@ -314,7 +316,7 @@ function withScheme(url) {
  * view out, and the page visibly flashed on every frame of ByteHive's live
  * view. The CDP path is only the fallback, for a tab that isn't the one
  * showing in its window, and it runs without a clip. */
-async function grab(tab, maxW, quality) {
+async function grab(tab, maxW, quality, crop = null) {
   let blob = null;
   const win = await chrome.windows.get(tab.windowId).catch(() => null);
   if (tab.active && win && win.state !== "minimized") {
@@ -334,14 +336,19 @@ async function grab(tab, maxW, quality) {
     blob = await (await fetch(`data:image/jpeg;base64,${shot.data}`)).blob();
   }
   const bmp = await createImageBitmap(blob);
-  const scale = Math.min(1, maxW / bmp.width);
-  const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+  // A crop is in CSS pixels; the frame is in device pixels.
+  const dpr = bmp.width / (tab.width || bmp.width);
+  const src = crop
+    ? { x: Math.max(0, crop.x * dpr), y: Math.max(0, crop.y * dpr), w: Math.min(bmp.width, crop.w * dpr), h: Math.min(bmp.height, crop.h * dpr) }
+    : { x: 0, y: 0, w: bmp.width, h: bmp.height };
+  const scale = Math.min(1, maxW / src.w);
+  const w = Math.max(1, Math.round(src.w * scale)), h = Math.max(1, Math.round(src.h * scale));
   let out = blob;
-  if (scale < 1) {
+  if (scale < 1 || crop) {
     const c = new OffscreenCanvas(w, h);
     const g = c.getContext("2d");
     g.imageSmoothingQuality = "high";
-    g.drawImage(bmp, 0, 0, w, h);
+    g.drawImage(bmp, src.x, src.y, src.w, src.h, 0, 0, w, h);
     out = await c.convertToBlob({ type: "image/jpeg", quality: quality / 100 });
   }
   bmp.close();
@@ -351,17 +358,60 @@ async function grab(tab, maxW, quality) {
   return { data: btoa(bin), width: w, height: h };
 }
 
-/** The agent's screenshot: in page (CSS) pixels, so its coordinates are the
- *  ones clicks use. */
-async function screenshot(tab) {
+/** Screenshots are at most this wide: a full-HD page costs the model about
+ *  half the image tokens, and text still reads. */
+const SHOT_W = 1024;
+/** CSS pixels per screenshot pixel for a tab: coordinates the agent gives and
+ *  gets (screenshot, read_page, find) are all in screenshot pixels. */
+const kOf = (t) => Math.max(1, (t.width || SHOT_W) / SHOT_W);
+
+/** The agent's screenshot, or with `region` [x, y, w, h] (screenshot pixels)
+ *  a sharper crop of that part, for small text. */
+async function screenshot(tab, region) {
   const t = await chrome.tabs.get(tab.id);
-  const img = await grab(t, t.width || 1600, 70);
+  const k = kOf(t);
+  if (Array.isArray(region) && region.length === 4) {
+    const [x, y, w, h] = region.map(Number);
+    const img = await grab(t, SHOT_W, 75, { x: x * k, y: y * k, w: w * k, h: h * k });
+    const sx = (w / img.width).toFixed(3), sy = (h / img.height).toFixed(3);
+    return {
+      content: [
+        { type: "image", data: img.data, mimeType: "image/jpeg" },
+        { type: "text", text: `Zoomed region [${x},${y},${w},${h}], ${img.width}x${img.height}. To click in it use screenshot coordinates: x = ${x} + px*${sx}, y = ${y} + py*${sy}.` },
+      ],
+    };
+  }
+  const img = await grab(t, Math.round((t.width || SHOT_W) / k), 60);
   return {
     content: [
       { type: "image", data: img.data, mimeType: "image/jpeg" },
-      { type: "text", text: `Screenshot ${img.width}x${img.height}; click coordinates use these pixels.` },
+      { type: "text", text: `Screenshot ${img.width}x${img.height}; click coordinates (and read_page/find positions) use these pixels.` },
     ],
   };
+}
+
+/** After an action: let the page settle (still for 150 ms, at most 1.5 s, or
+ *  the new page loaded), then say in one line what came of it, so the agent
+ *  rarely needs a screenshot to know. */
+async function afterAction(t, what) {
+  let d = null;
+  try { d = await inPage(t.id, settleDelta, [150, 1500]); } catch { /* the page went away: a navigation */ }
+  let now = await chrome.tabs.get(t.id);
+  if (now.status === "loading") { await waitLoaded(t.id, 10000); now = await chrome.tabs.get(t.id); }
+  const parts = [what];
+  if (now.url !== t.url) parts.push(`Now on "${now.title ?? ""}" ${now.url}.`);
+  else if (d) {
+    parts.push(d.changes ? `The page changed (${d.changes}); browser_read_page shows only what changed.` : "Nothing on the page changed.");
+    if (d.focus) parts.push(`Focus: ${d.focus}.`);
+  }
+  const dlg = dialogs.get(t.id);
+  if (dlg) parts.push(`A ${dlg.type} dialog is open: "${dlg.message}". Answer it with browser_dialog.`);
+  return withBlocker(t.id, text(parts.join(" ")));
+}
+
+/** Start counting page changes before an action (never fails the action). */
+async function arm(tabId) {
+  try { await inPage(tabId, armDelta, []); } catch {}
 }
 
 const KEYS = {
@@ -398,9 +448,10 @@ async function mouse(tabId, x, y, { button = "left", clicks = 1 } = {}) {
   }
 }
 
-async function point(tabId, args) {
-  if (args.ref) return inPage(tabId, locateRef, [args.ref]);
-  if (Array.isArray(args.coordinate) && args.coordinate.length === 2) return { x: args.coordinate[0], y: args.coordinate[1] };
+async function point(t, args) {
+  if (args.ref) return inPage(t.id, locateRef, [args.ref]);
+  const k = kOf(t);
+  if (Array.isArray(args.coordinate) && args.coordinate.length === 2) return { x: Math.round(args.coordinate[0] * k), y: Math.round(args.coordinate[1] * k) };
   throw new Error("Give a ref (from browser_read_page) or a coordinate [x, y] (from a screenshot).");
 }
 
@@ -553,19 +604,21 @@ async function run(agent, tool, a) {
     case "read_page": {
       const t = await shown(await tabFor(agent, a.tabId));
       await awake(t.id);
-      const r = await inPage(t.id, snapshotPage, [a.filter === "all" ? "all" : "interactive", a.max ?? 400]);
-      return withBlocker(t.id, text(`${r.title}\n${r.url}\nviewport ${r.viewport}\n\n${r.lines.join("\n")}${r.note ? `\n\n(${r.note})` : ""}`));
+      const opts = { scope: a.scope === "page" ? "page" : "view", full: !!a.full, k: kOf(t) };
+      const r = await inPage(t.id, snapshotPage, [a.filter === "all" ? "all" : "interactive", a.max ?? 150, opts]);
+      const head = r.diff ? "" : `${r.title}\n${r.url}\nviewport ${r.viewport}\n`;
+      return withBlocker(t.id, text(`${head}${r.lines.join("\n")}${r.note ? `\n(${r.note})` : ""}`));
     }
     case "find": {
       const t = await shown(await tabFor(agent, a.tabId));
       await awake(t.id);
-      const hits = await inPage(t.id, findInPage, [a.query, 30]);
+      const hits = await inPage(t.id, findInPage, [a.query, 20, kOf(t)]);
       return text(hits.length ? hits.join("\n") : `Nothing on the page matches "${a.query}".`);
     }
     case "page_text": {
       const t = await tabFor(agent, a.tabId);
       await awake(t.id);
-      const r = await inPage(t.id, pageText, [a.max ?? 40000]);
+      const r = await inPage(t.id, pageText, [a.max ?? 6000, a.from ?? 0]);
       return text(`${r.title}\n${r.url}\n\n${r.text}`);
     }
     case "form_input": {
@@ -574,8 +627,9 @@ async function run(agent, tool, a) {
       const at = await inPage(t.id, locateRef, [a.ref]);
       await cursor(t.id, agent, "move", at);
       void cursor(t.id, agent, "type", { text: typeof a.value === "string" ? a.value : String(a.value) });
+      await arm(t.id);
       await inPage(t.id, fillRef, [a.ref, a.value]);
-      return text(`Set ${a.ref}.`);
+      return afterAction(t, `Set ${a.ref}.`);
     }
     case "computer": {
       const t = await shown(await tabFor(agent, a.tabId));
@@ -587,31 +641,36 @@ async function run(agent, tool, a) {
         // frame paint, copy that frame.
         await cursor(t.id, agent, "hide");
         await sleep(50);
-        try { return await screenshot(t); } finally { void cursor(t.id, agent, "unhide"); }
+        try { return await screenshot(t, a.region); } finally { void cursor(t.id, agent, "unhide"); }
       }
       if (act === "wait") { await sleep(Math.min(30, a.duration ?? 1) * 1000); return text("Waited."); }
       if (act === "type") {
         void cursor(t.id, agent, "type", { text: String(a.text ?? "") });
+        await arm(t.id);
         await cdp(t.id, "Input.insertText", { text: String(a.text ?? "") });
-        return text("Typed.");
+        return afterAction(t, "Typed.");
       }
       if (act === "key") {
         void cursor(t.id, agent, "key", { text: prettyKeys(String(a.text ?? "")) });
+        await arm(t.id);
         await pressKeys(t.id, String(a.text ?? ""));
-        return text(`Pressed ${a.text}.`);
+        return afterAction(t, `Pressed ${a.text}.`);
       }
-      const { x, y } = await point(t.id, a);
+      const { x, y } = await point(t, a);
+      const k = kOf(t);
+      const ax = Math.round(x / k), ay = Math.round(y / k);
       await cursor(t.id, agent, "move", { x, y });
-      if (act === "hover") { await cdp(t.id, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); return text(`Hovering at ${x},${y}.`); }
+      if (act === "hover") { await cdp(t.id, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }); return text(`Hovering at ${ax},${ay}.`); }
       if (act === "scroll") {
         const n = (a.scroll_amount ?? 3) * 100;
         const dir = a.scroll_direction ?? "down";
+        await arm(t.id);
         await cdp(t.id, "Input.dispatchMouseEvent", {
           type: "mouseWheel", x, y,
           deltaX: dir === "left" ? -n : dir === "right" ? n : 0,
           deltaY: dir === "up" ? -n : dir === "down" ? n : 0,
         });
-        return text(`Scrolled ${dir}.`);
+        return afterAction(t, `Scrolled ${dir}.`);
       }
       const clicks = act === "double_click" ? 2 : act === "triple_click" ? 3 : 1;
       const button = act === "right_click" ? "right" : "left";
@@ -624,10 +683,12 @@ async function run(agent, tool, a) {
           return r;
         }
       }
+      const name = (await inPage(t.id, labelAt, [x, y]).catch(() => "")) ?? "";
       await cursor(t.id, agent, "click", { x, y, button });
+      await arm(t.id);
       await mouse(t.id, x, y, { button, clicks });
-      await sleep(400);
-      return withBlocker(t.id, text(`${act} at ${x},${y}.`));
+      // No fixed wait: afterAction waits for the page to settle instead.
+      return afterAction(t, `${act} ${name ? `"${name}" ` : ""}at ${ax},${ay}.`);
     }
     case "javascript": {
       const t = await tabFor(agent, a.tabId);
@@ -635,7 +696,8 @@ async function run(agent, tool, a) {
       guardDialog(t.id);
       const r = await cdp(t.id, "Runtime.evaluate", { expression: a.code, awaitPromise: true, returnByValue: true, replMode: true, userGesture: true });
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
-      return text(r.result.value === undefined ? String(r.result.description ?? "undefined") : r.result.value);
+      const v = r.result.value === undefined ? String(r.result.description ?? "undefined") : typeof r.result.value === "string" ? r.result.value : JSON.stringify(r.result.value);
+      return text(cap(v, Number(a.max) || 4000));
     }
     case "console": {
       const t = await tabFor(agent, a.tabId);
@@ -644,7 +706,7 @@ async function run(agent, tool, a) {
       if (a.pattern) { const re = new RegExp(a.pattern, "i"); list = list.filter((m) => re.test(m.text)); }
       if (a.onlyErrors) list = list.filter((m) => m.level === "error" || m.level === "exception");
       if (a.clear) consoleLog.delete(t.id);
-      return text(list.length ? list.slice(-(a.limit ?? 100)).map((m) => `[${m.level}] ${m.text}`).join("\n") : "No console messages yet (recording starts when ByteHive first controls the tab).");
+      return text(list.length ? list.slice(-(a.limit ?? 50)).map((m) => cap(`[${m.level}] ${m.text}`, 300)).join("\n") : "No console messages yet (recording starts when ByteHive first controls the tab).");
     }
     case "network": {
       const t = await tabFor(agent, a.tabId);
@@ -652,7 +714,7 @@ async function run(agent, tool, a) {
       let list = [...(networkLog.get(t.id)?.values() ?? [])];
       if (a.pattern) { const re = new RegExp(a.pattern, "i"); list = list.filter((e) => re.test(e.url)); }
       if (a.clear) networkLog.delete(t.id);
-      return text(list.length ? list.slice(-(a.limit ?? 100)).map((e) => `${e.method} ${e.status || e.error || "…"} ${e.url}`).join("\n") : "No requests yet (recording starts when ByteHive first controls the tab).");
+      return text(list.length ? list.slice(-(a.limit ?? 50)).map((e) => cap(`${e.method} ${e.status || e.error || "…"} ${e.url}`, 300)).join("\n") : "No requests yet (recording starts when ByteHive first controls the tab).");
     }
     case "peek": {
       // ByteHive's live view: a small frame of the agent's current tab. Never
