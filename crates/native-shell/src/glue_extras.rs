@@ -42,6 +42,8 @@ pub struct Extras {
     pub git_base: std::collections::HashMap<String, std::collections::HashSet<String>>,
     /// The Grid's big tile, apart from the Focus view's stage.
     pub grid_focus: Option<String>,
+    /// Changes switched the side column to Review: switch back when it closes.
+    pub review_by_changes: bool,
 }
 
 impl ShellApp {

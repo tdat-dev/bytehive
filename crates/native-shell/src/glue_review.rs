@@ -48,8 +48,12 @@ impl ShellApp {
         if let Some(id) = target {
             self.review.select(&id);
         }
-        // Review reads the diff; keep its tab up so the snapshot stays fresh.
-        self.side_tab = SideTab::Review;
+        // Review reads the diff; keep its tab up so the snapshot stays fresh,
+        // and hand the agents back once Changes closes.
+        if self.side_tab != SideTab::Review {
+            self.side_tab = SideTab::Review;
+            self.extras.review_by_changes = true;
+        }
         self.changes.open_at(0);
     }
 
@@ -70,6 +74,9 @@ impl ShellApp {
             _ => {}
         }
         if !self.changes.open {
+            if std::mem::take(&mut self.extras.review_by_changes) && self.side_tab == SideTab::Review {
+                self.side_tab = SideTab::Queue;
+            }
             return;
         }
         let (id, snap) = self.review.current();

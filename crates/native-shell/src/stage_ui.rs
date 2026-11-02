@@ -83,11 +83,12 @@ fn tabs(ui: &mut egui::Ui, items: &[(&str, bool)]) -> Option<usize> {
     hit
 }
 
-/// What the Model tab types into a CLI, when it has one.
+/// What the Model tab types into a CLI, when it has one. Ctrl+U first: a
+/// half-typed line (the "/" Commands left) would turn it into "//model".
 fn model_command(cli: Option<Cli>) -> Option<&'static str> {
     match cli? {
-        Cli::Claude | Cli::Codex => Some("/model\r"),
-        Cli::Opencode => Some("/models\r"),
+        Cli::Claude | Cli::Codex => Some("\x15/model\r"),
+        Cli::Opencode => Some("\x15/models\r"),
         Cli::Muse => None,
     }
 }
@@ -255,18 +256,27 @@ impl ShellApp {
         match act {
             Some("kill") => out.kill.push(id.clone()),
             Some("restart") => out.restart = Some(i),
+            // One tab at a time: the terminal, the history, or the changes.
             Some("commands") => {
                 let _ = lock(&self.registry).write_input(&id, b"/");
+                self.extras.stage.history = false;
+                self.changes.open = false;
                 self.focus_pane = Some(id);
             }
             Some("model") => {
                 if let Some(m) = model_command(cli) {
                     let _ = lock(&self.registry).write_input(&id, m.as_bytes());
                 }
+                self.extras.stage.history = false;
+                self.changes.open = false;
                 self.focus_pane = Some(id);
             }
-            Some("history") => self.extras.stage.history = !self.extras.stage.history,
+            Some("history") => {
+                self.extras.stage.history = !self.extras.stage.history;
+                self.changes.open = false;
+            }
             Some("changes") => {
+                self.extras.stage.history = false;
                 if self.changes.open {
                     self.changes.open = false;
                 } else {

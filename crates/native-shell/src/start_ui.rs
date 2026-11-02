@@ -262,7 +262,7 @@ fn body(ui: &mut egui::Ui, home: &mut Home, v: &HomeView, first_run: bool, width
             } else if p.agents > 0 {
                 (format!("{} agent{}", p.agents, if p.agents == 1 { "" } else { "s" }), false)
             } else {
-                ("Not open".into(), false)
+                ("No agents yet".into(), false)
             };
             if card(ui, w, Ok(Icon::Folder), &project_name(&p.dir), &short_path(&p.dir), Some(note), false).on_hover_text(&p.dir).clicked() {
                 *out = Some(StartAction::Open(p.dir.clone()));
