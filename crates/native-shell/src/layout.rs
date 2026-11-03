@@ -32,27 +32,20 @@ pub fn tile_to_fit(n: usize, width: f32, height: f32, gap: f32, margin: f32, top
     tile_in(n, grid_dims_for(n.max(1)), width, height, gap, margin, top, bottom)
 }
 
-/// Columns and rows that keep terminals readable in a `width` x `height`
-/// area of `cell` (w, h) glyphs, each tile losing `head` to its header: as
-/// close to 80 columns and 10 rows per tile as the room allows. Width counts
-/// most (a CLI cut to 40 columns wraps and smears; few rows only scroll), so
-/// a tall monitor stacks tiles. Fewer empty slots break ties.
-pub fn readable_dims(n: usize, width: f32, height: f32, gap: f32, head: f32, cell: (f32, f32)) -> (usize, usize) {
+/// A grid where every terminal stays readable: as many columns as keep
+/// each tile `min_cols` glyphs wide, and every tile at least `min_rows`
+/// glyphs tall plus its `head`. (cols, rows, tile height); when the tiles
+/// outgrow `height` the Grid scrolls rather than squeeze them.
+pub fn readable_grid(n: usize, width: f32, height: f32, gap: f32, head: f32, cell: (f32, f32), min_cols: f32, min_rows: f32) -> (usize, usize, f32) {
     let n = n.max(1);
-    let mut best = (1, n);
-    let mut best_score = f32::MIN;
-    for cols in 1..=n {
-        let rows = n.div_ceil(cols);
-        let tw = (width - (cols as f32 - 1.0) * gap) / cols as f32;
-        let th = (height - (rows as f32 - 1.0) * gap) / rows as f32 - head;
-        let score = (tw / (80.0 * cell.0)).min(th / (10.0 * cell.1));
-        let empty = (cols * rows - n) as f32 * 0.01;
-        if score - empty > best_score {
-            best_score = score - empty;
-            best = (cols, rows);
-        }
-    }
-    best
+    let tw = |c: usize| (width - (c as f32 - 1.0) * gap) / c as f32;
+    let most = (1..=n).rev().find(|&c| tw(c) >= min_cols * cell.0).unwrap_or(1);
+    // As few rows as the widest fit allows, then as few columns as those
+    // rows need: four on a wide screen are 2 x 2, not 3 + 1.
+    let rows = n.div_ceil(most);
+    let cols = n.div_ceil(rows);
+    let fit = (height - (rows as f32 - 1.0) * gap) / rows as f32;
+    (cols, rows, fit.max(min_rows * cell.1 + head))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -103,17 +96,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tall_monitors_stack_tiles_wide_ones_side_by_side() {
-        let cell = (8.4, 19.0);
-        // Five agents on a portrait 1080 x 1800: one column, full width.
-        assert_eq!(readable_dims(5, 1080.0, 1800.0, 4.0, 36.0, cell).0, 1);
-        // Five on a landscape 1900 x 1000: two columns of ~80 characters.
-        assert_eq!(readable_dims(5, 1900.0, 1000.0, 4.0, 36.0, cell), (2, 3));
-        // Four on landscape: two by two.
-        assert_eq!(readable_dims(4, 1900.0, 1000.0, 4.0, 36.0, cell), (2, 2));
-        // Five in a narrow 640 x 750 window: one column, not two of 40.
-        assert_eq!(readable_dims(5, 640.0, 750.0, 4.0, 36.0, (8.4, 21.0)).0, 1);
-        assert_eq!(readable_dims(1, 500.0, 500.0, 4.0, 36.0, cell), (1, 1));
+    fn tiles_never_shrink_below_readable() {
+        let cell = (8.4, 21.0);
+        // Five on a portrait 1080 x 1800: one column, each ~24 rows tall, so
+        // the Grid scrolls instead of leaving 15 rows a tile.
+        let (c, r, h) = readable_grid(5, 1080.0, 1800.0, 4.0, 42.0, cell, 72.0, 24.0);
+        assert_eq!((c, r), (1, 5));
+        assert!(h >= 24.0 * 21.0 + 42.0);
+        // Two on a wide screen: side by side, filling the height.
+        let (c, r, h) = readable_grid(2, 1900.0, 1000.0, 4.0, 42.0, cell, 72.0, 24.0);
+        assert_eq!((c, r), (2, 1));
+        assert_eq!(h, 1000.0);
+        // Four on 1900 x 1000: two by two, not three and one.
+        assert_eq!(readable_grid(4, 1900.0, 1000.0, 4.0, 42.0, cell, 72.0, 24.0).0, 2);
+        // Five there: three and two.
+        assert_eq!(readable_grid(5, 1900.0, 1000.0, 4.0, 42.0, cell, 72.0, 24.0).0, 3);
     }
 
     #[test]

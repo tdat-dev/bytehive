@@ -270,6 +270,8 @@ impl Pane {
                     None => self.term.scroll_display(Scroll::Delta(lines as i32)),
                 }
             }
+            // The wheel was the terminal's: a Grid that scrolls must not move too.
+            ui.ctx().input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
         }
 
         if resp.has_focus() {

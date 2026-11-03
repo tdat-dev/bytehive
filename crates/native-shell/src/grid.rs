@@ -9,7 +9,7 @@ use supervise::task_state::TaskState;
 use crate::app::{now_ms, ShellApp};
 use crate::icons::{paint_in, Icon};
 use crate::inbox::state_label;
-use crate::layout::{readable_dims, tile_in, Tile};
+use crate::layout::{readable_grid, tile_in, Tile};
 use crate::states::pane_status;
 use crate::style::{w500, GUTTER, PANEL};
 use crate::theme::{state_dot, ADD, AMBER, DEL, DIM, INK3, TEXT};
@@ -112,88 +112,106 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             Some(fid) => shown.iter().copied().filter(|&i| &app.panes[i].id == fid).collect(),
             None => shown.clone(),
         };
-        // Columns by the room each terminal gets, not just the count: a tall
-        // monitor stacks tiles rather than cut every CLI to 40 columns.
-        let dims = readable_dims(order.len(), area.width(), area.height(), GAP, HEAD + 6.0, (cell_w, cell_h));
-        let tiles = tile_in(order.len(), dims, area.width(), area.height(), GAP, 0.0, 0.0, 0.0);
+        // Every terminal stays readable: about 72 columns and 24 rows (what
+        // a CLI needs to show its messages under its own prompt and status).
+        // Columns come from the width; when the tiles outgrow the height the
+        // Grid scrolls (wheel over a header or a gap, or the bar) instead of
+        // squeezing them. The wheel over a terminal still scrolls its history.
+        let (cols, rows, tile_h) = readable_grid(order.len(), area.width() - 10.0, area.height(), GAP, HEAD + 6.0, (cell_w, cell_h), 72.0, 24.0);
+        let total = rows as f32 * tile_h + (rows as f32 - 1.0) * GAP;
+        let scrolls = total > area.height() + 1.0;
+        let width = if scrolls { area.width() - 10.0 } else { area.width() };
+        let tiles = tile_in(order.len(), (cols, rows), width, total.max(area.height()), GAP, 0.0, 0.0, 0.0);
         let font = app.font.clone();
         let want_focus = app.focus_pane.clone();
         let multi = shown.len() > 1;
         let ShellApp { panes, registry, focused_once, focus_pane, .. } = app;
-        for (slot, &idx) in order.iter().enumerate() {
-            let t = tiles.get(slot).copied().unwrap_or(Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
-            let tile = Rect::from_min_size(Pos2::new(area.left() + t.x, area.top() + t.y), Vec2::new(t.w, t.h));
-            let pane = &mut panes[idx];
-            let state = states[idx];
-            let running = pane.exit_code.is_none();
-            ui.painter().rect(tile, 10.0, PANEL, Stroke::new(1.0, ring(state, running)), egui::StrokeKind::Inside);
+        let mut lay = |ui: &mut egui::Ui, origin: Pos2| {
+            for (slot, &idx) in order.iter().enumerate() {
+                let t = tiles.get(slot).copied().unwrap_or(Tile { x: 0.0, y: 0.0, w: 0.0, h: 0.0 });
+                let tile = Rect::from_min_size(Pos2::new(origin.x + t.x, origin.y + t.y), Vec2::new(t.w, t.h));
+                let pane = &mut panes[idx];
+                let state = states[idx];
+                let running = pane.exit_code.is_none();
+                ui.painter().rect(tile, 10.0, PANEL, Stroke::new(1.0, ring(state, running)), egui::StrokeKind::Inside);
 
-            // Head: face, name, state; the buttons from the right edge in.
-            let head = Rect::from_min_size(tile.min, Vec2::new(tile.width(), HEAD));
-            let face = Rect::from_min_size(Pos2::new(head.left() + 8.0, head.center().y - 10.0), Vec2::splat(20.0));
-            crate::face::avatar(ui.painter(), face, pane.cli, pane.custom.as_deref(), &pane.name, 6.0, !running);
-            let mut bx = head.right() - 6.0;
-            let mut button = |ui: &mut egui::Ui, icon: Icon, danger: bool, key: &str, tip: &str| {
-                bx -= 24.0;
-                let at = Rect::from_min_size(Pos2::new(bx, head.center().y - 12.0), Vec2::splat(24.0));
-                bx -= 2.0;
-                icon_at(ui, at, ui.make_persistent_id((key, &pane.id)), icon, danger).on_hover_text(tip).clicked()
-            };
-            if button(ui, Icon::Close, true, "grid-kill", "Stop and remove") {
-                out.kill.push(pane.id.clone());
-            }
-            if !running && button(ui, Icon::Refresh, false, "grid-restart", "Start it again") {
-                out.restart = Some(idx);
-            }
-            let staged = focused.as_deref() == Some(pane.id.as_str());
-            if multi && button(ui, if staged { Icon::Grid } else { Icon::Focus }, false, "grid-focus", if staged { "Back to all" } else { "Make it big" }) {
-                toggle = Some(pane.id.clone());
-            }
-            let text_left = face.right() + 8.0;
-            let room = (bx - 8.0 - text_left).max(0.0);
-            let mut job = egui::text::LayoutJob::default();
-            job.append(heads[idx].as_deref().unwrap_or(&pane.name), 0.0, egui::TextFormat::simple(w500(14.0), if running { TEXT } else { DIM }));
-            if heads[idx].is_some() {
-                job.append(&format!("  {}", pane.name), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
-            }
-            if let Some(proj) = &projects[idx] {
-                job.append(&format!("  {proj}"), 0.0, egui::TextFormat::simple(w500(12.5), DIM));
-            }
-            let word = if running { state_label(state) } else { "Stopped" };
-            job.append(&format!("  {word}"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), crate::inbox::line_color(state)));
-            if let (true, Some(d)) = (running && state == TaskState::Working, &doings[idx]) {
-                job.append(&format!(" \u{00B7} {d}"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), DIM));
-            }
-            let mut extra = Vec::new();
-            if pane.recording.is_some() {
-                extra.push("recording".to_string());
-            }
-            if let Some(w) = pane.worktree.as_ref() {
-                extra.push(if pane.merged { format!("{} (merged)", w.branch) } else { w.branch.clone() });
-            }
-            if let Some(usd) = pane.usage.as_ref().and_then(|u| u.usd) {
-                extra.push(supervise::pricing::money(usd));
-            }
-            if let Some(ctx) = pane.usage.as_ref().and_then(|u| u.context_pct) {
-                extra.push(format!("{ctx:.0}% context"));
-            }
-            if !extra.is_empty() {
-                job.append(&format!("  \u{00B7}  {}", extra.join("  \u{00B7}  ")), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
-            }
-            job.wrap = egui::text::TextWrapping::truncate_at_width(room);
-            let g = ui.painter().layout_job(job);
-            ui.painter().galley(Pos2::new(text_left, head.center().y - g.size().y / 2.0), g, TEXT);
+                // Head: face, name, state; the buttons from the right edge in.
+                let head = Rect::from_min_size(tile.min, Vec2::new(tile.width(), HEAD));
+                let face = Rect::from_min_size(Pos2::new(head.left() + 8.0, head.center().y - 10.0), Vec2::splat(20.0));
+                crate::face::avatar(ui.painter(), face, pane.cli, pane.custom.as_deref(), &pane.name, 6.0, !running);
+                let mut bx = head.right() - 6.0;
+                let mut button = |ui: &mut egui::Ui, icon: Icon, danger: bool, key: &str, tip: &str| {
+                    bx -= 24.0;
+                    let at = Rect::from_min_size(Pos2::new(bx, head.center().y - 12.0), Vec2::splat(24.0));
+                    bx -= 2.0;
+                    icon_at(ui, at, ui.make_persistent_id((key, &pane.id)), icon, danger).on_hover_text(tip).clicked()
+                };
+                if button(ui, Icon::Close, true, "grid-kill", "Stop and remove") {
+                    out.kill.push(pane.id.clone());
+                }
+                if !running && button(ui, Icon::Refresh, false, "grid-restart", "Start it again") {
+                    out.restart = Some(idx);
+                }
+                let staged = focused.as_deref() == Some(pane.id.as_str());
+                if multi && button(ui, if staged { Icon::Grid } else { Icon::Focus }, false, "grid-focus", if staged { "Back to all" } else { "Make it big" }) {
+                    toggle = Some(pane.id.clone());
+                }
+                let text_left = face.right() + 8.0;
+                let room = (bx - 8.0 - text_left).max(0.0);
+                let mut job = egui::text::LayoutJob::default();
+                job.append(heads[idx].as_deref().unwrap_or(&pane.name), 0.0, egui::TextFormat::simple(w500(14.0), if running { TEXT } else { DIM }));
+                if heads[idx].is_some() {
+                    job.append(&format!("  {}", pane.name), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
+                }
+                if let Some(proj) = &projects[idx] {
+                    job.append(&format!("  {proj}"), 0.0, egui::TextFormat::simple(w500(12.5), DIM));
+                }
+                let word = if running { state_label(state) } else { "Stopped" };
+                job.append(&format!("  {word}"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), crate::inbox::line_color(state)));
+                if let (true, Some(d)) = (running && state == TaskState::Working, &doings[idx]) {
+                    job.append(&format!(" \u{00B7} {d}"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), DIM));
+                }
+                let mut extra = Vec::new();
+                if pane.recording.is_some() {
+                    extra.push("recording".to_string());
+                }
+                if let Some(w) = pane.worktree.as_ref() {
+                    extra.push(if pane.merged { format!("{} (merged)", w.branch) } else { w.branch.clone() });
+                }
+                if let Some(usd) = pane.usage.as_ref().and_then(|u| u.usd) {
+                    extra.push(supervise::pricing::money(usd));
+                }
+                if let Some(ctx) = pane.usage.as_ref().and_then(|u| u.context_pct) {
+                    extra.push(format!("{ctx:.0}% context"));
+                }
+                if !extra.is_empty() {
+                    job.append(&format!("  \u{00B7}  {}", extra.join("  \u{00B7}  ")), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
+                }
+                job.wrap = egui::text::TextWrapping::truncate_at_width(room);
+                let g = ui.painter().layout_job(job);
+                ui.painter().galley(Pos2::new(text_left, head.center().y - g.size().y / 2.0), g, TEXT);
 
-            let body = Rect::from_min_max(Pos2::new(tile.left() + 8.0, head.bottom()), Pos2::new(tile.right() - 6.0, tile.bottom() - 6.0));
-            pane.paint(ui, body, &mut agent_core::lock(registry), &font, (cell_w, cell_h));
-            if !*focused_once {
-                *focused_once = true;
-                ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
+                let body = Rect::from_min_max(Pos2::new(tile.left() + 8.0, head.bottom()), Pos2::new(tile.right() - 6.0, tile.bottom() - 6.0));
+                pane.paint(ui, body, &mut agent_core::lock(registry), &font, (cell_w, cell_h));
+                if !*focused_once {
+                    *focused_once = true;
+                    ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
+                }
+                if want_focus.as_deref() == Some(pane.id.as_str()) {
+                    ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
+                    *focus_pane = None;
+                }
             }
-            if want_focus.as_deref() == Some(pane.id.as_str()) {
-                ui.memory_mut(|m| m.request_focus(ui.make_persistent_id(("term", &pane.id))));
-                *focus_pane = None;
-            }
+        };
+        if scrolls {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
+                egui::ScrollArea::vertical().id_salt("grid-scroll").auto_shrink([false, false]).show(ui, |ui| {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, total), Sense::hover());
+                    lay(ui, rect.min);
+                });
+            });
+        } else {
+            lay(ui, area.min);
         }
     });
 
