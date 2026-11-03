@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.10] - 2026-11-03
+
+### Added
+
+- **Right-click an agent for its actions**, as in the old app: Open, Rename,
+  Changes, History, Project memory, Copy branch name, Hand over, Restart or
+  Resume, Stop and Remove agent. The row's ... button opens the same menu.
+
+### Changed
+
+- **A calmer agent list.** Costs sit in their own column so rows line up,
+  the time shows only on a live agent, and a stopped one has a small Resume
+  button instead of a chip over its text (a double-click resumes it too). A
+  project header shows its agent count beside the name and its cost at the
+  right; the memory book appears there while you point at the header.
+
+### Fixed
+
+- **Closing a project stops its agents.** They used to keep running under
+  All, and Resume all, the carry-on after a usage limit, or the next start
+  brought them back. Now they stop and leave the list with the project, and
+  stay closed when ByteHive starts again.
+
 ## [0.12.9] - 2026-11-03
 
 ### Fixed
