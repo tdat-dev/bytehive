@@ -117,7 +117,8 @@ fn round(ui: &mut egui::Ui, icon: Option<Icon>, on: bool) -> egui::Response {
     r
 }
 
-const KEYS: [(&str, &str); 7] = [
+const KEYS: [(&str, &str); 8] = [
+    ("In a terminal", "Every key goes to the agent. Add Shift for these (Ctrl+Shift+K)"),
     ("Ctrl+K", "Jump to an agent or run a command"),
     ("Ctrl+N", "New agent"),
     ("Ctrl+1..9", "Put that agent on the stage"),

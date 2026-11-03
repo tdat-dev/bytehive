@@ -59,6 +59,60 @@ pub fn key_bytes(key: Key, mods: Modifiers) -> Option<&'static [u8]> {
     })
 }
 
+/// Where a focused terminal notes the frame it had the keys in.
+pub fn term_focus_id() -> eframe::egui::Id {
+    eframe::egui::Id::unique("term-has-keys")
+}
+
+/// Whether a terminal had the keys last frame: then every key goes to it,
+/// and ByteHive's shortcuts take Shift as well (Ctrl+Shift+K), as in
+/// Windows Terminal.
+pub fn terminal_has_keys(ctx: &eframe::egui::Context) -> bool {
+    let now = ctx.cumulative_frame_nr();
+    ctx.data(|d| d.get_temp::<u64>(term_focus_id())).is_some_and(|f| f + 1 >= now)
+}
+
+/// The modifiers an app shortcut needs: Ctrl, plus Shift over a terminal.
+pub fn shortcut_mods(ctx: &eframe::egui::Context) -> Modifiers {
+    if terminal_has_keys(ctx) { Modifiers::COMMAND | Modifiers::SHIFT } else { Modifiers::COMMAND }
+}
+
+/// Keys held with Ctrl, Alt or Shift, as xterm (and Windows Terminal) send
+/// them: Ctrl+Left is `ESC [1;5D`, which shells and CLIs read as a word
+/// back. Alt+letter is ESC then the letter. None when the plain tables say it.
+pub fn modified_bytes(key: Key, mods: Modifiers) -> Option<Vec<u8>> {
+    let m = 1 + u8::from(mods.shift) + 2 * u8::from(mods.alt) + 4 * u8::from(mods.ctrl);
+    let csi = |end: &str| Some(format!("\x1b[1;{m}{end}").into_bytes());
+    let tilde = |n: u8| Some(format!("\x1b[{n};{m}~").into_bytes());
+    if m == 1 {
+        return None;
+    }
+    match key {
+        Key::ArrowUp => csi("A"),
+        Key::ArrowDown => csi("B"),
+        Key::ArrowRight => csi("C"),
+        Key::ArrowLeft => csi("D"),
+        Key::Home => csi("H"),
+        Key::End => csi("F"),
+        Key::Insert => tilde(2),
+        Key::Delete => tilde(3),
+        Key::PageUp => tilde(5),
+        Key::PageDown => tilde(6),
+        Key::Tab if mods.shift && !mods.ctrl && !mods.alt => Some(b"\x1b[Z".to_vec()),
+        Key::Enter if mods.alt || mods.shift => Some(b"\x1b\r".to_vec()),
+        Key::Backspace if mods.alt => Some(b"\x1b\x7f".to_vec()),
+        Key::Space if mods.ctrl => Some(vec![0]),
+        Key::Slash if mods.ctrl => Some(vec![0x1f]),
+        _ if mods.alt && !mods.ctrl => {
+            let name = key.name();
+            let c = name.chars().next().filter(|c| name.len() == 1 && c.is_ascii_alphanumeric())?;
+            let c = if mods.shift { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() };
+            Some(vec![0x1b, c as u8])
+        }
+        _ => None,
+    }
+}
+
 /// The arrows a program asked for in application cursor mode (DECCKM):
 /// full-screen CLIs read `ESC O A`, not `ESC [ A`.
 pub fn app_cursor_bytes(key: Key, mods: Modifiers) -> Option<&'static [u8]> {
@@ -113,6 +167,21 @@ pub fn wheel_bytes(mode: alacritty_terminal::term::TermMode, up: bool, lines: us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modified_keys_speak_xterm() {
+        let ctrl = Modifiers { ctrl: true, ..Default::default() };
+        let alt = Modifiers { alt: true, ..Default::default() };
+        let shift = Modifiers { shift: true, ..Default::default() };
+        assert_eq!(modified_bytes(Key::ArrowLeft, ctrl), Some(b"\x1b[1;5D".to_vec()));
+        assert_eq!(modified_bytes(Key::ArrowRight, ctrl), Some(b"\x1b[1;5C".to_vec()));
+        assert_eq!(modified_bytes(Key::Delete, ctrl), Some(b"\x1b[3;5~".to_vec()));
+        assert_eq!(modified_bytes(Key::Tab, shift), Some(b"\x1b[Z".to_vec()));
+        assert_eq!(modified_bytes(Key::B, alt), Some(b"\x1bb".to_vec()));
+        assert_eq!(modified_bytes(Key::ArrowLeft, Modifiers::default()), None);
+        // Ctrl+letter stays a control byte from the plain table.
+        assert_eq!(modified_bytes(Key::C, ctrl), None);
+    }
 
     #[test]
     fn special_keys_map_to_pty_bytes() {

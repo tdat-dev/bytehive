@@ -273,6 +273,10 @@ impl Pane {
         }
 
         if resp.has_focus() {
+            // Tell the app a terminal has the keys: its own shortcuts then
+            // need Shift, and plain Ctrl+K, Ctrl+N... reach the program.
+            let frame = ui.ctx().cumulative_frame_nr();
+            ui.ctx().data_mut(|d| d.insert_temp(crate::keys::term_focus_id(), frame));
             // Arrows, Tab and Esc belong to the program, not to egui's focus
             // moves: without this the first arrow in a CLI's menu took the
             // focus away and the next keys never reached it.
@@ -281,6 +285,10 @@ impl Pane {
             let events: Vec<egui::Event> = ui.ctx().input(|i| i.events.clone());
             for ev in &events {
                 match ev {
+                    // Alt+letter goes as ESC+letter from its Key event; the
+                    // letter Windows also types for it would come out twice.
+                    // (AltGr is Ctrl+Alt and keeps its characters.)
+                    egui::Event::Text(_) if ui.input(|i| i.modifiers.alt && !i.modifiers.ctrl) => {}
                     egui::Event::Text(t) => {
                         // Typing while scrolled back jumps to the prompt.
                         self.term.scroll_display(Scroll::Bottom);
@@ -293,9 +301,10 @@ impl Pane {
                     egui::Event::Key { key: egui::Key::V, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
                     egui::Event::Key { key, pressed: true, modifiers, .. } => {
                         let app = if app_cursor { crate::keys::app_cursor_bytes(*key, *modifiers) } else { None };
-                        if let Some(b) = app.or_else(|| key_bytes(*key, *modifiers)) {
+                        let bytes = crate::keys::modified_bytes(*key, *modifiers).or_else(|| app.or_else(|| key_bytes(*key, *modifiers)).map(<[u8]>::to_vec));
+                        if let Some(b) = bytes {
                             self.term.scroll_display(Scroll::Bottom);
-                            let _ = registry.write_input(&self.id, b);
+                            let _ = registry.write_input(&self.id, &b);
                         }
                     }
                     // Ctrl+C copies a selection; with none it interrupts.

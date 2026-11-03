@@ -254,8 +254,10 @@ impl eframe::App for ShellApp {
         // Density zoom: Ctrl+= / Ctrl+- step the terminal glyphs, Ctrl+0
         // resets. Keyboard only on purpose: the wheel already scrolls back.
         let mut zoom = self.zoom;
+        // Over a terminal every key is the program's: shortcuts take Shift too.
+        let mods = crate::keys::shortcut_mods(ui.ctx());
         ui.ctx().input(|i| {
-            if !i.modifiers.ctrl {
+            if !i.modifiers.ctrl || (mods.shift && !i.modifiers.shift) {
                 return;
             }
             if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
@@ -271,13 +273,13 @@ impl eframe::App for ShellApp {
 
         // Ctrl/Cmd+K toggles the command palette. Consuming the key here keeps
         // it from reaching a focused terminal pane as a raw control byte.
-        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
+        if ui.input_mut(|i| i.consume_key(mods, egui::Key::K)) {
             self.palette.toggle();
         }
-        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::N)) {
+        if ui.input_mut(|i| i.consume_key(mods, egui::Key::N)) {
             self.run_command("new");
         }
-        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Comma)) {
+        if ui.input_mut(|i| i.consume_key(mods, egui::Key::Comma)) {
             self.run_command("settings");
         }
 
@@ -299,7 +301,7 @@ impl eframe::App for ShellApp {
                 8 => egui::Key::Num8,
                 _ => egui::Key::Num9,
             };
-            if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, key)) {
+            if ui.input_mut(|i| i.consume_key(mods, key)) {
                 if let Some(idx) = crate::palette::quickjump_index(key) {
                     if let Some(r) = rows.get(idx) {
                         self.focus_pane = Some(r.pane_id.clone());
