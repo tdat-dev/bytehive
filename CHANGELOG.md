@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.6] - 2026-11-03
+
+### Fixed
+
+- **ByteHive no longer turns up in Alt+Tab on other monitors.** The window
+  title followed the agents' terminal titles, and Claude spins its title
+  about ten times a second while it works. Every rename made Windows list
+  the window again, past per-monitor Alt+Tab filters such as Windhawk's
+  "Alt+Tab per monitor", and kept the taskbar redrawing. The title now stays
+  "ByteHive".
+
 ## [0.12.5] - 2026-11-03
 
 ### Changed
