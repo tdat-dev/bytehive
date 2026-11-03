@@ -1,5 +1,6 @@
 //! The stage: one agent, large. A header with its face, its CLI and where it
-//! works, its name (or what it is on), its state, More, Rename and Stop, and
+//! works, its name (or what it is on), its state, More, Rename and Stop (Remove
+//! once stopped), and
 //! the tabs Commands, Model, Changes, History; then its live terminal, where
 //! its questions are answered.
 
@@ -53,6 +54,19 @@ fn pill(ui: &mut egui::Ui, state: TaskState, stopped: bool) {
         p.circle_filled(dot, 4.0, c);
     }
     p.galley(Pos2::new(dot.x + 4.0 + 7.0, rect.center().y - g.size().y / 2.0), g, c);
+}
+
+/// The Stop pill: a square and the word, red while hovered.
+fn stop_btn(ui: &mut egui::Ui) -> egui::Response {
+    let g = ui.painter().layout_no_wrap("Stop".into(), crate::style::w500(12.5), TEXT);
+    let (rect, r) = ui.allocate_exact_size(Vec2::new(11.0 + 14.0 + 5.0 + g.size().x + 14.0, 30.0), egui::Sense::click());
+    let p = ui.painter();
+    let ink = if r.hovered() { crate::theme::DEL } else { TEXT };
+    p.rect_filled(rect, 15.0, if r.hovered() { tint(crate::theme::DEL) } else { Color32::from_white_alpha(15) });
+    let icon = Rect::from_min_size(Pos2::new(rect.left() + 11.0, rect.center().y - 7.0), Vec2::splat(14.0));
+    crate::icons::paint(p, icon, Icon::Stop, ink, 1.0);
+    p.galley(Pos2::new(icon.right() + 5.0, rect.center().y - g.size().y / 2.0), g, ink);
+    r
 }
 
 /// The tab group (.stabs): quiet pills on a white 5% track; true per click.
@@ -232,7 +246,12 @@ impl ShellApp {
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    if icon_btn(ui, Icon::Close, 30.0, false, true).on_hover_text(if exited { "Remove" } else { "Stop this agent" }).clicked() {
+                    // Running: a Stop you can read. Stopped: the x removes it.
+                    if exited {
+                        if icon_btn(ui, Icon::Close, 30.0, false, true).on_hover_text("Remove").clicked() {
+                            act = Some("kill");
+                        }
+                    } else if stop_btn(ui).on_hover_text("Stop this agent: it stays in the list, Resume carries it on").clicked() {
                         act = Some("kill");
                     }
                     if icon_btn(ui, Icon::Pencil, 30.0, self.extras.stage.renaming.is_some(), false).on_hover_text("Rename what it is on").clicked() {

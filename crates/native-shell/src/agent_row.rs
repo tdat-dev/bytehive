@@ -1,9 +1,9 @@
 //! A row of the left panel and a project's header over its rows. A row is
 //! the agent's face with its state dot, what it works on (its name after,
 //! small) and how long since it moved, then its state and what it is on,
-//! with its cost in a column at the right. The ⋯ takes the time's place
-//! while the pointer is on the row; a stopped agent keeps a Resume button
-//! there instead. A right-click opens the same menu as the ⋯.
+//! with its cost in a column at the right. While the pointer is on the row
+//! a Stop button and the ⋯ take the time's place; a stopped agent keeps a
+//! Resume button there instead. A right-click opens the same menu as the ⋯.
 
 use eframe::egui::{self, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use supervise::task_state::TaskState;
@@ -111,12 +111,17 @@ pub(crate) fn row(ui: &mut egui::Ui, p: &Pane, r: &QueueRow, on: bool, now: u64,
     let top = rect.top() + 9.0;
     let mut act = None;
     // The right column, top: Resume on a stopped agent, the time on a live
-    // one; the ⋯ while the pointer is on the row.
+    // one; while the pointer is on the row, Stop on a live one and the ⋯.
     let mut used = 0.0;
+    let at = Rect::from_min_size(Pos2::new(right + 4.0 - BTN, rect.top() + 6.0), Vec2::splat(BTN));
     if stopped {
-        let at = Rect::from_min_size(Pos2::new(right + 4.0 - BTN, rect.top() + 6.0), Vec2::splat(BTN));
         if mini_btn(ui, at, ui.make_persistent_id(("row-resume", &p.id)), Icon::Refresh, "Resume: carry its conversation on").clicked() {
             act = Some(RowAct::Restart(p.id.clone()));
+        }
+        used = BTN;
+    } else if hot {
+        if mini_btn(ui, at, ui.make_persistent_id(("row-stop", &p.id)), Icon::Stop, "Stop: it stays in the list, Resume carries it on").clicked() {
+            act = Some(RowAct::Stop(p.id.clone()));
         }
         used = BTN;
     }

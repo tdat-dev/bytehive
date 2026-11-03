@@ -21,6 +21,8 @@ pub enum Icon {
     Pencil,
     Dots,
     Close,
+    /// A filled square: stop a running agent.
+    Stop,
     Chevron { open: bool },
 }
 
@@ -123,6 +125,10 @@ pub fn paint(p: &Painter, at: Rect, icon: Icon, color: Color32, width: f32) {
         Icon::Close => {
             pen.line(&[(6.0, 6.0), (18.0, 18.0)]);
             pen.line(&[(18.0, 6.0), (6.0, 18.0)]);
+        }
+        Icon::Stop => {
+            let k = at.width() / 24.0;
+            p.rect_filled(Rect::from_min_size(pen.pt(6.5, 6.5), Vec2::splat(11.0 * k)), 2.5 * k, color);
         }
         Icon::Chevron { open: false } => pen.line(&[(8.5, 6.0), (14.5, 12.0), (8.5, 18.0)]),
         Icon::Chevron { open: true } => pen.line(&[(6.0, 8.5), (12.0, 14.5), (18.0, 8.5)]),
