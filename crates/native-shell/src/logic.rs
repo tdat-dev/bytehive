@@ -17,13 +17,13 @@ impl ShellApp {
         for pane in &mut self.panes {
             pane.drain(&mut lock(&self.registry));
         }
+        // The window title stays "ByteHive". It used to follow the agents'
+        // terminal titles, and Claude spins one ten times a second while it
+        // works: every rename made Explorer re-list the window, which put
+        // ByteHive back into an Alt+Tab filtered to another monitor
+        // (Windhawk's Alt+Tab per monitor) and kept the taskbar redrawing.
         for pane in &mut self.panes {
-            if let Some(t) = pane.pending_title.take() {
-                // Shells report their exe path; show the pane name instead.
-                let boring = t.contains('\\') || t.contains('/') || t.ends_with(".exe");
-                let title = if boring { pane.name.clone() } else { t.chars().take(48).collect() };
-                ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{title} - ByteHive")));
-            }
+            pane.pending_title = None;
         }
         self.poll_captures();
         self.poll_git();
