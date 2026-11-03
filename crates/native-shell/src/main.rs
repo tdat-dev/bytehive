@@ -86,6 +86,7 @@ mod term_paint;
 mod term_pane;
 mod term_search;
 mod term_select;
+mod term_win32;
 mod theme;
 mod topbar;
 mod touched;

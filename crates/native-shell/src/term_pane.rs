@@ -127,6 +127,8 @@ pub struct Pane {
     cell_px: (u16, u16),
     /// Text the program asked to put on the clipboard (OSC 52).
     pending_copy: Option<String>,
+    /// ConPTY asked for whole Windows key events (win32-input-mode).
+    win32: bool,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -144,7 +146,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, term_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), custom: None, task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None, had_focus: false, mouse: Default::default(), cell_px: (8, 16), pending_copy: None }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, term_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), custom: None, task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None, had_focus: false, mouse: Default::default(), cell_px: (8, 16), pending_copy: None, win32: false }
     }
 
     /// The visible screen as text, newest row last: what the state reads.
@@ -168,6 +170,7 @@ impl Pane {
         self.term = Term::new(config, &GridSize { rows: self.rows, cols: self.cols }, PtyEvents { tx: self.term_tx.clone() });
         self.exit_code = None;
         self.pending_title = None;
+        self.win32 = false;
         self.run += 1;
     }
 
@@ -176,6 +179,9 @@ impl Pane {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
                 Msg::Output(bytes) => {
+                    if let Some(on) = crate::term_win32::mode_switch(&bytes) {
+                        self.win32 = on;
+                    }
                     self.processor.advance(&mut self.term, &bytes);
                     self.last_output_ms = now_ms();
                 }
@@ -333,7 +339,7 @@ impl Pane {
             // focus away and the next keys never reached it.
             ui.memory_mut(|m| m.set_focus_lock_filter(id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
             let (events, mods) = ui.ctx().input(|i| (i.events.clone(), i.modifiers));
-            for act in crate::term_input::actions(&events, mods, mode, self.has_selection()) {
+            for act in crate::term_input::actions(&events, mods, mode, self.has_selection(), self.win32) {
                 match act {
                     crate::term_input::Action::Send(b) => {
                         // Typing while scrolled back jumps to the prompt.
