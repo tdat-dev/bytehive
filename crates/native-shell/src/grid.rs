@@ -74,6 +74,9 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
         })
         .collect();
 
+    // What each works on and is doing now, read from its CLI's files.
+    let heads: Vec<Option<String>> = app.panes.iter().map(|p| crate::inbox::headline(p, app.extras.briefs.get(&p.id))).collect();
+    let doings: Vec<Option<String>> = app.panes.iter().map(|p| app.extras.briefs.get(&p.id).and_then(|b| b.doing.clone())).collect();
     let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: 6, right: (GUTTER as i8).min(6), top: 0, bottom: 0 });
     egui::CentralPanel::default().frame(frame).show(ui, |ui| {
         let (cell_w, cell_h) = crate::term_pane::cell_metrics(ui.painter(), &app.font);
@@ -145,12 +148,18 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             let text_left = face.right() + 8.0;
             let room = (bx - 8.0 - text_left).max(0.0);
             let mut job = egui::text::LayoutJob::default();
-            job.append(&pane.name, 0.0, egui::TextFormat::simple(w500(13.5), if running { TEXT } else { DIM }));
+            job.append(heads[idx].as_deref().unwrap_or(&pane.name), 0.0, egui::TextFormat::simple(w500(13.5), if running { TEXT } else { DIM }));
+            if heads[idx].is_some() {
+                job.append(&format!("  {}", pane.name), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
+            }
             if let Some(proj) = &projects[idx] {
                 job.append(&format!("  {proj}"), 0.0, egui::TextFormat::simple(w500(12.5), DIM));
             }
             let word = if running { state_label(state) } else { "Stopped" };
             job.append(&format!("  {word}"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), crate::inbox::line_color(state)));
+            if let (true, Some(d)) = (running && state == TaskState::Working, &doings[idx]) {
+                job.append(&format!(" \u{00B7} {d}"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), DIM));
+            }
             let mut extra = Vec::new();
             if pane.recording.is_some() {
                 extra.push("recording".to_string());

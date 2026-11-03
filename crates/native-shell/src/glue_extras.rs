@@ -48,6 +48,8 @@ pub struct Extras {
     pub reopen: crate::reopen::Reopen,
     /// The agent list folded down to a rail of faces.
     pub side_mini: bool,
+    /// Each agent's title and what it is doing, read from its CLI's files.
+    pub briefs: crate::brief::Briefs,
 }
 
 impl ShellApp {

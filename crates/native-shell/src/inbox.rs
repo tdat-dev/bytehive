@@ -102,7 +102,7 @@ enum RowAct {
 }
 
 /// One agent row (.row); what it was asked to do.
-fn row(ui: &mut egui::Ui, i: usize, p: &Pane, r: &QueueRow, on: bool, now: u64) -> Option<RowAct> {
+fn row(ui: &mut egui::Ui, i: usize, p: &Pane, r: &QueueRow, on: bool, now: u64, brief: Option<&crate::brief::Brief>) -> Option<RowAct> {
     let state = r.status.state;
     let stopped = p.exit_code.is_some();
     let w = ui.available_width();
@@ -167,9 +167,27 @@ fn row(ui: &mut egui::Ui, i: usize, p: &Pane, r: &QueueRow, on: bool, now: u64) 
     });
     let name_c = if stopped { DIM } else { TEXT };
     let name_f = if stopped { FontId::proportional(13.5) } else { crate::style::w500(13.5) };
-    let name = painter.layout(p.name.clone(), name_f, name_c, inner.right() - 34.0 - left);
-    painter.galley(Pos2::new(left, inner.top()), name, name_c);
+    // The headline is what it works on (the CLI's title, else its job); the
+    // persona's name follows, small.
+    let title = headline(p, brief);
+    let mut head = egui::text::LayoutJob::default();
+    head.append(title.as_deref().unwrap_or(&p.name), 0.0, egui::TextFormat::simple(name_f, name_c));
+    if title.is_some() {
+        head.append(&format!("  {}", p.name), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
+    }
+    head.wrap = egui::text::TextWrapping::truncate_at_width(inner.right() - 34.0 - left);
+    painter.galley(Pos2::new(left, inner.top()), painter.layout_job(head), name_c);
     let (label, rest) = row_line(&p.name, state, &r.line);
+    // While it works, say what on ("Editing grid.rs"), not just "Working".
+    let rest = match brief.and_then(|b| b.doing.clone()) {
+        Some(d) if !stopped && matches!(state, TaskState::Working | TaskState::Needs | TaskState::Blocked) => d,
+        _ => rest,
+    };
+    let rest = match (&p.worktree, rest.is_empty()) {
+        (Some(w), true) => w.branch.clone(),
+        (Some(w), false) => format!("{rest} \u{00B7} {}", w.branch),
+        (None, _) => rest,
+    };
     let fmt = |c: Color32| egui::TextFormat::simple(FontId::proportional(12.5), c);
     let mut sub = egui::text::LayoutJob::default();
     sub.append(&label, 0.0, fmt(if stopped { INK3 } else { line_color(state) }));
@@ -199,6 +217,12 @@ fn row(ui: &mut egui::Ui, i: usize, p: &Pane, r: &QueueRow, on: bool, now: u64) 
         resp.on_hover_text(t);
     }
     act
+}
+
+/// What an agent works on, in a line: its CLI's title for the conversation,
+/// else the first line of the job it was given.
+pub fn headline(p: &Pane, brief: Option<&crate::brief::Brief>) -> Option<String> {
+    brief.and_then(|b| b.title.clone()).or_else(|| p.task.clone()).filter(|t| !t.trim().is_empty())
 }
 
 /// A project's header (.proj); (clicked to fold, memory clicked).
@@ -288,7 +312,7 @@ impl ShellApp {
                                 for r in mine {
                                     let Some(i) = self.panes.iter().position(|p| p.id == r.pane_id) else { continue };
                                     let on = self.stage.as_deref() == Some(r.pane_id.as_str());
-                                    if let Some(a) = row(ui, i, &self.panes[i], r, on, now) {
+                                    if let Some(a) = row(ui, i, &self.panes[i], r, on, now, self.extras.briefs.get(&self.panes[i].id)) {
                                         act = Some(a);
                                     }
                                 }
@@ -326,7 +350,7 @@ impl ShellApp {
                             for r in mine {
                                 let Some(i) = self.panes.iter().position(|p| p.id == r.pane_id) else { continue };
                                 let on = self.stage.as_deref() == Some(r.pane_id.as_str());
-                                if let Some(a) = row(ui, i, &self.panes[i], r, on, now) {
+                                if let Some(a) = row(ui, i, &self.panes[i], r, on, now, self.extras.briefs.get(&self.panes[i].id)) {
                                     act = Some(a);
                                 }
                             }

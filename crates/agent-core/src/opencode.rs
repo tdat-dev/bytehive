@@ -168,6 +168,27 @@ fn rows_after(conn: &Connection, session: &str, cursor: u64) -> rusqlite::Result
     Ok((text, next))
 }
 
+/// A session's title as opencode named it, and its latest tool call (the
+/// tool and its input), for a row that says what the agent is on. A title
+/// opencode has not written yet ("New session - ...") counts as none.
+pub fn brief_in(db: &Path, session_id: &str) -> (Option<String>, Option<(String, serde_json::Value)>) {
+    let Some(conn) = open_db(db) else { return (None, None) };
+    let title: Option<String> = conn
+        .query_row("SELECT title FROM session WHERE id = ?1", params![session_id], |r| r.get(0))
+        .ok()
+        .filter(|t: &String| !t.trim().is_empty() && !t.starts_with("New session"));
+    let tool = conn
+        .query_row(
+            "SELECT data FROM part WHERE session_id = ?1 AND data LIKE '%\"type\":\"tool\"%' ORDER BY time_updated DESC LIMIT 1",
+            params![session_id],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok())
+        .and_then(|v| Some((v["tool"].as_str()?.to_string(), v["state"]["input"].clone())));
+    (title, tool)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -80,6 +80,8 @@ pub struct Pane {
     pub rows: usize,
     pub exit_code: Option<u32>,
     pub pending_title: Option<String>,
+    /// The last terminal title the program set (read for its row, never the window's).
+    pub term_title: Option<String>,
     /// ms the last PTY output arrived, for working/idle derivation.
     pub last_output_ms: u64,
     /// Process generation: 1 at spawn, +1 per restart. Stuck trails reset on change.
@@ -126,7 +128,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), custom: None, task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, term_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), custom: None, task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None }
     }
 
     /// The visible screen as text, newest row last: what the state reads.

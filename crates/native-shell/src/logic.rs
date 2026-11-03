@@ -23,8 +23,11 @@ impl ShellApp {
         // ByteHive back into an Alt+Tab filtered to another monitor
         // (Windhawk's Alt+Tab per monitor) and kept the taskbar redrawing.
         for pane in &mut self.panes {
-            pane.pending_title = None;
+            if let Some(t) = pane.pending_title.take() {
+                pane.term_title = Some(t);
+            }
         }
+        self.extras.briefs.poll(&self.panes);
         self.poll_captures();
         self.poll_git();
         self.poll_stuck();

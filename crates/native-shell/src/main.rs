@@ -35,6 +35,7 @@ mod keys;
 mod land_ui;
 mod laws;
 mod brand;
+mod brief;
 mod custom;
 mod logo;
 mod layout;
