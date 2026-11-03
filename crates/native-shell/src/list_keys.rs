@@ -1,5 +1,5 @@
-//! The old app's Alt keys for the agent list, taken before a terminal sees
-//! them: Alt+Up and Alt+Down step through the agents as the list shows
+//! The old app's Alt keys for the agent list, when no terminal has the keys
+//! (there they are the program's): Alt+Up and Alt+Down step through the agents as the list shows
 //! them, Alt+S switches Focus and Grid, Alt+R opens or closes Changes,
 //! Alt+H History, and Alt+O Sessions.
 

@@ -1,15 +1,16 @@
 //! One terminal pane: emulator grid, PTY channels, paint + input.
 
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
 
 use agent_core::{CommandSpec, Registry};
-use alacritty_terminal::event::{Event, EventListener};
+use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::term::{Config, Term};
-use alacritty_terminal::vte::ansi::Processor;
+use alacritty_terminal::term::TermMode;
+use alacritty_terminal::vte::ansi::{Processor, Rgb};
 use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
 
-use crate::keys::key_bytes;
 use crate::sessions_ui::Cli;
 
 fn now_ms() -> u64 {
@@ -22,10 +23,14 @@ pub enum Msg {
 }
 
 /// What the emulator asks the host to do: answer the PTY (DSR replies like
-/// cursor position, without which shells wait forever) or retitle the window.
+/// cursor position, without which shells wait forever), retitle the window,
+/// tell a program its colours or size, or copy what it asked to (OSC 52).
 pub enum TermEvent {
     WriteToPty(String),
     Title(String),
+    ColorRequest(usize, Arc<dyn Fn(Rgb) -> String + Sync + Send>),
+    SizeRequest(Arc<dyn Fn(WindowSize) -> String + Sync + Send>),
+    Clipboard(String),
 }
 
 /// Forwards the emulator's replies to the UI thread; the UI writes them back
@@ -40,6 +45,9 @@ impl EventListener for PtyEvents {
         let out = match event {
             Event::PtyWrite(s) => TermEvent::WriteToPty(s),
             Event::Title(t) => TermEvent::Title(t),
+            Event::ColorRequest(i, f) => TermEvent::ColorRequest(i, f),
+            Event::TextAreaSizeRequest(f) => TermEvent::SizeRequest(f),
+            Event::ClipboardStore(_, t) => TermEvent::Clipboard(t),
             _ => return,
         };
         let _ = self.tx.send(out);
@@ -111,6 +119,14 @@ pub struct Pane {
     /// What the last drag selected, kept: a CLI that redraws (a spinner, its
     /// status line) clears the live selection before Ctrl+C gets to it.
     last_sel: Option<String>,
+    /// Whether it had the keys last frame, for focus reports.
+    had_focus: bool,
+    /// Clicks reported to a program that took the mouse.
+    mouse: crate::term_mouse::MouseReport,
+    /// One cell in pixels, for a program asking the window's size.
+    cell_px: (u16, u16),
+    /// Text the program asked to put on the clipboard (OSC 52).
+    pending_copy: Option<String>,
 }
 
 /// An agent's isolated checkout: repo it came from, branch it works on.
@@ -128,7 +144,7 @@ impl Pane {
         let (term_tx, term_rx) = channel();
         let config = Config { scrolling_history: 2000, ..Config::default() };
         let term = Term::new(config, &GridSize { rows, cols }, PtyEvents { tx: term_tx.clone() });
-        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, term_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), custom: None, task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None }
+        Pane { id, name, spec, cli: None, session_id: None, term, processor: Processor::new(), rx, tx, term_rx, term_tx, cols, rows, exit_code: None, pending_title: None, term_title: None, last_output_ms: now_ms(), run: 1, worktree: None, merged: false, extra_args: Vec::new(), custom: None, task: None, started_ms: now_ms(), usage: None, limit: None, recording: None, find: Default::default(), wheel: 0.0, last_sel: None, had_focus: false, mouse: Default::default(), cell_px: (8, 16), pending_copy: None }
     }
 
     /// The visible screen as text, newest row last: what the state reads.
@@ -172,6 +188,18 @@ impl Pane {
                     let _ = registry.write_input(&self.id, s.as_bytes());
                 }
                 TermEvent::Title(t) => self.pending_title = Some(t),
+                TermEvent::ColorRequest(i, reply) => {
+                    let rgb = self.term.colors()[i].unwrap_or_else(|| {
+                        let (r, g, b) = crate::color::default_rgb(i);
+                        Rgb { r, g, b }
+                    });
+                    let _ = registry.write_input(&self.id, reply(rgb).as_bytes());
+                }
+                TermEvent::SizeRequest(reply) => {
+                    let size = WindowSize { num_lines: self.rows as u16, num_cols: self.cols as u16, cell_width: self.cell_px.0, cell_height: self.cell_px.1 };
+                    let _ = registry.write_input(&self.id, reply(size).as_bytes());
+                }
+                TermEvent::Clipboard(t) => self.pending_copy = Some(t),
             }
         }
     }
@@ -185,9 +213,9 @@ impl Pane {
         self.last_sel = None;
     }
 
-    /// Something to copy: a live selection, or what the last drag selected.
+    /// A selection on screen: then Ctrl+C copies it instead of interrupting.
     fn has_selection(&self) -> bool {
-        self.term.selection.as_ref().is_some_and(|s| !s.is_empty()) || self.last_sel.is_some()
+        self.term.selection.as_ref().is_some_and(|s| !s.is_empty())
     }
 
     /// Take the keyboard back when nothing else holds it, as a terminal
@@ -220,21 +248,35 @@ impl Pane {
             self.term.resize(GridSize { rows, cols });
             let _ = registry.resize(&self.id, cols as u16, rows as u16);
         }
-        let bracketed = self.term.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE);
-        // A new press starts over; a finished drag keeps what it selected.
-        if resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed()) {
-            self.last_sel = None;
+        self.cell_px = (cell_w.round() as u16, cell_h.round() as u16);
+        if let Some(t) = self.pending_copy.take() {
+            ui.ctx().copy_text(t);
         }
-        let picked = crate::term_select::mouse(&mut self.term, &resp, rect, cell);
-        // Letting go of a selection copies it, as in a console window.
-        if resp.drag_stopped() || resp.double_clicked() {
-            self.last_sel = self.term.selection_to_string().filter(|t| !t.trim().is_empty());
-            if let Some(t) = &self.last_sel {
-                ui.ctx().copy_text(t.clone());
+        let mode = *self.term.mode();
+        let bracketed = mode.contains(TermMode::BRACKETED_PASTE);
+        if self.mouse.takes(mode, ui.input(|i| i.modifiers.shift)) {
+            // The program took the mouse: its clicks, not a selection.
+            let events: Vec<egui::Event> = ui.ctx().input(|i| i.events.clone());
+            let out = self.mouse.report(&events, mode, rect, cell, (self.cols, self.rows));
+            if !out.is_empty() {
+                let _ = registry.write_input(&self.id, &out);
             }
-        }
-        if let Some(crate::term_select::MenuPick::Paste) = picked {
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+        } else {
+            // A new press starts over; a finished drag keeps what it selected.
+            if resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed()) {
+                self.last_sel = None;
+            }
+            let picked = crate::term_select::mouse(&mut self.term, &resp, rect, cell);
+            // Letting go of a selection copies it, as in a console window.
+            if resp.drag_stopped() || resp.double_clicked() {
+                self.last_sel = self.term.selection_to_string().filter(|t| !t.trim().is_empty());
+                if let Some(t) = &self.last_sel {
+                    ui.ctx().copy_text(t.clone());
+                }
+            }
+            if let Some(crate::term_select::MenuPick::Paste) = picked {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+            }
         }
         // Files dropped from Explorer onto this pane: type their paths.
         let (dropped, at) = ui.ctx().input(|i| (i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect::<Vec<_>>(), i.pointer.hover_pos()));
@@ -274,49 +316,33 @@ impl Pane {
             ui.ctx().input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
         }
 
+        // A program that asked to hear focus changes (FOCUS_IN_OUT) hears them.
+        if resp.has_focus() != self.had_focus {
+            self.had_focus = resp.has_focus();
+            if mode.contains(TermMode::FOCUS_IN_OUT) {
+                let _ = registry.write_input(&self.id, if self.had_focus { b"\x1b[I" } else { b"\x1b[O" });
+            }
+        }
         if resp.has_focus() {
             // Tell the app a terminal has the keys: its own shortcuts then
-            // need Shift, and plain Ctrl+K, Ctrl+N... reach the program.
+            // stand aside and every key reaches the program.
             let frame = ui.ctx().cumulative_frame_nr();
             ui.ctx().data_mut(|d| d.insert_temp(crate::keys::term_focus_id(), frame));
             // Arrows, Tab and Esc belong to the program, not to egui's focus
             // moves: without this the first arrow in a CLI's menu took the
             // focus away and the next keys never reached it.
             ui.memory_mut(|m| m.set_focus_lock_filter(id, egui::EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: true }));
-            let app_cursor = self.term.mode().contains(alacritty_terminal::term::TermMode::APP_CURSOR);
-            let events: Vec<egui::Event> = ui.ctx().input(|i| i.events.clone());
-            for ev in &events {
-                match ev {
-                    // Alt+letter goes as ESC+letter from its Key event; the
-                    // letter Windows also types for it would come out twice.
-                    // (AltGr is Ctrl+Alt and keeps its characters.)
-                    egui::Event::Text(_) if ui.input(|i| i.modifiers.alt && !i.modifiers.ctrl) => {}
-                    egui::Event::Text(t) => {
+            let (events, mods) = ui.ctx().input(|i| (i.events.clone(), i.modifiers));
+            for act in crate::term_input::actions(&events, mods, mode, self.has_selection()) {
+                match act {
+                    crate::term_input::Action::Send(b) => {
                         // Typing while scrolled back jumps to the prompt.
                         self.term.scroll_display(Scroll::Bottom);
-                        let _ = registry.write_input(&self.id, t.as_bytes());
+                        let _ = registry.write_input(&self.id, &b);
                     }
-                    egui::Event::Key { key: egui::Key::F, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => self.find.toggle(),
-                    // Copy and paste with Shift, as in Windows Terminal: never an
-                    // interrupt sent by a hand used to it.
-                    egui::Event::Key { key: egui::Key::C, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => self.copy_selection(ui.ctx()),
-                    egui::Event::Key { key: egui::Key::V, pressed: true, modifiers, .. } if modifiers.ctrl && modifiers.shift => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
-                    egui::Event::Key { key, pressed: true, modifiers, .. } => {
-                        let app = if app_cursor { crate::keys::app_cursor_bytes(*key, *modifiers) } else { None };
-                        let bytes = crate::keys::modified_bytes(*key, *modifiers).or_else(|| app.or_else(|| key_bytes(*key, *modifiers)).map(<[u8]>::to_vec));
-                        if let Some(b) = bytes {
-                            self.term.scroll_display(Scroll::Bottom);
-                            let _ = registry.write_input(&self.id, &b);
-                        }
-                    }
-                    // Ctrl+C copies a selection; with none it interrupts.
-                    egui::Event::Copy if self.has_selection() => self.copy_selection(ui.ctx()),
-                    egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) | egui::Event::PasteImage(_) => {
-                        if let Some(bytes) = crate::paste::clipboard_bytes(ev, bracketed) {
-                            let _ = registry.write_input(&self.id, &bytes);
-                        }
-                    }
-                    _ => {}
+                    crate::term_input::Action::Copy => self.copy_selection(ui.ctx()),
+                    crate::term_input::Action::Paste => ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste),
+                    crate::term_input::Action::Find => self.find.toggle(),
                 }
             }
         }

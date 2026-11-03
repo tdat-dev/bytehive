@@ -254,10 +254,19 @@ impl eframe::App for ShellApp {
         // Density zoom: Ctrl+= / Ctrl+- step the terminal glyphs, Ctrl+0
         // resets. Keyboard only on purpose: the wheel already scrolls back.
         let mut zoom = self.zoom;
-        // Over a terminal every key is the program's: shortcuts take Shift too.
-        let mods = crate::keys::shortcut_mods(ui.ctx());
+        // Over a terminal every key is the program's, as in a plain terminal
+        // window: no ByteHive shortcut, and none of egui's own (Ctrl+- zooms
+        // the whole window, Ctrl+Q quits) after the program already got it.
+        let over_term = crate::keys::terminal_has_keys(ui.ctx());
+        ui.ctx().options_mut(|o| {
+            o.zoom_with_keyboard = !over_term;
+            if o.quit_shortcuts.is_empty() != over_term {
+                o.quit_shortcuts = if over_term { Vec::new() } else { vec![egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Q)] };
+            }
+        });
+        let mods = egui::Modifiers::COMMAND;
         ui.ctx().input(|i| {
-            if !i.modifiers.ctrl || (mods.shift && !i.modifiers.shift) {
+            if over_term || !i.modifiers.ctrl {
                 return;
             }
             if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
@@ -271,18 +280,19 @@ impl eframe::App for ShellApp {
         self.zoom = zoom;
         self.font = FontId::monospace(self.prefs.term_size * self.zoom);
 
-        // Ctrl/Cmd+K toggles the command palette. Consuming the key here keeps
-        // it from reaching a focused terminal pane as a raw control byte.
-        if ui.input_mut(|i| i.consume_key(mods, egui::Key::K)) {
-            self.palette.toggle();
+        // Ctrl/Cmd+K toggles the command palette, when no terminal has the keys.
+        if !over_term {
+            if ui.input_mut(|i| i.consume_key(mods, egui::Key::K)) {
+                self.palette.toggle();
+            }
+            if ui.input_mut(|i| i.consume_key(mods, egui::Key::N)) {
+                self.run_command("new");
+            }
+            if ui.input_mut(|i| i.consume_key(mods, egui::Key::Comma)) {
+                self.run_command("settings");
+            }
+            self.list_keys(ui.ctx());
         }
-        if ui.input_mut(|i| i.consume_key(mods, egui::Key::N)) {
-            self.run_command("new");
-        }
-        if ui.input_mut(|i| i.consume_key(mods, egui::Key::Comma)) {
-            self.run_command("settings");
-        }
-        self.list_keys(ui.ctx());
 
         let clashes = self.clash_map();
         let hidden = self.hidden_panes();
@@ -302,7 +312,7 @@ impl eframe::App for ShellApp {
                 8 => egui::Key::Num8,
                 _ => egui::Key::Num9,
             };
-            if ui.input_mut(|i| i.consume_key(mods, key)) {
+            if !over_term && ui.input_mut(|i| i.consume_key(mods, key)) {
                 if let Some(idx) = crate::palette::quickjump_index(key) {
                     if let Some(r) = rows.get(idx) {
                         self.focus_pane = Some(r.pane_id.clone());
