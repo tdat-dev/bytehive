@@ -95,6 +95,8 @@ pub struct Updater {
     /// The automatic install was started once (a failure is not retried
     /// in a loop; the button still works).
     auto_tried: bool,
+    /// You pressed Update now: a new version found installs straight away.
+    install_found: bool,
     started: Instant,
     last: Option<Instant>,
     tx: Sender<Msg>,
@@ -104,7 +106,7 @@ pub struct Updater {
 impl Default for Updater {
     fn default() -> Self {
         let (tx, rx) = channel();
-        Updater { available: None, status: String::new(), busy: false, asking: false, auto_tried: false, started: Instant::now(), last: None, tx, rx }
+        Updater { available: None, status: String::new(), busy: false, asking: false, auto_tried: false, install_found: false, started: Instant::now(), last: None, tx, rx }
     }
 }
 
@@ -123,6 +125,16 @@ impl Updater {
             let _ = tx.send(Msg::Checked(fetch_latest()));
             ctx.request_repaint();
         });
+    }
+
+    /// Update now: look, and install what is found without a second press.
+    pub fn update_now(&mut self, ctx: &egui::Context) {
+        if self.available.is_some() {
+            self.install(ctx);
+            return;
+        }
+        self.install_found = true;
+        self.check_now(ctx);
     }
 
     pub fn install(&mut self, ctx: &egui::Context) {
@@ -154,9 +166,18 @@ impl ShellApp {
                 Msg::Checked(Ok(r)) if newer(current(), &r.version) => {
                     u.status = format!("Version {} is out.", r.version);
                     u.available = Some(r);
+                    if std::mem::take(&mut u.install_found) {
+                        u.install(ctx);
+                    }
                 }
-                Msg::Checked(Ok(_)) => u.status = format!("ByteHive {} is up to date.", current()),
-                Msg::Checked(Err(e)) => u.status = e,
+                Msg::Checked(Ok(_)) => {
+                    u.install_found = false;
+                    u.status = format!("ByteHive {} is up to date.", current());
+                }
+                Msg::Checked(Err(e)) => {
+                    u.install_found = false;
+                    u.status = e;
+                }
                 Msg::Ready(Err(e)) => u.status = e,
                 // Silent: the installer opens ByteHive again by itself once
                 // done. With its pages shown, the finish page's ticked "Open

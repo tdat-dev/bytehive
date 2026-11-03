@@ -251,7 +251,8 @@ impl SettingsSheet {
         ch |= row(ui, "Update by itself", "Checks a little after start and every six hours, and installs a new version once no agent is in the middle of work.", |ui| switch(ui, &mut p.update_check).changed());
         let status = if self.update_status.is_empty() { format!("ByteHive {}", crate::updater::current()) } else { self.update_status.clone() };
         row(ui, "Version", &status, |ui| {
-            self.want_update_check |= ui.button(RichText::new("Check now").size(12.5)).clicked();
+            let b = ui.button(RichText::new("Update now").size(12.5)).on_hover_text("Looks for a new version and installs it at once. ByteHive closes for a moment; the agents are back in the list, stopped, and Resume carries each one on.");
+            self.want_update_check |= b.clicked();
             false
         });
         row(ui, "Where settings live", store, |_| false);
