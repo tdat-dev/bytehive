@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.8] - 2026-11-03
+
+### Changed
+
+- **The Grid keeps every terminal readable.** Columns used to follow only
+  the number of agents, so a portrait monitor cut five of them into three
+  columns of about 40 characters, where CLIs wrap and their text piles up.
+  The Grid now picks columns by the room each terminal gets, about 80
+  characters wide first, so a tall screen stacks the tiles full width.
+  Tile edges are easier to tell apart and their headers a little bigger.
+- **Narrow project tabs keep their names.** When the tabs get narrow, they
+  drop the folder icon to leave the room to the name, as Chrome does.
+
 ## [0.12.7] - 2026-11-03
 
 ### Added
