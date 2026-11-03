@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.5] - 2026-11-03
+
+### Changed
+
+- **Grid tiles sit close together.** Less gap between terminals, a slimmer
+  header and thinner margins, so the terminals get the room. Text and agent
+  names keep their size.
+
+### Fixed
+
+- **Update now installs.** The Settings button used to only check and say a
+  version was out, waiting for a second press. It is now Update now: a new
+  version it finds installs straight away.
+
 ## [0.12.4] - 2026-11-03
 
 ### Added
