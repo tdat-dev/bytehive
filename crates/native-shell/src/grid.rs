@@ -22,9 +22,10 @@ pub(crate) struct GridOut {
     pub stop: Vec<String>,
 }
 
-/// Header height inside a tile, and the gap between tiles.
-const HEAD: f32 = 48.0;
-const GAP: f32 = 12.0;
+/// Header height inside a tile, and the gap between tiles: tight, so the
+/// terminals get the room; the ring and header keep tiles apart.
+const HEAD: f32 = 34.0;
+const GAP: f32 = 4.0;
 /// The rail of faces beside a focused tile.
 const RAIL: f32 = 64.0;
 
@@ -73,7 +74,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
         })
         .collect();
 
-    let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: 16, right: GUTTER as i8, top: 0, bottom: 0 });
+    let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: 6, right: (GUTTER as i8).min(6), top: 0, bottom: 0 });
     egui::CentralPanel::default().frame(frame).show(ui, |ui| {
         let (cell_w, cell_h) = crate::term_pane::cell_metrics(ui.painter(), &app.font);
         let mut area = ui.available_rect_before_wrap();
@@ -118,16 +119,16 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             let pane = &mut panes[idx];
             let state = states[idx];
             let running = pane.exit_code.is_none();
-            ui.painter().rect(tile, 18.0, PANEL, Stroke::new(1.0, ring(state, running)), egui::StrokeKind::Inside);
+            ui.painter().rect(tile, 10.0, PANEL, Stroke::new(1.0, ring(state, running)), egui::StrokeKind::Inside);
 
             // Head: face, name, state; the buttons from the right edge in.
             let head = Rect::from_min_size(tile.min, Vec2::new(tile.width(), HEAD));
-            let face = Rect::from_min_size(Pos2::new(head.left() + 14.0, head.center().y - 13.0), Vec2::splat(26.0));
-            crate::face::avatar(ui.painter(), face, pane.cli, pane.custom.as_deref(), &pane.name, 8.0, !running);
-            let mut bx = head.right() - 12.0;
+            let face = Rect::from_min_size(Pos2::new(head.left() + 8.0, head.center().y - 10.0), Vec2::splat(20.0));
+            crate::face::avatar(ui.painter(), face, pane.cli, pane.custom.as_deref(), &pane.name, 6.0, !running);
+            let mut bx = head.right() - 6.0;
             let mut button = |ui: &mut egui::Ui, icon: Icon, danger: bool, key: &str, tip: &str| {
-                bx -= 28.0;
-                let at = Rect::from_min_size(Pos2::new(bx, head.center().y - 14.0), Vec2::splat(28.0));
+                bx -= 24.0;
+                let at = Rect::from_min_size(Pos2::new(bx, head.center().y - 12.0), Vec2::splat(24.0));
                 bx -= 2.0;
                 icon_at(ui, at, ui.make_persistent_id((key, &pane.id)), icon, danger).on_hover_text(tip).clicked()
             };
@@ -141,7 +142,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             if multi && button(ui, if staged { Icon::Grid } else { Icon::Focus }, false, "grid-focus", if staged { "Back to all" } else { "Make it big" }) {
                 toggle = Some(pane.id.clone());
             }
-            let text_left = face.right() + 10.0;
+            let text_left = face.right() + 8.0;
             let room = (bx - 8.0 - text_left).max(0.0);
             let mut job = egui::text::LayoutJob::default();
             job.append(&pane.name, 0.0, egui::TextFormat::simple(w500(13.5), if running { TEXT } else { DIM }));
@@ -170,7 +171,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             let g = ui.painter().layout_job(job);
             ui.painter().galley(Pos2::new(text_left, head.center().y - g.size().y / 2.0), g, TEXT);
 
-            let body = Rect::from_min_max(Pos2::new(tile.left() + 14.0, head.bottom()), Pos2::new(tile.right() - 10.0, tile.bottom() - 10.0));
+            let body = Rect::from_min_max(Pos2::new(tile.left() + 8.0, head.bottom()), Pos2::new(tile.right() - 6.0, tile.bottom() - 6.0));
             pane.paint(ui, body, &mut agent_core::lock(registry), &font, (cell_w, cell_h));
             if !*focused_once {
                 *focused_once = true;

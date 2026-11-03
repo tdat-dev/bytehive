@@ -177,6 +177,10 @@ impl ShellApp {
                 app.stage = Some(p.id.clone());
             }
         }
+        // BYTEHIVE_GRID boots in the Grid view, for screenshots.
+        if std::env::var_os("BYTEHIVE_GRID").is_some() {
+            app.extras.view = crate::dock::View::Split;
+        }
         // BYTEHIVE_SHEET=new (or race) boots with the New task sheet open.
         if let Ok(key) = std::env::var("BYTEHIVE_SHEET") {
             app.run_command(&key);
