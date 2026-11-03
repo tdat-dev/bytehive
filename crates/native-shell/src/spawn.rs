@@ -176,6 +176,21 @@ impl ShellApp {
         );
     }
 
+    /// Start an agent over on a new conversation, in the same place with the
+    /// same flags; a CLI that can't be told an id has it learnt after boot.
+    pub(crate) fn new_conversation(&mut self, index: usize) {
+        let Some(pane) = self.panes.get_mut(index) else { return };
+        let Some(cli) = pane.cli else { return self.restart_pane(index) };
+        let cwd = pane.spec.cwd.clone().unwrap_or_default();
+        let (spec, kept) = fresh_spec(cli, &cwd, &pane.extra_args, || uuid::Uuid::new_v4().to_string());
+        pane.spec = agent_spec(spec, &pane.name, Some(cli));
+        pane.session_id = kept;
+        if pane.session_id.is_none() {
+            self.captures.push(PendingCapture { pane_id: pane.id.clone(), cli, dir: cwd, since_ms: now_ms(), tries: 0 });
+        }
+        self.restart_pane(index);
+    }
+
     /// Poll pending captures about once a second; give up after ~15 tries.
     pub(crate) fn poll_captures(&mut self) {
         if self.last_poll.elapsed() < Duration::from_secs(1) || self.captures.is_empty() {

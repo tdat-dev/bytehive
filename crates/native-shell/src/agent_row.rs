@@ -33,6 +33,34 @@ fn mini_btn(ui: &mut egui::Ui, at: Rect, id: egui::Id, icon: Icon, tip: &str) ->
     r
 }
 
+/// "1.2M tokens", "48k tokens".
+pub fn tokens(n: u64) -> String {
+    match n {
+        0..1_000 => format!("{n} tokens"),
+        1_000..1_000_000 => format!("{}k tokens", n / 1_000),
+        _ => format!("{:.1}M tokens", n as f64 / 1e6),
+    }
+}
+
+/// A row's usage column: "86% context" in amber once its context is nearly
+/// full, then what it used. None when there is nothing to say.
+fn usage_line(p: &Pane) -> Option<egui::text::LayoutJob> {
+    let u = p.usage.as_ref()?;
+    let used = u.usd.map(supervise::pricing::money).or_else(|| u.tokens.filter(|&t| t > 0).map(tokens));
+    let full = u.context_pct.filter(|&c| c >= 80.0);
+    if used.is_none() && full.is_none() {
+        return None;
+    }
+    let mut job = egui::text::LayoutJob::default();
+    if let Some(c) = full {
+        job.append(&format!("{c:.0}% context"), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), AMBER));
+    }
+    if let Some(s) = used {
+        job.append(&s, if full.is_some() { 8.0 } else { 0.0 }, egui::TextFormat::simple(FontId::monospace(11.5), INK3));
+    }
+    Some(job)
+}
+
 /// One agent row; what it asks for.
 pub(crate) fn row(ui: &mut egui::Ui, p: &Pane, r: &QueueRow, on: bool, now: u64, brief: Option<&crate::brief::Brief>) -> Option<RowAct> {
     let state = r.status.state;
@@ -106,7 +134,7 @@ pub(crate) fn row(ui: &mut egui::Ui, p: &Pane, r: &QueueRow, on: bool, now: u64,
         painter.galley(Pos2::new(right - g.size().x, top + 1.0), g, INK3);
     }
     egui::Popup::menu(&more).show(|ui| {
-        if let Some(a) = agent_menu(ui, p) {
+        if let Some(a) = agent_menu(ui, p, on) {
             act = Some(a);
         }
     });
@@ -120,10 +148,10 @@ pub(crate) fn row(ui: &mut egui::Ui, p: &Pane, r: &QueueRow, on: bool, now: u64,
     }
     head.wrap = egui::text::TextWrapping::truncate_at_width((right - used - 8.0 - left).max(20.0));
     painter.galley(Pos2::new(left, top), painter.layout_job(head), name_c);
-    // The cost, in its own column so the rows line up.
+    // What it used, in its own column so the rows line up: money when its
+    // CLI prices it, else tokens; ahead of it, its context once nearly full.
     let mut cost_w = 0.0;
-    if let Some(usd) = p.usage.as_ref().and_then(|u| u.usd) {
-        let g = painter.layout_no_wrap(supervise::pricing::money(usd), FontId::monospace(11.5), INK3);
+    if let Some(g) = usage_line(p).map(|job| painter.layout_job(job)) {
         cost_w = g.size().x + 10.0;
         painter.galley(Pos2::new(right - g.size().x, top + 20.0), g, INK3);
     }
@@ -147,7 +175,7 @@ pub(crate) fn row(ui: &mut egui::Ui, p: &Pane, r: &QueueRow, on: bool, now: u64,
     sub.wrap = egui::text::TextWrapping::truncate_at_width((right - cost_w - left).max(20.0));
     painter.galley(Pos2::new(left, top + 19.0), painter.layout_job(sub), INK3);
     resp.context_menu(|ui| {
-        if let Some(a) = agent_menu(ui, p) {
+        if let Some(a) = agent_menu(ui, p, on) {
             act = Some(a);
         }
     });
@@ -214,4 +242,16 @@ pub(crate) fn project_head(ui: &mut egui::Ui, name: &str, open: bool, count: usi
     p.galley(Pos2::new(name_x, y), title, ink);
     p.galley(Pos2::new(name_x + tw + 7.0, rect.center().y - n.size().y / 2.0), n, INK3);
     (resp, book.clicked())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tokens;
+
+    #[test]
+    fn tokens_read_short() {
+        assert_eq!(tokens(950), "950 tokens");
+        assert_eq!(tokens(48_200), "48k tokens");
+        assert_eq!(tokens(1_250_000), "1.2M tokens");
+    }
 }

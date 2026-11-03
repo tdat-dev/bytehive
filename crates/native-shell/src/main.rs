@@ -31,6 +31,7 @@ mod grid;
 mod handoff;
 mod history_task;
 mod inbox;
+mod list_keys;
 mod row_menu;
 mod history_ui;
 mod keys;

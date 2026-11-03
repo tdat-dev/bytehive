@@ -112,6 +112,7 @@ impl ShellApp {
         let mut act = None;
         let mut memory = None;
         let mut close = None;
+        let mut clear = Vec::new();
         let now = now_ms();
         let frame = egui::Frame::NONE.inner_margin(egui::Margin { left: GUTTER as i8, right: 0, top: 0, bottom: 0 });
         egui::Panel::left("inbox").exact_size(QUEUE_W + GUTTER).resizable(false).show_separator_line(false).frame(frame).show(ui, |ui| {
@@ -137,11 +138,15 @@ impl ShellApp {
                         // agents with no header, All heads only the groups
                         // that have agents.
                         let one = self.projects.filter.is_some();
+                        let mut order = Vec::new();
+                        // Stopped or merged: what a folded project puts away.
+                        let away = |id: &str| self.panes.iter().any(|p| p.id == id && (p.exit_code.is_some() || p.merged));
                         for (key, name) in self.groups(&shown) {
                             let mine: Vec<&&QueueRow> = shown.iter().filter(|r| self.group_of(&r.pane_id).as_deref() == Some(key.as_str())).collect();
                             if one {
                                 for r in mine {
                                     let Some(p) = self.panes.iter().find(|p| p.id == r.pane_id) else { continue };
+                                    order.push(p.id.clone());
                                     let on = self.stage.as_deref() == Some(r.pane_id.as_str());
                                     if let Some(a) = row(ui, p, r, on, now, self.extras.briefs.get(&p.id)) {
                                         act = Some(a);
@@ -155,7 +160,16 @@ impl ShellApp {
                             let open = !self.extras.folded.contains(&key);
                             let needs = mine.iter().filter(|r| is_attention(r.status.state)).count();
                             let cost: f64 = mine.iter().filter_map(|r| self.panes.iter().find(|p| p.id == r.pane_id)).filter_map(|p| p.usage.as_ref().and_then(|u| u.usd)).sum();
+                            // Folded, a project keeps its agents still going in
+                            // view and puts the stopped ones away.
+                            let put_away = mine.iter().filter(|r| away(&r.pane_id)).count();
                             let (head, mem) = project_head(ui, &name, open, mine.len(), needs, (cost > 0.0).then_some(cost));
+                            let tip = match (open, put_away) {
+                                (true, _) => "Fold the stopped agents away".to_string(),
+                                (false, 0) => "Unfold".to_string(),
+                                (false, n) => format!("Show {n} stopped"),
+                            };
+                            let head = head.on_hover_text(tip);
                             if mem {
                                 memory = Some(key.clone());
                             }
@@ -175,12 +189,10 @@ impl ShellApp {
                                     self.extras.folded.remove(&key);
                                 }
                             }
-                            if !open {
-                                continue;
-                            }
                             ui.add_space(2.0);
-                            for r in mine {
+                            for r in mine.into_iter().filter(|r| open || !away(&r.pane_id)) {
                                 let Some(p) = self.panes.iter().find(|p| p.id == r.pane_id) else { continue };
+                                order.push(p.id.clone());
                                 let on = self.stage.as_deref() == Some(r.pane_id.as_str());
                                 if let Some(a) = row(ui, p, r, on, now, self.extras.briefs.get(&p.id)) {
                                     act = Some(a);
@@ -191,6 +203,16 @@ impl ShellApp {
                             ui.add_space(14.0);
                             ui.label(RichText::new("No agents here yet. New agent starts one.").size(12.5).color(INK3));
                         }
+                        // Merged agents are done: one button takes them all off.
+                        let merged: Vec<String> = shown.iter().filter(|r| self.panes.iter().any(|p| p.id == r.pane_id && p.merged)).map(|r| r.pane_id.clone()).collect();
+                        if !merged.is_empty() {
+                            ui.add_space(8.0);
+                            let b = egui::Button::new(RichText::new(format!("Clear {} merged", merged.len())).size(12.5).color(INK3)).frame(false);
+                            if ui.add(b).on_hover_text("Their work is in and their worktrees are gone").clicked() {
+                                clear = merged;
+                            }
+                        }
+                        self.extras.list_order = order;
                         ui.add_space(8.0);
                     });
                 });
@@ -216,6 +238,10 @@ impl ShellApp {
         }
         if let Some(dir) = close {
             self.apply_project(crate::projects_ui::ProjectAction::Close(dir));
+            ui.ctx().request_repaint();
+        }
+        if !clear.is_empty() {
+            self.remove_panes(&clear);
             ui.ctx().request_repaint();
         }
         if let Some(a) = act {

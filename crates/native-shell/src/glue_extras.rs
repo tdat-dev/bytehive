@@ -48,6 +48,10 @@ pub struct Extras {
     pub reopen: crate::reopen::Reopen,
     /// The agent list folded down to a rail of faces.
     pub side_mini: bool,
+    /// The agent whose Remove waits for your OK.
+    pub remove_ask: Option<String>,
+    /// The agents as the left panel lists them, for Alt+Up and Alt+Down.
+    pub list_order: Vec<String>,
     /// Each agent's title and what it is doing, read from its CLI's files.
     pub briefs: crate::brief::Briefs,
 }
@@ -137,6 +141,7 @@ impl ShellApp {
     /// The Phase E sheets, floating over everything.
     pub(crate) fn extra_sheets(&mut self, ctx: &egui::Context) {
         self.handoff_sheet(ctx);
+        self.remove_sheet(ctx);
         self.poll_system(ctx);
         self.poll_browser(ctx);
         let font = self.font.clone();

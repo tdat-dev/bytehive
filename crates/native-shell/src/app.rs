@@ -282,6 +282,7 @@ impl eframe::App for ShellApp {
         if ui.input_mut(|i| i.consume_key(mods, egui::Key::Comma)) {
             self.run_command("settings");
         }
+        self.list_keys(ui.ctx());
 
         let clashes = self.clash_map();
         let hidden = self.hidden_panes();
