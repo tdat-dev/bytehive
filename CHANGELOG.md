@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.12] - 2026-11-03
+
+### Added
+
+- **A Stop button you can find.** Point at a running agent in the list and
+  a Stop button shows beside its ... menu; the stage header has a Stop
+  button too. The agent stays in the list and Resume carries it on. The x
+  on the stage now only removes an agent that has stopped.
+
 ## [0.12.11] - 2026-11-03
 
 ### Added
