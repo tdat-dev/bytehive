@@ -13,6 +13,7 @@ pub struct Tile {
 }
 
 /// Squarish grid: 2→2x1 (big side by side), 4→2x2, 6→3x2, …
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn grid_dims_for(n: usize) -> (usize, usize) {
     let cols = (n as f32).sqrt().ceil().max(1.0) as usize;
     let rows = n.div_ceil(cols).max(1);
@@ -26,8 +27,36 @@ pub fn grid_dims_for(n: usize) -> (usize, usize) {
 /// is derived from rounded edges rather than a rounded width — rounding x
 /// and w independently drifts them apart, and at gap 0 a half-pixel of
 /// drift is a visible slit between two panes.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn tile_to_fit(n: usize, width: f32, height: f32, gap: f32, margin: f32, top: f32, bottom: f32) -> Vec<Tile> {
-    let (cols, rows) = grid_dims_for(n.max(1));
+    tile_in(n, grid_dims_for(n.max(1)), width, height, gap, margin, top, bottom)
+}
+
+/// Columns and rows that keep terminals readable in a `width` x `height`
+/// area of `cell` (w, h) glyphs, each tile losing `head` to its header: as
+/// close to 80 columns and 10 rows per tile as the room allows. Width counts
+/// most (a CLI cut to 40 columns wraps and smears; few rows only scroll), so
+/// a tall monitor stacks tiles. Fewer empty slots break ties.
+pub fn readable_dims(n: usize, width: f32, height: f32, gap: f32, head: f32, cell: (f32, f32)) -> (usize, usize) {
+    let n = n.max(1);
+    let mut best = (1, n);
+    let mut best_score = f32::MIN;
+    for cols in 1..=n {
+        let rows = n.div_ceil(cols);
+        let tw = (width - (cols as f32 - 1.0) * gap) / cols as f32;
+        let th = (height - (rows as f32 - 1.0) * gap) / rows as f32 - head;
+        let score = (tw / (80.0 * cell.0)).min(th / (10.0 * cell.1));
+        let empty = (cols * rows - n) as f32 * 0.01;
+        if score - empty > best_score {
+            best_score = score - empty;
+            best = (cols, rows);
+        }
+    }
+    best
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn tile_in(n: usize, (cols, rows): (usize, usize), width: f32, height: f32, gap: f32, margin: f32, top: f32, bottom: f32) -> Vec<Tile> {
     let tw = (width - 2.0 * margin - (cols as f32 - 1.0) * gap) / cols as f32;
     let th = (height - top - bottom - (rows as f32 - 1.0) * gap) / rows as f32;
     let mut out = Vec::with_capacity(n);
@@ -72,6 +101,20 @@ pub fn next_slot(existing: &[(f32, f32)], cell_w: f32, cell_h: f32, gap: f32, ar
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tall_monitors_stack_tiles_wide_ones_side_by_side() {
+        let cell = (8.4, 19.0);
+        // Five agents on a portrait 1080 x 1800: one column, full width.
+        assert_eq!(readable_dims(5, 1080.0, 1800.0, 4.0, 36.0, cell).0, 1);
+        // Five on a landscape 1900 x 1000: two columns of ~80 characters.
+        assert_eq!(readable_dims(5, 1900.0, 1000.0, 4.0, 36.0, cell), (2, 3));
+        // Four on landscape: two by two.
+        assert_eq!(readable_dims(4, 1900.0, 1000.0, 4.0, 36.0, cell), (2, 2));
+        // Five in a narrow 640 x 750 window: one column, not two of 40.
+        assert_eq!(readable_dims(5, 640.0, 750.0, 4.0, 36.0, (8.4, 21.0)).0, 1);
+        assert_eq!(readable_dims(1, 500.0, 500.0, 4.0, 36.0, cell), (1, 1));
+    }
 
     #[test]
     fn grid_keeps_2_side_by_side_4_in_2x2() {

@@ -9,7 +9,7 @@ use supervise::task_state::TaskState;
 use crate::app::{now_ms, ShellApp};
 use crate::icons::{paint_in, Icon};
 use crate::inbox::state_label;
-use crate::layout::{tile_to_fit, Tile};
+use crate::layout::{readable_dims, tile_in, Tile};
 use crate::states::pane_status;
 use crate::style::{w500, GUTTER, PANEL};
 use crate::theme::{state_dot, ADD, AMBER, DEL, DIM, INK3, TEXT};
@@ -24,7 +24,7 @@ pub(crate) struct GridOut {
 
 /// Header height inside a tile, and the gap between tiles: tight, so the
 /// terminals get the room; the ring and header keep tiles apart.
-const HEAD: f32 = 34.0;
+const HEAD: f32 = 36.0;
 const GAP: f32 = 4.0;
 /// The rail of faces beside a focused tile.
 const RAIL: f32 = 64.0;
@@ -34,7 +34,8 @@ fn ring(state: TaskState, running: bool) -> Color32 {
     match state {
         TaskState::Working if running => ADD.gamma_multiply(0.35),
         TaskState::Needs | TaskState::Blocked if running => AMBER.gamma_multiply(0.45),
-        _ => Color32::from_white_alpha(18),
+        // Bright enough to tell tiles apart with only a few pixels between.
+        _ => Color32::from_white_alpha(34),
     }
 }
 
@@ -111,7 +112,10 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             Some(fid) => shown.iter().copied().filter(|&i| &app.panes[i].id == fid).collect(),
             None => shown.clone(),
         };
-        let tiles = tile_to_fit(order.len(), area.width(), area.height(), GAP, 0.0, 0.0, 0.0);
+        // Columns by the room each terminal gets, not just the count: a tall
+        // monitor stacks tiles rather than cut every CLI to 40 columns.
+        let dims = readable_dims(order.len(), area.width(), area.height(), GAP, HEAD + 6.0, (cell_w, cell_h));
+        let tiles = tile_in(order.len(), dims, area.width(), area.height(), GAP, 0.0, 0.0, 0.0);
         let font = app.font.clone();
         let want_focus = app.focus_pane.clone();
         let multi = shown.len() > 1;
@@ -148,7 +152,7 @@ pub(crate) fn show_grid(app: &mut ShellApp, ui: &mut egui::Ui, hidden: &std::col
             let text_left = face.right() + 8.0;
             let room = (bx - 8.0 - text_left).max(0.0);
             let mut job = egui::text::LayoutJob::default();
-            job.append(heads[idx].as_deref().unwrap_or(&pane.name), 0.0, egui::TextFormat::simple(w500(13.5), if running { TEXT } else { DIM }));
+            job.append(heads[idx].as_deref().unwrap_or(&pane.name), 0.0, egui::TextFormat::simple(w500(14.0), if running { TEXT } else { DIM }));
             if heads[idx].is_some() {
                 job.append(&format!("  {}", pane.name), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
             }

@@ -248,6 +248,54 @@ mod tests {
         assert!(after.contains("plum"), "the conversation did not come back:\n{after}");
     }
 
+    /// Ctrl+Left through ConPTY really moves a word back in PowerShell.
+    /// Starts a real shell: run by hand with --ignored.
+    #[test]
+    #[ignore]
+    fn ctrl_left_moves_a_word_back_in_a_real_shell() {
+        let mut app = ShellApp::new().unwrap();
+        let id = app.panes[0].id.clone();
+        let pump = |app: &mut ShellApp, secs: u64, until: &dyn Fn(&ShellApp) -> bool| {
+            let end = Instant::now() + Duration::from_secs(secs);
+            while Instant::now() < end && !until(app) {
+                let ShellApp { panes, registry, .. } = &mut *app;
+                for p in panes.iter_mut() {
+                    p.drain(&mut agent_core::lock(registry));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        };
+        pump(&mut app, 20, &|a| a.panes[0].screen_text().contains("PS "));
+        let ctrl = eframe::egui::Modifiers { ctrl: true, ..Default::default() };
+        let left = crate::keys::modified_bytes(eframe::egui::Key::ArrowLeft, ctrl).unwrap();
+        let w = |app: &ShellApp, b: &[u8]| {
+            let _ = agent_core::lock(&app.registry).write_input(&id, b);
+            std::thread::sleep(Duration::from_millis(300));
+        };
+        w(&app, b"echo abc def");
+        w(&app, &left);
+        w(&app, b"X");
+        pump(&mut app, 5, &|a| a.panes[0].screen_text().contains("abc Xdef"));
+        let screen = app.panes[0].screen_text();
+        assert!(screen.contains("echo abc Xdef"), "Ctrl+Left did not move a word:\n{screen}");
+        // And in Claude Code's prompt (typed only, never sent).
+        let dir = std::env::current_dir().unwrap().display().to_string();
+        let cid = app.boot_agent(Cli::Claude, &dir, "Kai".into(), Vec::new(), None).unwrap();
+        let i = app.panes.iter().position(|p| p.id == cid).unwrap();
+        pump(&mut app, 40, &|a| a.panes[i].screen_text().contains("? for shortcuts") || a.panes[i].screen_text().contains("auto mode") || a.panes[i].screen_text().contains("bypass"));
+        std::thread::sleep(Duration::from_secs(2));
+        let wc = |app: &ShellApp, b: &[u8]| {
+            let _ = agent_core::lock(&app.registry).write_input(&cid, b);
+            std::thread::sleep(Duration::from_millis(400));
+        };
+        wc(&app, b"abc def");
+        wc(&app, &left);
+        wc(&app, b"X");
+        pump(&mut app, 5, &|a| a.panes[i].screen_text().contains("abc Xdef"));
+        let screen = app.panes[i].screen_text();
+        assert!(screen.contains("abc Xdef"), "Ctrl+Left did not move a word in Claude Code:\n{screen}");
+    }
+
     #[test]
     fn worktree_spawn_fails_clean_on_a_bad_repo() {
         let mut app = ShellApp::new().unwrap();

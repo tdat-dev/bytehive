@@ -68,16 +68,22 @@ fn tab(ui: &mut egui::Ui, rect: Rect, t: &Tab, on: bool, sep: bool) -> (Option<T
     }
     let ink = if on { TEXT } else if hot { DIM } else { INK3 };
     // The favicon: a folder, or the grid for All; the needs-you dot rides on it.
+    // A narrow tab drops its folder icon so the name keeps the room, as
+    // Chrome drops a favicon last; All keeps its grid, it has no long name.
     let icon = Rect::from_min_size(Pos2::new(rect.left() + 12.0, rect.center().y - 8.0), Vec2::splat(16.0));
-    paint_in(&p, icon, 16.0, if t.dir.is_some() { Icon::Folder } else { Icon::Grid }, ink, 1.5);
+    let show_icon = t.dir.is_none() || rect.width() >= 120.0;
+    if show_icon {
+        paint_in(&p, icon, 16.0, if t.dir.is_some() { Icon::Folder } else { Icon::Grid }, ink, 1.5);
+    }
     if t.needs {
-        p.circle_filled(icon.right_top() + Vec2::new(-1.0, 2.0), 3.5, AMBER);
+        let at = if show_icon { icon.right_top() + Vec2::new(-1.0, 2.0) } else { Pos2::new(rect.left() + 8.0, rect.center().y) };
+        p.circle_filled(at, 3.5, AMBER);
     }
     let closable = t.dir.is_some() && (on || rect.width() >= 96.0);
     let right = rect.right() - if closable { 30.0 } else { 10.0 };
     let count = (t.agents > 0).then(|| p.layout_no_wrap(t.agents.to_string(), FontId::new(11.0, egui::FontFamily::Name("monomedium".into())), INK3));
     let count_w = count.as_ref().map_or(0.0, |g| g.size().x + 8.0);
-    let x = icon.right() + 8.0;
+    let x = if show_icon { icon.right() + 8.0 } else { rect.left() + 14.0 };
     let mut job = egui::text::LayoutJob::simple_singleline(t.title.clone(), medium(12.5), ink);
     job.wrap = egui::text::TextWrapping::truncate_at_width((right - count_w - x).max(8.0));
     let g = p.layout_job(job);
