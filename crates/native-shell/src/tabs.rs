@@ -1,6 +1,6 @@
 //! Projects as tabs, drawn like Chrome's: one tab per open project on the
 //! top bar, All first for every agent at once, + to open another folder, x
-//! (or a middle click) to close one. The tab on show wears the page's colour
+//! (or a middle click) to close one, drag one along the strip to move it. The tab on show wears the page's colour
 //! and flares into it; the others sit on the strip with thin dividers. A tab shows how many agents work there and a
 //! dot when one of them needs you. New agent starts agents in the project
 //! on show.
@@ -52,9 +52,11 @@ fn paint_active(p: &egui::Painter, rect: Rect) {
 
 /// Paint one tab at `rect`; the act it was asked for, if any. `sep`: draw the
 /// thin divider at its left edge.
-fn tab(ui: &mut egui::Ui, rect: Rect, t: &Tab, on: bool, sep: bool) -> Option<TabAct> {
+fn tab(ui: &mut egui::Ui, rect: Rect, t: &Tab, on: bool, sep: bool) -> (Option<TabAct>, egui::Response) {
     let id = ui.make_persistent_id(("tab", &t.dir));
-    let r = ui.interact(rect, id, Sense::click());
+    // Project tabs drag along the strip; All stays first.
+    let sense = if t.dir.is_some() { Sense::click_and_drag() } else { Sense::click() };
+    let r = ui.interact(rect, id, sense);
     let hot = r.hovered();
     let p = ui.painter().clone();
     if on {
@@ -91,14 +93,33 @@ fn tab(ui: &mut egui::Ui, rect: Rect, t: &Tab, on: bool, sep: bool) -> Option<Ta
         }
         paint_in(&p, at.shrink(4.0), 10.0, Icon::Close, if x_r.hovered() { TEXT } else { ink }, 1.6);
         if x_r.on_hover_text("Close project (its agents keep running)").clicked() {
-            return t.dir.clone().map(TabAct::Close);
+            return (t.dir.clone().map(TabAct::Close), r);
         }
     }
     if r.middle_clicked() {
-        return t.dir.clone().map(TabAct::Close);
+        return (t.dir.clone().map(TabAct::Close), r);
     }
-    let r = r.on_hover_text(t.dir.as_deref().unwrap_or("Every project"));
-    r.clicked().then(|| TabAct::Show(t.dir.clone()))
+    let act = r.clicked().then(|| TabAct::Show(t.dir.clone()));
+    let r = if r.dragged() { r } else { r.on_hover_text(t.dir.as_deref().unwrap_or("Every project")) };
+    (act, r)
+}
+
+/// Where a dragged tab lands: the slot (1.., All keeps 0) nearest its left
+/// edge `x`, given the strip's first slot `x0`, tab width `w` and `n` tabs.
+pub fn drop_slot(x: f32, x0: f32, w: f32, n: usize) -> usize {
+    (((x - x0) / w).round().max(1.0) as usize).min(n.saturating_sub(1).max(1))
+}
+
+/// The slot tab `k` shows in while tab `from` is dragged over slot `to`:
+/// the tabs in between step aside, as in Chrome.
+pub fn shifted_slot(k: usize, from: usize, to: usize) -> usize {
+    if from < to && k > from && k <= to {
+        k - 1
+    } else if from > to && k >= to && k < from {
+        k + 1
+    } else {
+        k
+    }
 }
 
 impl ShellApp {
@@ -136,14 +157,50 @@ impl ShellApp {
                     }
             })
             .collect();
-        for (k, t) in tabs.iter().enumerate() {
-            let rect = Rect::from_min_size(Pos2::new(x, strip.bottom() - TAB_H), Vec2::new(w, TAB_H));
+        // A tab being dragged: which one, and where the pointer took it.
+        let drag_id = egui::Id::unique("tab-drag");
+        let x0 = x;
+        let dragging: Option<(usize, f32)> = ui.ctx().data(|d| d.get_temp(drag_id));
+        let pointer = ui.ctx().pointer_interact_pos();
+        let held = dragging.and_then(|(k, grab)| Some((k, (pointer?.x - grab).clamp(x0 + w, x0 + w * (tabs.len() - 1) as f32))));
+        let to = held.map(|(k, at)| (k, drop_slot(at, x0, w, tabs.len())));
+        let mut order: Vec<usize> = (0..tabs.len()).collect();
+        // The dragged tab is drawn last, over the others.
+        if let Some((k, _)) = held {
+            order.retain(|&i| i != k);
+            order.push(k);
+        }
+        let mut dropped = None;
+        for &k in &order {
+            let t = &tabs[k];
+            let left = match (held, to) {
+                (Some((d, at)), _) if d == k => at,
+                (_, Some((d, slot))) => x0 + w * shifted_slot(k, d, slot) as f32,
+                _ => x0 + w * k as f32,
+            };
+            let rect = Rect::from_min_size(Pos2::new(left, strip.bottom() - TAB_H), Vec2::new(w, TAB_H));
             // A divider between two tabs, unless one of them is on show.
-            let sep = k > 0 && !ons[k] && !ons[k - 1];
-            if let Some(a) = tab(ui, rect, t, ons[k], sep) {
-                act = Some(a);
+            let sep = k > 0 && !ons[k] && !ons[k - 1] && held.is_none();
+            let (a, r) = tab(ui, rect, t, ons[k], sep);
+            if a.is_some() {
+                act = a;
             }
-            x += w;
+            if r.drag_started() {
+                if let Some(p) = r.interact_pointer_pos() {
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (k, p.x - rect.left())));
+                }
+            }
+            if r.drag_stopped() {
+                dropped = to.filter(|(d, _)| *d == k);
+                ui.ctx().data_mut(|d| d.remove::<(usize, f32)>(drag_id));
+            }
+        }
+        x = x0 + w * tabs.len() as f32;
+        // Dropped in a new place: the project list takes that order and keeps it.
+        if let Some((from, to)) = dropped.filter(|(f, t)| f != t) {
+            let dir = self.projects.dirs.remove(from - 1);
+            self.projects.dirs.insert((to - 1).min(self.projects.dirs.len()), dir);
+            self.save_projects();
         }
         let plus = Rect::from_center_size(Pos2::new(x + FLARE + 14.0, strip.bottom() - TAB_H / 2.0 - 1.0), Vec2::splat(28.0));
         let pr = ui.interact(plus, ui.make_persistent_id("tab-plus"), Sense::click());
@@ -178,6 +235,18 @@ impl ShellApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dragged_tab_finds_its_slot_and_the_rest_step_aside() {
+        // Four tabs (All + 3) of 100 from x 0: All stays at slot 0.
+        assert_eq!(drop_slot(-40.0, 0.0, 100.0, 4), 1);
+        assert_eq!(drop_slot(260.0, 0.0, 100.0, 4), 3);
+        assert_eq!(drop_slot(140.0, 0.0, 100.0, 4), 1);
+        // Tab 1 dragged to slot 3: tabs 2 and 3 move left.
+        assert_eq!((shifted_slot(2, 1, 3), shifted_slot(3, 1, 3), shifted_slot(0, 1, 3)), (1, 2, 0));
+        // Tab 3 dragged to slot 1: tabs 1 and 2 move right.
+        assert_eq!((shifted_slot(1, 3, 1), shifted_slot(2, 3, 1)), (2, 3));
+    }
 
     #[test]
     fn all_comes_first_then_each_open_project() {
