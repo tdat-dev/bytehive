@@ -130,7 +130,13 @@ impl ShellApp {
                 let d = self.projects.open(&dir);
                 self.projects.filter = Some(d);
             }
-            ProjectAction::Close(dir) => self.projects.close(&dir),
+            // Its agents go with it: nothing of a closed project keeps
+            // running, resumes, or comes back at the next start.
+            ProjectAction::Close(dir) => {
+                let gone: Vec<String> = self.panes.iter().filter(|p| self.group_of(&p.id).is_some_and(|g| crate::projects::same(&g, &dir))).map(|p| p.id.clone()).collect();
+                self.remove_panes(&gone);
+                self.projects.close(&dir);
+            }
         }
         // Sessions and new tasks follow the project on show.
         if let Some(f) = self.projects.filter.clone() {

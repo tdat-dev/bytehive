@@ -36,7 +36,7 @@ pub fn normalize(dir: &str) -> String {
     d
 }
 
-fn same(a: &str, b: &str) -> bool {
+pub fn same(a: &str, b: &str) -> bool {
     if cfg!(windows) { a.eq_ignore_ascii_case(b) } else { a == b }
 }
 
@@ -78,7 +78,7 @@ impl Projects {
         d
     }
 
-    /// Close a project. Its agents keep running and show under all projects.
+    /// Close a project (the app stops its agents first).
     pub fn close(&mut self, dir: &str) {
         if self.dirs.iter().any(|x| same(x, dir)) {
             self.recent.retain(|x| !same(x, dir));
@@ -94,6 +94,12 @@ impl Projects {
     /// The open project a folder belongs to: the deepest one holding it.
     pub fn owner(&self, dir: &str) -> Option<&str> {
         self.dirs.iter().filter(|p| is_within(dir, p)).max_by_key(|p| p.len()).map(String::as_str)
+    }
+
+    /// Whether `home` lies in a project that was closed and in no open one:
+    /// an agent working there is not brought back.
+    pub fn closed_home(&self, home: &str) -> bool {
+        self.owner(home).is_none() && self.recent.iter().any(|r| is_within(home, r))
     }
 
     /// Whether the current filter shows an agent working from `home`.
@@ -229,6 +235,19 @@ mod tests {
         p.close_all();
         assert!(p.dirs.is_empty());
         assert_eq!(p.recent.len(), 2);
+    }
+
+    #[test]
+    fn a_closed_project_keeps_no_agents_coming_back() {
+        let mut p = Projects::default();
+        p.open(r"D:\a");
+        p.open(r"D:\b");
+        p.close(r"D:\a");
+        assert!(p.closed_home(r"D:\a\src"));
+        assert!(!p.closed_home(r"D:\b"), "an open project's agents stay");
+        assert!(!p.closed_home(r"E:\elsewhere"), "a folder never opened as a project is no closed one");
+        p.open(r"D:\a\app");
+        assert!(!p.closed_home(r"D:\a\app\x"), "inside a project open again");
     }
 
     #[test]

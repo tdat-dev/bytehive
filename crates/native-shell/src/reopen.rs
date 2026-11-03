@@ -85,6 +85,11 @@ impl ShellApp {
         let Ok(text) = std::fs::read_to_string(&p) else { return };
         let list: Vec<Value> = serde_json::from_str(&text).unwrap_or_default();
         for a in &list {
+            // An agent of a project you closed stays closed with it.
+            let home = a["worktree"]["repo"].as_str().or_else(|| a["cwd"].as_str()).unwrap_or_default();
+            if self.projects.closed_home(home) {
+                continue;
+            }
             if let Err(e) = self.reopen_one(a) {
                 self.notice = Some(e);
             }

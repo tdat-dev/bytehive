@@ -98,7 +98,7 @@ fn tab(ui: &mut egui::Ui, rect: Rect, t: &Tab, on: bool, sep: bool) -> (Option<T
             p.circle_filled(at.center(), 9.0, Color32::from_white_alpha(26));
         }
         paint_in(&p, at.shrink(4.0), 10.0, Icon::Close, if x_r.hovered() { TEXT } else { ink }, 1.6);
-        if x_r.on_hover_text("Close project (its agents keep running)").clicked() {
+        if x_r.on_hover_text("Close project and stop its agents").clicked() {
             return (t.dir.clone().map(TabAct::Close), r);
         }
     }
