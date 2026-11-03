@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.9] - 2026-11-03
+
+### Fixed
+
+- **Grid messages are readable again.** Stacking five agents on a portrait
+  monitor left each about 15 rows, which Claude Code's own prompt and status
+  lines fill, so no message showed. Every tile now keeps at least about 72
+  characters by 24 rows; when they don't all fit, the Grid scrolls instead
+  of squeezing them. The wheel over a terminal still scrolls its history,
+  over a tile's header or the bar it scrolls the Grid. Four agents on a wide
+  screen sit 2 x 2.
+
 ## [0.12.8] - 2026-11-03
 
 ### Changed
