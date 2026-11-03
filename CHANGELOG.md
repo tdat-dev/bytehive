@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.7] - 2026-11-03
+
+### Added
+
+- **Agent rows say what each agent works on.** The headline is the
+  conversation's own title as its CLI named it (Claude's, Codex's thread
+  name, OpenCode's session title), else the first line of its job; the
+  persona's name follows, small. While it works, the second line says what
+  on, from its latest step: "Editing grid.rs", "Running cargo test". A
+  worktree agent shows its branch. Grid tiles say the same. All read from
+  the CLIs' own files, with no extra AI calls.
+- **Drag project tabs** along the strip to reorder them, as in Chrome. The
+  order is kept.
+
+### Changed
+
+- **Every key reaches the terminal.** Ctrl+Left and Ctrl+Right jump a word,
+  and Ctrl+Delete, Shift+Tab, Alt+letter and Alt/Shift+Enter (a new line in
+  Claude Code) all work. While you type in a terminal, plain Ctrl+K, Ctrl+N,
+  Ctrl+1..9 and Ctrl+= belong to the agent; ByteHive's own shortcuts take
+  Shift as well there (Ctrl+Shift+K), as in Windows Terminal.
+
 ## [0.12.6] - 2026-11-03
 
 ### Fixed
