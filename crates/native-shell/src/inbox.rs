@@ -1,23 +1,22 @@
 //! The left panel: every agent, grouped by project. A project's header folds
 //! it and carries its count, how many need you, what it cost, and its
-//! memory. An agent's row is its pixel face with a state dot, its name, how
-//! long since it moved, and one line (its state, what it is on, its cost).
-//! Picking a row puts the agent on the stage. The plan meter sits at the
+//! memory; the rows and headers are drawn in agent_row.rs, an agent's menu
+//! is row_menu.rs. Picking a row puts the agent on the stage. The plan meter sits at the
 //! foot. Sessions, Flow and Review open in the same panel, with a way back.
 
 use std::collections::HashSet;
 
-use eframe::egui::{self, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, RichText, Stroke, Vec2};
 use supervise::task_state::TaskState;
 
 use crate::app::{now_ms, ShellApp};
 use crate::commands::SideTab;
-use crate::icons::{paint_in, Icon};
+use crate::agent_row::{project_head, row};
 use crate::projects::{pane_home, project_name};
 use crate::queue_ui::{is_attention, QueueRow};
-use crate::style::{medium, GUTTER, PANEL, RAISE};
+use crate::style::{GUTTER, PANEL};
 use crate::term_pane::Pane;
-use crate::theme::{ADD, AMBER, DEL, DIM, FOCUS, INK3, TEXT};
+use crate::theme::{ADD, AMBER, DEL, FOCUS, INK3};
 
 pub const QUEUE_W: f32 = 320.0;
 
@@ -94,178 +93,10 @@ pub fn panel_ring<R>(ui: &mut egui::Ui, ring: Color32, add: impl FnOnce(&mut egu
         .inner
 }
 
-/// What a row asks of the app.
-enum RowAct {
-    Pick(String),
-    Restart(usize),
-    Remove(String),
-}
-
-/// One agent row (.row); what it was asked to do.
-fn row(ui: &mut egui::Ui, i: usize, p: &Pane, r: &QueueRow, on: bool, now: u64, brief: Option<&crate::brief::Brief>) -> Option<RowAct> {
-    let state = r.status.state;
-    let stopped = p.exit_code.is_some();
-    let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 56.0), Sense::click());
-    let needs = is_attention(state);
-    let painter = ui.painter().clone();
-    let hot = resp.hovered() || resp.contains_pointer();
-    let fill = match (needs, on, hot) {
-        (true, true, _) => Some(AMBER.gamma_multiply(0.20)),
-        (true, _, true) => Some(AMBER.gamma_multiply(0.17)),
-        (true, ..) => Some(AMBER.gamma_multiply(0.12)),
-        (_, true, _) => Some(RAISE),
-        (_, _, true) => Some(Color32::from_white_alpha(8)),
-        _ => None,
-    };
-    if let Some(f) = fill {
-        painter.rect_filled(rect, 12.0, f);
-    }
-    if needs {
-        painter.rect_stroke(rect, 12.0, Stroke::new(1.0, AMBER.gamma_multiply(0.3)), egui::StrokeKind::Inside);
-    } else if on {
-        painter.rect_stroke(rect, 12.0, Stroke::new(1.0, Color32::from_white_alpha(26)), egui::StrokeKind::Inside);
-    }
-    let inner = rect.shrink(10.0);
-    let face = Rect::from_min_size(inner.min + Vec2::new(0.0, 2.0), Vec2::splat(24.0));
-    crate::face::avatar(&painter, face, p.cli, p.custom.as_deref(), &p.name, 7.0, stopped);
-    // The state dot at the face's corner, ringed in the row's ground.
-    let dot = face.right_bottom() + Vec2::new(-1.5, -1.5);
-    let ground = if on { RAISE } else { PANEL };
-    painter.circle_filled(dot, 6.5, ground);
-    if stopped {
-        painter.circle_stroke(dot, 3.75, Stroke::new(1.5, INK3));
-    } else {
-        let c = match state {
-            TaskState::Needs | TaskState::Blocked => AMBER,
-            TaskState::Review => FOCUS,
-            TaskState::Working => ADD,
-            _ => INK3,
-        };
-        painter.circle_filled(dot, if state == TaskState::Merged { 2.5 } else { 4.5 }, c);
-    }
-    let left = inner.left() + 34.0;
-    let mut act = None;
-    // Time at the right, or the ⋯ menu while the pointer is on the row.
-    let more = Rect::from_min_size(Pos2::new(inner.right() - 24.0, inner.top() - 4.0), Vec2::splat(24.0));
-    let more_r = ui.interact(more, ui.make_persistent_id(("row-more", &p.id)), Sense::click());
-    if hot || more_r.hovered() || egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&more_r)) {
-        if more_r.hovered() {
-            painter.rect_filled(more, 12.0, Color32::from_white_alpha(15));
-        }
-        paint_in(&painter, more, 15.0, Icon::Dots, if more_r.hovered() { TEXT } else { INK3 }, 1.6);
-    } else {
-        painter.text(Pos2::new(inner.right(), inner.top() + 1.0), egui::Align2::RIGHT_TOP, since(p.last_output_ms, now), FontId::monospace(12.0), INK3);
-    }
-    egui::Popup::menu(&more_r).show(|ui| {
-        if ui.button(if stopped { "Resume" } else { "Restart" }).clicked() {
-            act = Some(RowAct::Restart(i));
-        }
-        if ui.button("Remove").clicked() {
-            act = Some(RowAct::Remove(p.id.clone()));
-        }
-    });
-    let name_c = if stopped { DIM } else { TEXT };
-    let name_f = if stopped { FontId::proportional(13.5) } else { crate::style::w500(13.5) };
-    // The headline is what it works on (the CLI's title, else its job); the
-    // persona's name follows, small.
-    let title = headline(p, brief);
-    let mut head = egui::text::LayoutJob::default();
-    head.append(title.as_deref().unwrap_or(&p.name), 0.0, egui::TextFormat::simple(name_f, name_c));
-    if title.is_some() {
-        head.append(&format!("  {}", p.name), 0.0, egui::TextFormat::simple(FontId::proportional(12.0), INK3));
-    }
-    head.wrap = egui::text::TextWrapping::truncate_at_width(inner.right() - 34.0 - left);
-    painter.galley(Pos2::new(left, inner.top()), painter.layout_job(head), name_c);
-    let (label, rest) = row_line(&p.name, state, &r.line);
-    // While it works, say what on ("Editing grid.rs"), not just "Working".
-    let rest = match brief.and_then(|b| b.doing.clone()) {
-        Some(d) if !stopped && matches!(state, TaskState::Working | TaskState::Needs | TaskState::Blocked) => d,
-        _ => rest,
-    };
-    let rest = match (&p.worktree, rest.is_empty()) {
-        (Some(w), true) => w.branch.clone(),
-        (Some(w), false) => format!("{rest} \u{00B7} {}", w.branch),
-        (None, _) => rest,
-    };
-    let fmt = |c: Color32| egui::TextFormat::simple(FontId::proportional(12.5), c);
-    let mut sub = egui::text::LayoutJob::default();
-    sub.append(&label, 0.0, fmt(if stopped { INK3 } else { line_color(state) }));
-    if !rest.is_empty() {
-        sub.append(&format!(" \u{00B7} {rest}"), 0.0, fmt(INK3));
-    }
-    if let Some(usd) = p.usage.as_ref().and_then(|u| u.usd) {
-        sub.append(&format!("  \u{00B7}  {}", supervise::pricing::money(usd)), 0.0, egui::TextFormat::simple(FontId::monospace(11.5), INK3));
-    }
-    let chip_w = if stopped { 76.0 } else { 0.0 };
-    sub.wrap = egui::text::TextWrapping::truncate_at_width(inner.right() - left - chip_w);
-    painter.galley(Pos2::new(left, inner.top() + 20.0), painter.layout_job(sub), INK3);
-    if stopped {
-        let chip = Rect::from_min_size(Pos2::new(rect.right() - 8.0 - 68.0, rect.bottom() - 8.0 - 24.0), Vec2::new(68.0, 24.0));
-        let cr = ui.interact(chip, ui.make_persistent_id(("row-resume", &p.id)), Sense::click());
-        let (bg, ink) = if cr.hovered() { (TEXT, Color32::from_rgb(5, 5, 6)) } else { (Color32::from_white_alpha(26), TEXT) };
-        painter.rect_filled(chip, 12.0, bg);
-        painter.text(chip.center(), egui::Align2::CENTER_CENTER, "Resume", medium(12.0), ink);
-        if cr.clicked() {
-            act = Some(RowAct::Restart(i));
-        }
-    }
-    if act.is_none() && resp.clicked() {
-        act = Some(RowAct::Pick(p.id.clone()));
-    }
-    if let Some(t) = &p.task {
-        resp.on_hover_text(t);
-    }
-    act
-}
-
 /// What an agent works on, in a line: its CLI's title for the conversation,
 /// else the first line of the job it was given.
 pub fn headline(p: &Pane, brief: Option<&crate::brief::Brief>) -> Option<String> {
     brief.and_then(|b| b.title.clone()).or_else(|| p.task.clone()).filter(|t| !t.trim().is_empty())
-}
-
-/// A project's header (.proj); (clicked to fold, memory clicked).
-fn project_head(ui: &mut egui::Ui, name: &str, open: bool, count: usize, needs: usize, cost: Option<f64>) -> (egui::Response, bool) {
-    ui.add_space(6.0);
-    let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w - 34.0, 32.0), Sense::click());
-    let p = ui.painter().clone();
-    if resp.hovered() {
-        p.rect_filled(rect, 9.0, Color32::from_white_alpha(10));
-    }
-    let ink = if resp.hovered() { TEXT } else { DIM };
-    let chev = Rect::from_center_size(Pos2::new(rect.left() + 12.0, rect.center().y), Vec2::splat(11.0));
-    crate::icons::paint(&p, chev, Icon::Chevron { open }, INK3, 2.4);
-    let mut x = rect.right() - 6.0;
-    if let Some(usd) = cost {
-        let g = p.layout_no_wrap(format!("\u{00B7} {}", supervise::pricing::money(usd)), FontId::monospace(11.5), INK3);
-        x -= g.size().x;
-        p.galley(Pos2::new(x, rect.center().y - g.size().y / 2.0), g, INK3);
-        x -= 6.0;
-    }
-    let g = p.layout_no_wrap(count.to_string(), FontId::monospace(12.0), INK3);
-    x -= g.size().x;
-    p.galley(Pos2::new(x, rect.center().y - g.size().y / 2.0), g, INK3);
-    x -= 8.0;
-    if needs > 0 {
-        let g = p.layout_no_wrap(needs.to_string(), FontId::new(11.0, egui::FontFamily::Name("monomedium".into())), Color32::from_rgb(26, 18, 4));
-        let badge = Rect::from_min_size(Pos2::new(x - (g.size().x + 10.0).max(18.0), rect.center().y - 9.0), Vec2::new((g.size().x + 10.0).max(18.0), 18.0));
-        p.rect_filled(badge, 9.0, AMBER);
-        p.galley(badge.center() - g.size() / 2.0, g, Color32::BLACK);
-        x = badge.left() - 8.0;
-    }
-    let title = p.layout(name.to_string(), medium(12.5), ink, (x - rect.left() - 26.0).max(20.0));
-    let title = if title.rows.len() > 1 { p.layout_no_wrap(format!("{}\u{2026}", name.chars().take(24).collect::<String>()), medium(12.5), ink) } else { title };
-    p.galley(Pos2::new(rect.left() + 24.0, rect.center().y - title.size().y / 2.0), title, ink);
-    // The memory book at the far right, faint until hovered.
-    let book = Rect::from_min_size(Pos2::new(rect.right() + 2.0, rect.top() + 1.0), Vec2::splat(30.0));
-    let m = ui.interact(book, ui.make_persistent_id(("proj-mem", name)), Sense::click()).on_hover_text("Project memory: what every agent here knows");
-    if m.hovered() {
-        p.rect_filled(book, 9.0, Color32::from_white_alpha(15));
-    }
-    paint_in(&p, book, 15.0, Icon::Book, if m.hovered() { TEXT } else { INK3.gamma_multiply(0.75) }, 1.4);
-    (resp, m.clicked())
 }
 
 impl ShellApp {
@@ -310,9 +141,9 @@ impl ShellApp {
                             let mine: Vec<&&QueueRow> = shown.iter().filter(|r| self.group_of(&r.pane_id).as_deref() == Some(key.as_str())).collect();
                             if one {
                                 for r in mine {
-                                    let Some(i) = self.panes.iter().position(|p| p.id == r.pane_id) else { continue };
+                                    let Some(p) = self.panes.iter().find(|p| p.id == r.pane_id) else { continue };
                                     let on = self.stage.as_deref() == Some(r.pane_id.as_str());
-                                    if let Some(a) = row(ui, i, &self.panes[i], r, on, now, self.extras.briefs.get(&self.panes[i].id)) {
+                                    if let Some(a) = row(ui, p, r, on, now, self.extras.briefs.get(&p.id)) {
                                         act = Some(a);
                                     }
                                 }
@@ -329,10 +160,11 @@ impl ShellApp {
                                 memory = Some(key.clone());
                             }
                             head.context_menu(|ui| {
+                                crate::row_menu::tight(ui);
                                 if ui.button("Project memory").clicked() {
                                     memory = Some(key.clone());
                                 }
-                                if ui.button("Close project").clicked() {
+                                if ui.button("Close project").on_hover_text("Its agents stop and leave the list").clicked() {
                                     close = Some(key.clone());
                                 }
                             });
@@ -348,9 +180,9 @@ impl ShellApp {
                             }
                             ui.add_space(2.0);
                             for r in mine {
-                                let Some(i) = self.panes.iter().position(|p| p.id == r.pane_id) else { continue };
+                                let Some(p) = self.panes.iter().find(|p| p.id == r.pane_id) else { continue };
                                 let on = self.stage.as_deref() == Some(r.pane_id.as_str());
-                                if let Some(a) = row(ui, i, &self.panes[i], r, on, now, self.extras.briefs.get(&self.panes[i].id)) {
+                                if let Some(a) = row(ui, p, r, on, now, self.extras.briefs.get(&p.id)) {
                                     act = Some(a);
                                 }
                             }
@@ -384,26 +216,15 @@ impl ShellApp {
         }
         if let Some(dir) = close {
             self.apply_project(crate::projects_ui::ProjectAction::Close(dir));
+            ui.ctx().request_repaint();
         }
-        match act {
-            Some(RowAct::Pick(id)) => {
-                self.stage = Some(id.clone());
-                self.focus_pane = Some(id);
-                self.board.open = false;
-                self.extras.home = false;
-            }
-            Some(RowAct::Restart(i)) => self.restart_pane(i),
-            Some(RowAct::Remove(id)) => {
-                let gone = agent_core::lock(&self.registry).take(&id);
-                drop(gone);
-                self.panes.retain(|p| p.id != id);
-            }
-            None => {}
+        if let Some(a) = act {
+            self.row_act(a, ui.ctx());
         }
     }
 
     /// The project a pane is grouped under: its open project, else its home.
-    fn group_of(&self, pane_id: &str) -> Option<String> {
+    pub(crate) fn group_of(&self, pane_id: &str) -> Option<String> {
         let p = self.panes.iter().find(|p| p.id == pane_id)?;
         let home = pane_home(p);
         Some(self.projects.owner(&home).map(str::to_string).unwrap_or(home))

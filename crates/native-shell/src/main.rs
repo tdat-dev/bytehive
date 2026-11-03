@@ -3,6 +3,7 @@
 // console for their logs.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod agent_row;
 mod app;
 mod board_ui;
 mod browser_live;
@@ -30,6 +31,7 @@ mod grid;
 mod handoff;
 mod history_task;
 mod inbox;
+mod row_menu;
 mod history_ui;
 mod keys;
 mod land_ui;
