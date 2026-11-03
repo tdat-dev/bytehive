@@ -2,7 +2,7 @@
 Lives next to the PNGs so relative paths resolve when opened directly."""
 import os, json
 
-OUT = r'D:\maestro\src\assets\sprites'
+OUT = r'D:\bytehive\src\assets\sprites'
 man = json.load(open(os.path.join(OUT, "sprites.json")))
 
 SCALE = 3

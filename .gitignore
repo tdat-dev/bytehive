@@ -16,6 +16,10 @@ logs/
 /maestro.exe
 /maestro.old*.exe
 /uninstall.exe
+/bytehive.exe
+/bytehive.old*.exe
+/icon.ico
+/browser-extension/.bytehive-installed
 *.lnk
 
 # Python orchestrator artifacts
