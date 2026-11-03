@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.13] - 2026-11-03
+
+### Changed
+
+- **The terminal only shows the CLI.** While a terminal has the keys,
+  every key is the program's: ByteHive's own shortcuts (Ctrl+K, Ctrl+N,
+  Ctrl+1..9, Ctrl+= and Ctrl+-, the Alt keys of the list) and the
+  window's (Ctrl+Q no longer quits) stand aside. Click outside the
+  terminal to use them. Ctrl+C copies only over a selection on screen,
+  otherwise it interrupts.
+- **Keys go whole, as Windows Terminal sends them.** Windows asks for
+  its own key events at the start of every session, and now gets them:
+  every press and release with the character Windows makes of it on
+  your keyboard layout. No list of allowed keys any more, so F1 to F24,
+  Ctrl+-, Ctrl+Enter, Ctrl+Shift+letters, Alt with any key and AltGr
+  all reach the CLI.
+
+### Fixed
+
+- **Colours as the CLI sends them.** Faint text is dimmed, bold turns
+  the basic colours bright, underlines and strike-through show, a CLI
+  that changes its palette or cursor colour gets it, and the letter
+  under a block cursor stays readable.
+- A CLI asking for the background colour or the window size gets an
+  answer, its copy to clipboard (OSC 52) works, it hears focus in and
+  out, and one that uses the mouse (OpenCode) gets its clicks. Shift
+  still selects.
+
 ## [0.12.12] - 2026-11-03
 
 ### Added
