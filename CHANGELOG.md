@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.11] - 2026-11-03
+
+### Added
+
+- **The old app's Alt keys.** Alt+Up and Alt+Down step through the agents
+  in the list, Alt+S switches Focus and Grid, Alt+R opens Changes, Alt+H
+  History and Alt+O Sessions.
+- **New conversation** in an agent's menu starts it over on a fresh
+  session in the same folder. A merged agent's menu has Clear from list,
+  and a Clear merged button under the list takes all of them off.
+- **Context nearly full** shows in amber on an agent's row once 80% of it
+  is used, and a CLI that gives no price shows its tokens instead.
+
+### Changed
+
+- **Folding a project puts only its stopped agents away**, as in Maestro:
+  the ones still going stay in view, and the header says how many it hides.
+- **Remove agent asks first**, and says the branch and its changes stay.
+
 ## [0.12.10] - 2026-11-03
 
 ### Added
