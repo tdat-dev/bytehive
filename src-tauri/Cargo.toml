@@ -1,6 +1,6 @@
 [package]
 name = "bytehive"
-version = "0.10.10"
+version = "0.13.0"
 description = "ByteHive multi-agent CLI orchestrator"
 authors = ["tdat-dev"]
 license = "MIT"

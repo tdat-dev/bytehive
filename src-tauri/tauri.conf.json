@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ByteHive",
   "mainBinaryName": "bytehive",
-  "version": "0.10.10",
+  "version": "0.13.0",
   "identifier": "com.maestro.app",
   "build": {
     "frontendDist": "../dist",

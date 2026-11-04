@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-04
+
+### Changed
+
+- **Back to the app from v0.10.10, now named ByteHive.** The web interface
+  returns in place of the native Rust app of v0.11 to v0.12.13, with the
+  ByteHive name and honey cell logo. Features added only to the native app
+  are gone with it, such as the right-click agent menu, the Stop button and
+  the terminal that passes every key through. Settings and sessions from
+  the old app come back, and boards and memory stay where they are.
+- **A dev build says ByteHive Dev** on its window, tray and Home.
+
 ## [0.12.13] - 2026-11-03
 
 ### Changed
