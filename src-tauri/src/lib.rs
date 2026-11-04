@@ -20,6 +20,10 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
 
+/// The app's name on screen. A dev build says so, so it can't be mistaken for
+/// the installed app open beside it (src/appname.ts has the same split).
+const APP_NAME: &str = if cfg!(debug_assertions) { "ByteHive Dev" } else { "ByteHive" };
+
 /// Bring the main window back to the foreground (used by the tray icon + menu).
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -31,12 +35,12 @@ fn show_main_window(app: &tauri::AppHandle) {
 /// Build the system-tray icon with a Show/Quit menu. Created hidden — the
 /// frontend turns it on via `set_tray_visible` when "Hide to tray" is enabled.
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show_i = MenuItem::with_id(app, "show", "Show ByteHive", true, None::<&str>)?;
+    let show_i = MenuItem::with_id(app, "show", format!("Show {APP_NAME}"), true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("ByteHive")
+        .tooltip(APP_NAME)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -100,6 +104,9 @@ pub fn run() {
         })
         .setup(|app| {
             adopt::adopt_old_home();
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_title(APP_NAME);
+            }
             build_tray(app)?;
             // the dashboard password's hash lives with the app's config
             if let Ok(dir) = app.path().app_config_dir() {

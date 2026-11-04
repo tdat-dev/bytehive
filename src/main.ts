@@ -1,6 +1,7 @@
 // Styles are loaded via a render-blocking <link> in index.html (not imported
 // here) so the first paint is fully styled — see the note in index.html.
 import { resizePty, killAll, setTrayTooltip } from "./ipc";
+import { APP_NAME } from "./appname";
 import { hiddenGate } from "./hiddengate";
 import { CLI_PRESETS } from "./crew";
 import { type Pane, type Workspace } from "./panetypes";
@@ -161,6 +162,9 @@ function resumeWorkspace() {
   }
 }
 
+document.title = APP_NAME;
+const introWord = document.querySelector(".intro-word");
+if (introWord) introWord.textContent = APP_NAME;
 // (extracted to its own module)
 
 function errMsg(e: unknown): string {
@@ -191,7 +195,7 @@ function updateCount() {
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
   // The tray belongs to the main window; detached windows leave it alone.
   if (!isDetachedWindow) {
-    const tip = totalRun > 0 ? `ByteHive · ${totalRun} running` : "ByteHive";
+    const tip = totalRun > 0 ? `${APP_NAME} · ${totalRun} running` : APP_NAME;
     void setTrayTooltip(tip).catch(() => {});
   }
 }
