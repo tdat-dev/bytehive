@@ -33,6 +33,7 @@ const CUSTOM_OPT = "__custom__";
 
 import { STARTERS } from "./starters";
 import { APP_NAME } from "./appname";
+import { hiveLogo } from "./hivelogo";
 export { STARTERS };
 
 
@@ -153,6 +154,7 @@ export function renderStart(): void {
   const hello = `${greeting(new Date().getHours())}.`;
   if (h1 && h1.textContent !== hello) h1.textContent = hello;
   const tasks = allTasks();
+  el.querySelector(".logo-glow")?.classList.toggle("live", tasks.some((t) => t.status.state === "working"));
   const recents = getRecents();
   const firstRun = recents.length === 0 && workspaces.size === 0;
   const rows = recents.map((dir) => ({ dir, ...projectLine(dir, tasks) }));
@@ -268,7 +270,7 @@ export function mountStart(): void {
   el.setAttribute("aria-label", "Start");
   const now = new Date();
   el.innerHTML = `<div class="st-in">
-    <div class="st-brand"><span class="logo-glow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><defs><linearGradient id="stHoney" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd85c"/><stop offset=".5" stop-color="#f5a524"/><stop offset="1" stop-color="#c86a12"/></linearGradient><pattern id="stComb" width="4.5033" height="7.8" patternUnits="userSpaceOnUse" x="9.748" y="9.4"><path d="M2.2517 0 4.5033 1.3V3.9L2.2517 5.2 0 3.9V1.3ZM2.2517 5.2V7.8" fill="none" stroke="#0e0f12" stroke-opacity=".22" stroke-width=".32"/></pattern><mask id="stPrompt"><rect width="24" height="24" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8.8 11.39 12.19 8 15.58"/><path d="M13.65 15.58H17.49"/></g></mask></defs><g mask="url(#stPrompt)" stroke="none"><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#stHoney)"/><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#stComb)"/></g><path class="mFlow" pathLength="1" d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" stroke="#ffe9a8" stroke-width=".9" stroke-linecap="round"/></svg></span>${APP_NAME}</div>
+    <div class="st-brand"><span class="logo-glow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none">${hiveLogo("st")}</svg></span>${APP_NAME}</div>
     <h1>${greeting(now.getHours())}.</h1>
     <p class="st-status" aria-live="polite"></p>
     ${composerHTML()}
