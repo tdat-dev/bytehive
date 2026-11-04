@@ -1,4 +1,4 @@
-/* Pure board mutations for bytehive-mcp. All take the Board in memory; the
+/* Pure board mutations for maestro-mcp. All take the Board in memory; the
  * caller (server.ts) wraps them in load → mutate → save. References resolve
  * by id first, then case-insensitive title; ambiguity is an error so agents
  * fall back to ids from board_get. */

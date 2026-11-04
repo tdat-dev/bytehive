@@ -1,11 +1,10 @@
 /* The agent's cursor, drawn over the page it works in (injected with
  * chrome.scripting.executeScript, so it must be self-contained).
  *
- * It glides to where the agent is about to act, outlines what it is about to
- * press or fill, presses there, and wears the agent's name and colour. While
- * the agent works, a thin frame and a pill show what it is doing now ("Ana ·
- * Clicking "Sign in"" · Stop), with its last steps under it, so whoever
- * watches can follow; after a minute with nothing to do, all of it fades.
+ * It glides to where the agent is about to act, presses there, and wears the
+ * agent's name and colour. While the agent works, a thin frame and a pill
+ * ("Ana is using this tab" · Stop) show; after a few idle seconds all of it
+ * fades away.
  *
  * Built to cost nothing on a slow machine:
  * - frames run only while the cursor travels (0.2–0.6 s), never while idle;
@@ -17,18 +16,15 @@
  * - the layer is `contain: strict` and never takes the mouse.
  *
  * op: "move" {x, y} (resolves on arrival) · "click" {x, y, button} ·
- *     "key" {text} · "type" {text} · "step" {text} (what it does now) ·
- *     "outline" {rect} · "show" · "hide" / "unhide" (around the agent's own
- *     screenshots). Every op carries {name, color, from, steps}: `steps` is
- *     the agent's recent steps, kept by the extension, so a new page shows
- *     them again. */
+ *     "key" {text} · "type" {text} · "show" · "hide" / "unhide" (around the
+ *     agent's own screenshots). Every op carries {name, color, from}. */
 export function cursorAct(op, o) {
-  const IDLE_MS = 60000;
+  const IDLE_MS = 6000;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let S = globalThis.__bytehiveCursor;
+  let S = globalThis.__maestroCursor;
   if (!S || !S.host.isConnected) {
     const host = document.createElement("div");
-    host.setAttribute("data-bytehive-overlay", "");
+    host.setAttribute("data-maestro-overlay", "");
     host.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none;contain:strict;";
     const root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `
@@ -46,13 +42,6 @@ export function cursorAct(op, o) {
   .pill button:hover{background:#e5484d}
   .pill button:focus-visible{outline:2px solid #fff;outline-offset:2px}
   .pill.stopped i{background:#f0bf6a;box-shadow:0 0 0 3px rgba(240,191,106,.3)}
-  .what{color:#d4d4d8;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
-  .log{position:fixed;top:48px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;opacity:0;transition:opacity .3s ease;pointer-events:none}
-  .log span{padding:3px 9px;border-radius:999px;background:rgba(22,22,26,.82);color:#a1a1aa;font:500 11px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .log span:nth-child(2){opacity:.7}
-  .on .log{opacity:1}
-  .box{position:fixed;left:0;top:0;border:2px solid var(--c);border-radius:7px;box-shadow:0 0 0 4px var(--c-soft);opacity:0;animation:box .9s ease-out forwards}
-  @keyframes box{0%{opacity:0}15%{opacity:1}70%{opacity:1}100%{opacity:0}}
   .on .frame{opacity:1}
   .on .pill{opacity:1;transform:translate(-50%,0);pointer-events:auto}
   .cur{position:fixed;left:0;top:0;opacity:0;transition:opacity .25s ease}
@@ -75,7 +64,6 @@ export function cursorAct(op, o) {
 <div class="wrap">
   <div class="frame"></div>
   <div class="pill" role="status"><i></i><span><b class="who"></b> <span class="what">is using this tab</span></span><button type="button">Stop</button></div>
-  <div class="log"></div>
   <div class="fx"></div>
   <div class="cur">
     <svg class="arrow" width="24" height="26" viewBox="0 0 24 26" aria-hidden="true">
@@ -88,14 +76,14 @@ export function cursorAct(op, o) {
 </div>`;
     (document.body ?? document.documentElement).append(host);
     const $ = (s) => root.querySelector(s);
-    S = globalThis.__bytehiveCursor = {
-      host, wrap: $(".wrap"), cur: $(".cur"), tag: $(".tag"), chip: $(".chip"), who: $(".who"), what: $(".what"), log: $(".log"),
+    S = globalThis.__maestroCursor = {
+      host, wrap: $(".wrap"), cur: $(".cur"), tag: $(".tag"), chip: $(".chip"), who: $(".who"), what: $(".what"),
       pill: $(".pill"), fx: $(".fx"), x: o.from?.[0] ?? innerWidth * 0.62, y: o.from?.[1] ?? innerHeight * 0.55,
       idle: 0, chipT: 0, raf: 0, name: "",
     };
     S.pill.querySelector("button").addEventListener("click", () => {
       S.pill.classList.add("stopped");
-      S.what.textContent = "is stopped. It waits for you in ByteHive.";
+      S.what.textContent = "is stopped. It waits for you in Maestro.";
       S.pill.querySelector("button").remove();
       try { chrome.runtime.sendMessage({ type: "stop_agent", agent: S.name }); } catch {}
     });
@@ -124,26 +112,10 @@ export function cursorAct(op, o) {
     S.chipT = setTimeout(() => S.chip.classList.remove("show"), ms);
   };
 
-  // What it does now in the pill, the steps before it under the pill.
-  if (Array.isArray(o.steps) && o.steps.length && !S.pill.classList.contains("stopped")) {
-    const [now, ...before] = o.steps;
-    S.what.textContent = `\u00b7 ${now}`;
-    S.log.replaceChildren(...before.slice(0, 2).map((t) => Object.assign(document.createElement("span"), { textContent: t })));
-  }
   if (op === "hide") { S.host.style.visibility = "hidden"; return true; }
   if (op === "unhide") { S.host.style.visibility = ""; return true; }
   wake();
-  if (op === "show" || op === "step") return [S.x, S.y];
-  if (op === "outline" && o.rect) {
-    // A frame round what the agent is about to press or fill.
-    const b = document.createElement("div");
-    b.className = "box";
-    const { x, y, w, h } = o.rect;
-    b.style.cssText = `transform:translate(${x - 4}px,${y - 4}px);width:${w + 8}px;height:${h + 8}px`;
-    S.fx.append(b);
-    setTimeout(() => b.remove(), 950);
-    return true;
-  }
+  if (op === "show") return [S.x, S.y];
   if (op === "key") { say(o.text); return true; }
   if (op === "type") { const t = o.text ?? ""; say(t.length > 28 ? `${t.slice(0, 27)}…` : t || "Typing…", 1800); return true; }
 

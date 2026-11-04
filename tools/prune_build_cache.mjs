@@ -1,11 +1,11 @@
-// Prune stale Rust incremental-compilation caches out of crates/native-shell/target.
+// Prune stale Rust incremental-compilation caches out of src-tauri/target.
 //
 // Why this exists: cargo writes one incremental cache per (crate, build
 // configuration) as `<crate>-<hash>/`, and it never removes the ones it has
 // stopped using. Every config change — `tauri dev` vs `tauri build` vs
 // `cargo test`, a feature flag, a profile edit — mints a fresh hash and orphans
 // the old directory forever. On 2026-07-30 this repo held ten caches for
-// `bytehive_lib` alone at ~850 MB each: 8.4 GB of the 20 GB target, all dead.
+// `maestro_lib` alone at ~850 MB each: 8.4 GB of the 20 GB target, all dead.
 //
 // Deleting a cache is never destructive — it is a build accelerator, not build
 // output. The worst case is that one crate recompiles from scratch next build.
@@ -23,7 +23,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_AGE_DAYS = 7;
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "crates", "native-shell", "target");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri", "target");
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");

@@ -1,0 +1,100 @@
+[package]
+name = "maestro"
+version = "0.10.10"
+description = "Maestro multi-agent CLI orchestrator"
+authors = ["tdat-dev"]
+license = "MIT"
+repository = "https://github.com/tdat-dev/maestro"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "maestro_lib"
+# rlib only. The Tauri template ships `["staticlib", "cdylib", "rlib"]` so the
+# same crate can be linked into an iOS or Android host; Maestro is Windows-only
+# (see the `windows` dependency below), so those two outputs were compiled every
+# build and linked by nobody — `maestro_lib.lib` alone was 1.0 GB of the debug
+# target. Add them back if this ever targets mobile.
+crate-type = ["rlib"]
+
+# Cargo always emits `maestro-dev.exe`, so a `tauri dev` build can never share an
+# image name with an installed production Maestro (`maestro.exe`) — anything that
+# matches processes by name while developing then cannot kill the real app.
+# `tauri build` renames it back via `mainBinaryName` in tauri.conf.json, so the
+# shipped binary is still `maestro.exe`. (`mainBinaryName` only applies to
+# `tauri build`, never to `tauri dev` — hence doing the split at the Cargo level.)
+[[bin]]
+name = "maestro-dev"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-notification = "2"
+# the plugin's own toasts can't tell a click; these can (toast.rs)
+tauri-winrt-notification = "0.7"
+tauri-plugin-opener = "2"
+portable-pty = "0.9.0"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_System_Pipes",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Storage_Xps",
+] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+png = "0.17"
+tiny_http = "0.12"
+# the dashboard's password (argon2id hash) and its session tokens
+argon2 = "0.5"
+getrandom = "0.2"
+base64 = "0.22"
+tungstenite = "0.21"
+notify = "8"
+trash = "5"
+rusqlite = { version = "0.31", features = ["bundled"] }
+# already built for the updater; used to ask Anthropic for the plan's usage
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+
+[dev-dependencies]
+serial_test = "3"
+portable-pty = "0.9.0"
+tempfile = "3"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Pipes",
+] }
+
+# Debug info is what makes a debug build enormous: it is emitted into every
+# rlib and every .pdb, and then copied again into each incremental cache. The
+# split below keeps what is actually used day to day and drops the rest.
+[profile.dev]
+# Panics and backtraces still name file:line — that is what a crash report needs.
+# What is gone is variable inspection in a step debugger; if you ever need to
+# attach one, flip this to `true` for that session.
+debug = "line-tables-only"
+
+[profile.dev.package.argon2]
+# An unoptimised argon2 takes seconds per dashboard login (and per test).
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package."*"]
+# Nobody steps into tokio or the `windows` crate. Their debug info was the single
+# largest slice of target/debug/deps.
+debug = false

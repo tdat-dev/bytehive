@@ -2,7 +2,7 @@
 Lives next to the PNGs so relative paths resolve when opened directly."""
 import os, json
 
-OUT = r'D:\bytehive\src\assets\sprites'
+OUT = r'D:\maestro\src\assets\sprites'
 man = json.load(open(os.path.join(OUT, "sprites.json")))
 
 SCALE = 3
@@ -24,7 +24,7 @@ for name, m in man.items():
 
 html = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<title>ByteHive mascot sprites</title>
+<title>Maestro mascot sprites</title>
 <style>
   :root{{color-scheme:dark}}
   body{{margin:0;background:#15171c;color:#e6e8ee;
@@ -47,7 +47,7 @@ html = f'''<!doctype html>
   {''.join(kf)}
 </style></head>
 <body>
-  <h1>ByteHive mascot — pixel sprites</h1>
+  <h1>Maestro mascot — pixel sprites</h1>
   <p class="sub">{len(man)} animations sliced from the reference sheet · CSS steps() preview · scaled {SCALE}×</p>
   <div class="grid">
 {chr(10).join(cards)}

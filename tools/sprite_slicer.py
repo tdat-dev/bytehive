@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 SRC = r'C:\Users\tvmar\.claude\image-cache\c01ed771-bd47-4846-b4e2-547271e516b0\1.png'
-OUT = r'D:\bytehive\src\assets\sprites'
+OUT = r'D:\maestro\src\assets\sprites'
 os.makedirs(OUT, exist_ok=True)
 
 img = Image.open(SRC).convert('RGBA')

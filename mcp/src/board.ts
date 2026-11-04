@@ -1,5 +1,5 @@
-/* Board store for bytehive-mcp: the .bytehive/board.json shapes shared with the
- * ByteHive app (src/kanban.ts), plus load/save. Every tool call re-reads the
+/* Board store for maestro-mcp: the .maestro/board.json shapes shared with the
+ * Maestro app (src/kanban.ts), plus load/save. Every tool call re-reads the
  * file — no caching — and writes atomically (tmp + rename). */
 
 import fs from "node:fs";
@@ -15,7 +15,7 @@ export interface DoneInfo {
   files: string[];
   summary?: string;
   at: number;
-  by?: string; // which agent finished it (BYTEHIVE_AGENT)
+  by?: string; // which agent finished it (MAESTRO_AGENT)
 }
 export interface Card {
   id: string;
@@ -105,7 +105,7 @@ export function normalizeBoard(raw: unknown): Board {
 }
 
 export function boardPath(dir: string): string {
-  return path.join(dir, ".bytehive", "board.json");
+  return path.join(dir, ".maestro", "board.json");
 }
 
 export function loadBoard(dir: string): Board {
@@ -121,7 +121,7 @@ export function loadBoard(dir: string): Board {
     parsed = JSON.parse(raw);
   } catch {
     // The app's fs_write_file (src/boardfile.ts) is not atomic — truncate +
-    // write in place — so a concurrent ByteHive UI write can be caught
+    // write in place — so a concurrent Maestro UI write can be caught
     // mid-write here. Give it one short retry before assuming real
     // corruption; a torn read self-heals within a handful of ms.
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
@@ -130,7 +130,7 @@ export function loadBoard(dir: string): Board {
       parsed = JSON.parse(raw);
     } catch {
       throw new BoardError(
-        ".bytehive/board.json is not valid JSON — it may be mid-write; retry in a moment, and only fix or delete the file if the error persists",
+        ".maestro/board.json is not valid JSON — it may be mid-write; retry in a moment, and only fix or delete the file if the error persists",
       );
     }
   }

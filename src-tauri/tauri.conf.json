@@ -1,0 +1,56 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "maestro",
+  "mainBinaryName": "maestro",
+  "version": "0.10.10",
+  "identifier": "com.maestro.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:17630",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Maestro",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 540,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/tdat-dev/maestro-releases/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVBMDJBOUQxN0Y5QzJDODcKUldTSExKeC8wYWtDV3FEU0JQN1ROeHBiL1FmVTREbkJVSHZkeEt1NXFRaGlGV3FoV0pLODhqK2wK"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    },
+    "resources": {
+      "../browser-extension/": "browser-extension/"
+    }
+  }
+}

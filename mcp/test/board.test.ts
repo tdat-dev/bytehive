@@ -15,7 +15,7 @@ import {
 
 let dir: string;
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-mcp-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-mcp-"));
 });
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
@@ -60,7 +60,7 @@ describe("loadBoard", () => {
   });
 
   it("throws BoardError on invalid JSON and leaves the file untouched", () => {
-    fs.mkdirSync(path.join(dir, ".bytehive"), { recursive: true });
+    fs.mkdirSync(path.join(dir, ".maestro"), { recursive: true });
     fs.writeFileSync(boardPath(dir), "{not json", "utf8");
     // Persistently-invalid JSON survives loadBoard's one torn-read retry and
     // surfaces the softened "may be mid-write" wording, not "fix or delete".
@@ -70,7 +70,7 @@ describe("loadBoard", () => {
   });
 
   it("throws BoardError when lists is missing", () => {
-    fs.mkdirSync(path.join(dir, ".bytehive"), { recursive: true });
+    fs.mkdirSync(path.join(dir, ".maestro"), { recursive: true });
     fs.writeFileSync(boardPath(dir), JSON.stringify({ version: 2 }), "utf8");
     expect(() => loadBoard(dir)).toThrow(BoardError);
   });
@@ -115,11 +115,11 @@ describe("normalizeBoard", () => {
 });
 
 describe("saveBoard", () => {
-  it("creates .bytehive/ on first write and leaves no tmp file", () => {
+  it("creates .maestro/ on first write and leaves no tmp file", () => {
     saveBoard(dir, defaultBoard());
     expect(fs.existsSync(boardPath(dir))).toBe(true);
     const leftovers = fs
-      .readdirSync(path.join(dir, ".bytehive"))
+      .readdirSync(path.join(dir, ".maestro"))
       .filter((f) => f.endsWith(".tmp"));
     expect(leftovers).toEqual([]);
   });

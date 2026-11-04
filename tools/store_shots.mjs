@@ -1,6 +1,6 @@
 // Screenshots for the Chrome Web Store listing (1280x800), from the real
-// extension code and real ByteHive captures, in a throwaway headless Chrome:
-//   node tools/store_shots.mjs <bytehive-live-view.png> <bytehive-asks.png>
+// extension code and real Maestro captures, in a throwaway headless Chrome:
+//   node tools/store_shots.mjs <maestro-live-view.png> <maestro-asks.png>
 // → browser-extension/store/1-cursor.png … 4-popup.png
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -48,7 +48,7 @@ await ev(`cursorAct("click", Object.assign(${O}, { x: ${x}, y: ${y} }))`);
 await sleep(130);
 await shot("1-cursor.png");
 
-// 2–3. ByteHive itself, fitted to 1280x800 without stretching.
+// 2–3. Maestro itself, fitted to 1280x800 without stretching.
 const fit = async (src, name, position) => {
   const html = `<!doctype html><body style="margin:0;background:#050506;width:${W}px;height:${H}px;overflow:hidden">
 <img src="${fileUrl(src)}" style="width:100%;height:100%;object-fit:cover;object-position:${position}"></body>`;

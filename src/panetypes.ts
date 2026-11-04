@@ -1,0 +1,64 @@
+// Shared workspace/pane/spec types, split out so feature modules can depend on
+// them without importing back into main.ts (avoids circular imports).
+import { type TerminalHandle } from "./terminal";
+import { type Tile } from "./canvas";
+
+/** The launch recipe for one agent — kept on the pane so a session can be
+ *  serialized and re-booted. */
+export interface AgentSpec {
+  program: string;
+  args: string[];
+  cwd: string | null;
+  name: string;
+  badge: string;
+  color: string;
+  mono: string;
+  role?: "conductor"; // a conductor gets the orchestration system prompt
+  worktree?: string; // worktree path once created (isolated agents)
+  branch?: string; // the agent's git branch (isolated agents)
+  title?: string; // what it was asked to do, short ("Fix the flaky upload test")
+  race?: { id: string; n: number; of: number }; // one of several agents given the same job
+  sessionId?: string; // Claude Code session of the current run, so the chat view finds its transcript
+  resumeIn?: string; // a conversation begun in another folder is carried on there: the CLI runs in it, no worktree
+  ranIn?: string; // the folder the CLI was started in: its worktree, the project folder, or home for a project without one
+}
+
+/** One agent pane: its DOM, its terminal, and live status bookkeeping. */
+export interface Pane {
+  id: string;
+  el: HTMLElement;
+  term: TerminalHandle;
+  running: boolean;
+  spawnedAt: number | null;
+  lastOutputAt: number; // ms of the last PTY output — drives the active/idle status
+  lastInputAt: number; // ms of the last user keystroke into this pane (attention reset)
+  attention: boolean; // agent went silent after output → probably waiting on the user
+  attentionClearedAt: number; // ms attention was last cleared (so a quiet prompt can't re-flag)
+  attentionNotified: boolean; // OS notification already fired for the current flag
+  color: string;
+  spec: AgentSpec; // the launch recipe — kept so the session can be serialized + re-booted
+  toggleFind?: () => void; // open/close this pane's find bar (set by wirePaneSearch)
+  error?: string; // why the last start failed ("The folder … doesn't exist anymore.")
+  run?: number; // run number of the current process (pty_spawn); an older run's exit is ignored
+  spawning?: boolean; // a pty_spawn is in flight: an exit of a newer run is held (ptyexit.ts)
+  exitCode?: number; // how its last process ended, once it has (a crash tells you, finishwatch.ts)
+  /** Start again in this same pane (keeps id, stage, chat, Grid spot): its own
+   *  conversation again, a new one (fresh), or an earlier one (session). */
+  restart?: (opts?: { fresh?: boolean; session?: string; dir?: string }) => Promise<void>;
+  recording?: string; // absolute path of the active recording file, when recording
+  /** Another agent took over its task (by name): it is not told to carry on
+   *  when its usage limit resets. Cleared when it starts again. */
+  handedTo?: string;
+}
+
+/** A workspace tab: its own canvas of panes. Only the active one is shown. */
+export interface Workspace {
+  id: string;
+  name: string;
+  dir: string | null;
+  repoRoot: string | null; // git repo root when isolated; else null
+  isolated: boolean; // create a worktree per agent
+  gridEl: HTMLElement;
+  panes: Map<string, Pane>;
+  layout: Map<string, Tile>; // canvas position + size per pane id
+}

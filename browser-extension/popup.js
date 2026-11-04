@@ -1,8 +1,8 @@
 const COPY = {
-  ready: ["Connected to ByteHive", "Your agents can use this browser. Each one works in its own tab group."],
-  connecting: ["Connecting…", "Reaching the ByteHive app."],
-  "hub-down": ["ByteHive isn't open", "Open ByteHive and this connects by itself."],
-  "no-host": ["ByteHive isn't set up on this computer", "Install or open ByteHive once, then restart Chrome."],
+  ready: ["Connected to Maestro", "Your agents can use this browser. Each one works in its own tab group."],
+  connecting: ["Connecting…", "Reaching the Maestro app."],
+  "hub-down": ["Maestro isn't open", "Open Maestro and this connects by itself."],
+  "no-host": ["Maestro isn't set up on this computer", "Install or open Maestro once, then restart Chrome."],
   offline: ["Not connected", "Trying again in a few seconds."],
 };
 

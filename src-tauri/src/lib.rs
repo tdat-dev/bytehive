@@ -1,0 +1,193 @@
+pub mod browser;
+pub mod commands;
+pub mod core;
+pub mod dashauth;
+pub mod dashboard;
+pub mod error;
+pub mod land;
+pub mod planusage;
+pub mod agentusage;
+pub mod state;
+pub mod review;
+pub mod tailfile;
+pub mod toast;
+pub mod transcripts;
+pub mod worktree;
+
+use crate::state::AppState;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager};
+
+/// Bring the main window back to the foreground (used by the tray icon + menu).
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
+/// Build the system-tray icon with a Show/Quit menu. Created hidden — the
+/// frontend turns it on via `set_tray_visible` when "Hide to tray" is enabled.
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show_i = MenuItem::with_id(app, "show", "Show Maestro", true, None::<&str>)?;
+    let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+    let mut builder = TrayIconBuilder::with_id("main")
+        .tooltip("Maestro")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main_window(app),
+            "quit" => {
+                // Surface the window so the frontend's kill-all confirm is visible,
+                // then let the frontend run its existing quit flow.
+                show_main_window(app);
+                let _ = app.emit("tray-quit", ());
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+
+    // Built visible by default; hide it until the frontend enables "Hide to tray".
+    let tray = builder.build(app)?;
+    tray.set_visible(false)?;
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(AppState::default())
+        .manage(browser::BrowserState::default())
+        // WebView2 keeps compositing at full rate while its window is minimized unless the
+        // host says the view is hidden (Microsoft's guidance: IsVisible = false when
+        // minimized). Measured 2026-10-10: a minimized Maestro still kept the 3D engine
+        // ~45% busy. Hidden, the page gets document.hidden, requestAnimationFrame stops
+        // and xterm stops repainting; power.ts repaints on the way back.
+        .on_window_event(|window, event| {
+            #[cfg(windows)]
+            if let tauri::WindowEvent::Resized(_) = event {
+                if let Some(wv) = window.app_handle().get_webview_window(window.label()) {
+                    let visible = !wv.is_minimized().unwrap_or(false);
+                    let _ = wv.with_webview(move |pw| unsafe {
+                        let _ = pw.controller().SetIsVisible(visible);
+                    });
+                }
+            }
+            #[cfg(not(windows))]
+            let _ = (window, event);
+        })
+        .setup(|app| {
+            build_tray(app)?;
+            // the dashboard password's hash lives with the app's config
+            if let Ok(dir) = app.path().app_config_dir() {
+                app.state::<AppState>().dashboard.auth.load_from(dir);
+            }
+            browser::start(app.handle(), &app.state::<browser::BrowserState>());
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::pty_spawn,
+            commands::pty_attach,
+            commands::pty_input,
+            commands::pty_resize,
+            commands::pty_kill,
+            commands::pty_kill_all,
+            commands::set_tray_visible,
+            commands::set_tray_tooltip,
+            toast::notify_open,
+            commands::programs_on_path,
+            commands::record_start,
+            commands::record_stop,
+            commands::record_read,
+            commands::claude_usage,
+            commands::claude_session_usage,
+            planusage::claude_plan_usage,
+            planusage::codex_plan_usage,
+            agentusage::agent_usage,
+            commands::claude_transcript,
+            transcripts::codex::codex_transcript,
+            transcripts::opencode::opencode_transcript,
+            tailfile::fs_read_lines_from,
+            tailfile::fs_truncate_if_size,
+            commands::save_pasted_image,
+            commands::save_pasted_file,
+            commands::run_capture,
+            commands::claude_session_exists,
+            commands::claude_live_sessions,
+            commands::claude_sessions,
+            commands::claude_sessions_everywhere,
+            commands::claude_sessions_in,
+            worktree::git_repo_root,
+            worktree::worktree_add,
+            worktree::worktree_remove,
+            worktree::worktree_leave,
+            worktree::workspace_files,
+            review::git_repos_under,
+            review::repo_diff,
+            review::git_changed_files,
+            review::review_repo_info,
+            review::review_commit,
+            review::review_merge,
+            review::review_discard,
+            review::review_remove_worktree,
+            land::review_land,
+            land::review_discard_branch,
+            land::review_branch_diff,
+            core::fs::fs_read_dir,
+            core::fs::fs_read_file,
+            core::fs::fs_stat,
+            core::fs::fs_write_file,
+            core::fs::fs_read_data_url,
+            core::fs::fs_create_file,
+            core::fs::fs_create_dir,
+            core::fs::fs_rename,
+            core::fs::fs_delete,
+            core::fs::fs_copy,
+            core::fs::fs_move,
+            core::fs::fs_trash,
+            core::fs::fs_reveal,
+            core::fs::fs_open_external,
+            core::watch::watch_start,
+            core::watch::watch_stop,
+            core::screenshot::capture_window,
+            dashboard::dashboard_status,
+            dashboard::dashboard_start,
+            dashboard::dashboard_stop,
+            dashboard::dashboard_push,
+            dashboard::dashboard_password_status,
+            dashboard::dashboard_password_set,
+            dashboard::dashboard_password_clear,
+            browser::browser_status,
+            browser::browser_profiles,
+            browser::browser_open_profile,
+            browser::browser_activity,
+            browser::browser_pause,
+            browser::browser_peek,
+            browser::browser_asks,
+            browser::browser_answer,
+            browser::browser_set_ask,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

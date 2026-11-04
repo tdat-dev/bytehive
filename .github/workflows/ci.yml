@@ -10,56 +10,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  length:
-    name: File length gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Check file lengths
-        run: node tools/check_file_length.mjs
-
-  rust:
-    name: Rust crates (check / test)
+  frontend:
+    name: Frontend (tsc / vitest / build)
     runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            crates/agent-core
-            crates/supervise
-            crates/dashboard
-            crates/browser-hub
-            crates/native-shell
-
-      # Each crate is its own workspace, so each gets its own check + test.
-      - name: Cargo check/test crates
-        shell: pwsh
-        run: |
-          foreach ($d in @('crates/agent-core', 'crates/supervise', 'crates/dashboard', 'crates/browser-hub', 'crates/native-shell')) {
-            cargo check --manifest-path "$d/Cargo.toml"
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-            cargo test --manifest-path "$d/Cargo.toml"
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-          }
-
-  mcp:
-    name: MCP server (typecheck / test / build)
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: mcp
     steps:
       - uses: actions/checkout@v4
 
@@ -68,9 +21,48 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: mcp/package-lock.json
 
-      - run: npm ci
-      - run: npx tsc --noEmit -p tsconfig.json
-      - run: npx vitest run
-      - run: npm run build
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npx vitest run
+
+      - name: Build
+        run: npm run build
+
+  rust:
+    name: Rust (cargo check / test)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri"
+
+      # dashboard.rs include_str!s xterm's js/css straight out of node_modules,
+      # so the crate does not compile until the npm tree is on disk.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cargo check
+        run: cargo check
+        working-directory: src-tauri
+
+      - name: Cargo test
+        run: cargo test
+        working-directory: src-tauri

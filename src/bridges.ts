@@ -1,0 +1,365 @@
+// Drag-drop + Kanban-bridge cluster: OS file-drop and in-app file-tree drag
+// onto a terminal pane, the agentbridge wiring that lets the Kanban board talk
+// to the focused/targeted/fleet-wide panes, and the fleet file-bridge that
+// publishes the roster to .maestro/fleet.json for the maestro MCP tools. Split
+// out of main.ts; the handful of main-side helpers it calls (workspace switch,
+// attention/status bookkeeping, recording stop) are injected via
+// configureBridges to avoid a circular import.
+
+import {
+  sendMessage,
+  setPaneScreenReader,
+  setPaneBracketedPasteReader,
+  onDragDrop,
+  onExit,
+} from "./ipc";
+import { type Pane, type Workspace } from "./panetypes";
+import { workspaces, activeWs } from "./appstate";
+import { focusPane } from "./panelayout";
+import {
+  setAgentSender,
+  setPaneTargeting,
+  setFleet,
+  setAgentSenderById,
+  setPaneFocuser,
+  setFleetSnapshot,
+  setPaneRevealer,
+  type FleetPane,
+} from "./agentbridge";
+import { initFleetBridge, deliveryTargets } from "./fleetbridge";
+import { knownConversation } from "./chatsource";
+import { exitVerdict, holdExit, setExitHandler } from "./ptyexit";
+import { spawnForConductor } from "./spawnmodal";
+import { paneStatus } from "./fleet";
+import { showDelegation, showDelegationToast } from "./delegation";
+import { pushFlow } from "./flow";
+
+const wsHost = document.getElementById("workspaces") as HTMLElement;
+
+let activateWorkspace: (ws: Workspace) => void = () => {};
+let clearAttention: (pane: Pane) => void = () => {};
+let setStatus: (p: Pane, text: string, cls: "" | "run" | "err" | "wait") => void = () => {};
+let updateCount: () => void = () => {};
+let stopRecording: (p: Pane) => Promise<string | null> = async () => null;
+export function configureBridges(deps: {
+  activateWorkspace: (ws: Workspace) => void;
+  clearAttention: (pane: Pane) => void;
+  setStatus: (p: Pane, text: string, cls: "" | "run" | "err" | "wait") => void;
+  updateCount: () => void;
+  stopRecording: (p: Pane) => Promise<string | null>;
+}): void {
+  activateWorkspace = deps.activateWorkspace;
+  clearAttention = deps.clearAttention;
+  setStatus = deps.setStatus;
+  updateCount = deps.updateCount;
+  stopRecording = deps.stopRecording;
+}
+
+/* ---------------- file drag-drop → terminal ---------------- */
+// Drop a file (e.g. a PDF) onto a pane and its path is typed into that agent's
+// terminal — so you can then ask the AI to read it. The pane under the cursor
+// is highlighted while dragging.
+let dropTarget: Pane | null = null;
+function paneAtPoint(x: number, y: number): Pane | null {
+  const dpr = window.devicePixelRatio || 1;
+  const el = document.elementFromPoint(x / dpr, y / dpr)?.closest<HTMLElement>(".pane");
+  const id = el?.dataset.id;
+  return id && activeWs ? activeWs.panes.get(id) ?? null : null;
+}
+// `agent` swaps the pane's drop label from "attach path" to "send task": a
+// Kanban card being dragged onto the pane, not a file.
+let dropAgent = false;
+function setDropTarget(p: Pane | null, agent = false) {
+  if (p === dropTarget && agent === dropAgent) return;
+  dropTarget?.el.classList.remove("drop-target", "drop-agent");
+  dropTarget = p;
+  dropAgent = agent;
+  if (p) {
+    p.el.classList.add("drop-target");
+    if (agent) p.el.classList.add("drop-agent");
+  }
+}
+/** Type whitespace-quoted path(s) into a pane's PTY, then focus it. Shared by
+ *  the OS file-drop (paths from outside the app) and the in-app file-tree drag. */
+function dropPathsIntoPane(target: Pane, paths: string[]) {
+  if (paths.length === 0) return;
+  const text = paths.map((p) => (/\s/.test(p) ? `"${p}"` : p)).join(" ") + " ";
+  void sendMessage(target.id, text, false).catch(() => {});
+  target.term.focus();
+}
+
+/* ---- active agent target (for the Kanban plan bridge) ---- */
+// Track the last pane the user interacted with so "Plan with AI" / "Send
+// approved" type into the agent they're looking at (else the first pane).
+let lastFocusedPaneId: string | null = null;
+
+/** Pane under a CSS-pixel point (pointer client coords need no DPR scaling). */
+function paneAtClient(x: number, y: number): Pane | null {
+  const el = document.elementFromPoint(x, y)?.closest<HTMLElement>(".pane");
+  const id = el?.dataset.id;
+  return id && activeWs ? activeWs.panes.get(id) ?? null : null;
+}
+
+/* ---- in-app drag: a file-tree row → a terminal pane ---- */
+// Tauri's onDragDrop only fires for files dragged from OUTSIDE the window, and
+// WebView2 swallows HTML5 drag events inside it, so the tree drives its own
+// Pointer-Events drag and calls these while it runs.
+
+/** Highlight the pane under the cursor mid-drag; returns true when there is one. */
+export function highlightPaneAt(x: number, y: number): boolean {
+  const pane = paneAtClient(x, y);
+  setDropTarget(pane);
+  return !!pane;
+}
+
+/** Type absolute path(s) into the pane under the cursor. Returns false when the
+ *  drop landed somewhere else (the tree then treats it as a move). */
+export function dropPathsAtPoint(x: number, y: number, paths: string[]): boolean {
+  const target = paneAtClient(x, y) ?? dropTarget;
+  setDropTarget(null);
+  if (!target) return false;
+  dropPathsIntoPane(target, paths);
+  return true;
+}
+
+/** Drop the highlight when a drag ends or leaves the panes. */
+export function clearPaneHighlight(): void {
+  setDropTarget(null);
+}
+
+/** Wire every drag-drop + Kanban-bridge listener/registration. Call once at
+ *  startup, after configureBridges. */
+export function initBridges(): void {
+  wsHost.addEventListener(
+    "pointerdown",
+    (e) => {
+      const pane = (e.target as HTMLElement)?.closest<HTMLElement>(".pane");
+      if (pane?.dataset.id) lastFocusedPaneId = pane.dataset.id;
+    },
+    true,
+  );
+  // Type into the focused agent of the active workspace (Enter when `submit`).
+  setAgentSender((text, submit) => {
+    if (!activeWs || activeWs.panes.size === 0) return false;
+    const id =
+      lastFocusedPaneId && activeWs.panes.has(lastFocusedPaneId)
+        ? lastFocusedPaneId
+        : activeWs.panes.keys().next().value;
+    const pane = id ? activeWs.panes.get(id) : undefined;
+    if (!pane) return false;
+    void sendMessage(pane.id, text, submit).catch(() => {});
+    pane.term.focus();
+    return true;
+  });
+  // Kanban card → pane: highlight the pane under the pointer while a card is being
+  // dragged, and drop the card's task into that pane's PTY (no Enter) on release.
+  // Pointer events give client CSS px, so resolve with paneAtClient (no DPR).
+  setPaneTargeting({
+    hover: (x, y) => {
+      const p = paneAtClient(x, y);
+      setDropTarget(p, true);
+      return !!p;
+    },
+    clear: () => setDropTarget(null),
+    drop: (x, y, text) => {
+      const target = paneAtClient(x, y) ?? dropTarget;
+      setDropTarget(null);
+      if (!target || !text) return null;
+      void sendMessage(target.id, text, false).catch(() => {});
+      target.term.focus();
+      return { id: target.id, name: target.spec.name, color: target.color, running: target.running };
+    },
+  });
+  // Fleet directory for the board: running panes of the active workspace.
+  setFleet(() =>
+    activeWs
+      ? [...activeWs.panes.values()].map((p) => ({
+          id: p.id,
+          name: p.spec.name,
+          color: p.color,
+          running: p.running,
+        }))
+      : [],
+  );
+  setAgentSenderById((id, text, submit) => {
+    const pane = activeWs?.panes.get(id);
+    if (!pane || !pane.running) return false;
+    void sendMessage(pane.id, text, submit).catch(() => {});
+    pane.term.focus();
+    return true;
+  });
+  setPaneFocuser((id) => {
+    const pane = activeWs?.panes.get(id);
+    if (!pane) return false;
+    pane.term.focus();
+    pane.el.scrollIntoView({ block: "nearest" });
+    return true;
+  });
+  // Fleet monitor: a snapshot of every pane in every workspace, and a reveal
+  // action that switches to the owning workspace tab before focusing the pane.
+  setFleetSnapshot(() => {
+    const out: FleetPane[] = [];
+    for (const ws of workspaces.values())
+      for (const p of ws.panes.values())
+        out.push({
+          id: p.id,
+          name: p.spec.name,
+          color: p.color,
+          wsId: ws.id,
+          wsName: ws.name,
+          running: p.running,
+          attention: p.attention,
+          spawnedAt: p.spawnedAt,
+          lastOutputAt: p.lastOutputAt,
+          badge: p.spec.badge,
+          role: p.spec.role,
+          cwd: p.spec.cwd,
+          branch: p.spec.branch,
+          // "on stage" = the pane filling the focus stage of the ACTIVE canvas,
+          // i.e. the agent the person is looking at right now.
+          onStage: ws === activeWs && p.el.classList.contains("focused"),
+        });
+    return out;
+  });
+  setPaneRevealer((wsId, paneId) => {
+    const ws = workspaces.get(wsId);
+    const pane = ws?.panes.get(paneId);
+    if (!ws || !pane) return false;
+    if (ws !== activeWs) activateWorkspace(ws);
+    // On a canvas in focus mode the other panes are display:none, so focusing a
+    // hidden terminal does nothing visible — swap the stage to this pane instead.
+    if (ws.gridEl.classList.contains("has-focus")) {
+      focusPane(ws, pane);
+    } else {
+      pane.term.focus();
+      pane.el.scrollIntoView({ block: "nearest" });
+    }
+    return true;
+  });
+
+  // Let a hand-off see the pane it typed into, so it can tell whether its Enter
+  // took. Panes live per workspace, and a message can go to a background one.
+  setPaneScreenReader((id) => {
+    for (const ws of workspaces.values()) {
+      const pane = ws.panes.get(id);
+      if (pane) return pane.term.snapshot(20);
+    }
+    return "";
+  });
+  // …and whether that pane asked for bracketed paste, so a long hand-off can be
+  // marked as one block instead of arriving as a burst it has to guess at.
+  setPaneBracketedPasteReader((id) => {
+    for (const ws of workspaces.values()) {
+      const pane = ws.panes.get(id);
+      if (pane) return pane.term.bracketedPaste();
+    }
+    return false;
+  });
+
+  // Fleet file-bridge: publish each workspace's roster to .maestro/fleet.json and
+  // deliver messages the maestro-mcp `fleet_send` tool drops into outbox.jsonl.
+  initFleetBridge({
+    workspaces: () => {
+      const now = Date.now();
+      const out = [];
+      for (const ws of workspaces.values()) {
+        if (!ws.dir) continue;
+        out.push({
+          dir: ws.dir,
+          name: ws.name,
+          agents: [...ws.panes.values()].map((p) => ({
+            id: p.id,
+            name: p.spec.name,
+            status: paneStatus(
+              {
+                id: p.id,
+                name: p.spec.name,
+                color: p.color,
+                wsId: ws.id,
+                wsName: ws.name,
+                running: p.running,
+                attention: p.attention,
+                spawnedAt: p.spawnedAt,
+                lastOutputAt: p.lastOutputAt,
+              },
+              now,
+            ),
+            // Recent on-screen text so an agent (a conductor) can read a worker's
+            // progress via the MCP agent_output tool. Capped for the file.
+            screen: p.term.snapshot(40).slice(-2000),
+            cli: p.spec.badge,
+            session: p.spec.sessionId ?? knownConversation(p.id) ?? undefined,
+            folder: p.spec.ranIn ?? undefined,
+            since: p.spawnedAt ?? undefined,
+          })),
+        });
+      }
+      return out;
+    },
+    deliver: (dir, from, to, message) => {
+      const ws = [...workspaces.values()].find((w) => w.dir === dir);
+      if (!ws) return;
+      const targets = deliveryTargets(
+        [...ws.panes.values()],
+        (p) => ({ name: p.spec.name, running: p.running }),
+        from,
+        to,
+      );
+      for (const p of targets) void sendMessage(p.id, message).catch(() => {});
+      showDelegation(ws, from, targets);
+      showDelegationToast(
+        from,
+        targets.map((p) => p.spec.name),
+        message,
+      );
+      // The arc and the toast are gone in 2.6s; the Flow panel keeps the text.
+      const sender = from
+        ? [...ws.panes.values()].find(
+            (p) => p.spec.name.trim().toLowerCase() === from.trim().toLowerCase(),
+          )
+        : undefined;
+      pushFlow({
+        from,
+        to,
+        color: sender?.color,
+        text: message,
+        targets: targets.map((p) => ({ wsId: ws.id, paneId: p.id, name: p.spec.name })),
+      });
+    },
+    spawn: (dir, req) => void spawnForConductor(dir, req),
+  });
+  void onDragDrop((e) => {
+    if (e.type === "leave") return setDropTarget(null);
+    if (e.type === "enter" || e.type === "over") {
+      return setDropTarget(paneAtPoint(e.position.x, e.position.y));
+    }
+    // drop: type the (whitespace-quoted) path(s) into the targeted pane's PTY.
+    const target = paneAtPoint(e.position.x, e.position.y) ?? dropTarget;
+    setDropTarget(null);
+    if (target) dropPathsIntoPane(target, e.paths);
+  });
+
+  /* pty-exit listener LAST + guarded so it can never block the wiring above. */
+  const paneExited = (id: string, code: number, run: number) => {
+    for (const w of workspaces.values()) {
+      const p = w.panes.get(id);
+      if (p) {
+        const verdict = exitVerdict(p, run);
+        // The exit of a run this pane has already replaced (restart in place).
+        if (verdict === "stale") break;
+        // Its CLI died before spawnPty even returned: boot plays it back (ptyexit.ts).
+        if (verdict === "early") { holdExit(id, run, code); break; }
+        p.running = false;
+        p.spawnedAt = null;
+        p.exitCode = code;
+        clearAttention(p); // a dead agent isn't waiting on anyone
+        if (p.recording) void stopRecording(p); // flush + close the recording
+        setStatus(p, `exited (${code})`, "");
+        updateCount();
+        break;
+      }
+    }
+  };
+  setExitHandler(paneExited);
+  onExit(paneExited).catch((e) => console.warn("pty-exit listener unavailable:", e));
+}

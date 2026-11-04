@@ -18,7 +18,7 @@ const write = (p: string, text: string, mtime: number) => {
 const line = (o: object) => JSON.stringify({ timestamp: "2026-10-22T11:00:00.000Z", ...o }) + "\n";
 
 beforeAll(() => {
-  home = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-ctx-"));
+  home = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-ctx-"));
   // Claude: one live session, one stopped, one too old, one in another project
   const proj = path.join(home, ".claude", "projects", claudeSlug("D:\\app"));
   const claudeTalk =

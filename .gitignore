@@ -36,5 +36,8 @@ crates/*/target/
 /HeavyweightFishingHub/
 /dist-supervisor/
 /portfolio-caoxuanminh/
-# What is left of the retired Tauri app on disk (its old build cache).
 /src-tauri/
+
+# tauri build outputs
+src-tauri/target/
+src-tauri/gen/

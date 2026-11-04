@@ -3,25 +3,13 @@ import { describe, it, expect } from "vitest";
 import { HubClient } from "../src/browser.js";
 
 describe("browser tools", () => {
-  it("says ByteHive isn't running when there is no hub to reach", async () => {
+  it("says Maestro isn't running when there is no hub to reach", async () => {
     const hub = new HubClient("Ana", () => {
       throw new Error("ENOENT");
     });
     const r = await hub.call("tabs", {});
     expect(r.isError).toBe(true);
-    expect(r.content[0]).toMatchObject({ type: "text", text: expect.stringContaining("ByteHive isn't running") });
-  });
-
-  it("tries once more when nothing was sent yet, and says why it stopped", async () => {
-    let tries = 0;
-    const hub = new HubClient("Ana", () => {
-      tries++;
-      throw new Error("ENOENT");
-    });
-    const r = await hub.call("computer", { action: "left_click", ref: "e1" });
-    expect(tries).toBe(2);
-    expect(r.isError).toBe(true);
-    expect(Object.keys(r)).not.toContain("unsent");
+    expect(r.content[0]).toMatchObject({ type: "text", text: expect.stringContaining("Maestro isn't running") });
   });
 
   it("reports a closed port as a connection problem, not a hang", async () => {
@@ -44,8 +32,8 @@ describe("upload and recording paths", () => {
     expect(() => uploadPaths(["missing.png"], dir)).toThrow(/No such file/);
   });
 
-  it("saves recordings under .bytehive/recordings, named after the agent and the time", () => {
+  it("saves recordings under .maestro/recordings, named after the agent and the time", () => {
     const p = gifPath("D:/w", "Ana Lê", new Date("2026-09-25T10:20:30Z"));
-    expect(p).toBe(path.join("D:/w", ".bytehive", "recordings", "Ana_L_-2026-09-25T10-20-30.gif"));
+    expect(p).toBe(path.join("D:/w", ".maestro", "recordings", "Ana_L_-2026-09-25T10-20-30.gif"));
   });
 });

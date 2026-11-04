@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { agentContext, detailText, listLine, nameOf, resolveWho } from "./agentcontext";
 import { claudeSlug, type Conversation } from "./stores";
 import type { FleetAgent } from "../fleet";
-import type { Digest } from "../app/convdigest";
+import type { Digest } from "../../../src/convdigest";
 
 const NOW = Date.parse("2026-10-22T12:00:00Z");
 const MIN = 60_000;
@@ -61,15 +61,15 @@ describe("what it says", () => {
 
 describe("agent_context", () => {
   it("reads the project's conversations end to end", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-ac-home-"));
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-ac-proj-"));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-ac-home-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-ac-proj-"));
     try {
       const file = path.join(home, ".claude", "projects", claudeSlug(dir), "abcd1234-0000.jsonl");
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, JSON.stringify({ timestamp: "2026-10-22T11:00:00.000Z", type: "user", origin: { kind: "human" }, message: { content: "fix the login" } }) + "\n");
       fs.utimesSync(file, new Date(NOW - MIN), new Date(NOW - MIN));
-      fs.mkdirSync(path.join(dir, ".bytehive"));
-      fs.writeFileSync(path.join(dir, ".bytehive", "fleet.json"), JSON.stringify({ agents: [{ id: "p1", name: "Ana", status: "stopped", cli: "claude", session: "abcd1234-0000" }] }));
+      fs.mkdirSync(path.join(dir, ".maestro"));
+      fs.writeFileSync(path.join(dir, ".maestro", "fleet.json"), JSON.stringify({ agents: [{ id: "p1", name: "Ana", status: "stopped", cli: "claude", session: "abcd1234-0000" }] }));
       const env = { home, now: NOW };
       const list = await agentContext(dir, undefined, env);
       expect(list).toContain("- Ana [abcd1234] Claude Code, stopped, active 1 min ago. Task: fix the login.");

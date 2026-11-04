@@ -1,0 +1,179 @@
+/* Workspace: one unified top bar (tabs + actions), tiling grid, refined panes.
+   A 48px right column holds the tool dock rail (dock.css); the topbar and the
+   broadcast bar span both columns, the terminal grid takes the left column. */
+.app{position:relative;display:grid;grid-template-columns:1fr var(--code-w,380px) 48px;grid-template-rows:44px 1fr;height:100vh;width:100vw}
+.app > .topbar{grid-column:1 / -1}
+.app > .main{grid-column:1;grid-row:2}
+.app > .code-panel{grid-column:2;grid-row:2}
+.app > .dock-rail{grid-column:3;grid-row:2}
+/* bcast floats at the bottom */
+.app.code-hidden{--code-w:0px}
+
+/* ---------- unified top bar ---------- */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 150px 0 10px;background:rgba(10,10,12,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);z-index:100}
+.tb-left, .tb-right{display:flex;align-items:center;gap:10px;flex:1}
+.tb-right{justify-content:flex-end}
+.tb-center{display:flex;align-items:center;justify-content:center;gap:3px;flex:2;min-width:0}
+/* home button — back to launcher, agents keep running */
+.tb-home{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none;margin-right:5px;transition:background .14s,color .14s}
+.tb-home:hover{background:var(--surface-1);color:var(--accent)}
+
+/* tabs — pill style (Arc/Warp), one per workspace */
+.tabstrip{display:flex;align-items:center;gap:3px;min-width:0;overflow-x:auto;overflow-y:hidden}
+.tabstrip::-webkit-scrollbar{height:0}
+.tab{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 7px 0 11px;border-radius:8px;color:var(--muted);background:transparent;font-size:12.5px;font-weight:500;white-space:nowrap;flex:none;cursor:pointer;transition:background .14s,color .14s}
+.tab:hover{background:var(--surface-1);color:var(--text-2)}
+.tab.active{background:rgba(255,255,255,.06);color:var(--text)}
+.tab .tdot{width:6px;height:6px;border-radius:50%;background:var(--idle);flex:none}
+.tab.live .tdot{background:#3ddc84;box-shadow:0 0 6px #3ddc84}
+/* a workspace with any "needs you" pane → amber dot (wins over live green) */
+.tab.attn .tdot{background:#ffb84c;box-shadow:0 0 6px #ffb84c}
+.tab .tname{max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.tab .tcount{font-family:var(--mono);font-size:10px;font-variant-numeric:tabular-nums;color:var(--muted-2);background:var(--surface-3);border-radius:4px;padding:1px 5px}
+.tab.active .tcount{color:var(--text-2)}
+.tab .tclose{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;color:var(--muted-2);margin-right:-2px}
+.tab .tclose:hover{background:var(--surface-3);color:var(--err)}
+.tab-add{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none}
+.tab-add:hover{background:var(--surface-1);color:var(--accent)}
+/* drag-reorder: the lifted tab ghosts; siblings shift live via DOM insert */
+.tab.dragging{opacity:.4}
+.tabstrip.reordering .tab{transition:none}
+/* dblclick inline rename */
+.tname-edit{background:var(--surface-3);border:1px solid var(--line-strong);color:var(--text);border-radius:5px;font:inherit;font-size:12px;padding:1px 6px;width:130px;outline:none}
+.tname-edit:focus{border-color:var(--accent-dim)}
+
+/* compact "+ Agent" button — secondary, lime on hover */
+.tb-btn{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface-1);color:var(--text-2);font-weight:600;font-size:12.5px;flex:none;transition:border-color .15s,color .15s,background .15s}
+.tb-btn:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
+.tb-btn svg{color:var(--accent)}
+/* count chip on the "Resume all" button */
+.ra-count:not(:empty){display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 5px;margin-left:1px;border-radius:8px;background:var(--accent-glow,rgba(255,255,255,.18));color:var(--accent);font-size:11px;font-weight:700;line-height:1}
+/* "Resume all" is the one contextual action — it only appears when agents are
+   parked (e.g. after reopening the app). Give it a soft accent treatment so it
+   reads as the recommended thing to do, distinct from the neutral chrome. */
+#btnResumeAll{border-color:color-mix(in oklab,var(--accent) 32%,var(--line-strong));background:var(--accent-glow);color:var(--accent)}
+#btnResumeAll:hover{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 15%,transparent);color:var(--accent)}
+#btnResumeAll svg{color:var(--accent)}
+#btnResumeAll .ra-count:not(:empty){background:color-mix(in oklab,var(--accent) 26%,transparent)}
+
+/* live stats + clock (numbers in mono) */
+.tb-btn-icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--text-2);background:var(--surface-1);border:1px solid var(--line-strong);transition:border-color .15s,color .15s,background .15s;flex:none}
+.tb-btn-icon:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
+/* Still the positioning context — the panes, the sigil canvas, the focus rail
+   and the delegation overlay are all absolutely placed inside it. What is gone
+   is the floating Tidy pill: it sat at right:16/top:14, i.e. on top of the
+   top-right pane's own rename/focus/kill buttons, and won every click. Tidy and
+   the zoom pill are topbar chrome now (index.html + zoomui.ts). */
+.main{position:relative}
+/* the topbar's canvas controls sit slightly quieter than the tab strip */
+#btnTidy{color:var(--muted);font-weight:600}
+#btnTidy:hover{color:var(--accent)}
+
+/* hide stats + clock as requested */
+.stats, .clock { display: none !important; }
+
+/* ---------- workspace area ---------- */
+/* Flush tiling: panes sit edge-to-edge, the 1px gap over the hairline grid is
+   the only divider. A faint ambient glow behind the grid shines through the
+   translucent panes (the glass). Bottom padding reserves broadcast-bar room. */
+.main{overflow:hidden;padding:0 0 56px 0;box-sizing:border-box;background:radial-gradient(1100px 700px at 88% -8%,rgba(255,255,255,.17),transparent 62%),radial-gradient(900px 650px at -8% 108%,rgba(56,189,248,.13),transparent 60%),var(--bg)}
+/* dynamic tiling — panes fill the whole area; --cols/--rows set per pane count */
+.grid{display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(0,1fr));gap:1px;height:100%;background:rgba(255,255,255,.06)}
+
+/* ---------- pane (flush glass tile: slim header bar + terminal) ---------- */
+.pane{position:relative;display:flex;flex-direction:column;background:rgba(10,10,12,.42);box-shadow:inset 0 1px 0 rgba(255,255,255,.025);overflow:hidden;transition:box-shadow .15s;animation:paneIn .3s cubic-bezier(.2,.7,.2,1) both}
+/* highlighted while a file is dragged over it (drop → path typed into the PTY) */
+.pane.drop-target{box-shadow:inset 0 0 0 2px var(--accent-dim),inset 0 0 44px -12px rgba(255,255,255,.3)}
+.pane.drop-target::after{content:"Drop file to attach path";position:absolute;inset:0;display:grid;place-items:center;background:rgba(13,16,20,.5);color:var(--accent);font-size:13px;font-weight:600;letter-spacing:.02em;pointer-events:none;z-index:5}
+/* same overlay, but a Kanban card (a task) is being dropped, not a file */
+.pane.drop-agent::after{content:"Drop to send task to agent"}
+.pane.run::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--run),transparent);opacity:.55;z-index:7;pointer-events:none}
+.pane.err{box-shadow:inset 0 0 0 1px rgba(242,118,107,.4)}
+.pane.stopped{opacity:.66;transition:opacity .15s,box-shadow .15s}
+.pane.stopped:hover{opacity:1}
+.pane-name { font-weight:600; font-size:11.5px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:none; max-width:130px; margin-left:4px; margin-right:6px; }
+.pane:focus-within .pane-name { color:var(--text); }
+.action-group { display:flex; align-items:center; gap:1px; }
+/* controls appear on pane hover / keyboard focus so the bar stays quiet */
+.ctrls{display:flex;gap:1px;flex:none;opacity:0;transition:opacity .12s}
+.pane:hover .ctrls,.ctrls:focus-within{opacity:1}
+.pctrl{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
+.pctrl:hover{background:rgba(255,255,255,.09);color:var(--text)}
+.pctrl.danger:hover{background:rgba(242,118,107,.16);color:var(--err)}
+/* The inset lives on .xterm, NOT here. addon-fit derives rows/cols from this
+   host's box but only subtracts padding declared on .xterm itself, so padding
+   on the host is invisible to it — it proposed ~2 rows and ~2 cols too many and
+   .pane's overflow:hidden sliced the last line in half (a 399px host with a
+   22px cell got 18 rows where 16 fit). The mask fades across the inset only:
+   a percentage stop scales with the pane and erased real output at the top. */
+.term-host{flex:1;min-height:0;background:transparent;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px);mask-image:linear-gradient(180deg,transparent,#000 8px)}
+/* Inset kept tight (was 14/16): every 2 px of vertical padding is a fraction of
+   a terminal row, and a 2x2 tidy has none to spare. The mask fade above must
+   stay equal to the top padding — any taller and it eats the first row. */
+.term-host .xterm{height:100%;padding:8px 12px}
+.term-host .xterm-viewport{overflow-y:auto}
+/* Kill the opaque plate xterm's OWN stylesheet puts on this element:
+   `.xterm .xterm-viewport{background-color:#000}`, commented there as "required
+   on OS X so the scroll bar appears fully opaque". xterm 6 moved the themed
+   background to .xterm-scrollable-element (it carries our inline
+   rgba(11,13,18,0) correctly) but left this rule behind, so it is now dead
+   black painted ABOVE .pane — it swallowed the wallpaper whole and a
+   see-through pane screenshotted as #000000. Invisible until P1: against the
+   old opaque #0b0d12 palette, pure black is 3% off and nobody could tell.
+
+   The extra `.xterm` in the selector is load-bearing, not decorative.
+   `.term-host .xterm-viewport` ties xterm's own `.xterm .xterm-viewport` on
+   specificity (0,2,0), and xterm.css loses on source order only in dev: it
+   arrives as a JS-injected <style> from terminal.ts, i.e. AFTER the <link> in
+   index.html. Matching (0,3,0) wins outright, in dev and in a bundled build.
+
+   The plate belongs to .pane (var(--pane-plate), set by background.ts). No
+   layer inside the terminal may paint one of its own. */
+.term-host .xterm .xterm-viewport{background-color:transparent}
+
+/* ---------- maximize / focus one pane ---------- */
+.grid.has-max .pane{display:none}
+.grid.has-max .pane.maxed{display:flex;grid-column:1 / -1 !important;grid-row:1 / -1 !important;animation:none}
+.pctrl.on{background:var(--accent-glow);color:var(--accent)}
+
+/* ---------- drag-reorder ---------- */
+.pane.dragging{opacity:.45;outline:2px dashed var(--accent-dim);outline-offset:-2px}
+/* while a drag is in flight, let dragover reach the panes (not the xterm canvas) */
+.grid.reordering .term-host{pointer-events:none}
+.grid.reordering .pane{transition:transform .12s ease}
+
+/* ---------- find in output ---------- */
+/* floating overlay too — sits below the pill, top-right, over the terminal */
+.pane-find{position:absolute;top:60px;right:16px;z-index:6;width:min(340px,calc(100% - 24px));display:flex;align-items:center;gap:6px;padding:6px 6px 6px 8px;background:var(--surface-2);border:0;border-radius:999px;box-shadow:0 18px 40px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.1);flex:none}
+.pane-find[hidden]{display:none}
+.pane-find-in{flex:1;min-width:0;height:28px;background:transparent;border:0;border-radius:999px;padding:0 8px;color:var(--text);font-family:var(--sans);font-size:13px}
+.pane-find-in:focus{outline:none}
+.pane-find-in::placeholder{color:var(--muted-2)}
+.pane-find-count{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted);min-width:34px;text-align:right}
+.pane-find-btn{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;color:var(--muted);font-size:16px;line-height:1;flex:none;transition:background .14s,color .14s}
+.pane-find-btn:hover{background:var(--surface-3);color:var(--text)}
+
+/* empty workspace → centered spawn prompt (solid bg: the grid behind is line-colored) */
+.tile-spawn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;border:1px dashed var(--line-strong);border-radius:8px;color:var(--muted);background:var(--surface-0);transition:border-color .18s,color .18s,background .18s}
+.tile-spawn:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-1)}
+.tile-spawn .ic{width:44px;height:44px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center}
+.tile-spawn .t{font-weight:600;font-size:13px}
+.tile-spawn .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(111,214,160,.45)}70%{box-shadow:0 0 0 6px rgba(111,214,160,0)}100%{box-shadow:0 0 0 0 rgba(111,214,160,0)}}
+/* transform-only entrance: opacity here + the anim-paused GPU saver would leave
+   panes restored in an unfocused window stuck invisible at opacity 0 */
+/* calm (calm.ts): Maestro is in the background, so loops hold still (entrances still play) */
+body.calm :not(.pane):not(.st-help),body.calm ::before,body.calm ::after{animation-play-state:paused !important}
+@keyframes paneIn{from{transform:translateY(8px) scale(.99)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){.pane{animation:none}.stat.live .pip{animation:none}}
+
+/* cross-window workspace drop zone */
+body.drag-over-ws .app::after{content:"Drop to merge workspace";position:absolute;inset:0;display:grid;place-items:center;background:rgba(13,16,20,0.85);backdrop-filter:blur(12px);color:var(--text);font-size:18px;font-weight:600;letter-spacing:0.02em;z-index:9999;pointer-events:none;outline:2px dashed var(--accent);outline-offset:-12px;border-radius:12px}
+
+/* tab drop indicator */
+.tab.drop-before::before, .tab.drop-after::after{content:'';position:absolute;top:4px;bottom:4px;width:2px;background:var(--text);border-radius:1px;z-index:10}
+.tab.drop-before::before{left:-2px}
+.tab.drop-after::after{right:-2px}
+
+.tab { position: relative; }

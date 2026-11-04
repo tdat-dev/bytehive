@@ -1,5 +1,5 @@
 /* Where each agent CLI keeps its conversations, read straight from disk so any
- * agent with this server (in ByteHive or not, the app running or not) can see
+ * agent with this server (in Maestro or not, the app running or not) can see
  * what the others did in a project:
  *   Claude Code  ~/.claude/projects/<slug of folder>/<session>.jsonl
  *   Codex        ~/.codex/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl
@@ -10,9 +10,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { createChat, type Chat } from "../app/chatmodel";
-import { createCodexChat } from "../app/codexmodel";
-import { createOpencodeChat } from "../app/opencodemodel";
+import { createChat, type Chat } from "../../../src/chatmodel";
+import { createCodexChat } from "../../../src/codexmodel";
+import { createOpencodeChat } from "../../../src/opencodemodel";
 
 export type Cli = "claude" | "codex" | "opencode";
 
@@ -60,7 +60,7 @@ export function claudeSlug(dir: string): string {
   return dir.replace(/[^A-Za-z0-9]/g, "-");
 }
 
-/** The project folder and every git worktree of its repo (ByteHive's agents
+/** The project folder and every git worktree of its repo (Maestro's agents
  *  work in worktrees outside the repo). */
 export function projectFolders(dir: string): string[] {
   const out = [dir];

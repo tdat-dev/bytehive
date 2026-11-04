@@ -1,6 +1,6 @@
-/* Fleet bridge for bytehive-mcp: read the roster the ByteHive app publishes to
- * <workspace>/.bytehive/fleet.json, and hand messages to the app by appending
- * to <workspace>/.bytehive/outbox.jsonl. Same file-bridge idea as the board —
+/* Fleet bridge for maestro-mcp: read the roster the Maestro app publishes to
+ * <workspace>/.maestro/fleet.json, and hand messages to the app by appending
+ * to <workspace>/.maestro/outbox.jsonl. Same file-bridge idea as the board —
  * the MCP server never talks to the app directly, only through files it
  * watches. Pure of any MCP wiring so it can be unit-tested. */
 
@@ -24,19 +24,19 @@ export interface FleetAgent {
 
 export interface OutboxMessage {
   ts: number;
-  from: string | null; // BYTEHIVE_AGENT of the sender, or null when unknown
+  from: string | null; // MAESTRO_AGENT of the sender, or null when unknown
   to: string | null; // target agent name, or null for the whole fleet
   message: string;
 }
 
 export function fleetPath(dir: string): string {
-  return path.join(dir, ".bytehive", "fleet.json");
+  return path.join(dir, ".maestro", "fleet.json");
 }
 export function outboxPath(dir: string): string {
-  return path.join(dir, ".bytehive", "outbox.jsonl");
+  return path.join(dir, ".maestro", "outbox.jsonl");
 }
 export function spawnPath(dir: string): string {
-  return path.join(dir, ".bytehive", "spawn-requests.jsonl");
+  return path.join(dir, ".maestro", "spawn-requests.jsonl");
 }
 
 /** Append one line. The app empties a fully-read outbox now and then, holding
@@ -63,7 +63,7 @@ export interface SpawnRequest {
   count: number;
 }
 
-/** Ask ByteHive to spawn worker agent(s). Appends a request the app watches. */
+/** Ask Maestro to spawn worker agent(s). Appends a request the app watches. */
 export function queueSpawn(
   dir: string,
   req: { from?: string; cli: string; task?: string | null; count?: number; now: number },
@@ -135,9 +135,9 @@ export function readAgentScreen(dir: string, name: string): string | null {
   return a ? a.screen : null;
 }
 
-/** Append one message to the outbox for the app to deliver. Creates .bytehive/
+/** Append one message to the outbox for the app to deliver. Creates .maestro/
  *  and the file on first use. Returns the message that was queued. `from` is
- *  the sender's BYTEHIVE_AGENT name — omitted/blank is written as null (the
+ *  the sender's MAESTRO_AGENT name — omitted/blank is written as null (the
  *  app draws no delegation link when it can't identify the sender). */
 export function queueMessage(
   dir: string,

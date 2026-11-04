@@ -1,7 +1,7 @@
-/* Browser tools for bytehive-mcp: the agent's side of "ByteHive for Chrome".
+/* Browser tools for maestro-mcp: the agent's side of "Maestro for Chrome".
  *
- * Calls go over one WebSocket to the hub inside the ByteHive app (port and
- * token in ~/.bytehive/browser-hub.json). The hub routes each call to the
+ * Calls go over one WebSocket to the hub inside the Maestro app (port and
+ * token in ~/.maestro/browser-hub.json). The hub routes each call to the
  * browser this agent picked, where the extension runs it in the agent's own
  * tab group. Results come back already MCP-shaped ({ content: [...] }). */
 
@@ -14,26 +14,17 @@ import { z } from "zod";
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 type ToolResult = { content: Content[]; isError?: boolean; gif?: string };
 
-/** The hub of the ByteHive that started this agent (it sets BYTEHIVE_HUB_FILE),
- *  else the installed ByteHive's. Guessing "the last ByteHive opened" sent agents
+/** The hub of the Maestro that started this agent (it sets MAESTRO_HUB_FILE),
+ *  else the installed Maestro's. Guessing "the last Maestro opened" sent agents
  *  to a test build's hub, and to a dead port once it closed. */
-export function hubFile(home: string = os.homedir()): string {
-  const env = process.env.BYTEHIVE_HUB_FILE || process.env.MAESTRO_HUB_FILE;
-  if (env) return env;
-  const now = path.join(home, ".bytehive", "browser-hub.json");
-  const old = path.join(home, ".maestro", "browser-hub.json");
-  // An app from before the rename (Maestro) still publishes the old one.
-  return !fs.existsSync(now) && fs.existsSync(old) ? old : now;
+export function hubFile(): string {
+  return process.env.MAESTRO_HUB_FILE || path.join(os.homedir(), ".maestro", "browser-hub.json");
 }
 
 const CALL_TIMEOUT_MS = 90_000;
 const CONNECT_TIMEOUT_MS = 5_000;
 /** How long a click held for the user's OK may wait. */
 const HOLD_TIMEOUT_MS = 10 * 60_000;
-/** Calls that only look, so running one again after a dropped connection can
- *  never do a thing twice. */
-const READ_ONLY = new Set(["list_browsers", "tabs", "read_page", "find", "page_text", "console", "network"]);
-const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class HubClient {
   private ws: WebSocket | null = null;
@@ -53,21 +44,21 @@ export class HubClient {
       try {
         hub = this.readHub();
       } catch {
-        return reject(new Error("ByteHive isn't running, so there is no browser to use. Open ByteHive and try again."));
+        return reject(new Error("Maestro isn't running, so there is no browser to use. Open Maestro and try again."));
       }
       if (typeof WebSocket === "undefined") return reject(new Error("Browser tools need Node 22 or newer."));
       const ws = new WebSocket(`ws://127.0.0.1:${hub.port}/`);
       const slow = setTimeout(() => {
         ws.close();
-        drop("ByteHive did not answer.");
-        reject(new Error("ByteHive did not answer. Is it open?"));
+        drop("Maestro did not answer.");
+        reject(new Error("Maestro did not answer. Is it open?"));
       }, CONNECT_TIMEOUT_MS);
       const drop = (why: string) => {
         this.ws = null;
         this.ready = null;
         for (const [, w] of this.waiting) {
           clearTimeout(w.timer);
-          w.resolve({ ...err(why), dropped: true } as ToolResult);
+          w.resolve(err(why));
         }
         this.waiting.clear();
       };
@@ -80,10 +71,10 @@ export class HubClient {
       ws.addEventListener("message", (e) => this.onMessage(String(e.data)));
       ws.addEventListener("error", () => {
         clearTimeout(slow);
-        drop("Lost the connection to ByteHive.");
-        reject(new Error("Can't reach ByteHive. Is it open?"));
+        drop("Lost the connection to Maestro.");
+        reject(new Error("Can't reach Maestro. Is it open?"));
       });
-      ws.addEventListener("close", () => drop("ByteHive closed the connection."));
+      ws.addEventListener("close", () => drop("Maestro closed the connection."));
     });
     return this.ready;
   }
@@ -99,7 +90,7 @@ export class HubClient {
     const w = this.waiting.get(m.id);
     if (!w) return;
     if (m.type === "hold") {
-      // ByteHive is asking the user first: wait for their answer, not the usual limit.
+      // Maestro is asking the user first: wait for their answer, not the usual limit.
       clearTimeout(w.timer);
       const id = m.id;
       w.timer = setTimeout(() => {
@@ -110,35 +101,17 @@ export class HubClient {
     }
     this.waiting.delete(m.id);
     clearTimeout(w.timer);
-    // Only the MCP fields: the browser adds its own notes for ByteHive.
+    // Only the MCP fields: the browser adds its own notes for Maestro.
     if (m.type === "result" && m.result?.content)
       w.resolve({ content: m.result.content, ...(m.result.isError ? { isError: true } : {}), ...(m.result.gif ? { gif: m.result.gif } : {}) });
     else w.resolve(err(m.error ?? "The browser did not answer."));
   }
 
-  /** One call, tried again once when the connection was the problem: always
-   *  when nothing was sent yet, and for a call that only looks (a screenshot
-   *  included) when it dropped mid-way. */
   async call(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
-    let r = await this.once(tool, args);
-    const dropped = (r as { dropped?: boolean }).dropped;
-    const unsent = (r as { unsent?: boolean }).unsent;
-    if (unsent || (dropped && (READ_ONLY.has(tool) || (tool === "computer" && args.action === "screenshot")))) {
-      await nap(800);
-      r = await this.once(tool, args);
-    }
-    const { dropped: _d, unsent: _u, ...clean } = r as ToolResult & { dropped?: boolean; unsent?: boolean };
-    return clean as ToolResult;
-  }
-
-  private async once(tool: string, args: Record<string, unknown>): Promise<ToolResult> {
     try {
       await this.open();
     } catch (e) {
-      // Forget the failed attempt, or every later call would get the same
-      // rejection (an agent started before ByteHive never reached it).
-      this.ready = null;
-      return { ...err(e instanceof Error ? e.message : String(e)), unsent: true } as ToolResult;
+      return err(e instanceof Error ? e.message : String(e));
     }
     const id = this.next++;
     return new Promise<ToolResult>((resolve) => {
@@ -156,7 +129,7 @@ const err = (text: string): ToolResult => ({ content: [{ type: "text", text }], 
 
 const tabId = z.number().int().optional().describe("Tab id from browser_tabs; defaults to your most recent tab");
 
-export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (refs for what is on screen; a second read sends only what changed), act with browser_computer (click a ref or a coordinate, type, key). Every action answers what came of it (new page, what changed, the focus), so take a screenshot only when you must see layout or images; browser_find and browser_page_text are cheaper. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in ByteHive; if they say no, don't retry.`;
+export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in Maestro; if they say no, don't retry.`;
 
 /** Absolute paths for files to upload: relative ones are taken from the
  *  workspace; every file must exist, so the page never gets a bad path. */
@@ -171,14 +144,14 @@ export function uploadPaths(paths: string[], base: string): string[] {
 /** Where a recording is saved when the agent names no path. */
 export function gifPath(base: string, agent: string, now = new Date()): string {
   const stamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  return path.join(base, ".bytehive", "recordings", `${agent.replace(/[^\w-]+/g, "_")}-${stamp}.gif`);
+  return path.join(base, ".maestro", "recordings", `${agent.replace(/[^\w-]+/g, "_")}-${stamp}.gif`);
 }
 
 export function registerBrowserTools(server: McpServer, hub: HubClient, base = process.cwd(), agent = "Agent") {
   const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, hubTool: string) =>
     server.registerTool(name, { description, inputSchema }, async (args: Record<string, unknown>) => hub.call(hubTool, args) as never);
 
-  tool("browser_list", "List the browsers (Chrome/Edge/Brave profiles) connected to ByteHive. The one marked * is the one you use.", {}, "list_browsers");
+  tool("browser_list", "List the browsers (Chrome/Edge/Brave profiles) connected to Maestro. The one marked * is the one you use.", {}, "list_browsers");
   tool(
     "browser_select",
     "Choose which connected browser profile you use, by profile name, email or id from browser_list.",
@@ -207,26 +180,20 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
   );
   tool(
     "browser_read_page",
-    "The page's interactive elements on screen (filter=all adds headings and images), one line each: ref, role, name, position in screenshot pixels. Refs work in browser_computer and browser_form_input. Reading the same page again returns only what changed (+ changed or new, - gone); full=true for everything, scope=page for off-screen elements too.",
-    {
-      tabId,
-      filter: z.enum(["interactive", "all"]).optional(),
-      scope: z.enum(["view", "page"]).optional().describe("view (default): on screen; page: the whole page"),
-      full: z.boolean().optional().describe("Everything, not just the changes since your last read"),
-      max: z.number().int().optional().describe("Lines at most, default 150"),
-    },
+    "Outline of the page: its interactive elements (or with filter=all, headings and images too), each with a ref to use in browser_computer / browser_form_input, and its position.",
+    { tabId, filter: z.enum(["interactive", "all"]).optional(), max: z.number().int().optional() },
     "read_page",
   );
   tool(
     "browser_find",
-    "Find elements whose text or label contains all the words of a query, on-screen controls first. Returns refs and positions; cheaper than reading the whole page.",
+    "Find elements whose text or label contains all the words of a query. Returns refs.",
     { query: z.string(), tabId },
     "find",
   );
   tool(
     "browser_page_text",
-    "The page's visible text, for reading articles, results or tables, in pieces: 6000 characters from `from`; the answer says where the next piece starts.",
-    { tabId, max: z.number().int().optional().describe("Characters, default 6000"), from: z.number().int().optional().describe("Start at this character, default 0") },
+    "The page's visible text, for reading articles, results or tables.",
+    { tabId, max: z.number().int().optional().describe("Character limit, default 40000") },
     "page_text",
   );
   tool(
@@ -237,7 +204,7 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
   );
   tool(
     "browser_computer",
-    "Real mouse and keyboard in your tab. Actions: screenshot, left_click, right_click, double_click, triple_click, hover, scroll, type (text), key (e.g. \"Enter\", \"ctrl+a\"), wait (duration seconds). Target with ref (from browser_read_page/find) or coordinate [x, y] in screenshot pixels. Each action answers what came of it. screenshot with region [x, y, w, h] returns a sharper crop for small text.",
+    "Real mouse and keyboard in your tab. Actions: screenshot, left_click, right_click, double_click, triple_click, hover, scroll, type (text), key (e.g. \"Enter\", \"ctrl+a\"), wait (duration seconds). Target with ref (from browser_read_page) or coordinate [x, y] (from a screenshot).",
     {
       action: z.enum(["screenshot", "left_click", "right_click", "double_click", "triple_click", "hover", "scroll", "type", "key", "wait"]),
       ref: z.string().optional(),
@@ -246,61 +213,25 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
       scroll_direction: z.enum(["up", "down", "left", "right"]).optional(),
       scroll_amount: z.number().optional(),
       duration: z.number().optional(),
-      region: z.array(z.number()).length(4).optional().describe("screenshot only: [x, y, w, h] to zoom into"),
       tabId,
     },
     "computer",
   );
   tool(
-    "browser_wait",
-    "Wait until something happens on the page instead of sleeping or taking screenshots: text or a CSS selector appears (or with gone=true disappears), the URL contains url, the network goes quiet (network=true), or with none of these the page stops changing. timeout in seconds (default 10, at most 60).",
-    {
-      text: z.string().optional(),
-      selector: z.string().optional(),
-      url: z.string().optional(),
-      gone: z.boolean().optional(),
-      network: z.boolean().optional(),
-      timeout: z.number().optional(),
-      tabId,
-    },
-    "wait",
-  );
-  tool(
-    "browser_observe",
-    "Watch part of the page (a CSS selector or a ref; the whole page by default) for some seconds and get each new line of text with the second it appeared: a chat reply streaming in, prices, a status or a log. Stops early when a line contains until. No screenshots; duration default 10, at most 60.",
-    { selector: z.string().optional(), ref: z.string().optional(), duration: z.number().optional(), until: z.string().optional(), tabId },
-    "observe",
-  );
-  tool(
-    "browser_video_frames",
-    "Frames of a video on the page as ONE picture (a grid, each frame labelled with its time), cheap and light: at times (seconds), or count frames spread over the video (default 6, at most 16), or one every N seconds from `from`. The video's position and play state are restored. Picks the largest video unless you give a selector or ref.",
-    {
-      selector: z.string().optional(),
-      ref: z.string().optional(),
-      times: z.array(z.number()).optional(),
-      count: z.number().int().optional(),
-      every: z.number().optional(),
-      from: z.number().optional(),
-      width: z.number().int().optional().describe("Width of each frame, 120-480 px, default 320"),
-      tabId,
-    },
-    "video_frames",
-  );
-  tool(
     "browser_javascript",
-    "Run JavaScript in the page and get the value of its last expression (await allowed). Long values are cut at max characters (default 4000): return only what you need.",
-    { code: z.string(), max: z.number().int().optional(), tabId },
+    "Run JavaScript in the page and get the value of its last expression (await allowed).",
+    { code: z.string(), tabId },
     "javascript",
   );
   tool(
     "browser_console",
-    "Console messages from your tab since ByteHive started controlling it. Filter with a regex pattern.",
+    "Console messages from your tab since Maestro started controlling it. Filter with a regex pattern.",
     { pattern: z.string().optional(), onlyErrors: z.boolean().optional(), limit: z.number().int().optional(), clear: z.boolean().optional(), tabId },
     "console",
   );
   tool(
     "browser_network",
-    "Network requests from your tab since ByteHive started controlling it. Filter URLs with a regex pattern.",
+    "Network requests from your tab since Maestro started controlling it. Filter URLs with a regex pattern.",
     { pattern: z.string().optional(), limit: z.number().int().optional(), clear: z.boolean().optional(), tabId },
     "network",
   );
@@ -327,7 +258,7 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
   server.registerTool(
     "browser_gif",
     {
-      description: "Record what you do in your tab as an animated GIF: action start, do the steps, then action stop. The GIF is saved to a file (path, or .bytehive/recordings/ in the workspace). It shows logged-in pages, so tell the user before sharing it.",
+      description: "Record what you do in your tab as an animated GIF: action start, do the steps, then action stop. The GIF is saved to a file (path, or .maestro/recordings/ in the workspace). It shows logged-in pages, so tell the user before sharing it.",
       inputSchema: { action: z.enum(["start", "stop"]), path: z.string().optional(), tabId },
     },
     async ({ action, path: out, tabId: tab }) => {

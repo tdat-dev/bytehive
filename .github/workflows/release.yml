@@ -1,15 +1,9 @@
 name: Release
 
-# A tag builds and publishes. A push to master only builds, to keep the Rust
-# cache warm: a tag run may restore caches saved on its own tag or on the
-# default branch, never on another tag, so without this every release
-# compiled every dependency again (~16 min).
 on:
   push:
     tags:
       - "v*"
-    branches:
-      - master
 
 permissions:
   contents: write
@@ -20,86 +14,74 @@ concurrency:
 
 jobs:
   release:
-    name: Build & publish the native app
-    runs-on: windows-latest
-    env:
-      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+    name: Build & publish release
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows only. The macOS jobs never shipped: the arm64 build failed
+        # every release and the Intel runner (macos-13) is never handed out, so
+        # the run hung queued. Add them back (aarch64-apple-darwin on
+        # macos-latest) once someone runs Maestro on a Mac and it builds there.
+        include:
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            args: ""
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node
-        if: env.IS_TAG == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: crates/native-shell
+          workspaces: "src-tauri"
 
-      # master: compile the release build and stop; the cache saves after.
-      - name: Warm the build cache
-        if: env.IS_TAG != 'true'
-        shell: pwsh
-        working-directory: crates/native-shell
-        run: cargo build --release
+      - name: Install dependencies
+        run: npm ci
 
-      - name: NSIS
-        if: env.IS_TAG == 'true'
-        shell: pwsh
-        run: |
-          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
-            choco install nsis -y --no-progress
-          }
-
-      # The tag names the version; the crate must say the same.
-      - name: Version matches the tag
-        if: env.IS_TAG == 'true'
-        shell: pwsh
-        run: |
-          $v = (Select-String -Path crates/native-shell/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
-          if ("v$v" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} but crates/native-shell is $v" }
-          "VERSION=$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-
-      - name: Build the installer
-        if: env.IS_TAG == 'true'
-        shell: pwsh
-        run: |
-          $setup = powershell -ExecutionPolicy Bypass -File tools/build_installer.ps1 | Select-Object -Last 1
-          "SETUP=$setup" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-
-      # Signed with the updater key both apps trust (minisign, as tauri signs).
-      - name: Sign
-        if: env.IS_TAG == 'true'
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          npx --yes @tauri-apps/cli@2 signer sign "$env:SETUP"
-          if (-not (Test-Path "$env:SETUP.sig")) { throw "no signature written" }
-
+      # This repository is private, so its releases can't be downloaded by the
+      # people who installed Maestro. Installers and the updater's latest.json
+      # go to the public tdat-dev/maestro-releases instead (releases only, no
+      # code), which is what tauri.conf.json's updater endpoint reads.
       - name: Release notes from CHANGELOG
-        if: env.IS_TAG == 'true'
+        id: notes
         shell: bash
         run: |
           v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "ByteHive $GITHUB_REF_NAME" > notes.md
+          notes=$(awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md)
+          {
+            echo "body<<MAESTRO_NOTES_EOF"
+            echo "${notes:-Maestro $GITHUB_REF_NAME}"
+            echo "MAESTRO_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
 
-      # This repository is private, so installers and latest.json go to the
-      # public tdat-dev/maestro-releases, which the updaters read.
-      - name: Publish
-        if: env.IS_TAG == 'true'
-        shell: pwsh
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: |
-          $name = Split-Path $env:SETUP -Leaf
-          $url = "https://github.com/tdat-dev/maestro-releases/releases/download/${{ github.ref_name }}/$name"
-          node tools/latest_json.mjs $env:VERSION $url "$env:SETUP.sig" notes.md latest.json
-          gh release create "${{ github.ref_name }}" -R tdat-dev/maestro-releases --target main --title "ByteHive ${{ github.ref_name }}" --notes-file notes.md "$env:SETUP" "$env:SETUP.sig" latest.json
+          # A fine-grained token with Contents: read and write on
+          # tdat-dev/maestro-releases; GITHUB_TOKEN can't write to another repo.
+          GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          owner: tdat-dev
+          repo: maestro-releases
+          # the tag is made there, on its own branch: this repo's commits aren't in it
+          releaseCommitish: main
+          tagName: ${{ github.ref_name }}
+          releaseName: "Maestro ${{ github.ref_name }}"
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
