@@ -41,7 +41,7 @@ import { paneLook } from "./background";
 import { BYTEHIVE_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
-import { faceSvg } from "./agentface";
+import { cliMark } from "./clibrand";
 import { replayEarlyExit, takeEarlyExit } from "./ptyexit";
 
 /** Re-theme every live pane in `ws` — called when the background, the tone, or
@@ -122,6 +122,7 @@ function buildPaneEl(
   _sub: string,
   badge: string,
   color: string,
+  mark: string,
   role?: AgentSpec["role"],
 ): HTMLElement {
   const el = document.createElement("section");
@@ -140,7 +141,7 @@ function buildPaneEl(
   el.innerHTML = `
     <div class="pane-bar" data-drag>
       <span class="pb-dot"></span>
-      <span class="pb-av" style="--mk:${color}" aria-hidden="true">${faceSvg(name, color)}</span>
+      <span class="pb-av" style="--mk:${color}" aria-hidden="true">${mark}</span>
       <span class="pb-name pane-name">${name}</span>
       ${roleChip}
       <span class="pb-cli">${badge}</span>
@@ -201,7 +202,7 @@ export function createAgent(
   onShowWorkspace();
   const id = attach?.id ?? newId();
   const sub = spec.cwd ? basename(spec.cwd) : "";
-  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, spec.role);
+  const el = buildPaneEl(id, spec.name, sub, spec.badge, spec.color, cliMark(spec), spec.role);
   ws.gridEl.insertBefore(el, ws.gridEl.lastElementChild); // before the spawn tile
 
   const host = el.querySelector<HTMLElement>("[data-host]")!;

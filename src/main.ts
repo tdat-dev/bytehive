@@ -4,6 +4,7 @@ import { resizePty, killAll, setTrayTooltip } from "./ipc";
 import { APP_NAME } from "./appname";
 import { hiddenGate } from "./hiddengate";
 import { CLI_PRESETS } from "./crew";
+import { commandBrand } from "./clibrand";
 import { type Pane, type Workspace } from "./panetypes";
 import { installModalTrap } from "./confirmmodal";
 import { configurePaneLayout } from "./panelayout";
@@ -67,7 +68,8 @@ const CLI_COLORS: Record<string, string> = {
   custom: "#c6f135",
 };
 function cliLook(badge: string, label: string): { color: string; mono: string } {
-  return { color: CLI_COLORS[badge] ?? "#c6f135", mono: (label.trim()[0] ?? "?").toUpperCase() };
+  const known = badge === "custom" ? commandBrand(label.trim().split(/\s+/))?.color : undefined;
+  return { color: known ?? CLI_COLORS[badge] ?? "#c6f135", mono: (label.trim()[0] ?? "?").toUpperCase() };
 }
 function fmtUptime(ms: number): string {
   const s = Math.floor(ms / 1000);
