@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-04
+
+### Changed
+
+- **Agents wear their CLI's logo.** The pixel faces are gone: every agent
+  shows the real logo of what it runs, in the list, on the stage, on Grid
+  cards, in Compare and in Ctrl+K. A custom agent is recognised from its
+  command, so `npx -y @google/gemini-cli`, a path to `grok.exe` or
+  `ollama run llama3.1` get their logo too. A plain shell shows a prompt,
+  and a CLI without a logo its first letter.
+
 ## [0.13.0] - 2026-11-04
 
 ### Changed
