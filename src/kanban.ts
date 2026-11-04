@@ -61,10 +61,10 @@ import {
 import { parsePlan, type PlanTask } from "./planparse";
 
 /* ---- agent ⇄ board plan gate ---- */
-const PLAN_REL = ".maestro\\plan.json";
-const DONE_REL = ".maestro\\done.json";
-const BOARD_REL = ".maestro\\board.md";
-const RULES_DIR = ".maestro";
+const PLAN_REL = ".bytehive\\plan.json";
+const DONE_REL = ".bytehive\\done.json";
+const BOARD_REL = ".bytehive\\board.md";
+const RULES_DIR = ".bytehive";
 const PROPOSED_TITLE = "Proposed";
 const DONE_TITLE = "Done";
 
@@ -108,7 +108,7 @@ function normalize(raw: unknown, ctxKey: string): Board {
 export { cardToAgentText } from "./dispatch";
 
 /** Serialise the whole board to the Markdown mirror the agent reads
- *  (`.maestro/board.md`): one section per list, cards as GitHub-style
+ *  (`.bytehive/board.md`): one section per list, cards as GitHub-style
  *  checkboxes with their description and checklist nested underneath. */
 export function boardToMarkdown(board: Board): string {
   const out: string[] = ["# Board", ""];
@@ -146,8 +146,8 @@ export function createKanban() {
 
   /* ---- agent plan bridge ---- */
   let dir: string | null = null; // active workspace folder, for the plan file
-  let planMtime = 0; // last-seen mtime of .maestro/plan.json (auto-watch)
-  let doneMtime = 0; // last-seen mtime of .maestro/done.json (auto-watch)
+  let planMtime = 0; // last-seen mtime of .bytehive/plan.json (auto-watch)
+  let doneMtime = 0; // last-seen mtime of .bytehive/done.json (auto-watch)
   let boardMtime: number | null = null; // last-seen board.json mtime (null = no file yet)
   let watchTimer: number | null = null;
   let seen = new Set<string>(); // task titles already imported (survives deletes)
@@ -213,7 +213,7 @@ export function createKanban() {
     return added;
   }
 
-  /** Read .maestro/plan.json now and import any new tasks. */
+  /** Read .bytehive/plan.json now and import any new tasks. */
   async function importFromFile(): Promise<number> {
     if (!dir) return 0;
     try {
@@ -343,7 +343,7 @@ export function createKanban() {
     }
   }
 
-  /** Background poll: when maestro-mcp (an agent) rewrites board.json, reload.
+  /** Background poll: when bytehive-mcp (an agent) rewrites board.json, reload.
    *  Skipped mid-drag and while an input inside the board is focused, so the
    *  DOM isn't yanked out from under the user; the next tick catches up. */
   async function pollBoardJson(): Promise<void> {
@@ -369,7 +369,7 @@ export function createKanban() {
       const before = doneCardIds(board);
       board = bf.board;
       boardMtime = bf.mtime;
-      // An external write (maestro-mcp) landed a card in Done → tell the user.
+      // An external write (bytehive-mcp) landed a card in Done → tell the user.
       for (const l of board.lists) {
         if (l.title.trim().toLowerCase() !== DONE_TITLE.toLowerCase()) continue;
         for (const c of l.cards) {
@@ -498,7 +498,7 @@ export function createKanban() {
     }
   }
 
-  // Drag uses POINTER EVENTS, not HTML5 drag-and-drop. Maestro runs in a Tauri
+  // Drag uses POINTER EVENTS, not HTML5 drag-and-drop. ByteHive runs in a Tauri
   // WebView2 window with OS drag-drop enabled (the "drop a file on a pane"
   // feature), which swallows HTML5 dragstart/drop inside the webview. Pointer
   // capture is the pattern that works here (same as the home mascot). We move
@@ -570,7 +570,7 @@ export function createKanban() {
         if (!(e instanceof BoardFileCorrupt)) {
           // permission/too-large/binary-refusal etc: not the user's doing —
           // abort with no write rather than clobbering an unreadable file.
-          console.warn("maestro: board.json unreadable — change not saved", e);
+          console.warn("bytehive: board.json unreadable — change not saved", e);
           return;
         }
         // corrupt file: mutate the in-memory copy; the forced write below
@@ -619,13 +619,13 @@ export function createKanban() {
     } catch (e) {
       if (e instanceof BoardFileCorrupt) {
         console.warn(
-          "maestro: .maestro/board.json is corrupt — showing an in-memory board; fix or delete the file",
+          "bytehive: .bytehive/board.json is corrupt — showing an in-memory board; fix or delete the file",
         );
       } else {
         // permission/too-large/binary-refusal etc: not corrupt, just unreadable —
         // show the default board but don't touch the file (withBoard aborts too).
         console.warn(
-          "maestro: .maestro/board.json is unreadable — showing an in-memory board; changes won't be saved",
+          "bytehive: .bytehive/board.json is unreadable — showing an in-memory board; changes won't be saved",
           e,
         );
       }
@@ -642,7 +642,7 @@ export function createKanban() {
     }
   }
 
-  /* ---- live board mirror the agent reads (.maestro/board.md) ---- */
+  /* ---- live board mirror the agent reads (.bytehive/board.md) ---- */
   let boardWriteTimer: number | null = null;
   function scheduleBoardFile() {
     if (!dir) return;
@@ -1249,12 +1249,12 @@ export function createKanban() {
           actions.appendChild(b);
           return b;
         };
-        // Planning lives in the agents now: the maestro MCP server ships the
+        // Planning lives in the agents now: the bytehive MCP server ships the
         // plan-first convention as its instructions, so an MCP agent reads the
         // board and adds cards directly — no "Plan with AI" button needed.
         // Capture web is a side utility, not a board verb — demoted to an icon
         // so it stays available without competing with the primary actions.
-        const capBtn = mkBtn("", "Screenshot a web URL into .maestro/shots and open it", () =>
+        const capBtn = mkBtn("", "Screenshot a web URL into .bytehive/shots and open it", () =>
           void captureWeb(),
         );
         capBtn.classList.add("kb-tool-icon");

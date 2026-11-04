@@ -1,6 +1,6 @@
 // Reads what an agent CLI is asking, from the text on its screen.
 //
-// Every CLI Maestro runs draws its questions the same basic way: a prompt line,
+// Every CLI ByteHive runs draws its questions the same basic way: a prompt line,
 // then numbered options with one marked as selected, then a hint about which
 // keys to press. The old attention heuristic only knew that a pane had gone
 // quiet; this tells the three cases apart (wants to run something, asked a

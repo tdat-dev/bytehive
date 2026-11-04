@@ -1,5 +1,5 @@
 // Settings → Browser: which of the user's browser profiles their agents can
-// use, and the three steps to add "Maestro for Chrome" to one. A profile's row
+// use, and the three steps to add "ByteHive for Chrome" to one. A profile's row
 // turns to Connected by itself when its extension reaches the hub (the
 // "browser-hub" event), so setup needs no "check again" button.
 

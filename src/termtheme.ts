@@ -132,10 +132,10 @@ export interface TermPalette {
   brightWhite: string;
 }
 
-/** Light glyphs — the palette Maestro shipped, for dark backdrops. */
+/** Light glyphs — the palette ByteHive shipped, for dark backdrops. */
 const LIGHT_TEXT: Omit<TermPalette, "background"> = {
   foreground: "#e2e8f0", // slate-200
-  cursor: "#f4f4f5", // maestro accent
+  cursor: "#f4f4f5", // bytehive accent
   cursorAccent: "#0a0c10",
   selectionBackground: "rgba(255, 255, 255, 0.22)",
   black: "#1e293b",
@@ -195,7 +195,7 @@ const PLATE: Record<TextTone, Rgb> = {
 
 /**
  * Palette for `tone`, with the background plate at `opacity` (0 = fully
- * see-through, the default; 1 = the opaque terminal Maestro used to draw).
+ * see-through, the default; 1 = the opaque terminal ByteHive used to draw).
  */
 export function paletteFor(tone: TextTone, opacity = 0): TermPalette {
   const a = Math.min(1, Math.max(0, opacity));

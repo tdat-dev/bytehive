@@ -1,9 +1,9 @@
-/** Calm: Maestro's window is not the one you are using (you are watching a
+/** Calm: ByteHive's window is not the one you are using (you are watching a
  *  video, or working in another app). Terminals then draw a few times a second
- *  instead of on every byte, and CSS animations hold still, so Maestro stops
+ *  instead of on every byte, and CSS animations hold still, so ByteHive stops
  *  competing for the GPU that also draws your screen. */
 
-/** How often a terminal draws while Maestro is in the background. */
+/** How often a terminal draws while ByteHive is in the background. */
 export const CALM_MS = 250;
 
 let calm = false;

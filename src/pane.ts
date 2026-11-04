@@ -38,7 +38,7 @@ function homeFolder(): Promise<string> {
   return home;
 }
 import { paneLook } from "./background";
-import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
+import { BYTEHIVE_LAWS, DIRECTOR_LAWS } from "./laws";
 import { getZoom, setZoom, paneFont, autoFitRows } from "./zoom";
 import { openMenu } from "./ctxmenu";
 import { faceSvg } from "./agentface";
@@ -323,17 +323,17 @@ export function createAgent(
           }
         }
       }
-      // Start the CLI in a folder Maestro chose and wrote down (never the PTY's
+      // Start the CLI in a folder ByteHive chose and wrote down (never the PTY's
       // silent default), so the chat view reads the transcript of this run.
       cwd = runDir({ worktree: spec.worktree, cwd }, await homeFolder());
       spec.ranIn = cwd;
-      // Enforce Maestro's protocol at the system-prompt level so a Claude agent
+      // Enforce ByteHive's protocol at the system-prompt level so a Claude agent
       // MUST follow it (not a soft MCP hint, not a button). The director gets the
       // dispatch prompt; every other Claude gets the plan-first worker one.
       // Only claude exposes --append-system-prompt; other CLIs still get the MCP
       // tools + server instructions. New array — never mutate spec.args, or a
       // restart would append the flag again and again.
-      const laws = spec.role === "conductor" ? DIRECTOR_LAWS : MAESTRO_LAWS;
+      const laws = spec.role === "conductor" ? DIRECTOR_LAWS : BYTEHIVE_LAWS;
       const own = spec.badge === "claude" ? await claudeSessionArgs(spec, cwd) : [];
       if (own.length) saveSession(); // History finds this run's transcript after a restart too
       const args =
@@ -341,11 +341,11 @@ export function createAgent(
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, args);
-      // Identity for the child process: maestro-mcp uses MAESTRO_AGENT to
+      // Identity for the child process: bytehive-mcp uses BYTEHIVE_AGENT to
       // stamp who moved/finished a board card (see mcp/src/server.ts).
       const envPairs: Array<[string, string]> = [
-        ["MAESTRO_AGENT", spec.name],
-        ["MAESTRO_WORKSPACE", cwd ?? ""],
+        ["BYTEHIVE_AGENT", spec.name],
+        ["BYTEHIVE_WORKSPACE", cwd ?? ""],
       ];
       pane.spawning = true;
       pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
@@ -481,7 +481,7 @@ export async function removeAgent(ws: Workspace, id: string) {
 
 /* ---------------- session recording (replay) ---------------- */
 
-// Recordings live under the workspace's own .maestro folder so the player can
+// Recordings live under the workspace's own .bytehive folder so the player can
 // list them per project (see openReplays). Path uses forward slashes — Rust's
 // Path handles them on Windows and create_dir_all makes the folder.
 
@@ -531,7 +531,7 @@ export async function stopRecording(p: Pane): Promise<string | null> {
 }
 
 /** Toggle recording for a pane. Start writes to
- *  `<workspace>/.maestro/recordings/<agent>-<epochms>.jsonl`. */
+ *  `<workspace>/.bytehive/recordings/<agent>-<epochms>.jsonl`. */
 export async function toggleRecord(ws: Workspace, p: Pane): Promise<void> {
   if (p.recording) {
     const path = await stopRecording(p);

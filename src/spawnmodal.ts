@@ -171,7 +171,7 @@ export async function spawnCrew(
   }
 }
 
-/** A conductor agent asked (via the maestro-mcp agent_spawn tool) to grow its
+/** A conductor agent asked (via the bytehive-mcp agent_spawn tool) to grow its
  *  crew. Spawn the worker(s) into the SAME open workspace (so they share the
  *  board + fleet), with names unique in that workspace, and — if a task was
  *  given — type it into each once they've had a moment to reach their prompt. */

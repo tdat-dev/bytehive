@@ -17,7 +17,7 @@ const CLAUDE_BASH = `
 │                                                                      │
 │ Do you want to proceed?                                              │
 │ ❯ 1. Yes                                                             │
-│   2. Yes, and don't ask again for npm run tauri build commands in D:\\maestro │
+│   2. Yes, and don't ask again for npm run tauri build commands in D:\\bytehive │
 │   3. No, and tell Claude what to do differently (esc)                │
 ╰──────────────────────────────────────────────────────────────────────╯
 `;
@@ -31,7 +31,7 @@ const CLAUDE_BASH_UNBOXED = `
 
  Do you want to proceed?
  ❯ 1. Yes
-   2. Yes, and don't ask again for git push commands in D:\\maestro
+   2. Yes, and don't ask again for git push commands in D:\\bytehive
    3. No, and tell Claude what to do differently (esc)
 `;
 

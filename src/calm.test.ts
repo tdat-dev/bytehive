@@ -4,7 +4,7 @@ import { createPacer, setCalmForTest } from "./calm";
 describe("calm pacer", () => {
   afterEach(() => { setCalmForTest(false); vi.useRealTimers(); });
 
-  it("passes output straight through while Maestro is in use", () => {
+  it("passes output straight through while ByteHive is in use", () => {
     const out: string[] = [];
     const p = createPacer<string>((c) => out.push(c));
     p.push("a");

@@ -14,7 +14,7 @@ import {
 
 let dir: string;
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-fleet-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-fleet-"));
 });
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
@@ -26,7 +26,7 @@ describe("readFleet", () => {
   });
 
   it("reads an {agents:[...]} roster and normalizes bad statuses", () => {
-    fs.mkdirSync(path.join(dir, ".maestro"));
+    fs.mkdirSync(path.join(dir, ".bytehive"));
     fs.writeFileSync(
       fleetPath(dir),
       JSON.stringify({
@@ -44,14 +44,14 @@ describe("readFleet", () => {
   });
 
   it("returns [] on corrupt json without throwing", () => {
-    fs.mkdirSync(path.join(dir, ".maestro"));
+    fs.mkdirSync(path.join(dir, ".bytehive"));
     fs.writeFileSync(fleetPath(dir), "{not json");
     expect(readFleet(dir)).toEqual([]);
   });
 });
 
 describe("queueMessage", () => {
-  it("appends a jsonl line and creates .maestro", () => {
+  it("appends a jsonl line and creates .bytehive", () => {
     const m = queueMessage(dir, { from: "Claude #1", to: "Codex #1", message: "  ping ", now: 5 });
     expect(m).toEqual({ ts: 5, from: "Claude #1", to: "Codex #1", message: "ping" });
     const lines = fs.readFileSync(outboxPath(dir), "utf8").trim().split("\n");
@@ -84,7 +84,7 @@ describe("queueMessage", () => {
 
 describe("readAgentScreen", () => {
   it("returns the named agent's screen (case-insensitive), null if absent", () => {
-    fs.mkdirSync(path.join(dir, ".maestro"));
+    fs.mkdirSync(path.join(dir, ".bytehive"));
     fs.writeFileSync(
       fleetPath(dir),
       JSON.stringify({

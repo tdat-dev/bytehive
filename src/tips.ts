@@ -11,7 +11,7 @@ const GAP_MS = 20_000; // never two tips close together
 let lastAt = 0;
 
 export const TIPS = {
-  welcome: "Press <kbd>?</kbd> to see everything Maestro can do · <kbd>Ctrl</kbd> <kbd>K</kbd> jumps anywhere",
+  welcome: "Press <kbd>?</kbd> to see everything ByteHive can do · <kbd>Ctrl</kbd> <kbd>K</kbd> jumps anywhere",
   menu: "<b>Right-click</b> an agent in the list to rename it, add it to the Grid, stop or remove it",
   split: "Several agents? <b>Grid</b> (<kbd>Alt</kbd> <kbd>S</kbd>) shows them side by side, each answering on its own card",
   review: "<kbd>Alt</kbd> <kbd>R</kbd> shows what it changed, to merge or send back",

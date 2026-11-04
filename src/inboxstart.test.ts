@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const calls = vi.hoisted(() => ({
   created: [] as string[], activated: [] as string[], newAgent: [] as Array<number | undefined>,
   recents: [] as string[], spawned: [] as Array<[string, string, number, string | null, boolean]>,
-  revealed: [] as string[], recentList: ["D:\\maestro", "D:\\quy"] as string[],
+  revealed: [] as string[], recentList: ["D:\\bytehive", "D:\\quy"] as string[],
 }));
 vi.mock("./workspace", () => ({
   createWorkspace: (dir: string) => { calls.created.push(dir); return { id: "new", dir, panes: new Map() }; },
@@ -23,8 +23,8 @@ vi.mock("./agentbridge", () => ({ revealPane: (ws: string, pane: string) => { ca
 vi.mock("./panelayout", () => ({ focusPane: () => {} }));
 vi.mock("./tasks", () => ({
   allTasks: () => [
-    { paneId: "a", wsId: "ws-1", name: "Ana", project: "maestro", status: { state: "needs", ask: { kind: "run", prompt: "Do you want to proceed?", detail: "npm test", options: [] } } },
-    { paneId: "b", wsId: "ws-1", name: "Bo", project: "maestro", status: { state: "working", ask: null } },
+    { paneId: "a", wsId: "ws-1", name: "Ana", project: "bytehive", status: { state: "needs", ask: { kind: "run", prompt: "Do you want to proceed?", detail: "npm test", options: [] } } },
+    { paneId: "b", wsId: "ws-1", name: "Bo", project: "bytehive", status: { state: "working", ask: null } },
   ],
 }));
 
@@ -38,10 +38,10 @@ describe("start screen", () => {
   beforeEach(() => {
     document.body.innerHTML = `<div id="home"></div>`;
     for (const k of ["created", "activated", "newAgent", "recents", "spawned", "revealed"] as const) calls[k].length = 0;
-    calls.recentList = ["D:\\maestro", "D:\\quy"];
+    calls.recentList = ["D:\\bytehive", "D:\\quy"];
     localStorage.clear();
     workspaces.clear();
-    workspaces.set("ws-1", { id: "ws-1", dir: "D:\\maestro\\", panes: new Map([["a", {}], ["b", {}]]) } as unknown as Workspace);
+    workspaces.set("ws-1", { id: "ws-1", dir: "D:\\bytehive\\", panes: new Map([["a", {}], ["b", {}]]) } as unknown as Workspace);
     unmountStart();
   });
 
@@ -53,7 +53,7 @@ describe("start screen", () => {
     expect(statusSentence([t("Bo", "working")], false)).toBe("One agent is working. Nothing needs you yet.");
     expect(statusSentence([], true)).toContain("Pick a folder");
     expect(folderName("D:\\WhaleloSource\\")).toBe("WhaleloSource");
-    expect(projectLine("D:\\maestro", [
+    expect(projectLine("D:\\bytehive", [
       { wsId: "ws-1", status: { state: "needs" } }, { wsId: "ws-1", status: { state: "idle" } },
     ] as never)).toEqual({ agents: 2, needs: 1 });
   });
@@ -93,14 +93,14 @@ describe("start screen", () => {
     wait.click();
     expect(calls.revealed).toEqual(["ws-1/a"]);
     const cards = [...document.querySelectorAll(".st-proj[data-dir]")];
-    expect(cards.map((c) => c.querySelector("b")!.textContent)).toEqual(["maestro", "quy"]);
+    expect(cards.map((c) => c.querySelector("b")!.textContent)).toEqual(["bytehive", "quy"]);
     expect(cards[0].querySelector(".st-n")!.textContent).toBe("1 waiting on you");
     expect(cards[1].querySelector(".st-n")!.textContent).toBe("Not open");
     (cards[1] as HTMLButtonElement).click();
     expect(calls.created).toEqual(["D:\\quy"]);
     expect(calls.newAgent).toEqual([undefined]); // a fresh project asks for its first agent
     (document.querySelector('[data-st="shell"]') as HTMLButtonElement).click();
-    expect(calls.created).toEqual(["D:\\quy", "shell:D:\\maestro"]);
+    expect(calls.created).toEqual(["D:\\quy", "shell:D:\\bytehive"]);
   });
 
   it("shows three steps the first time, instead of projects", () => {

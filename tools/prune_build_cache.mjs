@@ -5,7 +5,7 @@
 // stopped using. Every config change — `tauri dev` vs `tauri build` vs
 // `cargo test`, a feature flag, a profile edit — mints a fresh hash and orphans
 // the old directory forever. On 2026-07-30 this repo held ten caches for
-// `maestro_lib` alone at ~850 MB each: 8.4 GB of the 20 GB target, all dead.
+// `bytehive_lib` alone at ~850 MB each: 8.4 GB of the 20 GB target, all dead.
 //
 // Deleting a cache is never destructive — it is a build accelerator, not build
 // output. The worst case is that one crate recompiles from scratch next build.

@@ -1,4 +1,4 @@
-// "What Maestro can do": every feature that has no button of its own — the
+// "What ByteHive can do": every feature that has no button of its own — the
 // right-click menus, the keyboard, the terminal's habits and the tools that
 // live behind Ctrl K or Settings — on one page. Opens with ? (when you're not
 // typing), Ctrl+/, from Ctrl K, and from the start screen. Tools open from it.
@@ -73,7 +73,7 @@ export function openHelp(openTool: (id: string) => void): void {
   const back = document.createElement("div");
   back.className = "inbox-modal-back hp-back";
   back.innerHTML = `<div class="inbox-modal hp" role="dialog" aria-modal="true" aria-labelledby="hpTitle">
-    <header class="im-head"><div><h2 id="hpTitle">What Maestro can do</h2><p class="im-sub">The things without a button of their own. All of them are in Ctrl K too.</p></div>
+    <header class="im-head"><div><h2 id="hpTitle">What ByteHive can do</h2><p class="im-sub">The things without a button of their own. All of them are in Ctrl K too.</p></div>
       <button type="button" class="im-x" data-close aria-label="Close">✕</button></header>
     <div class="hp-body">
       <section class="hp-sec hp-tools" aria-label="Tools"><h3>Tools</h3><div class="hp-grid">${TOOLS.map((t) =>

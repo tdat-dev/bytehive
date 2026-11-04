@@ -48,7 +48,7 @@ vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { state.sent.push([id, text]); },
   reviewBranchDiff: async (wt: string) => { state.reviewed.push(wt); return state.diff; },
   repoDiff: async (dir: string) => { state.reviewed.push(dir); return state.diff; },
-  reposUnder: async (dir: string) => [{ path: dir, name: "maestro" }],
+  reposUnder: async (dir: string) => [{ path: dir, name: "bytehive" }],
   reviewLand: async (wt: string, o: { dryRun?: boolean; title?: string | null }) => {
     state.lands.push({ wt, dryRun: !!o.dryRun, title: o.title ?? null });
     return o.dryRun ? state.land.dry : state.land.real;
@@ -82,7 +82,7 @@ const DIFF = [
 const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0)); };
 
 const task = (paneId: string, name: string, state: Task["status"]["state"], over: Partial<Task> = {}): Task => ({
-  paneId, wsId: "ws-1", name, project: "maestro", branch: null, title: null, race: null,
+  paneId, wsId: "ws-1", name, project: "bytehive", branch: null, title: null, race: null,
   changedFiles: null, added: null, removed: null, since: 0,
   status: { state, ask: state === "needs" ? RUN_ASK : null }, ...over,
 });
@@ -94,11 +94,11 @@ describe("inbox helpers", () => {
       task("z2", "Zia", "needs", { wsId: "z", project: "zoldify" }),
       task("a1", "Ann", "working", { wsId: "a", project: "app" }),
       task("z1", "Zed", "stopped", { wsId: "z", project: "zoldify" }),
-      task("m1", "Mo", "working", { wsId: "m", project: "maestro" }),
+      task("m1", "Mo", "working", { wsId: "m", project: "bytehive" }),
     ];
     const g = projectGroups(list, order);
     expect(g.map((x) => [x.name, x.tasks.map((t) => t.paneId), x.needs])).toEqual([
-      ["maestro", ["m1"], 0], ["zoldify", ["z1", "z2"], 1], ["app", ["a1"], 0],
+      ["bytehive", ["m1"], 0], ["zoldify", ["z1", "z2"], 1], ["app", ["a1"], 0],
     ]);
     // Zia answered, Zed started working: same places
     const later = list.map((t) => (t.paneId === "z2" ? { ...t, status: { state: "working" as const, ask: null } } : t.paneId === "z1" ? { ...t, status: { state: "needs" as const, ask: null } } : t));
@@ -108,13 +108,13 @@ describe("inbox helpers", () => {
   it("groups the Grid's cards by project, the terminal's project first", () => {
     const list = [
       task("z1", "Ana", "working", { wsId: "z", project: "zoldify" }),
-      task("m1", "Ana", "needs", { wsId: "m", project: "maestro" }),
+      task("m1", "Ana", "needs", { wsId: "m", project: "bytehive" }),
       task("a1", "Ana", "working", { wsId: "a", project: "app" }),
       task("z2", "Bob", "idle", { wsId: "z", project: "zoldify" }),
     ];
     expect(railGroups(list, "z").map((g) => [g.project, g.tasks.map((t) => t.paneId)]))
-      .toEqual([["zoldify", ["z1", "z2"]], ["app", ["a1"]], ["maestro", ["m1"]]]);
-    expect(railGroups(list, null).map((g) => g.project)).toEqual(["app", "maestro", "zoldify"]);
+      .toEqual([["zoldify", ["z1", "z2"]], ["app", ["a1"]], ["bytehive", ["m1"]]]);
+    expect(railGroups(list, null).map((g) => g.project)).toEqual(["app", "bytehive", "zoldify"]);
   });
 
   it("groups in queue order and keeps an empty Needs you group", () => {
@@ -184,10 +184,10 @@ describe("inbox DOM", () => {
     state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = [];
     state.sent = []; state.lands = []; state.discarded = []; state.merged = []; state.killed = [];
     state.diff = DIFF;
-    state.land = { dry: { kind: "ok", base: "main", branch: "maestro/e", sha: "", removed: false, note: null }, real: { kind: "ok", base: "main", branch: "maestro/e", sha: "abc", removed: true, note: null } };
+    state.land = { dry: { kind: "ok", base: "main", branch: "bytehive/e", sha: "", removed: false, note: null }, real: { kind: "ok", base: "main", branch: "bytehive/e", sha: "abc", removed: true, note: null } };
     panes = ["a", "e"].map((id) => ({
       id, el: document.createElement("div"), color: "#f2b27a", running: false,
-      spec: { name: id === "a" ? "Ana" : "Eli", cwd: "D:/maestro", worktree: `D:/wt/${id}`, branch: `maestro/${id}` },
+      spec: { name: id === "a" ? "Ana" : "Eli", cwd: "D:/bytehive", worktree: `D:/wt/${id}`, branch: `bytehive/${id}` },
       term: { focus: () => {}, setFontSize: () => {}, fit: () => ({ cols: 80, rows: 24 }) },
     } as unknown as Pane));
     const gridEl = document.createElement("div");
@@ -200,7 +200,7 @@ describe("inbox DOM", () => {
     main.id = "workspaces";
     main.appendChild(gridEl);
     document.getElementById("app")!.appendChild(main);
-    const ws = { id: "ws-1", name: "maestro", gridEl, panes: new Map(panes.map((p) => [p.id, p])) } as unknown as Workspace;
+    const ws = { id: "ws-1", name: "bytehive", gridEl, panes: new Map(panes.map((p) => [p.id, p])) } as unknown as Workspace;
     workspaces.clear(); workspaces.set("ws-1", ws); setActiveWs(ws);
     setInbox(false);
   });
@@ -329,7 +329,7 @@ describe("inbox DOM", () => {
     expect(state.focused[0]).toBe("a");
     expect(document.querySelector(".inbox-head")!.textContent).toBe("1 agent needs you. 1 is working.");
     expect(document.querySelectorAll(".iq-row")).toHaveLength(2);
-    // no card of Maestro's own over the terminal: the CLI asks there
+    // no card of ByteHive's own over the terminal: the CLI asks there
     expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
     expect(document.querySelector(".ia-opt")).toBeNull();
     expect(panes[0].el.querySelector(".ib-pill")!.textContent).toBe("Needs you");
@@ -394,7 +394,7 @@ describe("inbox DOM", () => {
     expect((document.querySelector(".inbox-ask") as HTMLElement).hidden).toBe(true);
     // the design's panel: what changed on the branch, where it goes, whether it merges
     expect(drawer.querySelector(".rhead h2")!.textContent).toBe("1 file changed +1−1");
-    expect(drawer.querySelector(".br")!.textContent).toBe("maestro/e → main");
+    expect(drawer.querySelector(".br")!.textContent).toBe("bytehive/e → main");
     expect(drawer.querySelector(".check")!.textContent).toContain("Merges cleanly into main");
     expect([...drawer.querySelectorAll(".dl .ln")].map((x) => x.textContent)).toEqual(["1", "", "2"]);
     expect([...drawer.querySelectorAll(".row2 button")].map((b) => b.textContent!.trim())).toEqual(["Merge into main M", "Send back", "Discard branch"]);
@@ -438,7 +438,7 @@ describe("inbox DOM", () => {
     expect(state.lands.map((l) => l.dryRun)).toEqual([true, true, false]);
     expect(state.lands[2]).toEqual({ wt: "D:/wt/e", dryRun: false, title: "Fix upload" });
     expect(state.killed).toEqual(["e"]);
-    expect(state.merged).toEqual([["e", "main", "maestro/e"]]);
+    expect(state.merged).toEqual([["e", "main", "bytehive/e"]]);
     expect(panes[1].spec.worktree).toBeUndefined();
     expect(document.querySelector(".inbox-review")).toBeNull();
   });
@@ -446,7 +446,7 @@ describe("inbox DOM", () => {
   it("on a conflict merges nothing and Send back types what to resolve", async () => {
     state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
     (panes[1] as unknown as { running: boolean }).running = true;
-    state.land.dry = { kind: "conflict", base: "main", branch: "maestro/e", files: ["src/a.ts"] };
+    state.land.dry = { kind: "conflict", base: "main", branch: "bytehive/e", files: ["src/a.ts"] };
     setInbox(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
     await flush();
@@ -489,7 +489,7 @@ describe("inbox DOM", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
     await flush();
     const drawer = document.querySelector(".inbox-review")!;
-    expect(state.reviewed).toEqual(["D:/maestro"]);
+    expect(state.reviewed).toEqual(["D:/bytehive"]);
     expect(state.lands).toEqual([]);
     expect([...drawer.querySelectorAll(".row2 button")].map((b) => b.textContent!.trim())).toEqual(["Send back"]);
     expect(drawer.querySelector(".ir-msg")!.textContent).toContain("works in the project folder");
@@ -582,7 +582,7 @@ describe("inbox DOM", () => {
       g.querySelector(".iq-pn")!.textContent,
       [...g.querySelectorAll(".iq-row")].map((r) => (r as HTMLElement).dataset.id),
     ]);
-    expect(groups).toEqual([["maestro", ["a", "e"]], ["quy", ["q"]]]);
+    expect(groups).toEqual([["bytehive", ["a", "e"]], ["quy", ["q"]]]);
     expect(document.querySelector(".iq-chip")).toBeNull();
     // the second line says the state, not the project
     expect(document.querySelector('.iq-row[data-id="e"] .iq-l')!.textContent).toBe("Stopped");
@@ -654,7 +654,7 @@ describe("inbox DOM", () => {
     expect(qEl.classList.contains("focused")).toBe(true);
     // the terminal names its project; Ana's card now goes under hers
     expect(qEl.querySelector("[data-where]")!.textContent).toBe("quy");
-    expect([...document.querySelectorAll(".ib-rail .rc-g b")].map((b) => b.textContent)).toEqual(["maestro"]);
+    expect([...document.querySelectorAll(".ib-rail .rc-g b")].map((b) => b.textContent)).toEqual(["bytehive"]);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "s", altKey: true }));
     expect(qEl.parentElement).toBe(qGrid);
     expect(qEl.classList.contains("split-pin")).toBe(false);

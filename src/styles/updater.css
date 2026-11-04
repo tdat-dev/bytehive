@@ -13,7 +13,7 @@
 .upd-toast.show{transform:translateY(0);opacity:1;pointer-events:auto}
 .upd-toast[hidden]{display:none}
 
-/* the Maestro mark, as on the start screen and the intro */
+/* the ByteHive mark, as on the start screen and the intro */
 .upd-mark{flex:none;width:36px;height:36px;display:grid;place-items:center}
 .upd-mark svg{width:30px;height:auto}
 

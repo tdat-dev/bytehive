@@ -106,7 +106,7 @@ export function toggleMax(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
 }
 // Click the pane's name to rename it (persona → role). Commits on Enter/blur,
 // reverts on Escape. The name is the single identity across the pane, the focus
-// rail, and MAESTRO_AGENT (applied to future spawns of this pane).
+// rail, and BYTEHIVE_AGENT (applied to future spawns of this pane).
 /** Give an agent a new name (blank keeps the old one) and save it. */
 export function renamePane(pane: Pane, name: string): void {
   const v = name.trim();

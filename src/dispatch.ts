@@ -17,15 +17,15 @@ export function cardToAgentText(card: Card): string {
 }
 
 /** Full dispatch prompt: the task plus board-reporting instructions. Agents
- *  with the maestro MCP tools keep the board in step; agents without them
+ *  with the bytehive MCP tools keep the board in step; agents without them
  *  just do the task. */
 export function dispatchPrompt(card: Card): string {
   const ref = JSON.stringify(card.title.trim());
   return (
     cardToAgentText(card) +
     "\n\n" +
-    `When you start, move this card to "Doing" with the maestro MCP tool ` +
+    `When you start, move this card to "Doing" with the bytehive MCP tool ` +
     `card_move (card: ${ref}). When finished, call card_done (card: ${ref}) ` +
-    `with a one-line summary. If you don't have maestro tools, just do the task.`
+    `with a one-line summary. If you don't have bytehive tools, just do the task.`
   );
 }

@@ -1,14 +1,14 @@
-//! Maestro for Chrome: agents use the user's real browsers through an
+//! ByteHive for Chrome: agents use the user's real browsers through an
 //! extension, the way Claude in Chrome does.
 //!
 //! ```text
-//! agent → maestro-mcp ─ws─┐
-//!                         ├─ hub (in Maestro)
+//! agent → bytehive-mcp ─ws─┐
+//!                         ├─ hub (in ByteHive)
 //! extension ─ native ─────┘
-//!           messaging → maestro.exe host ─ws─
+//!           messaging → bytehive.exe host ─ws─
 //! ```
 //!
-//! See docs/superpowers/specs/2026-09-24-maestro-browser-design.md.
+//! See docs/superpowers/specs/2026-09-24-bytehive-browser-design.md.
 
 pub mod host;
 pub mod hub;
@@ -23,7 +23,10 @@ use tauri::{AppHandle, Emitter, State};
 pub const EXTENSION_ID: &str = "lhnncnhgomngapalcfncgehffmmibmbf";
 /// The id the Chrome Web Store gave the published extension (the store strips `key`).
 pub const STORE_EXTENSION_ID: &str = "gcclbkbkaijioodjbpjjmhnkfpmnoikk";
-pub const HOST_NAME: &str = "com.maestro.browser";
+pub const HOST_NAME: &str = "com.bytehive.browser";
+/// The name the extension used before the rename (Maestro): still
+/// registered, so an extension that has not updated yet still connects.
+pub const OLD_HOST_NAME: &str = "com.maestro.browser";
 
 #[derive(Default)]
 pub struct BrowserState {
@@ -58,12 +61,12 @@ pub fn start(app: &AppHandle, state: &BrowserState) {
         Ok(h) => *state.hub.lock().unwrap_or_else(|p| p.into_inner()) = Some(h),
         Err(e) => eprintln!("browser hub: {e}"),
     }
-    // Agents started from here reach this Maestro's hub, not whichever
-    // Maestro was opened last (maestro-mcp reads MAESTRO_HUB_FILE).
+    // Agents started from here reach this ByteHive's hub, not whichever
+    // ByteHive was opened last (bytehive-mcp reads BYTEHIVE_HUB_FILE).
     if let Some(f) = hub::own_hub_file() {
-        std::env::set_var("MAESTRO_HUB_FILE", f);
+        std::env::set_var("BYTEHIVE_HUB_FILE", f);
     }
-    // Only the Maestro the browser talks to points the browsers at its host.
+    // Only the ByteHive the browser talks to points the browsers at its host.
     if !hub::owns_browser() {
         return;
     }
@@ -129,16 +132,24 @@ fn dunce_like(p: std::path::PathBuf) -> String {
 /// as Claude Code does for its own extension.
 #[cfg(windows)]
 fn register_host() -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let local = std::env::var("LOCALAPPDATA").map_err(|e| e.to_string())?;
-    let dir = std::path::PathBuf::from(local).join("Maestro").join("NativeHost");
+    let dir = std::path::PathBuf::from(local).join("ByteHive").join("NativeHost");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let exe = host_copy(&dir)?;
-    let manifest = dir.join(format!("{HOST_NAME}.json"));
+    for name in [HOST_NAME, OLD_HOST_NAME] {
+        register_name(&dir, &exe, name)?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn register_name(dir: &std::path::Path, exe: &std::path::Path, name: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let manifest = dir.join(format!("{name}.json"));
     let body = serde_json::json!({
-        "name": HOST_NAME,
-        "description": "Maestro browser bridge",
+        "name": name,
+        "description": "ByteHive browser bridge",
         "path": exe.to_string_lossy(),
         "type": "stdio",
         "allowed_origins": [
@@ -148,7 +159,7 @@ fn register_host() -> Result<(), String> {
     });
     std::fs::write(&manifest, serde_json::to_string_pretty(&body).unwrap()).map_err(|e| e.to_string())?;
     for vendor in [r"Google\Chrome", r"Microsoft\Edge", r"BraveSoftware\Brave-Browser", r"Chromium", r"Vivaldi"] {
-        let key = format!(r"HKCU\Software\{vendor}\NativeMessagingHosts\{HOST_NAME}");
+        let key = format!(r"HKCU\Software\{vendor}\NativeMessagingHosts\{name}");
         let _ = std::process::Command::new("reg")
             .args(["add", &key, "/ve", "/t", "REG_SZ", "/d", &manifest.to_string_lossy(), "/f"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -158,7 +169,7 @@ fn register_host() -> Result<(), String> {
 }
 
 /// Chrome keeps the host running for as long as the extension is connected,
-/// which is always. If the host were maestro.exe itself, that would lock the
+/// which is always. If the host were bytehive.exe itself, that would lock the
 /// file, and neither an update nor a dev rebuild could replace it. So the host
 /// is a copy, named after the build it came from. A new build writes a new
 /// copy beside the old one, which Chrome is still running; old copies are
@@ -168,7 +179,7 @@ fn host_copy(dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let meta = std::fs::metadata(&exe).map_err(|e| e.to_string())?;
     let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
-    let name = format!("maestro-host-{:x}-{:x}.exe", meta.len(), stamp);
+    let name = format!("bytehive-host-{:x}-{:x}.exe", meta.len(), stamp);
     let copy = dir.join(&name);
     if !copy.exists() {
         let tmp = dir.join(format!("{name}.part"));
@@ -178,7 +189,7 @@ fn host_copy(dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for e in entries.flatten() {
             let n = e.file_name().to_string_lossy().into_owned();
-            if n.starts_with("maestro-host-") && n != name {
+            if n.starts_with("bytehive-host-") && n != name {
                 let _ = std::fs::remove_file(e.path()); // fails while Chrome still runs it
             }
         }
@@ -217,7 +228,7 @@ pub async fn browser_profiles() -> Vec<profiles::ProfileRow> {
 #[tauri::command]
 pub async fn browser_open_profile(browser: String, dir: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let exe = profiles::browser_exe(&browser).ok_or_else(|| format!("{browser} isn't installed where Maestro looked."))?;
+        let exe = profiles::browser_exe(&browser).ok_or_else(|| format!("{browser} isn't installed where ByteHive looked."))?;
         std::process::Command::new(exe)
             .arg(format!("--profile-directory={dir}"))
             .spawn()
@@ -258,7 +269,7 @@ pub fn browser_asks(state: State<'_, BrowserState>) -> Vec<hub::Ask> {
     state.hub.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|h| h.asks()).unwrap_or_default()
 }
 
-/// The user's answer to a click Maestro held (sending, posting, paying…).
+/// The user's answer to a click ByteHive held (sending, posting, paying…).
 #[tauri::command]
 pub fn browser_answer(state: State<'_, BrowserState>, id: u64, ok: bool) -> Result<(), String> {
     hub_of(&state)?.answer(id, ok);

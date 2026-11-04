@@ -186,7 +186,7 @@ fn snapshot(s: &Sides) -> Result<String, String> {
     let made = (|| {
         git_env(&["add", "-A", "--", "."], &s.worktree, &env)?;
         let tree = git_env(&["write-tree"], &s.worktree, &env)?;
-        git(&["commit-tree", &tree, "-p", &head, "-m", "maestro: merge check"], &s.worktree)
+        git(&["commit-tree", &tree, "-p", &head, "-m", "bytehive: merge check"], &s.worktree)
     })();
     made
 }
@@ -246,7 +246,7 @@ fn wait_released(dir: &str) -> bool {
     if !p.exists() {
         return true;
     }
-    let probe = PathBuf::from(format!("{}.maestro-probe", dir.trim_end_matches(['\\', '/'])));
+    let probe = PathBuf::from(format!("{}.bytehive-probe", dir.trim_end_matches(['\\', '/'])));
     for _ in 0..12 {
         if std::fs::rename(p, &probe).is_ok() {
             if std::fs::rename(&probe, p).is_ok() {
@@ -370,7 +370,7 @@ fn land_impl(worktree: &str, message: Option<&str>, title: Option<&str>, dry_run
     // 3. Merge. A conflict is aborted, leaving the project folder as it was.
     let msg = match title.map(str::trim).filter(|t| !t.is_empty()) {
         Some(t) => format!("Merge {}: {}", s.branch, commit_message(None, Some(t), &s.branch)),
-        None => format!("Merge {} (maestro)", s.branch),
+        None => format!("Merge {} (bytehive)", s.branch),
     };
     let merged = match run(&["merge", "--no-ff", "-m", &msg, &s.branch], &s.main, &[]) {
         Ok(o) => o,
@@ -667,7 +667,7 @@ two
     fn commit_message_comes_from_the_title() {
         assert_eq!(commit_message(Some("  mine "), Some("t"), "b"), "mine");
         assert_eq!(commit_message(None, Some("Fix the flaky test\nmore"), "b"), "Fix the flaky test");
-        assert_eq!(commit_message(Some(" "), None, "maestro/ana-1"), "Work from maestro/ana-1");
+        assert_eq!(commit_message(Some(" "), None, "bytehive/ana-1"), "Work from bytehive/ana-1");
         let long = "x".repeat(100);
         assert_eq!(commit_message(None, Some(&long), "b").chars().count(), 73);
     }

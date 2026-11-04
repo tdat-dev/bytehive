@@ -1,5 +1,5 @@
 [project]
-name = "maestro-orchestrator"
+name = "bytehive-orchestrator"
 version = "0.1.0"
 description = "Scout/Builder/Reviewer agent loop over AI CLIs"
 requires-python = ">=3.13"

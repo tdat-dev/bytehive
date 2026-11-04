@@ -14,6 +14,7 @@ const key = (root: string, path: string) => `${root}|${path}`;
 const notFound = () => ({ Failed: "no such path: The system cannot find the path specified. (os error 3)" });
 
 vi.mock("./ipc", () => ({
+  adoptOldFolder: vi.fn(async () => {}),
   fsReadFile: vi.fn(async (root: string, path: string) => {
     const f = files.get(key(root, path));
     if (!f) throw notFound();
@@ -47,7 +48,7 @@ import {
   statBoardFile,
   serializeBoard,
 } from "./boardfile";
-import { fsReadFile, fsStat } from "./ipc";
+import { adoptOldFolder, fsReadFile, fsStat } from "./ipc";
 
 beforeEach(() => {
   files.clear();
@@ -56,6 +57,11 @@ beforeEach(() => {
 describe("boardfile", () => {
   it("statBoardFile returns null when missing", async () => {
     expect(await statBoardFile("D:\\ws")).toBeNull();
+  });
+
+  it("readBoardFile still reads when the old folder can't move", async () => {
+    vi.mocked(adoptOldFolder).mockRejectedValueOnce(new Error("in use"));
+    expect(await readBoardFile("D:\ws")).toBeNull();
   });
 
   it("readBoardFile returns null when missing", async () => {

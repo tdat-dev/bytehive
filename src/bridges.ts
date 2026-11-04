@@ -1,7 +1,7 @@
 // Drag-drop + Kanban-bridge cluster: OS file-drop and in-app file-tree drag
 // onto a terminal pane, the agentbridge wiring that lets the Kanban board talk
 // to the focused/targeted/fleet-wide panes, and the fleet file-bridge that
-// publishes the roster to .maestro/fleet.json for the maestro MCP tools. Split
+// publishes the roster to .bytehive/fleet.json for the bytehive MCP tools. Split
 // out of main.ts; the handful of main-side helpers it calls (workspace switch,
 // attention/status bookkeeping, recording stop) are injected via
 // configureBridges to avoid a circular import.
@@ -256,8 +256,8 @@ export function initBridges(): void {
     return false;
   });
 
-  // Fleet file-bridge: publish each workspace's roster to .maestro/fleet.json and
-  // deliver messages the maestro-mcp `fleet_send` tool drops into outbox.jsonl.
+  // Fleet file-bridge: publish each workspace's roster to .bytehive/fleet.json and
+  // deliver messages the bytehive-mcp `fleet_send` tool drops into outbox.jsonl.
   initFleetBridge({
     workspaces: () => {
       const now = Date.now();

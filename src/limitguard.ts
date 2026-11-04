@@ -1,11 +1,11 @@
 // Limit Guard: no agent left sitting at its plan's usage limit.
 //   - An agent that stops at its limit shows it ("Out of usage · back 7:09 PM",
 //     taskstate/limits.ts), and you get a notification.
-//   - When the limit lifts, Maestro tells it to carry on (Settings: Carry on
+//   - When the limit lifts, ByteHive tells it to carry on (Settings: Carry on
 //     when a usage limit resets). The time comes from its own screen, else
 //     from the plan's numbers (planmeter).
 //   - Or the task goes on at once with another CLI: an agent already open in
-//     the same folder, told to read the first one's context (maestro-mcp
+//     the same folder, told to read the first one's context (bytehive-mcp
 //     agent_context), or a new agent there, briefed from its conversation
 //     (handoff.ts).
 //     With "Hand over when an agent runs out of usage" on (the default) that
@@ -97,7 +97,7 @@ function checkAgents(now: number): void {
       e.notified = true;
       if (getPref("limitNotify")) {
         void notify(`${t.name} is out of usage`, reset
-          ? `Its limit resets at ${clockOf(reset, now)}.${carryOn ? " Maestro will tell it to carry on then." : ""}`
+          ? `Its limit resets at ${clockOf(reset, now)}.${carryOn ? " ByteHive will tell it to carry on then." : ""}`
           : "Its plan's usage limit ran out. You can hand its task to another CLI from its menu.");
       }
     }
@@ -108,7 +108,7 @@ function checkAgents(now: number): void {
     if (now - (resumedAt.get(t.paneId) ?? 0) < RESUME_GAP_MS) continue;
     resumedAt.set(t.paneId, now);
     void sendMessage(t.paneId, CARRY_ON);
-    if (getPref("limitNotify")) void notify(`${t.name} is back at work`, "Its usage limit reset, so Maestro told it to carry on.");
+    if (getPref("limitNotify")) void notify(`${t.name} is back at work`, "Its usage limit reset, so ByteHive told it to carry on.");
   }
 }
 
@@ -180,9 +180,9 @@ export function openTargets(pane: Pane, now = Date.now()): OpenTarget[] {
 }
 
 /** What an open agent is told when it takes a task over: one line, the rest
- *  it reads itself with the maestro MCP. */
+ *  it reads itself with the bytehive MCP. */
 export function takeOverLine(from: { name: string; cli: string }, why: string): string {
-  return `Take over the unfinished task of ${from.name} (${from.cli}), which stopped because ${why}. Call the maestro agent_context tool with who set to ${from.name} to read its task, plan, changed files and last words, check git status, then finish what is left. Say in one line what you picked up first.`;
+  return `Take over the unfinished task of ${from.name} (${from.cli}), which stopped because ${why}. Call the bytehive agent_context tool with who set to ${from.name} to read its task, plan, changed files and last words, check git status, then finish what is left. Say in one line what you picked up first.`;
 }
 
 /** Its row says who has its task now. */

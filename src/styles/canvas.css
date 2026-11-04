@@ -55,7 +55,7 @@
 }
 /* A running agent repaints its terminal several times a second (spinner, timer),
    and every repaint makes the GPU blur the wallpaper behind the pane again. With a
-   few agents running that kept the 3D engine 20-45% busy even with Maestro in the
+   few agents running that kept the 3D engine 20-45% busy even with ByteHive in the
    background (measured 2026-10-10, glass at opacity 0). A pane that is running and
    not the focused one swaps the blur for a light plate in its own tone: the
    wallpaper behind an idle pane is blurred once and cached, a busy one costs

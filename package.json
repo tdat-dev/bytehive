@@ -1,5 +1,5 @@
 {
-  "name": "maestro",
+  "name": "bytehive",
   "private": true,
   "version": "0.10.10",
   "description": "Spawn & orchestrate fleets of AI agent CLIs — real terminals, real tree-kill.",

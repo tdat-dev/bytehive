@@ -6,7 +6,7 @@
 import { workspaces } from "./appstate";
 import { type AgentSpec, type Workspace } from "./panetypes";
 
-// A detached window (a tab dragged out of another Maestro window) boots with
+// A detached window (a tab dragged out of another ByteHive window) boots with
 // ?detach=<key> pointing at its localStorage hand-off payload. Mirrors main.ts's
 // own DETACH_KEY/isDetachedWindow (computed independently — both read the same
 // URL, so they always agree).

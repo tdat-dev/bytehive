@@ -1,15 +1,15 @@
-//! The browser hub: one local WebSocket server inside Maestro that both sides
+//! The browser hub: one local WebSocket server inside ByteHive that both sides
 //! dial into.
 //!
-//! - **Browsers**: each Chrome/Edge/Brave profile running the "Maestro for
+//! - **Browsers**: each Chrome/Edge/Brave profile running the "ByteHive for
 //!   Chrome" extension reaches us through the native host (`host.rs`).
-//! - **Agents**: every maestro-mcp process (one per agent) dials in to call
+//! - **Agents**: every bytehive-mcp process (one per agent) dials in to call
 //!   browser tools.
 //!
 //! The hub routes an agent's call to the browser that agent picked (or the only
 //! one connected) and routes the answer back. It never runs browser actions
 //! itself. The port and a random token are written to
-//! `~/.maestro/browser-hub.json`, readable only by this user's processes; every
+//! `~/.bytehive/browser-hub.json`, readable only by this user's processes; every
 //! peer must present the token in its first message.
 
 use std::collections::hash_map::RandomState;
@@ -58,7 +58,7 @@ struct Peer {
     role: Role,
 }
 
-/// Who asked. Maestro itself (the live view) asks too, and waits on a channel.
+/// Who asked. ByteHive itself (the live view) asks too, and waits on a channel.
 enum Asker {
     Agent(u64, Value),
     App(mpsc::Sender<Value>),
@@ -85,11 +85,11 @@ struct Held {
 }
 
 /// How long a held click waits for the user. The agent's call gives up after
-/// the same time (HOLD_TIMEOUT_MS in maestro-mcp), so a late OK never clicks
+/// the same time (HOLD_TIMEOUT_MS in bytehive-mcp), so a late OK never clicks
 /// for an agent that has moved on.
 pub const HOLD_MS: u64 = 10 * 60_000;
 
-/// What Maestro shows for a held click.
+/// What ByteHive shows for a held click.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct Ask {
     pub id: u64,
@@ -192,23 +192,23 @@ pub fn random_token() -> String {
     s
 }
 
-/// The hub file of the installed Maestro: the extension's host always reads
+/// The hub file of the installed ByteHive: the extension's host always reads
 /// this one, whichever build it was copied from.
 pub fn hub_file() -> Option<PathBuf> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).ok()?;
-    Some(PathBuf::from(home).join(".maestro").join("browser-hub.json"))
+    Some(PathBuf::from(home).join(".bytehive").join("browser-hub.json"))
 }
 
-/// Whether this Maestro is the one the browser talks to. A test build (tauri
-/// dev) is not, unless MAESTRO_DEV_BROWSER=1 says so: run beside the installed
+/// Whether this ByteHive is the one the browser talks to. A test build (tauri
+/// dev) is not, unless BYTEHIVE_DEV_BROWSER=1 says so: run beside the installed
 /// app it took over the hub file and the browser host, and left both pointing
 /// at nothing when it closed.
 pub fn owns_browser() -> bool {
-    !cfg!(debug_assertions) || std::env::var("MAESTRO_DEV_BROWSER").map(|v| v == "1").unwrap_or(false)
+    !cfg!(debug_assertions) || std::env::var("BYTEHIVE_DEV_BROWSER").map(|v| v == "1").unwrap_or(false)
 }
 
-/// Where this Maestro publishes its hub: the installed one's file, or a test
-/// build's own. Its agents are told which (MAESTRO_HUB_FILE).
+/// Where this ByteHive publishes its hub: the installed one's file, or a test
+/// build's own. Its agents are told which (BYTEHIVE_HUB_FILE).
 pub fn own_hub_file() -> Option<PathBuf> {
     if owns_browser() {
         return hub_file();
@@ -228,7 +228,7 @@ fn publish(port: u16, token: &str) {
 
 /// Whether the hub on port own should write the hub file, given what it says now: it
 /// is missing or unreadable, or it names another hub that no longer answers.
-/// Another hub that answers keeps it: that Maestro was opened last.
+/// Another hub that answers keeps it: that ByteHive was opened last.
 fn should_claim(raw: Option<&str>, own: u16, answers: impl Fn(u16) -> bool) -> bool {
     let named = raw.and_then(|r| serde_json::from_str::<Value>(r).ok()).and_then(|v| v["port"].as_u64()).and_then(|p| u16::try_from(p).ok());
     match named {
@@ -269,7 +269,7 @@ impl Hub {
         hub.wanted_version = wanted_version;
         let hub = Arc::new(hub);
         publish(port, &hub.token);
-        // Every Maestro writes the one hub file, the last one opened wins, and
+        // Every ByteHive writes the one hub file, the last one opened wins, and
         // one that closes leaves its port there with nobody behind it: the
         // extension and every agent then find no browser. Look again now and
         // then, and take the file back when it names a hub that left.
@@ -354,7 +354,7 @@ impl Hub {
         (self.on_change)(HubEvent::Asks(list));
     }
 
-    /// Maestro's own call into a browser on behalf of `agent` (the live view),
+    /// ByteHive's own call into a browser on behalf of `agent` (the live view),
     /// answered on a channel. Uses the browser the agent last used.
     pub fn app_call(&self, agent: &str, tool: &str, args: Value, timeout: Duration) -> Result<Value, String> {
         let (tx, rx) = mpsc::channel();
@@ -597,7 +597,7 @@ impl Hub {
             }
             _ => {
                 if inner.activity.get(&name).is_some_and(|a| a.paused) {
-                    let _ = tx.send(fail(&id, format!("The user stopped {name}'s browser use from Maestro. Don't use the browser; tell the user where you are and wait until they say to go on.")));
+                    let _ = tx.send(fail(&id, format!("The user stopped {name}'s browser use from ByteHive. Don't use the browser; tell the user where you are and wait until they say to go on.")));
                     return false;
                 }
                 let target = match (pick, browsers.as_slice()) {
@@ -618,7 +618,7 @@ impl Hub {
                     if let Some(want) = (self.wanted_version)().filter(|w| !b.version.is_empty() && *w != b.version) {
                         if inner.reloaded.insert(format!("{}|{}|{}", b.browser, b.email, want)) {
                             let _ = inner.peers[&target].tx.send(RELOAD.to_string());
-                            let _ = tx.send(fail(&id, format!("Maestro is updating the browser extension to {want}. Try again in a few seconds.")));
+                            let _ = tx.send(fail(&id, format!("ByteHive is updating the browser extension to {want}. Try again in a few seconds.")));
                             return false;
                         }
                     }
@@ -642,9 +642,9 @@ impl Hub {
     }
 }
 
-const RELOAD: &str = r#"{"type":"call","id":0,"agent":"Maestro","tool":"reload","args":{}}"#;
+const RELOAD: &str = r#"{"type":"call","id":0,"agent":"ByteHive","tool":"reload","args":{}}"#;
 
-const NONE_CONNECTED: &str = "No browser is connected to Maestro. Open Chrome (or Edge/Brave) in a profile that has the \"Maestro for Chrome\" extension; see Maestro Settings → Browser to install it.";
+const NONE_CONNECTED: &str = "No browser is connected to ByteHive. Open Chrome (or Edge/Brave) in a profile that has the \"ByteHive for Chrome\" extension; see ByteHive Settings → Browser to install it.";
 
 fn listing(browsers: &[BrowserInfo]) -> String {
     let names: Vec<String> = browsers.iter().map(|b| format!("{} (id {})", b.label(), b.id)).collect();
@@ -703,17 +703,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_test_build_keeps_off_the_installed_maestros_hub_file() {
+    fn a_test_build_keeps_off_the_installed_bytehives_hub_file() {
         // debug_assertions: this is a test build
-        std::env::remove_var("MAESTRO_DEV_BROWSER");
+        std::env::remove_var("BYTEHIVE_DEV_BROWSER");
         assert!(!owns_browser());
         assert!(own_hub_file().unwrap().ends_with("browser-hub.dev.json"));
         assert!(hub_file().unwrap().ends_with("browser-hub.json"), "the host always reads the installed one");
         // asked for on purpose: it takes the browser like the installed app
-        std::env::set_var("MAESTRO_DEV_BROWSER", "1");
+        std::env::set_var("BYTEHIVE_DEV_BROWSER", "1");
         assert!(owns_browser());
         assert_eq!(own_hub_file(), hub_file());
-        std::env::remove_var("MAESTRO_DEV_BROWSER");
+        std::env::remove_var("BYTEHIVE_DEV_BROWSER");
     }
 
     #[test]
@@ -725,7 +725,7 @@ mod tests {
         assert!(should_claim(Some("not json"), own, alive));
         // already ours: leave it
         assert!(!should_claim(Some(r#"{"port":6967,"token":"t"}"#), own, alive));
-        // another Maestro that still answers (the one opened last): leave it
+        // another ByteHive that still answers (the one opened last): leave it
         assert!(!should_claim(Some(r#"{"port":4000,"token":"t"}"#), own, alive));
         // one that closed and left its file behind: take it back
         assert!(should_claim(Some(r#"{"port":3710,"token":"t"}"#), own, alive));
@@ -821,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn maestro_can_ask_a_browser_for_an_agent() {
+    fn bytehive_can_ask_a_browser_for_an_agent() {
         let hub = std::sync::Arc::new(Hub::for_test("t", |_, _| "P".into()));
         let (br, brx) = peer(&hub);
         hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);

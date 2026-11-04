@@ -1,12 +1,12 @@
-// Project memory, in Maestro: every fact the project's agents share
+// Project memory, in ByteHive: every fact the project's agents share
 // (projectmemory.ts), to read, add, edit and delete by hand, and to send to a
 // running agent of the project to check against the code and fix. Agents
-// change the same file through the maestro MCP tools; the panel follows them.
+// change the same file through the bytehive MCP tools; the panel follows them.
 
 import { fsCreateDir, fsCreateFile, fsReadFile, fsStat, fsWriteFile } from "./ipc";
 import { addFact, deleteFact, parseMemory, serializeMemory, updateFact, MemoryError, type MemoryEntry, type ProjectMemory } from "./projectmemory";
 
-const FILE = ".maestro\\memory.json";
+const FILE = ".bytehive\\memory.json";
 /** How often an open panel looks for an agent's change. */
 const FOLLOW_MS = 1500;
 
@@ -52,7 +52,7 @@ async function load(dir: string): Promise<{ mem: ProjectMemory; mtime: number | 
 /** Read, change, write, without overwriting an agent's change made in
  *  between: a conflict reads again and redoes the change once. */
 async function change<T>(dir: string, fn: (m: ProjectMemory) => T): Promise<{ result: T; mem: ProjectMemory; mtime: number }> {
-  try { await fsCreateDir(dir, ".maestro"); } catch { /* already there */ }
+  try { await fsCreateDir(dir, ".bytehive"); } catch { /* already there */ }
   for (let attempt = 0; ; attempt++) {
     const { mem, mtime } = await load(dir);
     const result = fn(mem);

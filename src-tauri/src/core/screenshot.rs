@@ -5,7 +5,7 @@
 
 use crate::error::{run_blocking, CommandError};
 
-/// Capture the webview window `label` to `<root>/.maestro/shots/<name>` (PNG).
+/// Capture the webview window `label` to `<root>/.bytehive/shots/<name>` (PNG).
 /// Returns the path relative to `root`. Async: PNG-encoding a full window on
 /// the main thread (where sync commands run) froze the UI; PrintWindow from the
 /// blocking thread still works because the main thread is free to answer it.
@@ -98,7 +98,7 @@ fn capture_window_impl(
         buf = pixels;
     }
 
-    let dir = std::path::Path::new(&root).join(".maestro").join("shots");
+    let dir = std::path::Path::new(&root).join(".bytehive").join("shots");
     std::fs::create_dir_all(&dir).map_err(|e| CommandError::Failed(e.to_string()))?;
     let path = dir.join(&name);
     let file = std::fs::File::create(&path).map_err(|e| CommandError::Failed(e.to_string()))?;
@@ -112,7 +112,7 @@ fn capture_window_impl(
         .write_image_data(&buf)
         .map_err(|e| CommandError::Failed(e.to_string()))?;
 
-    Ok(format!(".maestro\\shots\\{name}"))
+    Ok(format!(".bytehive\\shots\\{name}"))
 }
 
 #[cfg(not(windows))]

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Maestro</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c6f135'/%3E%3Cstop offset='.5' stop-color='%2327b9a3'/%3E%3Cstop offset='1' stop-color='%230f7a3e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5' fill='none' stroke='url(%23g)' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='miter'/%3E%3C/svg%3E">
+<title>ByteHive</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='honey' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ffd85c'/%3E%3Cstop offset='.5' stop-color='%23f5a524'/%3E%3Cstop offset='1' stop-color='%23c86a12'/%3E%3C/linearGradient%3E%3Cpattern id='comb' width='4.5033' height='7.8' patternUnits='userSpaceOnUse' x='9.748' y='9.4'%3E%3Cpath d='M2.2517 0 4.5033 1.3V3.9L2.2517 5.2 0 3.9V1.3ZM2.2517 5.2V7.8' fill='none' stroke='%230e0f12' stroke-opacity='.22' stroke-width='.32'/%3E%3C/pattern%3E%3Cmask id='prompt'%3E%3Crect width='24' height='24' fill='%23fff'/%3E%3Cg fill='none' stroke='%23000' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 8.8 11.39 12.19 8 15.58'/%3E%3Cpath d='M13.65 15.58H17.49'/%3E%3C/g%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23prompt)'%3E%3Cpath d='M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z' fill='url(%23honey)'/%3E%3Cpath d='M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z' fill='url(%23comb)'/%3E%3C/g%3E%3C/svg%3E">
 <!-- First-paint guard: dark immediately so there's no white flash before the
      app's CSS loads. The intro splash stays hidden until its real styles apply,
      so it can't render as an unstyled static frame. -->
@@ -42,17 +42,19 @@
     </div>
     <svg class="intro-mark" viewBox="0 0 24 24" fill="none">
       <defs>
-        <linearGradient id="introGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient>
+        <linearGradient id="introGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd85c"/><stop offset=".5" stop-color="#f5a524"/><stop offset="1" stop-color="#c86a12"/></linearGradient>
+        <linearGradient id="introHoney" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd85c"/><stop offset=".5" stop-color="#f5a524"/><stop offset="1" stop-color="#c86a12"/></linearGradient><pattern id="introComb" width="4.5033" height="7.8" patternUnits="userSpaceOnUse" x="9.748" y="9.4"><path d="M2.2517 0 4.5033 1.3V3.9L2.2517 5.2 0 3.9V1.3ZM2.2517 5.2V7.8" fill="none" stroke="#0e0f12" stroke-opacity=".22" stroke-width=".32"/></pattern><mask id="introPrompt"><rect width="24" height="24" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8.8 11.39 12.19 8 15.58"/><path d="M13.65 15.58H17.49"/></g></mask>
         <filter id="introBlur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="0.35"/></filter>
       </defs>
-      <path id="mPath" pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#introGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"/>
-      <circle class="comet" r="0.85" fill="#eaffb0" filter="url(#introBlur)">
+      <g class="intro-cell" mask="url(#introPrompt)" stroke="none"><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#introHoney)"/><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#introComb)"/></g>
+      <path id="mPath" pathLength="1" d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" stroke="url(#introGrad)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="miter"/>
+      <circle class="comet" r="0.85" fill="#ffe9a8" filter="url(#introBlur)">
         <animateMotion dur="0.56s" begin="0.12s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.65 0 0.35 1"><mpath href="#mPath"/></animateMotion>
       </circle>
     </svg>
     <span class="intro-flash"></span>
   </div>
-  <span class="intro-word">Maestro</span>
+  <span class="intro-word">ByteHive</span>
 </div>
 
 <!-- ============== custom window controls (frameless) ============== -->
@@ -177,17 +179,17 @@
           </div>
           <label class="toggle"><input type="checkbox" id="prefAsk"><span class="tg"></span><span class="sr-txt"><b>Ask before running commands or editing files</b><span>Off starts agents with permission prompts skipped (Claude --dangerously-skip-permissions, Codex/Gemini --yolo). Only turn off on code you trust.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefWorktree"><span class="tg"></span><span class="sr-txt"><b>Own branch for every agent</b><span>Each agent works in its own git worktree, so Changes, Compare and merge see exactly what it did. Needs the project to be a git repo.</span></span></label>
-          <label class="toggle"><input type="checkbox" id="prefDirector"><span class="tg"></span><span class="sr-txt"><b>First agent in a new project is the Director</b><span>It gets Maestro's Director rules and hands work to the others through the board and fleet_send.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="prefDirector"><span class="tg"></span><span class="sr-txt"><b>First agent in a new project is the Director</b><span>It gets ByteHive's Director rules and hands work to the others through the board and fleet_send.</span></span></label>
           <div class="srow">
-            <div class="sr-txt"><b>Wait before giving the job</b><span>Time a new CLI gets to reach its prompt before Maestro types the job in. Raise it if jobs get lost on a slow machine.</span></div>
+            <div class="sr-txt"><b>Wait before giving the job</b><span>Time a new CLI gets to reach its prompt before ByteHive types the job in. Raise it if jobs get lost on a slow machine.</span></div>
             <div class="stepper" id="prefJobDelay"><button type="button" data-dec aria-label="Shorter">−</button><span class="n" data-n>4 s</span><button type="button" data-inc aria-label="Longer">+</button></div>
           </div>
         </section>
         <section class="sec" data-sec="inbox">
           <h3>Inbox</h3>
-          <label class="toggle"><input type="checkbox" id="prefNotify"><span class="tg"></span><span class="sr-txt"><b>Notify me when an agent needs me</b><span>A Windows notification that says what it wants (“Ana wants to run npm test”), only while Maestro is in the background.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="prefNotify"><span class="tg"></span><span class="sr-txt"><b>Notify me when an agent needs me</b><span>A Windows notification that says what it wants (“Ana wants to run npm test”), only while ByteHive is in the background.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefNotifyDone"><span class="tg"></span><span class="sr-txt"><b>Tell me when an agent finishes</b><span>A Windows notification when an agent is done, has changes to review, or stops with an error. Not for quick replies, and not for the agent you are looking at. Click it to open that agent.</span></span></label>
-          <label class="toggle"><input type="checkbox" id="prefJump"><span class="tg"></span><span class="sr-txt"><b>Show the agent that needs me</b><span>When an agent starts waiting on you and the one on screen isn't busy, Maestro brings it up. Never while you are typing.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="prefJump"><span class="tg"></span><span class="sr-txt"><b>Show the agent that needs me</b><span>When an agent starts waiting on you and the one on screen isn't busy, ByteHive brings it up. Never while you are typing.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefReviewOnDone"><span class="tg"></span><span class="sr-txt"><b>Open Changes when an agent finishes</b><span>When the agent on screen stops with changes on its branch, its diff opens on its own.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefAutoHandover"><span class="tg"></span><span class="sr-txt"><b>Hand over when an agent runs out of usage</b><span>Another CLI whose plan has room takes the task over at once: an agent already open in the same folder first, else a new one. Off, the agent waits for its limit to reset.</span></span></label>
           <label class="toggle"><input type="checkbox" id="prefAutoResume"><span class="tg"></span><span class="sr-txt"><b>Carry on when a usage limit resets</b><span>An agent that stopped at its plan's 5-hour or weekly limit is told to carry on once the limit resets, so a task doesn't sit waiting for you to notice.</span></span></label>
@@ -212,19 +214,19 @@
         <section class="sec" data-sec="browser">
           <h3>Browser</h3>
           <div class="srow col">
-            <div class="sr-txt"><b>Your browsers, for your agents</b><span>Add Maestro for Chrome to a profile and your agents can open tabs there, read pages, click and type, signed in as you. Each agent works in its own tab group, so you can see what it touches.</span></div>
+            <div class="sr-txt"><b>Your browsers, for your agents</b><span>Add ByteHive for Chrome to a profile and your agents can open tabs there, read pages, click and type, signed in as you. Each agent works in its own tab group, so you can see what it touches.</span></div>
             <ul class="bp-list" id="bpList" aria-label="Browser profiles" aria-live="polite"></ul>
             <div class="bp-setup" id="bpSetup" hidden>
-              <b class="bp-h">Add Maestro for Chrome to <span data-bp-name></span></b>
+              <b class="bp-h">Add ByteHive for Chrome to <span data-bp-name></span></b>
               <ol>
-                <li><span>Maestro opened this profile in <span data-bp-browser></span>. In its address bar, go to <code>chrome://extensions</code>.</span><button type="button" class="bp-copy" data-copy="chrome://extensions">Copy</button></li>
+                <li><span>ByteHive opened this profile in <span data-bp-browser></span>. In its address bar, go to <code>chrome://extensions</code>.</span><button type="button" class="bp-copy" data-copy="chrome://extensions">Copy</button></li>
                 <li><span>Turn on <b>Developer mode</b>, top right of that page.</span></li>
                 <li><span>Click <b>Load unpacked</b> and choose this folder: <code data-bp-dir></code></span><button type="button" class="bp-copy" data-copy="dir">Copy</button></li>
               </ol>
               <div class="bp-foot"><span class="bp-wait"><i aria-hidden="true"></i>This profile shows Connected by itself once it's in.</span><button type="button" class="bp-copy" data-bp-done>Hide steps</button></div>
             </div>
           </div>
-          <label class="toggle"><input type="checkbox" id="prefBrowserAsk"><span class="tg"></span><span class="sr-txt"><b>Ask me before an agent sends, posts, pays or deletes</b><span>A click on a button like Send, Post, Pay or Delete waits for your OK here in Maestro. Logins and CAPTCHAs are always left to you.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="prefBrowserAsk"><span class="tg"></span><span class="sr-txt"><b>Ask me before an agent sends, posts, pays or deletes</b><span>A click on a button like Send, Post, Pay or Delete waits for your OK here in ByteHive. Logins and CAPTCHAs are always left to you.</span></span></label>
         </section>
         <section class="sec" data-sec="fleet">
           <h3>Remote</h3>
@@ -250,10 +252,10 @@
         </section>
         <section class="sec" data-sec="system">
           <h3>System</h3>
-          <label class="toggle"><input type="checkbox" id="prefRestore"><span class="tg"></span><span class="sr-txt"><b>Reopen my projects on start</b><span>Maestro brings back last session's projects and agents, stopped, so nothing heavy launches by itself. Resume the ones you need.</span></span></label>
-          <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks Maestro into the system tray; agents keep running.</span></span></label>
-          <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">Maestro</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
-          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, text size and the tray go back to how Maestro ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>
+          <label class="toggle"><input type="checkbox" id="prefRestore"><span class="tg"></span><span class="sr-txt"><b>Reopen my projects on start</b><span>ByteHive brings back last session's projects and agents, stopped, so nothing heavy launches by itself. Resume the ones you need.</span></span></label>
+          <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks ByteHive into the system tray; agents keep running.</span></span></label>
+          <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">ByteHive</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
+          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>
         </section>
       </div>
     </div>
@@ -337,13 +339,13 @@
 
 <!-- ===================== UPDATE TOAST ===================== -->
 <div class="upd-toast" id="updToast" role="status" aria-live="polite" hidden>
-  <span class="upd-mark" aria-hidden="true"><svg class="m-logo" viewBox="2.6 5 18.8 15.8" fill="none" aria-hidden="true"><defs><linearGradient id="updGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient></defs><path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="url(#updGrad)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="miter"/></svg></span>
+  <span class="upd-mark" aria-hidden="true"><svg class="m-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true"><defs><linearGradient id="updHoney" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd85c"/><stop offset=".5" stop-color="#f5a524"/><stop offset="1" stop-color="#c86a12"/></linearGradient><pattern id="updComb" width="4.5033" height="7.8" patternUnits="userSpaceOnUse" x="9.748" y="9.4"><path d="M2.2517 0 4.5033 1.3V3.9L2.2517 5.2 0 3.9V1.3ZM2.2517 5.2V7.8" fill="none" stroke="#0e0f12" stroke-opacity=".22" stroke-width=".32"/></pattern><mask id="updPrompt"><rect width="24" height="24" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8.8 11.39 12.19 8 15.58"/><path d="M13.65 15.58H17.49"/></g></mask></defs><g mask="url(#updPrompt)" stroke="none"><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#updHoney)"/><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#updComb)"/></g></svg></span>
   <div class="upd-body">
     <div class="upd-head">
       <b id="updTitle">New version available</b>
       <button class="upd-x" id="updDismiss" aria-label="Dismiss">&times;</button>
     </div>
-    <span class="upd-ver" id="updVer">Maestro</span>
+    <span class="upd-ver" id="updVer">ByteHive</span>
     <div class="upd-bar" id="updBar" hidden><span id="updBarFill"></span></div>
     <div class="upd-size" id="updSize" hidden></div>
     <div class="upd-actions" id="updActions">

@@ -1,5 +1,5 @@
 // Workspace (project) lifecycle: create, activate, rename and remove a project,
-// and adopt one handed over from another Maestro window. Split from
+// and adopt one handed over from another ByteHive window. Split from
 // main.ts; pane creation/removal and the Home⇄Workspace view toggles are
 // injected via configureWorkspace to avoid a circular import (they live in
 // main.ts's own pane-lifecycle cluster).
@@ -62,7 +62,7 @@ export function configureWorkspace(deps: {
   onApplyBackground = deps.applyBackground;
 }
 
-// A detached window (a tab dragged out of another Maestro window) boots with
+// A detached window (a tab dragged out of another ByteHive window) boots with
 // ?detach=<key> pointing at its localStorage hand-off payload. Mirrors main.ts's
 // own DETACH_KEY/isDetachedWindow (computed independently — both read the same
 // URL, so they always agree).
@@ -208,13 +208,13 @@ export function initWorkspace(): void {
   }
 
   document.body.addEventListener("dragenter", (e) => {
-    if (Array.from(e.dataTransfer?.types || []).includes("application/maestro-workspace")) {
+    if (Array.from(e.dataTransfer?.types || []).includes("application/bytehive-workspace")) {
       dragWsCount++;
       if (dragWsCount === 1) document.body.classList.add("drag-over-ws");
     }
   });
   document.body.addEventListener("dragleave", (e) => {
-    if (Array.from(e.dataTransfer?.types || []).includes("application/maestro-workspace")) {
+    if (Array.from(e.dataTransfer?.types || []).includes("application/bytehive-workspace")) {
       dragWsCount--;
       if (dragWsCount === 0) document.body.classList.remove("drag-over-ws");
     }
@@ -223,7 +223,7 @@ export function initWorkspace(): void {
   // Support dropping workspaces from ANY other window
   document.body.addEventListener("dragover", (e) => {
     const dt = e.dataTransfer;
-    if (dt && Array.from(dt.types).includes("application/maestro-workspace")) {
+    if (dt && Array.from(dt.types).includes("application/bytehive-workspace")) {
       e.preventDefault();
       dt.dropEffect = "move";
     }
@@ -231,11 +231,11 @@ export function initWorkspace(): void {
 
   document.body.addEventListener("drop", (e) => {
     const dt = e.dataTransfer;
-    if (dt && Array.from(dt.types).includes("application/maestro-workspace")) {
+    if (dt && Array.from(dt.types).includes("application/bytehive-workspace")) {
       e.preventDefault();
       dragWsCount = 0;
       document.body.classList.remove("drag-over-ws");
-      const raw = dt.getData("application/maestro-workspace");
+      const raw = dt.getData("application/bytehive-workspace");
       if (raw) {
         try {
           const msg = JSON.parse(raw) as MergeMsg;

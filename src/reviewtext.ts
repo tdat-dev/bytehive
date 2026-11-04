@@ -61,7 +61,7 @@ export function sendBackText(o: { note?: string; conflict?: Conflict | null; com
   return parts.join("\n\n");
 }
 
-/* ---- drafts: kept per agent while Maestro runs, until Send back delivers them ---- */
+/* ---- drafts: kept per agent while ByteHive runs, until Send back delivers them ---- */
 
 const drafts = new Map<string, LineComment[]>();
 let nextId = 1;

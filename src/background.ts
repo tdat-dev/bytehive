@@ -7,7 +7,7 @@
 // The choice is APP-WIDE, not per workspace. It began per-workspace, keyed like
 // the canvas layout, and that was wrong in use: you set a wallpaper, opened a
 // second project, and were staring at the default again with no hint that the
-// picture you just chose was still one tab away. A wallpaper is what Maestro
+// picture you just chose was still one tab away. A wallpaper is what ByteHive
 // looks like, not what a project contains. Layout and zoom stay per workspace —
 // those really are properties of the project you're looking at.
 //
@@ -229,7 +229,7 @@ export function paneLook(): PaneLook {
   };
 }
 
-/** The tone Maestro is currently rendering with — for the CSS hook that gives
+/** The tone ByteHive is currently rendering with — for the CSS hook that gives
  *  the glyphs a legibility floor over a busy photo. */
 export function paneTone(): "light" | "dark" {
   return resolveTone(readLook().tone, relLuminance(backdropRgb()));

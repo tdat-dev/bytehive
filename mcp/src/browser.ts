@@ -1,7 +1,7 @@
-/* Browser tools for maestro-mcp: the agent's side of "Maestro for Chrome".
+/* Browser tools for bytehive-mcp: the agent's side of "ByteHive for Chrome".
  *
- * Calls go over one WebSocket to the hub inside the Maestro app (port and
- * token in ~/.maestro/browser-hub.json). The hub routes each call to the
+ * Calls go over one WebSocket to the hub inside the ByteHive app (port and
+ * token in ~/.bytehive/browser-hub.json). The hub routes each call to the
  * browser this agent picked, where the extension runs it in the agent's own
  * tab group. Results come back already MCP-shaped ({ content: [...] }). */
 
@@ -14,11 +14,16 @@ import { z } from "zod";
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 type ToolResult = { content: Content[]; isError?: boolean; gif?: string };
 
-/** The hub of the Maestro that started this agent (it sets MAESTRO_HUB_FILE),
- *  else the installed Maestro's. Guessing "the last Maestro opened" sent agents
+/** The hub of the ByteHive that started this agent (it sets BYTEHIVE_HUB_FILE),
+ *  else the installed ByteHive's. Guessing "the last ByteHive opened" sent agents
  *  to a test build's hub, and to a dead port once it closed. */
-export function hubFile(): string {
-  return process.env.MAESTRO_HUB_FILE || path.join(os.homedir(), ".maestro", "browser-hub.json");
+export function hubFile(home: string = os.homedir()): string {
+  const env = process.env.BYTEHIVE_HUB_FILE || process.env.MAESTRO_HUB_FILE;
+  if (env) return env;
+  const now = path.join(home, ".bytehive", "browser-hub.json");
+  const old = path.join(home, ".maestro", "browser-hub.json");
+  // An app from before the rename (Maestro) still publishes the old one.
+  return !fs.existsSync(now) && fs.existsSync(old) ? old : now;
 }
 
 const CALL_TIMEOUT_MS = 90_000;
@@ -44,14 +49,14 @@ export class HubClient {
       try {
         hub = this.readHub();
       } catch {
-        return reject(new Error("Maestro isn't running, so there is no browser to use. Open Maestro and try again."));
+        return reject(new Error("ByteHive isn't running, so there is no browser to use. Open ByteHive and try again."));
       }
       if (typeof WebSocket === "undefined") return reject(new Error("Browser tools need Node 22 or newer."));
       const ws = new WebSocket(`ws://127.0.0.1:${hub.port}/`);
       const slow = setTimeout(() => {
         ws.close();
-        drop("Maestro did not answer.");
-        reject(new Error("Maestro did not answer. Is it open?"));
+        drop("ByteHive did not answer.");
+        reject(new Error("ByteHive did not answer. Is it open?"));
       }, CONNECT_TIMEOUT_MS);
       const drop = (why: string) => {
         this.ws = null;
@@ -71,10 +76,10 @@ export class HubClient {
       ws.addEventListener("message", (e) => this.onMessage(String(e.data)));
       ws.addEventListener("error", () => {
         clearTimeout(slow);
-        drop("Lost the connection to Maestro.");
-        reject(new Error("Can't reach Maestro. Is it open?"));
+        drop("Lost the connection to ByteHive.");
+        reject(new Error("Can't reach ByteHive. Is it open?"));
       });
-      ws.addEventListener("close", () => drop("Maestro closed the connection."));
+      ws.addEventListener("close", () => drop("ByteHive closed the connection."));
     });
     return this.ready;
   }
@@ -90,7 +95,7 @@ export class HubClient {
     const w = this.waiting.get(m.id);
     if (!w) return;
     if (m.type === "hold") {
-      // Maestro is asking the user first: wait for their answer, not the usual limit.
+      // ByteHive is asking the user first: wait for their answer, not the usual limit.
       clearTimeout(w.timer);
       const id = m.id;
       w.timer = setTimeout(() => {
@@ -101,7 +106,7 @@ export class HubClient {
     }
     this.waiting.delete(m.id);
     clearTimeout(w.timer);
-    // Only the MCP fields: the browser adds its own notes for Maestro.
+    // Only the MCP fields: the browser adds its own notes for ByteHive.
     if (m.type === "result" && m.result?.content)
       w.resolve({ content: m.result.content, ...(m.result.isError ? { isError: true } : {}), ...(m.result.gif ? { gif: m.result.gif } : {}) });
     else w.resolve(err(m.error ?? "The browser did not answer."));
@@ -129,7 +134,7 @@ const err = (text: string): ToolResult => ({ content: [{ type: "text", text }], 
 
 const tabId = z.number().int().optional().describe("Tab id from browser_tabs; defaults to your most recent tab");
 
-export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in Maestro; if they say no, don't retry.`;
+export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in ByteHive; if they say no, don't retry.`;
 
 /** Absolute paths for files to upload: relative ones are taken from the
  *  workspace; every file must exist, so the page never gets a bad path. */
@@ -144,14 +149,14 @@ export function uploadPaths(paths: string[], base: string): string[] {
 /** Where a recording is saved when the agent names no path. */
 export function gifPath(base: string, agent: string, now = new Date()): string {
   const stamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  return path.join(base, ".maestro", "recordings", `${agent.replace(/[^\w-]+/g, "_")}-${stamp}.gif`);
+  return path.join(base, ".bytehive", "recordings", `${agent.replace(/[^\w-]+/g, "_")}-${stamp}.gif`);
 }
 
 export function registerBrowserTools(server: McpServer, hub: HubClient, base = process.cwd(), agent = "Agent") {
   const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, hubTool: string) =>
     server.registerTool(name, { description, inputSchema }, async (args: Record<string, unknown>) => hub.call(hubTool, args) as never);
 
-  tool("browser_list", "List the browsers (Chrome/Edge/Brave profiles) connected to Maestro. The one marked * is the one you use.", {}, "list_browsers");
+  tool("browser_list", "List the browsers (Chrome/Edge/Brave profiles) connected to ByteHive. The one marked * is the one you use.", {}, "list_browsers");
   tool(
     "browser_select",
     "Choose which connected browser profile you use, by profile name, email or id from browser_list.",
@@ -225,13 +230,13 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
   );
   tool(
     "browser_console",
-    "Console messages from your tab since Maestro started controlling it. Filter with a regex pattern.",
+    "Console messages from your tab since ByteHive started controlling it. Filter with a regex pattern.",
     { pattern: z.string().optional(), onlyErrors: z.boolean().optional(), limit: z.number().int().optional(), clear: z.boolean().optional(), tabId },
     "console",
   );
   tool(
     "browser_network",
-    "Network requests from your tab since Maestro started controlling it. Filter URLs with a regex pattern.",
+    "Network requests from your tab since ByteHive started controlling it. Filter URLs with a regex pattern.",
     { pattern: z.string().optional(), limit: z.number().int().optional(), clear: z.boolean().optional(), tabId },
     "network",
   );
@@ -258,7 +263,7 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
   server.registerTool(
     "browser_gif",
     {
-      description: "Record what you do in your tab as an animated GIF: action start, do the steps, then action stop. The GIF is saved to a file (path, or .maestro/recordings/ in the workspace). It shows logged-in pages, so tell the user before sharing it.",
+      description: "Record what you do in your tab as an animated GIF: action start, do the steps, then action stop. The GIF is saved to a file (path, or .bytehive/recordings/ in the workspace). It shows logged-in pages, so tell the user before sharing it.",
       inputSchema: { action: z.enum(["start", "stop"]), path: z.string().optional(), tabId },
     },
     async ({ action, path: out, tabId: tab }) => {

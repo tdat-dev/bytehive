@@ -38,7 +38,7 @@ pub const GLOBAL_FAILS: usize = 10;
 pub const GLOBAL_WINDOW: Duration = Duration::from_secs(60);
 /// Shortest password the settings accept.
 pub const MIN_LEN: usize = 10;
-pub const COOKIE: &str = "maestro_dash";
+pub const COOKIE: &str = "bytehive_dash";
 const FILE: &str = "dashboard-auth.json";
 
 #[derive(Serialize, Deserialize)]

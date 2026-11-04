@@ -25,7 +25,7 @@ vi.mock("./ipc", () => ({
 
 import { openMemory, fixPrompt } from "./memoryview";
 
-const FILE = ".maestro\\memory.json";
+const FILE = ".bytehive\\memory.json";
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const entries = () => JSON.parse(disk.files.get(FILE)!.content).entries;
 
@@ -88,10 +88,10 @@ describe("project memory panel", () => {
 
   it("switches to another project's memory from its tab", async () => {
     const went: string[] = [];
-    openMemory({ dir: "D:/p", project: "maestro", agents: () => [], send: async () => true,
-      projects: [{ id: "w1", name: "maestro" }, { id: "w2", name: "zoldify" }], current: "w1", switchTo: (id) => went.push(id) });
+    openMemory({ dir: "D:/p", project: "bytehive", agents: () => [], send: async () => true,
+      projects: [{ id: "w1", name: "bytehive" }, { id: "w2", name: "zoldify" }], current: "w1", switchTo: (id) => went.push(id) });
     await tick();
-    expect([...document.querySelectorAll(".mm-tab")].map((b) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["maestro", "true"], ["zoldify", null]]);
+    expect([...document.querySelectorAll(".mm-tab")].map((b) => [b.textContent, b.getAttribute("aria-current")])).toEqual([["bytehive", "true"], ["zoldify", null]]);
     document.querySelector<HTMLButtonElement>('[data-proj-tab="w2"]')!.click();
     expect(went).toEqual(["w2"]);
     expect(document.querySelector(".mm-back")).toBeNull();

@@ -64,7 +64,7 @@ export function pipelinePrompt(
   const move =
     next === TERMINAL
       ? `call card_done with a one-line summary`
-      : `use the maestro card_move tool to move this card to "${next}"`;
+      : `use the bytehive card_move tool to move this card to "${next}"`;
   return (
     base +
     `\n\nPipeline stage — ${effective.title}: ${effective.instruction} ` +

@@ -1,7 +1,7 @@
 /* agent_context: what every coding agent did in this project, from their own
  * conversations. Without `who` a list (one line each); with it one agent's
  * full context: what it was asked, its plan, the files it changed, its last
- * words. Agents Maestro runs get their names from fleet.json; others show
+ * words. Agents ByteHive runs get their names from fleet.json; others show
  * their conversation id. */
 
 import { asksSection, clip, digestOf, filesSection, lastWordsSection, oneBlock, planProgress, planSection, type Digest } from "../../../src/convdigest";
@@ -10,7 +10,7 @@ import { findConversations, projectFolders, readConversation, sameDir, type Cli,
 
 const LABEL: Record<Cli, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode" };
 const WORDS: Record<string, Cli> = { claude: "claude", "claude code": "claude", codex: "codex", opencode: "opencode", "open code": "opencode" };
-/** A run's conversation began a little before Maestro saw it start. */
+/** A run's conversation began a little before ByteHive saw it start. */
 const SLACK_MS = 5000;
 
 export const shortId = (c: Conversation) => c.id.slice(0, 8);
@@ -24,7 +24,7 @@ export function ago(ms: number, now: number): string {
   return `${Math.round(h / 24)} days ago`;
 }
 
-/** The Maestro name of a conversation's agent: the agent that says it is in
+/** The ByteHive name of a conversation's agent: the agent that says it is in
  *  it, else the agent of that CLI in that folder whose run it is the newest
  *  conversation of. */
 export function nameOf(c: Conversation, fleet: FleetAgent[], all: Conversation[]): string | null {
@@ -82,7 +82,7 @@ export function detailText(c: Conversation, d: Digest, name: string | null, now:
   return parts.filter(Boolean).join("\n\n");
 }
 
-/** The fleets Maestro published in any of the project's folders. */
+/** The fleets ByteHive published in any of the project's folders. */
 function fleetOf(folders: string[]): FleetAgent[] {
   return folders.flatMap((f) => readFleet(f));
 }

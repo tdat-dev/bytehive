@@ -5,7 +5,7 @@ describe("project memory", () => {
   it("adds, edits and deletes facts with short ids", () => {
     const m = emptyMemory();
     const a = addFact(m, "Tests run with npx vitest run.", "Ana", 1);
-    const b = addFact(m, "The board lives in .maestro/board.json", "you", 2);
+    const b = addFact(m, "The board lives in .bytehive/board.json", "you", 2);
     expect([a.id, b.id]).toEqual(["m1", "m2"]);
     updateFact(m, "m1", "Tests: npx vitest run, typecheck: npx tsc --noEmit", "Bob", 3);
     expect(m.entries[0]).toMatchObject({ text: "Tests: npx vitest run, typecheck: npx tsc --noEmit", by: "Bob", at: 3 });

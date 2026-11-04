@@ -25,8 +25,8 @@ export function placeOf(cwd: string, root: string | null): string {
   if (!cwd) return "";
   if (root && samePath(cwd, root)) return "";
   const p = cwd.replace(/\\/g, "/");
-  // Maestro's own: <drive>/.maestro-worktrees/<repo>-<hash>/<branch>-<hash>
-  const mine = p.match(/\/\.maestro-worktrees\/[^/]+\/([^/]+?)(?:-[0-9a-z]{6})?\/?$/);
+  // ByteHive's own: <drive>/.bytehive-worktrees/<repo>-<hash>/<branch>-<hash>
+  const mine = p.match(/\/\.bytehive-worktrees\/[^/]+\/([^/]+?)(?:-[0-9a-z]{6})?\/?$/);
   if (mine) return `worktree ${mine[1]}`;
   const wt = p.match(/\/\.claude\/worktrees\/([^/]+)\/?$/);
   if (wt) return `worktree ${wt[1]}`;

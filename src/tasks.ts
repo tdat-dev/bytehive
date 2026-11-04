@@ -19,7 +19,7 @@ export interface Task {
   /** Workspace name, which is the project the agent works in. */
   project: string;
   branch: string | null;
-  /** What it was asked to do, when Maestro handed it the job. */
+  /** What it was asked to do, when ByteHive handed it the job. */
   title: string | null;
   /** One of several agents given the same job ("race 2/3"). */
   race: { id: string; n: number; of: number } | null;
@@ -32,7 +32,7 @@ export interface Task {
   mergedInto?: string | null;
   /** ms the current state began, for "waiting 4m" and queue order. */
   since: number;
-  /** It has worked on something since Maestro started: idle then means done,
+  /** It has worked on something since ByteHive started: idle then means done,
    *  not still waiting for its first task. */
   worked?: boolean;
 }

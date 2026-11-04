@@ -12,16 +12,16 @@ describe("chat model", () => {
   it("shows a ! command you ran as your message and a step with its output, not raw tags", () => {
     const chat = createChat();
     chat.feed([
-      human("<bash-input>echo maestro-bang-test</bash-input>"),
-      human("<bash-stdout>maestro-bang-test</bash-stdout><bash-stderr></bash-stderr>"),
+      human("<bash-input>echo bytehive-bang-test</bash-input>"),
+      human("<bash-stdout>bytehive-bang-test</bash-stdout><bash-stderr></bash-stderr>"),
       human("<bash-input>ls nope</bash-input>"),
       human("<bash-stdout></bash-stdout><bash-stderr>ls: nope: No such file</bash-stderr>"),
       "",
     ].join("\n"));
     expect(chat.items.map((i) => i.kind)).toEqual(["user", "step", "user", "step"]);
     const [said, ran, said2, failed] = chat.items;
-    expect(said.kind === "user" && said.text).toBe("!echo maestro-bang-test");
-    expect(ran.kind === "step" && [ran.verb, ran.target, ran.output, ran.error, ran.done]).toEqual(["Ran", "echo maestro-bang-test", "maestro-bang-test", false, true]);
+    expect(said.kind === "user" && said.text).toBe("!echo bytehive-bang-test");
+    expect(ran.kind === "step" && [ran.verb, ran.target, ran.output, ran.error, ran.done]).toEqual(["Ran", "echo bytehive-bang-test", "bytehive-bang-test", false, true]);
     expect(said2.kind === "user" && said2.text).toBe("!ls nope");
     expect(failed.kind === "step" && [failed.target, failed.output, failed.error]).toEqual(["ls nope", "ls: nope: No such file", true]);
     expect(JSON.stringify(chat.items)).not.toMatch(/<bash-/);
@@ -115,7 +115,7 @@ describe("chat model", () => {
     expect(describeTool("Grep", { pattern: "TODO" })).toMatchObject({ verb: "Searched for", target: "TODO" });
     expect(describeTool("Monitor", { command: "tail -f log", description: "errors in deploy.log" })).toMatchObject({ verb: "Watched", target: "errors in deploy.log" });
     expect(describeTool("WebFetch", { url: "https://docs.rs/x" })).toMatchObject({ verb: "Read", target: "docs.rs" });
-    expect(describeTool("mcp__maestro__card_done", {})).toMatchObject({ verb: "Used", target: "maestro · card done" });
+    expect(describeTool("mcp__bytehive__card_done", {})).toMatchObject({ verb: "Used", target: "bytehive · card done" });
     expect(describeTool("TodoWrite", { todos: [{ content: "a", status: "completed" }, { content: "b", status: "in_progress" }] }))
       .toMatchObject({ target: "1 of 2 done", todos: [{ text: "a", state: "completed" }, { text: "b", state: "in_progress" }] });
     expect(describeTool("Write", { file_path: "/x/new.ts", content: "1\n2\n3" })).toMatchObject({ verb: "Wrote", target: "new.ts", added: 3 });

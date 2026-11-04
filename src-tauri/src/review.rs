@@ -131,7 +131,7 @@ impl ScratchIndex {
     pub(crate) fn copy_of(repo_root: &str) -> Self {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("maestro-index-{}-{n}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bytehive-index-{}-{n}", std::process::id()));
         if let Ok(rel) = git(&["rev-parse", "--git-path", "index"], repo_root) {
             // Missing index (a repo with nothing staged yet) → git starts a fresh one.
             let _ = std::fs::copy(Path::new(repo_root).join(rel), &path);
@@ -375,7 +375,7 @@ fn review_merge_impl(repo_root: String, branch: String) -> Result<String, Comman
     if branch.trim().is_empty() || branch.starts_with('-') {
         return Err(CommandError::Failed(format!("invalid branch: {branch}")));
     }
-    let msg = format!("Merge {branch} (maestro)");
+    let msg = format!("Merge {branch} (bytehive)");
     let mut cmd = Command::new("git");
     cmd.args(["merge", "--no-ff", &branch, "-m", &msg])
         .current_dir(&repo_root);
@@ -610,7 +610,7 @@ mod tests {
         std::fs::write(repo.join("a.txt"), "one\ntwo\n").unwrap(); // modify tracked
         std::fs::write(repo.join("b.txt"), "brand new\n").unwrap(); // untracked
 
-        let sha = review_commit_impl(root.clone(), "maestro: agent changes".into()).expect("commit");
+        let sha = review_commit_impl(root.clone(), "bytehive: agent changes".into()).expect("commit");
         assert_eq!(sha.len(), 40, "expected a 40-char sha, got {sha}");
         // Tree is clean after committing everything.
         assert_eq!(git(&["status", "--porcelain"], &root).unwrap(), "");
@@ -736,7 +736,7 @@ mod tests {
 
         // Make a change in the worktree, commit it, then merge into main and clean up.
         std::fs::write(wt.join("w.txt"), "from agent\n").unwrap();
-        review_commit_impl(wt_str.clone(), "maestro: agent-x changes".into()).expect("commit in wt");
+        review_commit_impl(wt_str.clone(), "bytehive: agent-x changes".into()).expect("commit in wt");
         review_merge_impl(main.clone(), "agent-x".into()).expect("merge into main");
         assert!(
             std::path::Path::new(&main).join("w.txt").exists(),

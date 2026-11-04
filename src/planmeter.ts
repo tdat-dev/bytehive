@@ -5,7 +5,7 @@
 //   Code's /usage, nothing spent).
 //   Codex: read from its newest rollout (codex_plan_usage; what its last
 //   request was told), nothing asked of anyone.
-// Asked a few seconds after Maestro opens (never in the way of the CLIs
+// Asked a few seconds after ByteHive opens (never in the way of the CLIs
 // starting), then every few minutes while the window shows.
 
 import { claudePlanUsage, codexPlanUsage, type PlanUsage } from "./ipc";
@@ -187,7 +187,7 @@ async function ask(): Promise<void> {
 }
 
 /** Start asking: a few seconds from now (after the CLIs have started), then
- *  every few minutes while Maestro shows, and on coming back to it. */
+ *  every few minutes while ByteHive shows, and on coming back to it. */
 export function startPlanMeter(onChange: () => void, firstMs = FIRST_MS): void {
   changed = onChange;
   if (timer !== null) return;

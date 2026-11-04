@@ -15,7 +15,7 @@ export interface HandoffFrom {
   cli: string;
   /** Why it is handing over ("it hit its usage limit"). */
   why: string;
-  /** What Maestro knows it was asked, when there is no conversation to read. */
+  /** What ByteHive knows it was asked, when there is no conversation to read. */
   title?: string | null;
   /** Its first asks, when `chat` holds only the end of a long conversation. */
   firstAsks?: string[];
@@ -23,7 +23,7 @@ export interface HandoffFrom {
 
 /** The brief a new agent starts with. `chat` is the first agent's
  *  conversation, when its CLI's is readable; without one the brief says what
- *  Maestro knows and asks the new agent to look at the folder. */
+ *  ByteHive knows and asks the new agent to look at the folder. */
 export function handoffBrief(from: HandoffFrom, chat: Chat | null): string {
   const d = digestOf(chat, from.firstAsks);
   const parts: string[] = [];

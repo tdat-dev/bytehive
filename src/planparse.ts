@@ -1,4 +1,4 @@
-// Pure parser for an agent-produced plan file (.maestro/plan.json). Accepts a
+// Pure parser for an agent-produced plan file (.bytehive/plan.json). Accepts a
 // JSON array of tasks, a {tasks:[...]} wrapper, or a plain markdown checklist /
 // bullet list as a fallback — agents don't always write perfectly-shaped JSON.
 // No DOM, no IO, so it can be unit-tested in isolation.

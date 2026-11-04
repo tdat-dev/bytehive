@@ -76,7 +76,7 @@ function fmtUptime(ms: number): string {
   return h > 0 ? `${h}:${p(m % 60)}:${p(s % 60)}` : `${m}:${p(s % 60)}`;
 }
 
-// A detached window (a tab dragged out of another Maestro window) boots with
+// A detached window (a tab dragged out of another ByteHive window) boots with
 // ?detach=<key> pointing at its localStorage hand-off payload. It skips the
 // main window's app-global duties (kill-all, session restore, tray, updates).
 const DETACH_KEY = new URLSearchParams(location.search).get("detach");
@@ -191,7 +191,7 @@ function updateCount() {
   // Keep the tray tooltip in sync so a hidden window still shows it's alive.
   // The tray belongs to the main window; detached windows leave it alone.
   if (!isDetachedWindow) {
-    const tip = totalRun > 0 ? `Maestro · ${totalRun} running` : "Maestro";
+    const tip = totalRun > 0 ? `ByteHive · ${totalRun} running` : "ByteHive";
     void setTrayTooltip(tip).catch(() => {});
   }
 }
@@ -228,7 +228,7 @@ configureBackground({ toast: paneToast, onLookChange: retheme });
 configureZoomUi({ getActiveWs: () => activeWs, applyZoom: (ws, z) => void applyZoom(ws, z), note: topNote });
 configureBridges({ activateWorkspace, clearAttention, setStatus, updateCount, stopRecording });
 initSettingsModal();
-initCalm(); // terminals draw less while Maestro is in the background
+initCalm(); // terminals draw less while ByteHive is in the background
 initInbox(); // the Agent Inbox interface
 initBrowserView(); // live view + Stop for the agent using a browser
 enhanceSelects(); // every drop-down uses the app menu, not the Windows popup
@@ -483,7 +483,7 @@ showView();
 if (!isDetachedWindow) void checkForUpdates(true);
 
 /* ---------------- block WebView2 browser zoom ---------------- */
-// Maestro has its own terminal font-size control (Settings → terminal font
+// ByteHive has its own terminal font-size control (Settings → terminal font
 // size), so WebView2's built-in browser zoom is pure footgun here: Ctrl+scroll
 // scales the whole page, and xterm's DOM renderer caches glyph metrics at the
 // zoomed scale. Clicking WebView2's "Reset" toast snaps zoom back to 100% but

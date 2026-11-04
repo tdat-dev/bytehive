@@ -7,7 +7,7 @@ use std::process::Command;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use maestro_lib::core::job::Job;
+use bytehive_lib::core::job::Job;
 
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::System::Threading::{
@@ -46,7 +46,7 @@ fn wait_dead(pid: u32, timeout: Duration) -> bool {
 fn dropping_job_kills_parent_and_grandchild() {
     // The parent (powershell) launches a hidden `ping` grandchild and records
     // its PID so the test can assert the grandchild also dies.
-    let pidfile = std::env::temp_dir().join("maestro_m0_grandchild.pid");
+    let pidfile = std::env::temp_dir().join("bytehive_m0_grandchild.pid");
     let _ = std::fs::remove_file(&pidfile);
     let pidfile_str = pidfile.to_string_lossy().replace('\\', "\\\\");
 

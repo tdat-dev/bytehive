@@ -1,6 +1,6 @@
 // Resume carries on the conversation an agent was last in.
 //
-// Maestro starts a Claude agent on a session id it chose (--session-id) and
+// ByteHive starts a Claude agent on a session id it chose (--session-id) and
 // resumes that id later. The conversation can move on inside the CLI though: a
 // /clear starts a new one, a /resume switches to another. Resuming the id it
 // was started with then brings back an old conversation. Claude Code writes the

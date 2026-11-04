@@ -16,7 +16,7 @@ async function hideToTray(): Promise<void> {
   if (!trayNoticeShown()) {
     markTrayNoticeShown();
     void notify(
-      "Maestro is still running",
+      "ByteHive is still running",
       "Open it from the system tray, or right-click the tray icon to quit.",
     ).catch(() => {});
   }

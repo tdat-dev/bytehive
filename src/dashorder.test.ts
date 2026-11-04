@@ -2,17 +2,17 @@ import { describe, it, expect } from "vitest";
 import { projectOf, orderForDash } from "./dashorder";
 import type { FleetStatus } from "./fleet";
 
-const ws = { id: "w1", name: "maestro", dir: "D:\\maestro" };
+const ws = { id: "w1", name: "bytehive", dir: "D:\\bytehive" };
 
 describe("projectOf", () => {
   it("is the workspace's project", () => {
-    expect(projectOf({}, ws)).toEqual({ key: "d:\\maestro", name: "maestro", dir: "D:\\maestro" });
+    expect(projectOf({}, ws)).toEqual({ key: "d:\\bytehive", name: "bytehive", dir: "D:\\bytehive" });
   });
   it("is the folder a resumed conversation carries on in", () => {
     expect(projectOf({ resumeIn: "D:/quy/" }, ws)).toEqual({ key: "d:\\quy", name: "quy", dir: "D:/quy/" });
   });
   it("puts the same folder in one project, however it is spelled", () => {
-    expect(projectOf({ resumeIn: "d:/maestro/" }, ws).key).toBe(projectOf({}, ws).key);
+    expect(projectOf({ resumeIn: "d:/bytehive/" }, ws).key).toBe(projectOf({}, ws).key);
   });
   it("falls back to the workspace when there is no folder", () => {
     expect(projectOf({}, { id: "w9", name: "Project 2", dir: null })).toEqual({ key: "ws:w9", name: "Project 2", dir: null });

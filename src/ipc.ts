@@ -91,7 +91,7 @@ export function sendMessage(agentId: string, text: string, submit = true): Promi
       bracketedPaste: pasteMode ? pasteMode(agentId) : false,
     });
     if (!sent) {
-      console.warn(`[maestro] message to ${agentId} is still in the composer after retrying Enter: ${text.length} chars`);
+      console.warn(`[bytehive] message to ${agentId} is still in the composer after retrying Enter: ${text.length} chars`);
     }
   }).then(() => sent);
 }
@@ -225,7 +225,7 @@ export async function killPty(agentId: string): Promise<void> {
   await invoke("pty_kill", { agentId });
 }
 
-/** When Maestro last told this agent to stop (Stop, merge, quit), if ever. */
+/** When ByteHive last told this agent to stop (Stop, merge, quit), if ever. */
 export function stopAskedAt(agentId: string): number | null {
   return stopsAsked.get(agentId) ?? null;
 }
@@ -304,7 +304,7 @@ export async function notify(title: string, body: string): Promise<void> {
   if (granted) sendNotification({ title, body });
 }
 
-/** A notification about one agent: clicking it brings Maestro forward and
+/** A notification about one agent: clicking it brings ByteHive forward and
  *  opens that agent (onNotificationOpen). Falls back to a plain one. */
 export async function notifyAgent(title: string, body: string, paneId: string): Promise<void> {
   try {
@@ -366,7 +366,7 @@ export async function onDashboardSend(cb: (body: string) => void): Promise<Unlis
 /* ---- session recording (replay) ---- */
 
 /** Start recording an agent's terminal output to `path` (an absolute JSONL
- *  "cast" file under `<workspace>/.maestro/recordings`). Its parent dir is
+ *  "cast" file under `<workspace>/.bytehive/recordings`). Its parent dir is
  *  created if missing. Replaces any recording already running for the agent. */
 export async function recordStart(agentId: string, path: string): Promise<void> {
   await invoke("record_start", { agentId, path });
@@ -429,7 +429,7 @@ export async function claudeSessionUsage(dir: string, sessionId: string): Promis
 
 /* ---- detached (multi-window) support ---- */
 
-/** Open a new Maestro window that boots straight into a detached workspace.
+/** Open a new ByteHive window that boots straight into a detached workspace.
  *  `key` selects the localStorage hand-off payload (`maestro.detach.<key>`).
  *  Resolves once the window exists; rejects if creation fails. */
 export async function openDetachWindow(key: string, title: string): Promise<void> {
@@ -452,15 +452,15 @@ export async function openDetachWindow(key: string, title: string): Promise<void
 /** App-wide "quit now" broadcast: the main window fires this after its kill-all
  *  so detached windows close themselves too. */
 export async function broadcastQuit(): Promise<void> {
-  await emit("maestro-quit");
+  await emit("bytehive-quit");
 }
 
 /** Fire `cb` when the main window broadcasts the app quit. */
 export async function onAppQuit(cb: () => void | Promise<void>): Promise<UnlistenFn> {
-  return listen("maestro-quit", () => void cb());
+  return listen("bytehive-quit", () => void cb());
 }
 
-/** Broadcast an app-wide event to every Maestro window. */
+/** Broadcast an app-wide event to every ByteHive window. */
 export async function emitAppEvent(name: string, payload: unknown): Promise<void> {
   await emit(name, payload);
 }
@@ -657,6 +657,11 @@ export async function fsReadFile(
 }
 
 /** Modified-time (ms) probe for external-change detection. */
+/** A project still in `.maestro` moves to `.bytehive`, once. */
+export function adoptOldFolder(project: string): Promise<void> {
+  return invoke("adopt_old_folder", { project });
+}
+
 export async function fsStat(root: string, path: string): Promise<{ mtime: number }> {
   return invoke<{ mtime: number }>("fs_stat", { root, path });
 }
@@ -680,7 +685,7 @@ export async function fsReadDataUrl(root: string, path: string): Promise<string>
 }
 
 /** Open `url` in a temporary webview window, screenshot it natively, save it
- *  under `<root>/.maestro/shots/<name>`, and return the path relative to root.
+ *  under `<root>/.bytehive/shots/<name>`, and return the path relative to root.
  *  Used to grab a "done" preview of a web page the agent built. */
 export async function captureWebPage(url: string, root: string, name: string): Promise<string> {
   const label = `shot-${Date.now()}`;

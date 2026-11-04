@@ -377,6 +377,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
+name = "bytehive"
+version = "0.10.10"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "base64 0.22.1",
+ "getrandom 0.2.17",
+ "notify",
+ "png 0.17.16",
+ "portable-pty",
+ "reqwest",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tauri-winrt-notification",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tiny_http",
+ "trash",
+ "tungstenite",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "bytemuck"
 version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2222,39 +2255,6 @@ dependencies = [
  "objc2",
  "objc2-foundation",
  "time",
-]
-
-[[package]]
-name = "maestro"
-version = "0.10.9"
-dependencies = [
- "anyhow",
- "argon2",
- "base64 0.22.1",
- "getrandom 0.2.17",
- "notify",
- "png 0.17.16",
- "portable-pty",
- "reqwest",
- "rusqlite",
- "rustls",
- "serde",
- "serde_json",
- "serial_test",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "tauri-winrt-notification",
- "tempfile",
- "thiserror 2.0.18",
- "tiny_http",
- "trash",
- "tungstenite",
- "windows 0.62.2",
 ]
 
 [[package]]

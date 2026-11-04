@@ -13,7 +13,7 @@ const key = (target: Element, init: KeyboardEventInit) => {
   return e;
 };
 
-describe("What Maestro can do", () => {
+describe("What ByteHive can do", () => {
   afterEach(() => { document.body.innerHTML = ""; });
 
   it("opens on ? outside text and terminals, and on Ctrl+/ outside terminals", () => {

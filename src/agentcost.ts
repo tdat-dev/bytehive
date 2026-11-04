@@ -10,7 +10,7 @@ import { totalCost } from "./pricing";
 import type { Pane } from "./panetypes";
 
 const REFRESH_MS = 30_000;
-/** CLIs whose own files Maestro can read (agent_usage). */
+/** CLIs whose own files ByteHive can read (agent_usage). */
 const READABLE = new Set(["codex", "opencode", "gemini", "qwen", "grok"]);
 
 export interface Usage {

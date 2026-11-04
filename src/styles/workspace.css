@@ -163,7 +163,7 @@
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(111,214,160,.45)}70%{box-shadow:0 0 0 6px rgba(111,214,160,0)}100%{box-shadow:0 0 0 0 rgba(111,214,160,0)}}
 /* transform-only entrance: opacity here + the anim-paused GPU saver would leave
    panes restored in an unfocused window stuck invisible at opacity 0 */
-/* calm (calm.ts): Maestro is in the background, so loops hold still (entrances still play) */
+/* calm (calm.ts): ByteHive is in the background, so loops hold still (entrances still play) */
 body.calm :not(.pane):not(.st-help),body.calm ::before,body.calm ::after{animation-play-state:paused !important}
 @keyframes paneIn{from{transform:translateY(8px) scale(.99)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.pane{animation:none}.stat.live .pip{animation:none}}

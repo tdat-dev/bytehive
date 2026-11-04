@@ -169,7 +169,7 @@ pub async fn pty_kill_all(state: State<'_, AppState>) -> Result<(), CommandError
 }
 
 /// Start recording an agent's terminal output to `path` (a JSONL "cast" file).
-/// The frontend passes an absolute path under `<workspace>/.maestro/recordings`;
+/// The frontend passes an absolute path under `<workspace>/.bytehive/recordings`;
 /// the parent directory is created if needed.
 #[tauri::command]
 pub async fn record_start(
@@ -229,7 +229,7 @@ pub struct ModelUsage {
 }
 
 /// Mangle a workspace path the way Claude Code names its transcript folder:
-/// every non-alphanumeric character becomes '-'. e.g. `D:\maestro` -> `D--maestro`.
+/// every non-alphanumeric character becomes '-'. e.g. `D:\bytehive` -> `D--bytehive`.
 fn claude_project_slug(dir: &str) -> String {
     dir.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
@@ -239,7 +239,7 @@ fn claude_project_slug(dir: &str) -> String {
 /// Sum Claude Code token usage for a workspace folder by reading the session
 /// transcripts Claude writes under `~/.claude/projects/<slug>/*.jsonl`. These
 /// are REAL usage numbers (not scraped from the terminal), but Claude-only and
-/// per-workspace (a transcript folder isn't split by Maestro agent). Returns an
+/// per-workspace (a transcript folder isn't split by ByteHive agent). Returns an
 /// empty list when no transcripts exist for the folder.
 #[tauri::command]
 pub async fn claude_usage(dir: String) -> Result<Vec<ModelUsage>, CommandError> {
@@ -433,7 +433,7 @@ pub(crate) fn read_start(file: &mut std::fs::File, size: u64, offset: u64, tail:
 }
 
 /// Where pictures pasted into the chat composer are kept, and for how long.
-const PASTE_DIR: &str = "maestro-paste";
+const PASTE_DIR: &str = "bytehive-paste";
 const PASTE_KEEP_SECS: u64 = 7 * 24 * 3600;
 
 /// Save a picture pasted into the chat composer (base64) as a file, so it can
@@ -530,7 +530,7 @@ fn save_pasted_image_in(dir: &Path, data: &str, ext: &str) -> Result<String, Com
 const TRANSCRIPT_SLICE: u64 = 2 * 1024 * 1024;
 
 /// Read an agent's transcript under `~/.claude/projects/<slug of dir>/`: the
-/// `<session_id>.jsonl` Maestro started it with, or, when that is unknown, the
+/// `<session_id>.jsonl` ByteHive started it with, or, when that is unknown, the
 /// newest transcript written since `since_ms` (an agent started by hand).
 /// Returns the complete lines after `offset`.
 #[tauri::command]
@@ -958,7 +958,7 @@ pub fn set_tray_visible(app: AppHandle, visible: bool) -> Result<(), CommandErro
     Ok(())
 }
 
-/// Update the tray icon's hover tooltip (e.g. "Maestro · 3 running") so users
+/// Update the tray icon's hover tooltip (e.g. "ByteHive · 3 running") so users
 /// can see at a glance that agents are still alive while the window is hidden.
 #[tauri::command]
 pub fn set_tray_tooltip(app: AppHandle, tooltip: String) -> Result<(), CommandError> {
@@ -1061,7 +1061,7 @@ mod tests {
         let line = |id: &str, model: &str| format!(
             "{{\"type\":\"assistant\",\"message\":{{\"id\":\"{id}\",\"model\":\"{model}\",\"usage\":{{\"input_tokens\":10,\"output_tokens\":5,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":20}},\"content\":[]}}}}\n"
         );
-        let dir = std::env::temp_dir().join(format!("maestro-usage-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-usage-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("s.jsonl");
         // a reply over two lines, another reply, a half-written line
@@ -1106,8 +1106,8 @@ mod tests {
 
     #[test]
     fn claude_slug_matches_observed_folder() {
-        // Verified against the real folder Claude Code created for D:\maestro.
-        assert_eq!(claude_project_slug("D:\\maestro"), "D--maestro");
+        // Verified against the real folder Claude Code created for D:\bytehive.
+        assert_eq!(claude_project_slug("D:\\bytehive"), "D--bytehive");
         assert_eq!(claude_project_slug("C:\\Users\\a\\proj"), "C--Users-a-proj");
     }
 
@@ -1133,7 +1133,7 @@ mod paste_tests {
 
     #[test]
     fn a_pasted_picture_is_saved_as_its_own_file() {
-        let dir = std::env::temp_dir().join(format!("maestro-paste-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-paste-test-{}", std::process::id()));
         let a = save_pasted_image_in(&dir, "iVBORw0KGgo=", "PNG").unwrap();
         let b = save_pasted_image_in(&dir, "iVBORw0KGgo=", ".png").unwrap();
         assert_ne!(a, b);
@@ -1144,7 +1144,7 @@ mod paste_tests {
 
     #[test]
     fn a_pasted_file_keeps_its_name_in_a_folder_of_its_own() {
-        let dir = std::env::temp_dir().join(format!("maestro-paste-test3-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-paste-test3-{}", std::process::id()));
         let a = save_pasted_file_in(&dir, "aGk=", "notes.txt").unwrap();
         let b = save_pasted_file_in(&dir, "aGk=", "notes.txt").unwrap();
         assert!(a.ends_with("notes.txt") && b.ends_with("notes.txt"));
@@ -1159,7 +1159,7 @@ mod paste_tests {
 
     #[test]
     fn only_pictures_and_real_base64_are_saved() {
-        let dir = std::env::temp_dir().join(format!("maestro-paste-test2-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-paste-test2-{}", std::process::id()));
         assert!(save_pasted_image_in(&dir, "iVBORw0KGgo=", "exe").is_err());
         assert!(save_pasted_image_in(&dir, "not base64!", "png").is_err());
         let _ = std::fs::remove_dir_all(&dir);
@@ -1172,7 +1172,7 @@ mod session_tests {
 
     #[test]
     fn live_sessions_are_read_from_claudes_pid_files() {
-        let dir = std::env::temp_dir().join(format!("maestro-live-sessions-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-live-sessions-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("20916.json"), r#"{"pid":20916,"sessionId":"7f19387c-fc1f-4bc7-af25-0e3ba5fcf7e2","cwd":"D:\\app","startedAt":1792395112932,"status":"busy"}"#).unwrap();
         std::fs::write(dir.join("1.json"), r#"{"pid":1,"sessionId":"../../etc","cwd":"D:\\app"}"#).unwrap();
@@ -1186,7 +1186,7 @@ mod session_tests {
 
     #[test]
     fn a_session_says_its_folder_title_and_what_you_typed() {
-        let dir = std::env::temp_dir().join(format!("maestro-sessions-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bytehive-sessions-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let id = "11111111-2222-3333-4444-555555555555";
         let lines = [
@@ -1208,7 +1208,7 @@ mod session_tests {
 
     #[test]
     fn a_projects_sessions_include_its_worktrees_but_not_a_lookalike() {
-        let projects = std::env::temp_dir().join(format!("maestro-sessions-under-{}", std::process::id()));
+        let projects = std::env::temp_dir().join(format!("bytehive-sessions-under-{}", std::process::id()));
         let write = |folder: &str, id: &str, cwd: &str| {
             let d = projects.join(folder);
             std::fs::create_dir_all(&d).unwrap();
@@ -1218,8 +1218,8 @@ mod session_tests {
         write("D--app", "11111111-0000-0000-0000-000000000001", r"D:\app");
         write("D--app--claude-worktrees-x", "11111111-0000-0000-0000-000000000002", r"D:\app\.claude\worktrees\x");
         write("D--app-two", "11111111-0000-0000-0000-000000000003", r"D:\app-two");
-        write("D---maestro-worktrees-app-abc123-maestro-bob-1-xyz", "11111111-0000-0000-0000-000000000004", r"D:\.maestro-worktrees\app-abc123\maestro-bob-1-xyz");
-        let roots = [r"D:\app\", r"D:\.maestro-worktrees\app-abc123"];
+        write("D---bytehive-worktrees-app-abc123-bytehive-bob-1-xyz", "11111111-0000-0000-0000-000000000004", r"D:\.bytehive-worktrees\app-abc123\bytehive-bob-1-xyz");
+        let roots = [r"D:\app\", r"D:\.bytehive-worktrees\app-abc123"];
         let ids: std::collections::BTreeSet<String> = sessions_under(&projects, &roots, 50).into_iter().map(|s| s.id).collect();
         assert_eq!(ids.len(), 3);
         assert!(!ids.contains("11111111-0000-0000-0000-000000000003"));

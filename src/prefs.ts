@@ -1,4 +1,4 @@
-// Maestro's own settings: how agents start, how the inbox gets your attention,
+// ByteHive's own settings: how agents start, how the inbox gets your attention,
 // what Split and Review do, and what happens at startup. One typed store in
 // localStorage; every value has a default so a fresh install behaves well.
 // Settings → Agents / Inbox / Review render from PREF_META, and each feature
@@ -25,7 +25,7 @@ export interface Prefs {
   splitMax: SplitMax;
   /** Open Changes on its own when the agent on screen finishes with changes. */
   reviewOnDone: boolean;
-  /** Reopen last session's projects and agents (stopped) when Maestro starts. */
+  /** Reopen last session's projects and agents (stopped) when ByteHive starts. */
   restore: boolean;
   /** One-time tips when a feature first becomes useful. */
   tips: boolean;

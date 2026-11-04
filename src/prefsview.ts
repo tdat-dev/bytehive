@@ -1,4 +1,4 @@
-// Settings → Agents / Inbox / System rows for Maestro's own settings (prefs.ts).
+// Settings → Agents / Inbox / System rows for ByteHive's own settings (prefs.ts).
 // The markup is static in index.html; this fills the CLI list, shows the saved
 // values when Settings opens, and saves each change the moment it is made.
 
@@ -93,7 +93,7 @@ export function initPrefsView(): void {
   syncPrefsView();
 }
 
-/** Maestro's own settings back to how it ships (Reset in Settings → System). */
+/** ByteHive's own settings back to how it ships (Reset in Settings → System). */
 export function resetPrefsView(): void {
   resetPrefs();
   saveSkipPerms(false);

@@ -1,7 +1,7 @@
 /* Project memory: what every agent in a project should know about it
  * (conventions, decisions, where things are, gotchas), one fact per entry, in
- * <project>/.maestro/memory.json. Agents read and save it through the maestro
- * MCP tools (mcp/src/memory.ts); you read and edit it in Maestro
+ * <project>/.bytehive/memory.json. Agents read and save it through the bytehive
+ * MCP tools (mcp/src/memory.ts); you read and edit it in ByteHive
  * (memoryview.ts). Pure: no file access here, so both sides share it. */
 
 export interface MemoryEntry {
@@ -18,7 +18,7 @@ export interface ProjectMemory {
   entries: MemoryEntry[];
 }
 
-export const MEMORY_REL = ".maestro/memory.json";
+export const MEMORY_REL = ".bytehive/memory.json";
 /** A fact is a sentence or two, not a document. */
 export const MAX_FACT = 600;
 /** Enough for what a project needs every agent to know, small enough to read
@@ -34,7 +34,7 @@ export const emptyMemory = (): ProjectMemory => ({ version: 1, entries: [] });
 export function parseMemory(raw: string | null | undefined): ProjectMemory {
   if (!raw || !raw.trim()) return emptyMemory();
   let data: unknown;
-  try { data = JSON.parse(raw); } catch { throw new MemoryError("The project memory file (.maestro/memory.json) is not valid JSON."); }
+  try { data = JSON.parse(raw); } catch { throw new MemoryError("The project memory file (.bytehive/memory.json) is not valid JSON."); }
   const list = Array.isArray((data as ProjectMemory)?.entries) ? (data as ProjectMemory).entries : [];
   const entries: MemoryEntry[] = [];
   for (const e of list) {

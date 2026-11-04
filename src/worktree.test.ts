@@ -9,10 +9,10 @@ describe("slug", () => {
 });
 
 describe("branchName", () => {
-  it("namespaces under maestro/ with a short id suffix", () => {
-    expect(branchName("Claude Code", "a1b2c3")).toBe("maestro/claude-code-a1b2c3");
+  it("namespaces under bytehive/ with a short id suffix", () => {
+    expect(branchName("Claude Code", "a1b2c3")).toBe("bytehive/claude-code-a1b2c3");
   });
   it("never produces an empty segment", () => {
-    expect(branchName("", "x9")).toBe("maestro/agent-x9");
+    expect(branchName("", "x9")).toBe("bytehive/agent-x9");
   });
 });

@@ -4,9 +4,9 @@
 // That failure is invisible from the outside, so it gets a test.
 
 import { describe, it, expect } from "vitest";
-import { MAESTRO_LAWS, DIRECTOR_LAWS } from "./laws";
+import { BYTEHIVE_LAWS, DIRECTOR_LAWS } from "./laws";
 
-const LAWS = { MAESTRO_LAWS, DIRECTOR_LAWS };
+const LAWS = { BYTEHIVE_LAWS, DIRECTOR_LAWS };
 
 describe("agent laws", () => {
   for (const [name, text] of Object.entries(LAWS)) {
@@ -28,7 +28,7 @@ describe("agent laws", () => {
   });
 
   it("leaves the worker taking orders from the person, not only the director", () => {
-    expect(MAESTRO_LAWS).toMatch(/person always outranks the Director/);
+    expect(BYTEHIVE_LAWS).toMatch(/person always outranks the Director/);
   });
 
   // The fleet talks to itself in English so a hand-off never needs translating;
@@ -42,6 +42,6 @@ describe("agent laws", () => {
     });
   }
   it("tells every agent to look at what the others did first", () => {
-    expect(MAESTRO_LAWS).toContain("call agent_context");
+    expect(BYTEHIVE_LAWS).toContain("call agent_context");
   });
 });

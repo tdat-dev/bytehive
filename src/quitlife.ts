@@ -23,7 +23,7 @@ import { getHideToTray } from "./settings";
 import { needsCloseConfirm } from "./workspaces";
 import { saveSession, detachedSessionCount, sessionKey } from "./session";
 
-// A detached window (a tab dragged out of another Maestro window) boots with
+// A detached window (a tab dragged out of another ByteHive window) boots with
 // ?detach=<key>. Mirrors main.ts's own DETACH_KEY/isDetachedWindow (computed
 // independently — both read the same URL, so they always agree).
 const isDetachedWindow = new URLSearchParams(location.search).get("detach") !== null;
@@ -43,7 +43,7 @@ async function quitApp(): Promise<void> {
   if (closing) return;
   const total = ownPaneCount() + detachedSessionCount();
   if (needsCloseConfirm(total)) {
-    const ok = await confirmDialog(`${total} running terminal(s) will be killed. Quit Maestro?`, "Quit Maestro");
+    const ok = await confirmDialog(`${total} running terminal(s) will be killed. Quit ByteHive?`, "Quit ByteHive");
     if (!ok) return;
   }
   closing = true;
@@ -62,7 +62,7 @@ async function quitApp(): Promise<void> {
 }
 
 /** Close a DETACHED window: kill only ITS agents, drop its session key, and
- *  leave every other Maestro window untouched. */
+ *  leave every other ByteHive window untouched. */
 async function closeDetachedWindow(): Promise<void> {
   if (closing) return;
   const total = ownPaneCount();

@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { clearComments, commentWhere, commentsOf, conflictText, diffTotals, dropComment, numberHunk, putComment, sendBackText, type LineComment } from "./reviewtext";
 
 describe("send back", () => {
-  const conflict = { base: "main", branch: "maestro/eli-1a2b3c", files: ["src/a.ts", "src/b.ts"] };
+  const conflict = { base: "main", branch: "bytehive/eli-1a2b3c", files: ["src/a.ts", "src/b.ts"] };
 
   it("lists the conflicting files and asks the agent to merge the base in and resolve them", () => {
     const t = conflictText(conflict);
-    expect(t).toContain("Merging your branch maestro/eli-1a2b3c into main conflicts in:\n- src/a.ts\n- src/b.ts");
+    expect(t).toContain("Merging your branch bytehive/eli-1a2b3c into main conflicts in:\n- src/a.ts\n- src/b.ts");
     expect(t).toContain("git merge main");
     expect(t).toContain("resolve the conflicts");
     expect(t).not.toContain("—");

@@ -44,8 +44,8 @@ const POLL_MS = 3000;
 const CONFLICT_BANNER =
   `File changed on disk. <button data-ed="overwrite">Overwrite</button> <button data-ed="reload">Reload</button>`;
 
-/** Dark editor chrome tuned to Maestro's tokens (cursor + matches use lime). */
-const maestroTheme = EditorView.theme(
+/** Dark editor chrome tuned to ByteHive's tokens (cursor + matches use lime). */
+const bytehiveTheme = EditorView.theme(
   {
     "&": { color: "var(--text-2)", backgroundColor: "var(--bg)", height: "100%" },
     ".cm-scroller": { fontFamily: "var(--mono)", fontSize: "13px", lineHeight: "1.75", overflow: "auto" },
@@ -68,7 +68,7 @@ const maestroTheme = EditorView.theme(
 );
 
 /** Syntax palette: blue keywords/types, green strings, amber numbers, warm defs. */
-const maestroHighlight = HighlightStyle.define([
+const bytehiveHighlight = HighlightStyle.define([
   { tag: t.comment, color: "var(--muted-2)", fontStyle: "italic" },
   { tag: [t.keyword, t.modifier, t.operatorKeyword, t.controlKeyword], color: "#5ec2f0" },
   { tag: [t.string, t.special(t.string), t.regexp], color: "#3ad29f" },
@@ -351,9 +351,9 @@ export function initEditor(opts: EditorOpts): EditorApi {
         EditorView.updateListener.of((u) => {
           if (u.docChanged) renderDirty();
         }),
-        maestroTheme,
+        bytehiveTheme,
         // Highest precedence so this overrides basicSetup's default light palette.
-        Prec.highest(syntaxHighlighting(maestroHighlight)),
+        Prec.highest(syntaxHighlighting(bytehiveHighlight)),
       ],
     });
     if (view) view.destroy();

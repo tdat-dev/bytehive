@@ -1,14 +1,14 @@
-//! Native messaging host: the process Chrome starts when the "Maestro for
-//! Chrome" extension connects to `com.maestro.browser`.
+//! Native messaging host: the process Chrome starts when the "ByteHive for
+//! Chrome" extension connects to `com.bytehive.browser`.
 //!
-//! It is this same maestro.exe, started with the extension's origin as its
+//! It is this same bytehive.exe, started with the extension's origin as its
 //! argument, and it never opens a window. It relays frames both ways:
 //! - Chrome's frames (a 4-byte little-endian length, then JSON) go to the
-//!   Maestro hub as WebSocket text;
+//!   ByteHive hub as WebSocket text;
 //! - the hub's text goes back to Chrome as frames.
 //!
-//! When Maestro isn't running, the host tells the extension "hub_down" and
-//! keeps retrying, so opening Maestro later connects by itself. The host
+//! When ByteHive isn't running, the host tells the extension "hub_down" and
+//! keeps retrying, so opening ByteHive later connects by itself. The host
 //! remembers the extension's `browser_info` and replays it on every
 //! reconnect.
 
@@ -49,12 +49,12 @@ fn to_chrome(text: &str) {
 
 fn dial() -> Result<tungstenite::WebSocket<TcpStream>, String> {
     let f = super::hub::hub_file().ok_or("no home folder")?;
-    let raw = std::fs::read_to_string(&f).map_err(|_| "Maestro isn't open".to_string())?;
+    let raw = std::fs::read_to_string(&f).map_err(|_| "ByteHive isn't open".to_string())?;
     let v: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
     let port = v["port"].as_u64().ok_or("bad hub file")? as u16;
     let token = v["token"].as_str().ok_or("bad hub file")?.to_string();
     let stream = TcpStream::connect_timeout(&(Ipv4Addr::LOCALHOST, port).into(), Duration::from_secs(2))
-        .map_err(|_| "Maestro isn't open".to_string())?;
+        .map_err(|_| "ByteHive isn't open".to_string())?;
     let _ = stream.set_nodelay(true);
     let (mut ws, _) = tungstenite::client(format!("ws://127.0.0.1:{port}/"), stream).map_err(|e| e.to_string())?;
     ws.send(Message::Text(json!({ "type": "hello", "role": "browser", "token": token }).to_string()))
@@ -130,7 +130,7 @@ pub fn run() -> ! {
                         std::thread::sleep(Duration::from_millis(4));
                     }
                 }
-                to_chrome(&json!({ "type": "hub_down", "detail": "Maestro closed" }).to_string());
+                to_chrome(&json!({ "type": "hub_down", "detail": "ByteHive closed" }).to_string());
             }
             Err(why) => {
                 to_chrome(&json!({ "type": "hub_down", "detail": why }).to_string());

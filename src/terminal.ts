@@ -154,7 +154,7 @@ export function mountTerminal(
   onResize: (cols: number, rows: number) => void,
   opts: { webgl?: boolean; openLink?: (url: string) => void; fontSize?: number; look?: PaneLook } = {},
 ): TerminalHandle {
-  // Default to the fully opaque palette Maestro shipped before see-through
+  // Default to the fully opaque palette ByteHive shipped before see-through
   // panes existed, so a caller that passes no look is unchanged.
   let look: PaneLook = opts.look ?? { theme: paletteFor("light", 1), stripPlate: false };
   const term = new Terminal({
@@ -228,7 +228,7 @@ export function mountTerminal(
           // of going black. Hand the GPU budget slot back too: otherwise the
           // counter leaks and the fleet drifts toward holding more live contexts
           // than the GPU allows, which makes further losses more likely.
-          console.warn("[maestro] webgl context lost → DOM renderer fallback");
+          console.warn("[bytehive] webgl context lost → DOM renderer fallback");
           webgl.dispose();
           webglAddon = null;
           if (usedWebgl) {

@@ -25,7 +25,7 @@ export interface FinishSnap {
   files: number | null;
   /** Exit code of its process once it stopped, when known. */
   exitCode: number | null;
-  /** You (or Maestro, for a merge or quit) asked it to stop just now. */
+  /** You (or ByteHive, for a merge or quit) asked it to stop just now. */
   stopAsked: boolean;
 }
 

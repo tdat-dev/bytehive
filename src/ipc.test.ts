@@ -26,7 +26,7 @@ beforeEach(() => {
 describe("ipc", () => {
   it("spawnPty passes agentId, cwd, env + camelCase args including the channel", async () => {
     await spawnPty("agent-1", "powershell.exe", ["-NoLogo"], "D:\\projects\\demo", 80, 24,
-      [["MAESTRO_AGENT", "Claude Code #1"]], () => {});
+      [["BYTEHIVE_AGENT", "Claude Code #1"]], () => {});
     expect(invoke).toHaveBeenCalledWith(
       "pty_spawn",
       expect.objectContaining({
@@ -36,7 +36,7 @@ describe("ipc", () => {
         cwd: "D:\\projects\\demo",
         cols: 80,
         rows: 24,
-        env: [["MAESTRO_AGENT", "Claude Code #1"]],
+        env: [["BYTEHIVE_AGENT", "Claude Code #1"]],
         onBytes: expect.anything(),
       }),
     );

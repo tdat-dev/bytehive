@@ -1,4 +1,4 @@
-/* Agent Inbox, Maestro's interface. Direction D · Cinema: black stage,
+/* Agent Inbox, ByteHive's interface. Direction D · Cinema: black stage,
    floating panels, colour only for state (amber = needs you, blue = ready to
    review, green = working). body.inbox-ui is always on; the base tokens in
    tokens.css carry the same palette for the older surfaces. */
@@ -867,14 +867,14 @@ body.inbox-ui .inbox-start {
 .st-in { width: min(760px, 100%); margin: 0 auto; }
 .st-brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 22px; letter-spacing: -0.02em; color: var(--ib-ink); margin-bottom: 36px; }
 /* The living logo, as on the old Home: it breathes, its glow pulses, and a
-   bright dash runs along the M. transform/opacity only for the breathe and the
+   bright dash runs along the cell. transform/opacity only for the breathe and the
    pulse; the dash is a small paint. Off-screen (display:none) it costs nothing. */
 .st-brand .logo-glow { position: relative; isolation: isolate; width: 84px; height: 84px; margin: -16px -10px -16px -16px; display: grid; place-items: center; }
-.st-brand .logo-glow svg { width: 84px; height: 84px; filter: drop-shadow(0 0 16px rgba(198, 241, 53, 0.2)); will-change: transform; animation: logoBreathe 4.2s ease-in-out infinite; }
+.st-brand .logo-glow svg { width: 84px; height: 84px; filter: drop-shadow(0 0 16px rgba(245, 165, 36, 0.25)); will-change: transform; animation: logoBreathe 4.2s ease-in-out infinite; }
 .st-brand .logo-glow::before {
   content: ""; position: absolute; top: 50%; left: 50%; width: 150px; height: 150px;
   transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; z-index: -1;
-  background: radial-gradient(circle, rgba(163, 230, 53, 0.16), transparent 65%);
+  background: radial-gradient(circle, rgba(245, 165, 36, 0.16), transparent 65%);
   opacity: 0.5; animation: logoGlowPulse 4.2s ease-in-out infinite;
 }
 .st-brand .mFlow { stroke-dasharray: 0.16 0.84; stroke-dashoffset: 1; opacity: 0.85; animation: mFlow 3.2s linear infinite; }
@@ -1093,7 +1093,7 @@ body.inbox-ui .code-split::after { background: rgba(255, 255, 255, 0.5); }
 body.inbox-ui .app.editor-max .code-panel { margin: 0; border-radius: 18px; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.09); background: var(--ib-panel); }
 body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }
 
-/* ---------- What Maestro can do (inboxhelp.ts) ---------- */
+/* ---------- What ByteHive can do (inboxhelp.ts) ---------- */
 .hp-back { place-items: start center; padding-top: 8vh; }
 .inbox-modal.hp { width: min(760px, 100%); max-height: 84vh; }
 .hp-body { overflow-y: auto; margin: 0 -22px; padding: 0 22px 4px; display: flex; flex-direction: column; gap: 22px; scrollbar-width: thin; }

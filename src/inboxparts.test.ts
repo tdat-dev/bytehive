@@ -24,7 +24,7 @@ describe("command palette", () => {
   beforeEach(() => { document.body.innerHTML = ""; });
 
   const items = (log: string[]): PaletteItem[] => [
-    { group: "Needs you", label: "Ana", sub: "maestro · Wants to run npm test", run: () => log.push("Ana") },
+    { group: "Needs you", label: "Ana", sub: "bytehive · Wants to run npm test", run: () => log.push("Ana") },
     { group: "Working", label: "Bo", sub: "quy · Working", run: () => log.push("Bo") },
     { group: "Actions", label: "New agent", run: () => log.push("new") },
   ];
@@ -67,7 +67,7 @@ describe("New agent", () => {
     spawned.length = 0;
     saved.length = 0;
     localStorage.clear();
-    setActiveWs({ id: "ws-1", name: "maestro", dir: "D:/maestro", panes: new Map() } as unknown as Workspace);
+    setActiveWs({ id: "ws-1", name: "bytehive", dir: "D:/bytehive", panes: new Map() } as unknown as Workspace);
   });
 
   it("offers coding CLIs, not shells, and names the button by the count", () => {
@@ -98,10 +98,10 @@ describe("New agent presets", () => {
   it("saves the setup as a preset Schedule can start", () => {
     document.body.innerHTML = "";
     localStorage.clear();
-    setActiveWs({ id: "ws-1", name: "maestro", dir: "D:/maestro", panes: new Map() } as unknown as Workspace);
+    setActiveWs({ id: "ws-1", name: "bytehive", dir: "D:/bytehive", panes: new Map() } as unknown as Workspace);
     openNewAgent({ count: 2 });
     (document.querySelector("[data-save]") as HTMLButtonElement).click();
-    expect(saved).toEqual([["2× Claude Code · maestro", { claude: 2 }, "D:/maestro", false]]);
+    expect(saved).toEqual([["2× Claude Code · bytehive", { claude: 2 }, "D:/bytehive", false]]);
     expect(document.querySelector("[data-save]")!.textContent).toBe("Saved");
   });
 });

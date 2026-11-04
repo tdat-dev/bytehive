@@ -47,13 +47,13 @@ describe("finish notifications", () => {
     expect(lastFinish("a")?.kind).toBe("done");
   });
 
-  it("stays quiet about the agent on screen while Maestro has focus", () => {
+  it("stays quiet about the agent on screen while ByteHive has focus", () => {
     screen = "a";
     play((t) => [task("a", "Ana", t < 30 ? "working" : "idle")], 50);
     expect(io.notes).toEqual([]);
   });
 
-  it("tells about the agent on screen when Maestro is in the background", () => {
+  it("tells about the agent on screen when ByteHive is in the background", () => {
     screen = "a";
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     play((t) => [task("a", "Ana", t < 30 ? "working" : "idle")], 50);

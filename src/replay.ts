@@ -9,7 +9,7 @@ import { getTermFontSize } from "./settings";
 import { activeWs } from "./appstate";
 import { type Workspace } from "./panetypes";
 
-export const REC_DIR_REL = ".maestro/recordings";
+export const REC_DIR_REL = ".bytehive/recordings";
 
 let onToast: (text: string, onClick?: () => void) => void = () => {};
 let onErrMsg: (e: unknown) => string = (e) => String(e);

@@ -66,7 +66,7 @@ function hash(s: string): number {
 
 export interface FaceParts { head: number; top: number; eyes: number; mouth: number }
 
-/** Which parts a name gets. The same name always gets the same face. Maestro's
+/** Which parts a name gets. The same name always gets the same face. ByteHive's
  *  own names (Ana, Bob, …) each get a face of their own, spread so neighbours
  *  differ in most parts; any other name gets one from its hash. */
 export function faceParts(seed: string): FaceParts {

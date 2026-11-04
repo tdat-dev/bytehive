@@ -21,7 +21,7 @@ jobs:
         # Windows only. The macOS jobs never shipped: the arm64 build failed
         # every release and the Intel runner (macos-13) is never handed out, so
         # the run hung queued. Add them back (aarch64-apple-darwin on
-        # macos-latest) once someone runs Maestro on a Mac and it builds there.
+        # macos-latest) once someone runs ByteHive on a Mac and it builds there.
         include:
           - platform: windows-latest
             rust_target: x86_64-pc-windows-msvc
@@ -50,7 +50,7 @@ jobs:
         run: npm ci
 
       # This repository is private, so its releases can't be downloaded by the
-      # people who installed Maestro. Installers and the updater's latest.json
+      # people who installed ByteHive. Installers and the updater's latest.json
       # go to the public tdat-dev/maestro-releases instead (releases only, no
       # code), which is what tauri.conf.json's updater endpoint reads.
       - name: Release notes from CHANGELOG
@@ -60,9 +60,9 @@ jobs:
           v="${GITHUB_REF_NAME#v}"
           notes=$(awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md)
           {
-            echo "body<<MAESTRO_NOTES_EOF"
-            echo "${notes:-Maestro $GITHUB_REF_NAME}"
-            echo "MAESTRO_NOTES_EOF"
+            echo "body<<BYTEHIVE_NOTES_EOF"
+            echo "${notes:-ByteHive $GITHUB_REF_NAME}"
+            echo "BYTEHIVE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and publish release
@@ -79,7 +79,7 @@ jobs:
           # the tag is made there, on its own branch: this repo's commits aren't in it
           releaseCommitish: main
           tagName: ${{ github.ref_name }}
-          releaseName: "Maestro ${{ github.ref_name }}"
+          releaseName: "ByteHive ${{ github.ref_name }}"
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false

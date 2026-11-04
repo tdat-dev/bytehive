@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "maestro",
-  "mainBinaryName": "maestro",
+  "productName": "ByteHive",
+  "mainBinaryName": "bytehive",
   "version": "0.10.10",
   "identifier": "com.maestro.app",
   "build": {
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "Maestro",
+        "title": "ByteHive",
         "width": 1280,
         "height": 820,
         "minWidth": 760,

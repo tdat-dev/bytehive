@@ -15,7 +15,7 @@ describe("hideToTray setting", () => {
     expect(getHideToTray()).toBe(false);
   });
 
-  it("persists under the maestro.hideToTray key", () => {
+  it("persists under the bytehive.hideToTray key", () => {
     setHideToTray(true);
     expect(localStorage.getItem("maestro.hideToTray")).toBe("1");
   });

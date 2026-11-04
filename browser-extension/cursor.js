@@ -21,10 +21,10 @@
 export function cursorAct(op, o) {
   const IDLE_MS = 6000;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let S = globalThis.__maestroCursor;
+  let S = globalThis.__bytehiveCursor;
   if (!S || !S.host.isConnected) {
     const host = document.createElement("div");
-    host.setAttribute("data-maestro-overlay", "");
+    host.setAttribute("data-bytehive-overlay", "");
     host.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none;contain:strict;";
     const root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `
@@ -76,14 +76,14 @@ export function cursorAct(op, o) {
 </div>`;
     (document.body ?? document.documentElement).append(host);
     const $ = (s) => root.querySelector(s);
-    S = globalThis.__maestroCursor = {
+    S = globalThis.__bytehiveCursor = {
       host, wrap: $(".wrap"), cur: $(".cur"), tag: $(".tag"), chip: $(".chip"), who: $(".who"), what: $(".what"),
       pill: $(".pill"), fx: $(".fx"), x: o.from?.[0] ?? innerWidth * 0.62, y: o.from?.[1] ?? innerHeight * 0.55,
       idle: 0, chipT: 0, raf: 0, name: "",
     };
     S.pill.querySelector("button").addEventListener("click", () => {
       S.pill.classList.add("stopped");
-      S.what.textContent = "is stopped. It waits for you in Maestro.";
+      S.what.textContent = "is stopped. It waits for you in ByteHive.";
       S.pill.querySelector("button").remove();
       try { chrome.runtime.sendMessage({ type: "stop_agent", agent: S.name }); } catch {}
     });

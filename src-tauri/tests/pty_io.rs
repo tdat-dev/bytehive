@@ -13,8 +13,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use maestro_lib::core::command_spec::CommandSpec;
-use maestro_lib::core::pty_session::PtySession;
+use bytehive_lib::core::command_spec::CommandSpec;
+use bytehive_lib::core::pty_session::PtySession;
 use portable_pty::PtySize;
 
 #[test]

@@ -1,6 +1,6 @@
-/* Project memory for maestro-mcp: <workspace>/.maestro/memory.json, the facts
+/* Project memory for bytehive-mcp: <workspace>/.bytehive/memory.json, the facts
  * every agent in the project should know. The shapes and rules live in the
- * app (src/projectmemory.ts) so Maestro's editor and the agents agree. Every
+ * app (src/projectmemory.ts) so ByteHive's editor and the agents agree. Every
  * call re-reads the file and writes atomically, like the board. */
 
 import fs from "node:fs";
@@ -20,7 +20,7 @@ export function loadMemory(dir: string): ProjectMemory {
   try {
     return parseMemory(raw);
   } catch {
-    // Maestro's own write is not atomic: give a torn read one short retry.
+    // ByteHive's own write is not atomic: give a torn read one short retry.
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
     return parseMemory(fs.readFileSync(memoryPath(dir), "utf8"));
   }

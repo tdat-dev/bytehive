@@ -95,7 +95,7 @@ export function initSettingsModal(): void {
   initBrowserPrefs();
   // Show the running version in the Settings "Updates" row.
   void getVersion()
-    .then((v) => { if (setVersion) setVersion.textContent = `Maestro · v${v}`; })
+    .then((v) => { if (setVersion) setVersion.textContent = `ByteHive · v${v}`; })
     .catch(() => {});
 
   // Manual update check. Unlike the silent startup check, this one always reports
@@ -129,7 +129,7 @@ export function initSettingsModal(): void {
   document.getElementById("prefReset")?.addEventListener("click", async () => {
     const r = await confirmModal({
       title: "Reset settings?",
-      message: "Agents, Inbox, text size and the tray go back to how Maestro ships. Projects, agents and the remote dashboard are not touched.",
+      message: "Agents, Inbox, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.",
       okLabel: "Reset",
       danger: true,
     });
@@ -137,7 +137,7 @@ export function initSettingsModal(): void {
     resetPrefsView();
     applyTermFontSize(TERM_FONT_DEFAULT);
     if (setHideTray?.checked) { setHideTray.checked = false; setHideTray.dispatchEvent(new Event("change")); }
-    topNote("Settings are back to how Maestro ships");
+    topNote("Settings are back to how ByteHive ships");
   });
 
   settingsModal?.querySelectorAll<HTMLElement>(".sn[data-sec]").forEach((btn) => {

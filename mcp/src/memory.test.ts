@@ -9,13 +9,13 @@ beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "mem-")); });
 afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
 
 describe("project memory tools", () => {
-  it("saves, updates and deletes facts in .maestro/memory.json", () => {
+  it("saves, updates and deletes facts in .bytehive/memory.json", () => {
     expect(memoryGet(dir)).toMatch(/empty/);
     expect(memoryForInstructions(dir)).toBe("");
     expect(memorySave(dir, "Run tests with npx vitest run", "Ana", 1)).toMatch(/^Saved \[m1\]/);
     expect(memorySave(dir, "run tests with npx vitest run.", "Bob", 2)).toMatch(/^Already in memory as \[m1\]/);
     expect(memoryUpdate(dir, "m1", "Run tests with npm test", "Bob", 3)).toContain("[m1] Run tests with npm test");
-    const file = JSON.parse(fs.readFileSync(path.join(dir, ".maestro", "memory.json"), "utf8"));
+    const file = JSON.parse(fs.readFileSync(path.join(dir, ".bytehive", "memory.json"), "utf8"));
     expect(file.entries[0]).toMatchObject({ id: "m1", by: "Bob", at: 3 });
     expect(memoryForInstructions(dir)).toContain("PROJECT MEMORY");
     expect(memoryDelete(dir, "m1")).toMatch(/^Deleted \[m1\]/);

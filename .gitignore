@@ -36,7 +36,6 @@ crates/*/target/
 /HeavyweightFishingHub/
 /dist-supervisor/
 /portfolio-caoxuanminh/
-/src-tauri/
 
 # tauri build outputs
 src-tauri/target/

@@ -11,7 +11,7 @@ let dir: string;
 let client: Client;
 
 beforeEach(async () => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-mcp-srv-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-mcp-srv-"));
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createServer(dir);
   await server.connect(serverTransport);
@@ -27,7 +27,7 @@ afterEach(async () => {
 const text = (res: unknown): string =>
   (res as { content: { type: string; text: string }[] }).content[0].text;
 
-describe("maestro-mcp server", () => {
+describe("bytehive-mcp server", () => {
   it("lists all board, fleet and browser tools", async () => {
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(tools).toEqual([
@@ -75,7 +75,7 @@ describe("maestro-mcp server", () => {
     const res = await client.callTool({ name: "board_get", arguments: {} });
     const board = JSON.parse(text(res));
     expect(board.lists.map((l: { title: string }) => l.title)).toEqual(["To do", "Doing", "Done"]);
-    expect(fs.existsSync(path.join(dir, ".maestro", "board.json"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, ".bytehive", "board.json"))).toBe(false);
   });
 
   it("card_add persists to board.json", async () => {
@@ -123,23 +123,23 @@ describe("maestro-mcp server", () => {
   });
 
   it("a corrupt board.json errors and is never overwritten", async () => {
-    fs.mkdirSync(path.join(dir, ".maestro"), { recursive: true });
-    fs.writeFileSync(path.join(dir, ".maestro", "board.json"), "{broken", "utf8");
+    fs.mkdirSync(path.join(dir, ".bytehive"), { recursive: true });
+    fs.writeFileSync(path.join(dir, ".bytehive", "board.json"), "{broken", "utf8");
     const res = (await client.callTool({
       name: "card_add",
       arguments: { list: "To do", title: "x" },
     })) as { isError?: boolean };
     expect(res.isError).toBe(true);
-    expect(fs.readFileSync(path.join(dir, ".maestro", "board.json"), "utf8")).toBe("{broken");
+    expect(fs.readFileSync(path.join(dir, ".bytehive", "board.json"), "utf8")).toBe("{broken");
   });
 
-  it("fleet_send writes from: null to the outbox when MAESTRO_AGENT is unset", async () => {
+  it("fleet_send writes from: null to the outbox when BYTEHIVE_AGENT is unset", async () => {
     // agentName is captured once at createServer() time, so the pre-existing
-    // `client`/`server` from beforeEach already has whatever MAESTRO_AGENT was
+    // `client`/`server` from beforeEach already has whatever BYTEHIVE_AGENT was
     // set when this test process started — spin up a fresh server with the
     // env var cleared first.
-    const prevAgent = process.env.MAESTRO_AGENT;
-    delete process.env.MAESTRO_AGENT;
+    const prevAgent = process.env.BYTEHIVE_AGENT;
+    delete process.env.BYTEHIVE_AGENT;
     try {
       const [clientTransport2, serverTransport2] = InMemoryTransport.createLinkedPair();
       const server2 = createServer(dir);
@@ -149,18 +149,18 @@ describe("maestro-mcp server", () => {
       await client2.callTool({ name: "fleet_send", arguments: { message: "hi", to: "Codex #1" } });
       await client2.close();
     } finally {
-      if (prevAgent !== undefined) process.env.MAESTRO_AGENT = prevAgent;
+      if (prevAgent !== undefined) process.env.BYTEHIVE_AGENT = prevAgent;
     }
     const line = JSON.parse(
-      fs.readFileSync(path.join(dir, ".maestro", "outbox.jsonl"), "utf8").trim().split("\n")[0],
+      fs.readFileSync(path.join(dir, ".bytehive", "outbox.jsonl"), "utf8").trim().split("\n")[0],
     );
     expect(line.from).toBeNull();
     expect(line.to).toBe("Codex #1");
   });
 
-  it("fleet_send threads MAESTRO_AGENT into the outbox as `from`", async () => {
-    const prevAgent = process.env.MAESTRO_AGENT;
-    process.env.MAESTRO_AGENT = "Claude #1";
+  it("fleet_send threads BYTEHIVE_AGENT into the outbox as `from`", async () => {
+    const prevAgent = process.env.BYTEHIVE_AGENT;
+    process.env.BYTEHIVE_AGENT = "Claude #1";
     try {
       const [clientTransport2, serverTransport2] = InMemoryTransport.createLinkedPair();
       const server2 = createServer(dir); // agentName is read at createServer() time
@@ -170,11 +170,11 @@ describe("maestro-mcp server", () => {
       await client2.callTool({ name: "fleet_send", arguments: { message: "go build it" } });
       await client2.close();
     } finally {
-      if (prevAgent === undefined) delete process.env.MAESTRO_AGENT;
-      else process.env.MAESTRO_AGENT = prevAgent;
+      if (prevAgent === undefined) delete process.env.BYTEHIVE_AGENT;
+      else process.env.BYTEHIVE_AGENT = prevAgent;
     }
     const line = JSON.parse(
-      fs.readFileSync(path.join(dir, ".maestro", "outbox.jsonl"), "utf8").trim().split("\n")[0],
+      fs.readFileSync(path.join(dir, ".bytehive", "outbox.jsonl"), "utf8").trim().split("\n")[0],
     );
     expect(line.from).toBe("Claude #1");
     expect(line.to).toBeNull();

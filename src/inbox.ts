@@ -1018,7 +1018,7 @@ export function paletteItems(): PaletteItem[] {
     act("Scheduled agents", () => openTool("schedule"), undefined, "Start a preset at a set time"),
     act("Replays", () => openTool("replays"), undefined, "Watch a recorded session back"),
     act("Usage", () => openTool("usage"), undefined, "Tokens and estimated cost"),
-    act("What Maestro can do", () => openHelpPage(), "?", "Every shortcut and hidden feature"),
+    act("What ByteHive can do", () => openHelpPage(), "?", "Every shortcut and hidden feature"),
     ...projects,
     ...here,
   ];
@@ -1060,7 +1060,7 @@ function mergeItem(): PaletteItem[] {
  *  interface is on. Window capture runs before the switcher's document one. */
 function onCtrlK(e: KeyboardEvent): void {
   if (!document.body.classList.contains("inbox-ui")) return;
-  // ? or Ctrl+/ shows everything Maestro can do.
+  // ? or Ctrl+/ shows everything ByteHive can do.
   if (isHelpKey(e)) { e.preventDefault(); e.stopImmediatePropagation(); openHelpPage(); return; }
   // Ctrl+, opens Settings, as in most desktop apps.
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === ",") { e.preventDefault(); e.stopImmediatePropagation(); openSettings(); return; }
@@ -1181,7 +1181,7 @@ function mount(): void {
   // The floating dock at the bottom: views, the command bar, New agent, tools.
   dockEl = document.createElement("nav");
   dockEl.className = "inbox-dock";
-  dockEl.setAttribute("aria-label", "Maestro");
+  dockEl.setAttribute("aria-label", "ByteHive");
   dockEl.innerHTML = `
     <div class="id-seg">
       <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, full size (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
@@ -1193,7 +1193,7 @@ function mount(): void {
     <button class="id-new" data-dock="new" title="New agent (Ctrl+Shift+T)">New agent</button>
     <button class="id-gear" data-dock="sessions" aria-label="Sessions" title="Sessions: read back earlier conversations (Alt+O)">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button>
-    <button class="id-gear id-help" data-dock="help" aria-label="What Maestro can do" title="What Maestro can do (?)">?</button>
+    <button class="id-gear id-help" data-dock="help" aria-label="What ByteHive can do" title="What ByteHive can do (?)">?</button>
     <button class="id-gear" data-dock="settings" aria-label="Settings" title="Settings (Ctrl+,)">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
   app.appendChild(dockEl);

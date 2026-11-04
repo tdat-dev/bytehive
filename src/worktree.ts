@@ -9,8 +9,8 @@ export function slug(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Branch for an agent: `maestro/<name-slug>-<shortId>` (collision-resistant). */
+/** Branch for an agent: `bytehive/<name-slug>-<shortId>` (collision-resistant). */
 export function branchName(agentName: string, shortId: string): string {
   const base = slug(agentName) || "agent";
-  return `maestro/${base}-${shortId}`;
+  return `bytehive/${base}-${shortId}`;
 }

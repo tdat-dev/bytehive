@@ -5,8 +5,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use maestro_lib::core::command_spec::CommandSpec;
-use maestro_lib::core::registry::Registry;
+use bytehive_lib::core::command_spec::CommandSpec;
+use bytehive_lib::core::registry::Registry;
 use portable_pty::PtySize;
 
 fn size() -> PtySize {

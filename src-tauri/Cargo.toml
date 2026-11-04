@@ -1,7 +1,7 @@
 [package]
-name = "maestro"
+name = "bytehive"
 version = "0.10.10"
-description = "Maestro multi-agent CLI orchestrator"
+description = "ByteHive multi-agent CLI orchestrator"
 authors = ["tdat-dev"]
 license = "MIT"
 repository = "https://github.com/tdat-dev/maestro"
@@ -9,22 +9,22 @@ edition = "2021"
 rust-version = "1.77.2"
 
 [lib]
-name = "maestro_lib"
+name = "bytehive_lib"
 # rlib only. The Tauri template ships `["staticlib", "cdylib", "rlib"]` so the
-# same crate can be linked into an iOS or Android host; Maestro is Windows-only
+# same crate can be linked into an iOS or Android host; ByteHive is Windows-only
 # (see the `windows` dependency below), so those two outputs were compiled every
-# build and linked by nobody — `maestro_lib.lib` alone was 1.0 GB of the debug
+# build and linked by nobody — `bytehive_lib.lib` alone was 1.0 GB of the debug
 # target. Add them back if this ever targets mobile.
 crate-type = ["rlib"]
 
-# Cargo always emits `maestro-dev.exe`, so a `tauri dev` build can never share an
-# image name with an installed production Maestro (`maestro.exe`) — anything that
+# Cargo always emits `bytehive-dev.exe`, so a `tauri dev` build can never share an
+# image name with an installed production ByteHive (`bytehive.exe`) — anything that
 # matches processes by name while developing then cannot kill the real app.
 # `tauri build` renames it back via `mainBinaryName` in tauri.conf.json, so the
-# shipped binary is still `maestro.exe`. (`mainBinaryName` only applies to
+# shipped binary is still `bytehive.exe`. (`mainBinaryName` only applies to
 # `tauri build`, never to `tauri dev` — hence doing the split at the Cargo level.)
 [[bin]]
-name = "maestro-dev"
+name = "bytehive-dev"
 path = "src/main.rs"
 
 [build-dependencies]

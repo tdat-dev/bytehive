@@ -10,7 +10,7 @@ describe("placeOf", () => {
     expect(placeOf(APP, APP)).toBe("");
     expect(placeOf("D:\\app\\", APP)).toBe("");
     expect(placeOf(String.raw`D:\app\.claude\worktrees\fix-login`, APP)).toBe("worktree fix-login");
-    expect(placeOf(String.raw`D:\.maestro-worktrees\app-o703vx\maestro-bob-nryjdb-iqnrko`, APP)).toBe("worktree maestro-bob-nryjdb");
+    expect(placeOf(String.raw`D:\.bytehive-worktrees\app-o703vx\bytehive-bob-nryjdb-iqnrko`, APP)).toBe("worktree bytehive-bob-nryjdb");
     expect(placeOf("D:/code/other", null)).toBe("code/other");
     expect(placeOf("", APP)).toBe("");
   });

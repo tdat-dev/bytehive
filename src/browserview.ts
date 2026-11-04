@@ -236,7 +236,7 @@ function renderAsks(all: Ask[]) {
   for (const a of list) {
     if (had.has(a.id) || told.has(a.id)) continue;
     told.add(a.id);
-    if (!document.hasFocus()) void notify(askLine(a), `${host(a.url) ? `On ${host(a.url)}. ` : ""}Open Maestro to allow it or not.`).catch(() => {});
+    if (!document.hasFocus()) void notify(askLine(a), `${host(a.url) ? `On ${host(a.url)}. ` : ""}Open ByteHive to allow it or not.`).catch(() => {});
   }
   // A new ask takes the keyboard only when nothing else has it.
   const first = asksBox.querySelector<HTMLButtonElement>("[data-no]");

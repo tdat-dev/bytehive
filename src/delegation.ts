@@ -1,5 +1,5 @@
 // Delegation visualization: when one agent hands work to another via the
-// maestro-mcp `fleet_send` tool, draw a transient animated link on the canvas
+// bytehive-mcp `fleet_send` tool, draw a transient animated link on the canvas
 // from the sender's pane to the target pane(s), AND pop a small bottom-right
 // toast ("Ana → Bob: message") so the hand-off reads even when the panes
 // involved are off-screen, scrolled away, or in a different workspace tab.

@@ -141,7 +141,7 @@ function composerHTML(): string {
       <p class="st-room" data-room hidden></p>
     </form>
     <div class="st-try" role="group" aria-label="Jobs to try">${STARTERS.map((s) => `<button type="button" class="st-starter" data-starter="${esc(s.job)}" title="${esc(s.job)}">${esc(s.label)}</button>`).join("")}</div>
-    <button type="button" class="st-help" data-st="help">See everything Maestro can do <kbd>?</kbd></button>`;
+    <button type="button" class="st-help" data-st="help">See everything ByteHive can do <kbd>?</kbd></button>`;
 }
 
 /** The parts that follow live state; rebuilt only when that state changes, so
@@ -267,7 +267,7 @@ export function mountStart(): void {
   el.setAttribute("aria-label", "Start");
   const now = new Date();
   el.innerHTML = `<div class="st-in">
-    <div class="st-brand"><span class="logo-glow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="url(#stGrad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="miter"><defs><linearGradient id="stGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c6f135"/><stop offset=".5" stop-color="#27b9a3"/><stop offset="1" stop-color="#0f7a3e"/></linearGradient></defs><path d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5"/><path class="mFlow" pathLength="1" d="M4 19.5 6.6 7 10 12.4 12 8.4 14 12.4 17.4 7 20 19.5" stroke="#eaffb0"/></svg></span>Maestro</div>
+    <div class="st-brand"><span class="logo-glow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><defs><linearGradient id="stHoney" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd85c"/><stop offset=".5" stop-color="#f5a524"/><stop offset="1" stop-color="#c86a12"/></linearGradient><pattern id="stComb" width="4.5033" height="7.8" patternUnits="userSpaceOnUse" x="9.748" y="9.4"><path d="M2.2517 0 4.5033 1.3V3.9L2.2517 5.2 0 3.9V1.3ZM2.2517 5.2V7.8" fill="none" stroke="#0e0f12" stroke-opacity=".22" stroke-width=".32"/></pattern><mask id="stPrompt"><rect width="24" height="24" fill="#fff"/><g fill="none" stroke="#000" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8.8 11.39 12.19 8 15.58"/><path d="M13.65 15.58H17.49"/></g></mask></defs><g mask="url(#stPrompt)" stroke="none"><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#stHoney)"/><path d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" fill="url(#stComb)"/></g><path class="mFlow" pathLength="1" d="M12 .8 21.699 6.4V17.6L12 23.2 2.301 17.6V6.4Z" stroke="#ffe9a8" stroke-width=".9" stroke-linecap="round"/></svg></span>ByteHive</div>
     <h1>${greeting(now.getHours())}.</h1>
     <p class="st-status" aria-live="polite"></p>
     ${composerHTML()}

@@ -137,7 +137,7 @@ describe("parseSpawnLine", () => {
 });
 
 describe("drainJsonl (outbox delivery)", () => {
-  const OUT = ".maestro\\outbox.jsonl";
+  const OUT = ".bytehive\\outbox.jsonl";
   const key = (dir: string) => `${dir}|${OUT}`;
   const append = (dir: string, text: string) => files.set(key(dir), (files.get(key(dir)) ?? "") + text);
   const msg = (m: string) => JSON.stringify({ to: null, message: m }) + "\n";
@@ -267,7 +267,7 @@ describe("initFleetBridge", () => {
 
   it("drains a folder shared by two workspaces once", async () => {
     const dir = "D:/shared";
-    const out = `${dir}|.maestro\\outbox.jsonl`;
+    const out = `${dir}|.bytehive\\outbox.jsonl`;
     files.set(out, "");
     const delivered: string[] = [];
     const host: FleetBridgeHost = {

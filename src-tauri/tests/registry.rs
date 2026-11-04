@@ -4,8 +4,8 @@
 
 use std::time::{Duration, Instant};
 
-use maestro_lib::core::command_spec::CommandSpec;
-use maestro_lib::core::registry::{self, Registry};
+use bytehive_lib::core::command_spec::CommandSpec;
+use bytehive_lib::core::registry::{self, Registry};
 use std::sync::{Arc, Mutex};
 use portable_pty::PtySize;
 
@@ -179,13 +179,13 @@ fn a_pipe_agent_talks_in_lines_and_dies_with_its_entry() {
     registry::lock(&shared).write_input("p", b"echo hello there\r\n").expect("input");
     let mut seen = String::new();
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !(seen.contains("hello there") && seen.contains("maestro_stderr")) && Instant::now() < deadline {
+    while !(seen.contains("hello there") && seen.contains("bytehive_stderr")) && Instant::now() < deadline {
         if let Ok(b) = out_rx.recv_timeout(Duration::from_millis(200)) {
             seen.push_str(&String::from_utf8_lossy(&b));
         }
     }
     assert!(seen.contains("hello there"), "stdout line came back: {seen:?}");
-    assert!(seen.contains("\"type\":\"maestro_stderr\""), "stderr came as a JSON line: {seen:?}");
+    assert!(seen.contains("\"type\":\"bytehive_stderr\""), "stderr came as a JSON line: {seen:?}");
     // keys from the remote terminal would break its JSON: refused
     assert!(registry::lock(&shared).write_keys("p", b"x\r").is_err());
     let gone = registry::lock(&shared).take("p");

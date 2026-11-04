@@ -28,7 +28,7 @@ export function reviewDir(pane: Pane): string | null {
   return pane.spec.worktree || pane.spec.cwd || null;
 }
 
-/** Kept per agent while Maestro runs: the note you were writing and the files
+/** Kept per agent while ByteHive runs: the note you were writing and the files
  *  you ticked as viewed, so switching agents or screens loses neither. */
 const notes = new Map<string, string>();
 const viewed = new Map<string, Set<string>>();

@@ -60,7 +60,7 @@ fn valid_branch(b: &str) -> bool {
 }
 
 /// Compute the worktree directory for a repo + branch:
-/// `<drive>:\.maestro-worktrees\<repo-slug>-<hash>\<branch-slug>-<branch-hash>`.
+/// `<drive>:\.bytehive-worktrees\<repo-slug>-<hash>\<branch-slug>-<branch-hash>`.
 /// The root sits on the repo's own drive (never C:/profile) and out of the repo tree.
 /// NOTE: UNC paths (\\server\share) are unsupported — Windows-local repos only.
 pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
@@ -75,7 +75,7 @@ pub fn worktree_path_for(repo_root: &str, branch: &str) -> PathBuf {
     let leaf = format!("{}-{}", slug(branch), short_hash(branch));
     let mut p = PathBuf::new();
     p.push(format!("{}\\", drive));
-    p.push(".maestro-worktrees");
+    p.push(".bytehive-worktrees");
     p.push(folder);
     p.push(leaf);
     p
@@ -106,7 +106,7 @@ fn write_shared_cargo_target(worktree_parent: &Path, repo_root: &str) {
     // Cargo accepts forward slashes on Windows; avoids TOML backslash escaping.
     let target_dir = format!("{}/src-tauri/target", repo_root.replace('\\', "/"));
     let body = format!(
-        "# Auto-added by Maestro: share the main repo's Cargo target across all\n\
+        "# Auto-added by ByteHive: share the main repo's Cargo target across all\n\
          # worktrees so each worktree build does not duplicate src-tauri/target.\n\
          [build]\ntarget-dir = \"{target_dir}\"\n"
     );
@@ -313,18 +313,18 @@ mod tests {
 
     #[test]
     fn path_lives_on_repo_drive_under_hidden_root() {
-        let p = worktree_path_for("D:\\WhaleloSource\\payments-svc", "maestro/claude-a1b2")
+        let p = worktree_path_for("D:\\WhaleloSource\\payments-svc", "bytehive/claude-a1b2")
             .to_string_lossy()
             .to_string();
-        assert!(p.starts_with("D:\\.maestro-worktrees\\"), "got {p}");
+        assert!(p.starts_with("D:\\.bytehive-worktrees\\"), "got {p}");
         assert!(p.contains("payments-svc-"), "got {p}");
-        assert!(p.contains("maestro-claude-a1b2-"), "got {p}");
+        assert!(p.contains("bytehive-claude-a1b2-"), "got {p}");
     }
 
     #[test]
     fn same_name_different_path_differ() {
-        let a = worktree_path_for("D:\\a\\app", "maestro/x");
-        let b = worktree_path_for("D:\\b\\app", "maestro/x");
+        let a = worktree_path_for("D:\\a\\app", "bytehive/x");
+        let b = worktree_path_for("D:\\b\\app", "bytehive/x");
         assert_ne!(a, b);
     }
 
@@ -368,12 +368,12 @@ mod tests {
 
         // Note: worktree_path_for puts the tree on the repo's drive; for the test we
         // verify the branch+worktree are created and listed, then removed.
-        let wt = worktree_add_impl(root.clone(), "maestro/test-1".into()).expect("add");
+        let wt = worktree_add_impl(root.clone(), "bytehive/test-1".into()).expect("add");
         assert!(std::path::Path::new(&wt).join("a.txt").exists());
         let list = git(&["worktree", "list"], &root).unwrap();
-        assert!(list.contains("maestro/test-1") || list.contains(&wt));
+        assert!(list.contains("bytehive/test-1") || list.contains(&wt));
 
-        worktree_remove_impl(root.clone(), wt.clone(), Some("maestro/test-1".into()))
+        worktree_remove_impl(root.clone(), wt.clone(), Some("bytehive/test-1".into()))
             .expect("remove");
         assert!(!std::path::Path::new(&wt).exists());
     }
@@ -410,7 +410,7 @@ mod tests {
         let root = repo.to_string_lossy().to_string();
         let add = |name: &str| {
             let wt = tmp.path().join(name).to_string_lossy().to_string();
-            git(&["worktree", "add", "-q", "-b", &format!("maestro/{name}"), &wt], &root).unwrap();
+            git(&["worktree", "add", "-q", "-b", &format!("bytehive/{name}"), &wt], &root).unwrap();
             wt
         };
         // idle: removed with its branch, and the agent goes to the project folder
@@ -418,7 +418,7 @@ mod tests {
         let home = worktree_leave_impl(&idle, None).unwrap().expect("leaves");
         assert!(Path::new(&home).join("a.txt").exists());
         assert!(!Path::new(&idle).exists());
-        assert!(git(&["branch", "--list", "maestro/idle"], &root).unwrap().is_empty());
+        assert!(git(&["branch", "--list", "bytehive/idle"], &root).unwrap().is_empty());
         // uncommitted work: stays
         let dirty = add("dirty");
         std::fs::write(Path::new(&dirty).join("a.txt"), "changed\n").unwrap();

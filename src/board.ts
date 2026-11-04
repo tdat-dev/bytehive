@@ -14,7 +14,7 @@ export interface DoneInfo {
   files: string[]; // paths relative to repoRoot
   summary?: string; // optional agent-written note
   at: number; // ms timestamp
-  by?: string; // which agent finished it (MAESTRO_AGENT)
+  by?: string; // which agent finished it (BYTEHIVE_AGENT)
 }
 export interface Card {
   id: string;

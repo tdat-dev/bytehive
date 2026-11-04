@@ -1,4 +1,4 @@
-// What each agent's task is doing right now, derived from facts Maestro already
+// What each agent's task is doing right now, derived from facts ByteHive already
 // has instead of set by hand: is the process alive, when did it last print,
 // what is on its screen, and has it changed files on its branch.
 //

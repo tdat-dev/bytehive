@@ -2,9 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    // Chrome starts this same exe as the "Maestro for Chrome" native host.
-    if maestro_lib::browser::host::wanted() {
-        maestro_lib::browser::host::run();
+    // Chrome starts this same exe as the "ByteHive for Chrome" native host.
+    if bytehive_lib::browser::host::wanted() {
+        bytehive_lib::browser::host::run();
     }
-    maestro_lib::run();
+    bytehive_lib::run();
 }

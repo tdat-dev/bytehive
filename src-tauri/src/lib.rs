@@ -1,3 +1,4 @@
+pub mod adopt;
 pub mod browser;
 pub mod commands;
 pub mod core;
@@ -30,12 +31,12 @@ fn show_main_window(app: &tauri::AppHandle) {
 /// Build the system-tray icon with a Show/Quit menu. Created hidden — the
 /// frontend turns it on via `set_tray_visible` when "Hide to tray" is enabled.
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show_i = MenuItem::with_id(app, "show", "Show Maestro", true, None::<&str>)?;
+    let show_i = MenuItem::with_id(app, "show", "Show ByteHive", true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Maestro")
+        .tooltip("ByteHive")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -81,7 +82,7 @@ pub fn run() {
         .manage(browser::BrowserState::default())
         // WebView2 keeps compositing at full rate while its window is minimized unless the
         // host says the view is hidden (Microsoft's guidance: IsVisible = false when
-        // minimized). Measured 2026-10-10: a minimized Maestro still kept the 3D engine
+        // minimized). Measured 2026-10-10: a minimized ByteHive still kept the 3D engine
         // ~45% busy. Hidden, the page gets document.hidden, requestAnimationFrame stops
         // and xterm stops repainting; power.ts repaints on the way back.
         .on_window_event(|window, event| {
@@ -98,6 +99,7 @@ pub fn run() {
             let _ = (window, event);
         })
         .setup(|app| {
+            adopt::adopt_old_home();
             build_tray(app)?;
             // the dashboard password's hash lives with the app's config
             if let Ok(dir) = app.path().app_config_dir() {
@@ -107,6 +109,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            adopt::adopt_old_folder,
             commands::pty_spawn,
             commands::pty_attach,
             commands::pty_input,

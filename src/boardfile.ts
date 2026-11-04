@@ -1,13 +1,13 @@
-/* board.json persistence for the kanban board — the same file maestro-mcp
+/* board.json persistence for the kanban board — the same file bytehive-mcp
  * (the agent-facing MCP server) reads and writes. The UI re-reads before every
  * mutation and passes the last-seen mtime to fs_write_file so a concurrent
  * agent write surfaces as a Conflict instead of being clobbered. */
 
-import { fsCreateDir, fsCreateFile, fsReadFile, fsStat, fsWriteFile } from "./ipc";
+import { adoptOldFolder, fsCreateDir, fsCreateFile, fsReadFile, fsStat, fsWriteFile } from "./ipc";
 import { normalizeLists, type Board } from "./board";
 
-export const BOARD_JSON_REL = ".maestro\\board.json";
-const MAESTRO_DIR = ".maestro";
+export const BOARD_JSON_REL = ".bytehive\\board.json";
+const BYTEHIVE_DIR = ".bytehive";
 
 export class BoardFileCorrupt extends Error {}
 
@@ -56,6 +56,7 @@ export async function statBoardFile(dir: string): Promise<number | null> {
 export async function readBoardFile(dir: string): Promise<BoardFile | null> {
   let content: string;
   let mtime: number;
+  await adoptOldFolder(dir).catch(() => {});
   try {
     ({ content, mtime } = await fsReadFile(dir, BOARD_JSON_REL));
   } catch (e) {
@@ -73,7 +74,7 @@ export async function readBoardFile(dir: string): Promise<BoardFile | null> {
   return { board, mtime };
 }
 
-/** Write board.json (creating .maestro/ and the file on first use). Rejects
+/** Write board.json (creating .bytehive/ and the file on first use). Rejects
  *  with the backend's Conflict error when expectedMtime is stale. */
 export async function writeBoardFile(
   dir: string,
@@ -81,7 +82,7 @@ export async function writeBoardFile(
   expectedMtime: number | null,
 ): Promise<number> {
   try {
-    await fsCreateDir(dir, MAESTRO_DIR);
+    await fsCreateDir(dir, BYTEHIVE_DIR);
   } catch {
     /* already exists */
   }

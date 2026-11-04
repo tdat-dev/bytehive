@@ -1,5 +1,5 @@
 // Outbound cross-window workspace handoff: snapshot a workspace into a payload,
-// tear it out into a brand-new Maestro window (detach), or fold it back into the
+// tear it out into a brand-new ByteHive window (detach), or fold it back into the
 // main window (merge). Running agents are NEVER killed — they keep running in the
 // backend and the receiving window re-attaches to their PTYs. Split from
 // workspace.ts; the inbound side (adopt/boot) stays there next to createWorkspace.
@@ -32,8 +32,8 @@ export interface DetachPayload {
 // handshake — the detached window only releases the tab once the main window
 // confirms it adopted it, so the workspace is never dropped if the main window
 // is gone (then we fall back to leaving the tab / detaching into a new window).
-export const MERGE_EVT = "maestro://merge";
-export const MERGE_ACK_EVT = "maestro://merge-ack";
+export const MERGE_EVT = "bytehive://merge";
+export const MERGE_ACK_EVT = "bytehive://merge-ack";
 export interface MergeMsg {
   key: string;
   ws: DetachPayload;
@@ -69,7 +69,7 @@ function releaseWorkspace(ws: Workspace) {
   dropWorkspace(ws);
 }
 
-/** Move `ws` into a brand-new Maestro window. Running agents are NOT killed:
+/** Move `ws` into a brand-new ByteHive window. Running agents are NOT killed:
  *  the new window re-attaches to their PTYs (`pty_attach`) and the backend
  *  replays the recent scrollback. This window just drops its tab. */
 export async function detachWorkspace(ws: Workspace) {
@@ -81,7 +81,7 @@ export async function detachWorkspace(ws: Workspace) {
     return; // storage unavailable — keep the tab here rather than lose it
   }
   try {
-    await openDetachWindow(key, `Maestro — ${ws.name}`);
+    await openDetachWindow(key, `ByteHive — ${ws.name}`);
   } catch (e) {
     localStorage.removeItem(`maestro.detach.${key}`);
     console.warn("detach window failed:", e);

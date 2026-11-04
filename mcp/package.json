@@ -1,7 +1,7 @@
 {
-  "name": "maestro-mcp",
+  "name": "bytehive-mcp",
   "version": "0.1.0",
-  "description": "MCP server for the Maestro kanban board (.maestro/board.json)",
+  "description": "MCP server for the ByteHive kanban board (.bytehive/board.json)",
   "license": "MIT",
   "author": "tdat-dev",
   "repository": {
@@ -11,7 +11,7 @@
   },
   "type": "module",
   "bin": {
-    "maestro-mcp": "dist/index.js"
+    "bytehive-mcp": "dist/index.js"
   },
   "files": [
     "dist"

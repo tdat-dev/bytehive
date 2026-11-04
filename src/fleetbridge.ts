@@ -1,8 +1,8 @@
-/* App side of the fleet file-bridge (maestro-mcp is the other side).
+/* App side of the fleet file-bridge (bytehive-mcp is the other side).
  *
- *  - Publishes each workspace's live agent roster to <dir>/.maestro/fleet.json
+ *  - Publishes each workspace's live agent roster to <dir>/.bytehive/fleet.json
  *    so an agent can call the MCP `fleet_status` tool and see who else is here.
- *  - Watches <dir>/.maestro/outbox.jsonl, where the MCP `fleet_send` tool
+ *  - Watches <dir>/.bytehive/outbox.jsonl, where the MCP `fleet_send` tool
  *    appends messages, and delivers each new line into the target agent's PTY.
  *
  * The pure helpers (serialize/parse) are DOM- and IPC-free for unit tests; the
@@ -10,10 +10,10 @@
 
 import { fsWriteFile, fsCreateDir, fsCreateFile, fsReadLinesFrom, fsTruncateIfSize } from "./ipc";
 
-const MAESTRO_DIR = ".maestro";
-const FLEET_REL = ".maestro\\fleet.json";
-const OUTBOX_REL = ".maestro\\outbox.jsonl";
-const SPAWN_REL = ".maestro\\spawn-requests.jsonl";
+const BYTEHIVE_DIR = ".bytehive";
+const FLEET_REL = ".bytehive\\fleet.json";
+const OUTBOX_REL = ".bytehive\\outbox.jsonl";
+const SPAWN_REL = ".bytehive\\spawn-requests.jsonl";
 
 export interface BridgeAgent {
   id: string;
@@ -58,7 +58,7 @@ export interface OutboxLine {
 }
 
 /** Parse one outbox jsonl line to a deliverable message, or null if unusable.
- *  `from` (the sender's MAESTRO_AGENT name) is optional on the wire — older
+ *  `from` (the sender's BYTEHIVE_AGENT name) is optional on the wire — older
  *  lines and broadcasts from an unidentified sender parse to null. */
 export function parseOutboxLine(line: string): OutboxLine | null {
   const t = line.trim();
@@ -151,9 +151,9 @@ export const COMPACT_BYTES = 1024 * 1024;
 /** Slices read in one tick at most; the rest waits for the next tick. */
 const MAX_SLICES = 8;
 
-async function ensureMaestro(dir: string): Promise<void> {
+async function ensureByteHive(dir: string): Promise<void> {
   try {
-    await fsCreateDir(dir, MAESTRO_DIR);
+    await fsCreateDir(dir, BYTEHIVE_DIR);
   } catch {
     /* exists */
   }
@@ -212,7 +212,7 @@ async function publishRoster(ws: BridgeWorkspace): Promise<void> {
   const content = serializeFleet(ws);
   if (lastFleet.get(ws.dir) === content) return; // nothing changed
   try {
-    await ensureMaestro(ws.dir);
+    await ensureByteHive(ws.dir);
     try {
       await fsCreateFile(ws.dir, FLEET_REL);
     } catch {

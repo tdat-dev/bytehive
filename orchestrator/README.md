@@ -1,4 +1,4 @@
-# Maestro Orchestrator
+# ByteHive Orchestrator
 
 Standalone Python loop: **Scout → Builder → Reviewer** over your installed
 AI CLIs (`claude`, `codex`, `gemini`). Runs tests in an isolated git

@@ -54,7 +54,7 @@ function showUpdateToast(update: Update): void {
 
   // Reset to the "available" state (in case it was shown/dismissed before).
   title.textContent = "New version available";
-  ver.textContent = `Maestro v${update.version}`;
+  ver.textContent = `ByteHive v${update.version}`;
   bar.hidden = true;
   fill.style.width = "0%";
   sizeText.hidden = true;

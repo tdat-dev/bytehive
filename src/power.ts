@@ -26,11 +26,11 @@ export function initIdleAnimationPause(onResume?: () => void): void {
       // Instrumentation: pairs with the webgl-context-loss log so the next time
       // the screen goes black we can tell whether it was idle/GPU-related.
       console.info(
-        `[maestro] window ${pause ? "idle" : "active"} ` +
+        `[bytehive] window ${pause ? "idle" : "active"} ` +
           `(hidden=${document.hidden}, focused=${document.hasFocus()})`,
       );
       if (paused && !pause) {
-        console.info("[maestro] window resumed → forcing repaint");
+        console.info("[bytehive] window resumed → forcing repaint");
         onResume?.();
       }
       paused = pause;

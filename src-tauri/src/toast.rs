@@ -1,6 +1,6 @@
 //! A Windows notification that opens what it is about. The notification
 //! plugin's toasts can't say they were clicked on desktop, so these are shown
-//! straight through WinRT with an `Activated` handler: a click brings Maestro
+//! straight through WinRT with an `Activated` handler: a click brings ByteHive
 //! forward and emits `notification-open` with the agent id, which the frontend
 //! turns into showing that agent.
 
