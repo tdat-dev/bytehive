@@ -90,9 +90,12 @@ export function openPerson(id: string): void {
 
 async function persist(jobs: Job[]): Promise<void> {
   if (!state) return;
-  await saveCompany(root, state.company);
-  for (const j of jobs) await saveJob(root, j);
-  changed();
+  try {
+    await saveCompany(root, state.company);
+    for (const j of jobs) await saveJob(root, j);
+  } finally {
+    changed(); // the screen follows memory, saved or not
+  }
 }
 
 /** Save, and carry on if the disk says no (antivirus holding a file, a full
@@ -102,7 +105,6 @@ async function tryPersist(jobs: Job[]): Promise<void> {
     await persist(jobs);
   } catch (e) {
     console.error(`[bytehive] the company could not be saved: ${reason(e)}`);
-    changed();
   }
 }
 
@@ -307,7 +309,7 @@ export const reject = (id: string, note: string): Promise<void> => enqueue(async
   const r = rejectPlan(state, id, note);
   if (r.state === state) return;
   state = r.state;
-  await persist(state.jobs.filter((j) => j.id === id));
+  await tryPersist(state.jobs.filter((j) => j.id === id));
   await run(r.effects);
 });
 
@@ -342,34 +344,43 @@ export async function initCompany(): Promise<void> {
   window.setInterval(() => void enqueue(watch).catch(() => {}), WATCH_MS);
 }
 
-/** Fresh tokens of everyone on a Job since they joined it. A person whose usage
- *  has not been read yet is left out until it has: counting it as zero would
- *  charge the Job for everything they did before. Gives back the same Job when
- *  nothing moved, so an idle company writes nothing. */
+/** What everyone on a Job has added in fresh tokens since it last looked. Each
+ *  person's last-seen figure is kept in tokenBase and only what they add on top
+ *  is counted, so a closed pane costs nothing already counted, and a session that
+ *  starts over (/clear, a respawn) is rebased rather than subtracted. A person
+ *  whose usage has not been read yet is left out until it has: counting it as
+ *  zero would charge the Job for everything they did before. Gives back the same
+ *  Job when nothing moved, so an idle company writes nothing. */
 function measure(job: Job): Job {
   if (job.status !== "running" && job.status !== "paused") return job;
-  const base = { ...job.tokenBase };
-  let used = 0;
+  const seen = { ...job.tokenBase };
+  let added = 0;
+  let moved = false;
   for (const id of job.people) {
     const found = paneOf(id);
     const usage = found ? agentUsage(found.pane) : null;
     if (!usage) continue;
+    // No figure for a person we have seen is a read that came back empty, not a restart.
+    if (usage.fresh === null && id in seen) continue;
     const fresh = usage.fresh ?? 0;
-    base[id] ??= fresh;
-    used += fresh - base[id];
+    if (seen[id] === fresh) continue;
+    if (id in seen && fresh > seen[id]) added += fresh - seen[id];
+    seen[id] = fresh;
+    moved = true;
   }
-  const tokensUsed = Math.max(job.tokensUsed, used);
-  const same = tokensUsed === job.tokensUsed && Object.keys(base).length === Object.keys(job.tokenBase).length;
-  return same ? job : { ...job, tokenBase: base, tokensUsed };
+  return moved ? { ...job, tokenBase: seen, tokensUsed: job.tokensUsed + added } : job;
 }
 
 /** The cards in Doing that belong to a running Job, and how long each has been quiet. */
 async function doingCards(): Promise<WatchedCard[]> {
   const out: WatchedCard[] = [];
+  const inDoing = new Set<string>();
+  let readAll = true;
   for (const floor of state?.company.floors ?? []) {
-    const file = await readBoardFile(floor.dir).catch(() => null);
+    const file = await readBoardFile(floor.dir).catch(() => { readAll = false; return null; });
     const doing = file?.board.lists.find((l) => l.title.trim().toLowerCase() === "doing");
     for (const c of doing?.cards ?? []) {
+      inDoing.add(c.id);
       if (!c.job || !c.assigneeId) continue;
       // A paused Job is quiet on purpose.
       if (state?.jobs.find((j) => j.id === c.job)?.status !== "running") { quiet.delete(c.id); continue; }
@@ -380,6 +391,8 @@ async function doingCards(): Promise<WatchedCard[]> {
       out.push({ id: c.id, title: c.title, job: c.job, assigneeId: c.assigneeId, quietSince: quiet.get(c.id) ?? null, returns: c.returns ?? 0 });
     }
   }
+  // A card that left Doing starts its quiet time over when it comes back.
+  if (readAll) for (const id of quiet.keys()) if (!inDoing.has(id)) quiet.delete(id);
   return out;
 }
 
@@ -399,8 +412,13 @@ async function watch(): Promise<void> {
   state = { ...state, jobs: before.map(measure) };
   for (const job of state.jobs) {
     const b = watchBudget(job);
-    if (b.alert) next.push(b.alert);
     if (b.pause) state = pauseJob(state, job.id);
+    else if (b.alert) next.push(b.alert);
+  }
+  // watchBudget only looks at a running Job: a paused one keeps its stop alert until it is resumed.
+  for (const job of state.jobs) {
+    const stop = job.status === "paused" ? watchBudget({ ...job, status: "running" }).alert : null;
+    if (stop?.level === "stop") next.push(stop);
   }
   const moved = state.jobs.filter((j, i) => j !== before[i]);
   const same = JSON.stringify(next) === JSON.stringify(alerts);
@@ -414,9 +432,9 @@ export const companyAlerts = () => alerts;
 
 /** Give a paused Job more tokens and let it carry on. */
 export const raiseCap = (id: string, extra: number): Promise<void> => enqueue(async () => {
-  if (!state) return;
+  if (!state || !Number.isFinite(extra) || extra <= 0) return;
   const next = resumeJob(state, id, extra);
   if (next === state) return;
   state = next;
-  await persist(state.jobs.filter((j) => j.id === id));
+  await tryPersist(state.jobs.filter((j) => j.id === id));
 });

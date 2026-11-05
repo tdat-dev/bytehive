@@ -368,6 +368,17 @@ describe("a disk that refuses to save", () => {
     spy.mockRestore();
   });
 
+  it("tells the Founder a plan was sent back even when reject cannot save", async () => {
+    const spy = quiet();
+    await waitingJob(planFor("a"));
+    io.saveFails = true;
+    await engine.reject(job().id, "too many people");
+    expect(job().status).toBe("planning");
+    expect(spoken()).toContain("too many people");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   it("tells the Founder of a new job when giveJob cannot save", async () => {
     const spy = quiet();
     io.saveFails = true;
@@ -445,6 +456,57 @@ describe("watching a running job", () => {
     expect(engine.companyAlerts()).toEqual([expect.objectContaining({ job: "J-0001", level: "stop" })]);
   });
 
+  it("keeps the stop alert for as long as the job is paused, and drops it on resume", async () => {
+    const ana = await running(1000);
+    await spend(ana.id, 100, 1200);
+    await vi.advanceTimersByTimeAsync(3 * 30_000);
+    expect(engine.companyAlerts()).toEqual([expect.objectContaining({ key: "cap-J-0001", level: "stop" })]);
+    await engine.raiseCap("J-0001", 5000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(engine.companyAlerts()).toEqual([]);
+  });
+
+  it("keeps counting when a person's pane is gone and another person spends", async () => {
+    await waitingJob({ ...planFor("a"), tokenCap: 10_000_000, hires: [{ role: "developer", floor: "a" }, { role: "developer", floor: "b" }] });
+    await engine.approve(job().id);
+    const [one, two] = engine.companyView()!.company.people.filter((p) => p.role === "developer");
+    io.usage.set(one.id, { fresh: 0 });
+    io.usage.set(two.id, { fresh: 0 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    io.usage.set(one.id, { fresh: 2_000_000 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokensUsed).toBe(2_000_000);
+    for (const ws of workspaces.values()) for (const [id, pane] of ws.panes) if (pane.spec.personId === one.id) ws.panes.delete(id);
+    io.usage.set(two.id, { fresh: 2_000_000 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokensUsed).toBe(4_000_000);
+  });
+
+  it("rebases when a session restarts, without losing what was counted", async () => {
+    const ana = await running();
+    await spend(ana.id, 100, 1100);
+    expect(job().tokensUsed).toBe(1000);
+    io.usage.set(ana.id, { fresh: 50 }); // /clear: a new session starts from nothing
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokensUsed).toBe(1000);
+    io.usage.set(ana.id, { fresh: 350 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokensUsed).toBe(1300);
+    expect(stored().tokensUsed).toBe(1300);
+  });
+
+  it("does not nudge a card that comes back to Doing as if it had been quiet all along", async () => {
+    await running();
+    const board = io.boards.get("D:\\a") as Board;
+    const [doing, todo] = ["Doing", "To do"].map((t) => board.lists.find((l) => l.title === t)!);
+    await vi.advanceTimersByTimeAsync(9 * 60_000);
+    todo.cards.push(doing.cards.pop()!);
+    await vi.advanceTimersByTimeAsync(30_000);
+    doing.cards.push(todo.cards.pop()!);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(said().filter((s) => s.includes("gone quiet"))).toEqual([]);
+  });
+
   it("writes nothing while nothing changes", async () => {
     const ana = await running();
     io.usage.set(ana.id, { fresh: 100 });
@@ -479,6 +541,13 @@ describe("watching a running job", () => {
     await engine.raiseCap("J-0001", 5000);
     expect(job()).toMatchObject({ status: "running", tokenCap: 6000 });
     expect(stored()).toMatchObject({ status: "running", tokenCap: 6000 });
+  });
+
+  it.each([0, -5, NaN, Infinity])("does not raise the cap by %s", async (extra) => {
+    const ana = await running(1000);
+    await spend(ana.id, 100, 1200);
+    await engine.raiseCap("J-0001", extra);
+    expect(job()).toMatchObject({ status: "paused", tokenCap: 1000 });
   });
 
   it("does not raise the cap of a job that is not paused", async () => {

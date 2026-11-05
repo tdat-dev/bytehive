@@ -35,10 +35,12 @@ describe("applyRequest", () => {
     const { effects } = applyRequest(state(), { type: "message", ts: 1, from: "d1", to: "Hai", message: "done" });
     expect(effects).toEqual([{ kind: "deliver", personId: "l1", text: "[From Linh] done" }]);
   });
-  it("holds messages from people on a paused job", () => {
+  it("does not pass on messages from people on a paused job, and tells the sender", () => {
     const s = newJob(state(), "x", 1).state;
     s.jobs[0] = { ...s.jobs[0], status: "paused", people: ["d1"] };
-    expect(applyRequest(s, { type: "message", ts: 1, from: "d1", to: "Hai", message: "done" }).effects).toEqual([]);
+    expect(applyRequest(s, { type: "message", ts: 1, from: "d1", to: "Hai", message: "done" }).effects).toEqual([
+      { kind: "deliver", personId: "d1", text: expect.stringMatching(/^Held: your job J-0001 is paused.*Hai/) },
+    ]);
   });
   it("still delivers a message from someone who is not on the paused job", () => {
     const s = newJob(state(), "x", 1).state;

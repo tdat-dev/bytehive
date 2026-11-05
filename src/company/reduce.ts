@@ -35,8 +35,9 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   if (r.type === "message") {
     const to = r.to ? personByName(s.company, r.to) : undefined;
     if (!to || !canMessage(s.company, from.id, to.id)) return none;
-    // A paused Job is held: its people's messages wait for it to be resumed.
-    if (s.jobs.some((j) => j.status === "paused" && j.people.includes(from.id))) return none;
+    // A paused Job's people cannot reach anyone: the message is dropped, and the sender is told so.
+    const held = s.jobs.find((j) => j.status === "paused" && j.people.includes(from.id));
+    if (held) return { state: s, effects: [{ kind: "deliver", personId: from.id, text: `Held: your job ${held.id} is paused, so your message to ${to.name} was not sent. Wait for it to be resumed.` }] };
     return { state: s, effects: [{ kind: "deliver", personId: to.id, text: `[From ${from.name}] ${r.message}` }] };
   }
   if (from.rank !== "founder") return none;

@@ -84,7 +84,7 @@ export interface Job {
   plan: JobPlan | null;
   tokenCap: number;
   tokensUsed: number;
-  tokenBase: Record<string, number>; // Person id to their fresh tokens when the Job began
+  tokenBase: Record<string, number>; // Person id to the fresh-token figure last seen for them, to count what they add
   people: string[]; // Person ids working this Job
   summary?: string;
   createdAt: number;
