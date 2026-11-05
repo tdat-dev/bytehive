@@ -87,7 +87,9 @@ interface Person {
   boss: string | null;   // person id
   cli: string;
   look: Look;            // màu áo, tóc, đồ cầm tay
-  session?: string;
+  session?: string;      // session, worktree, branch ghi lúc boot, để đóng pane
+  worktree?: string;     // hoặc đóng dự án rồi mở lại vẫn về đúng chỗ cũ
+  branch?: string;
 }
 
 interface Job {
@@ -136,6 +138,7 @@ Thuê thêm giữa chừng cũng tạo thẻ duyệt, không tự động.
 | Việc không còn lối ra (Founder quên, hết context) | `company_status` liệt kê các Việc đang mở cho Founder. Bạn bấm Stop trên Việc đang chạy hoặc tạm dừng: Việc chuyển `stopped`, không nhận và không gửi tin, không chạy lại, Founder được báo. Tin không ghi mã Việc, nên người còn ở một Việc đang chạy vẫn nhắn được |
 | Hết limit CLI | Giữ cơ chế bàn giao và tự chạy lại hiện có |
 | Agent bị dừng khi đang có card | Mở lại bằng session cũ, không được thì hỏi bạn |
+| Đóng pane hoặc dự án của một người | Lần sau mở lại đúng session, worktree, nhánh ghi trên Person. Mất session hoặc worktree thì người đó bắt đầu trắng và Needs you báo, không im lặng |
 | Founder đầy context | Mở phiên mới, đọc lại `jobs/` đang chạy |
 | Đóng dự án | Theo luật hiện tại agent bị dừng. Tầng tối đèn, ghế và session được giữ |
 

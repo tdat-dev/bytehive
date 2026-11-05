@@ -16,7 +16,9 @@ export interface Person {
   boss: string | null; // Person id, null for the Founder
   cli: string;
   look: Look;
-  session?: string;
+  session?: string; // what their pane runs on, so a closed pane comes back on it
+  worktree?: string;
+  branch?: string;
 }
 
 export interface Limits {

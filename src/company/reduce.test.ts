@@ -1,6 +1,6 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, haltJob, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type State } from "./reduce";
+import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type State } from "./reduce";
 import { emptyCompany } from "./org";
 import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
 
@@ -261,6 +261,26 @@ describe("reportFailures", () => {
   it("tells only the Founder", () => {
     const staff = { kind: "deliver" as const, personId: "d1", text: "New boss." };
     expect(reportFailures([staff, ...told], ["Vy did not start."])[0]).toBe(staff);
+  });
+});
+
+describe("notePerson", () => {
+  const seen = { session: "s1", worktree: "D:\\wt", branch: "b1" };
+  it("writes down what a person's pane runs on", () => {
+    expect(notePerson(state(), "d1", seen).company.people.find((p) => p.id === "d1")).toMatchObject(seen);
+  });
+  it("gives the same state back when nothing moved, so an idle company writes nothing", () => {
+    const s = notePerson(state(), "d1", seen);
+    expect(notePerson(s, "d1", seen)).toBe(s);
+    const fresh = state();
+    expect(notePerson(fresh, "d1", {})).toBe(fresh);
+    expect(notePerson(fresh, "ghost", seen)).toBe(fresh);
+  });
+  it("drops what the pane no longer has", () => {
+    const s = notePerson(notePerson(state(), "d1", seen), "d1", { session: "s2" });
+    const d1 = s.company.people.find((p) => p.id === "d1")!;
+    expect(d1.session).toBe("s2");
+    expect(d1.worktree).toBeUndefined();
   });
 });
 

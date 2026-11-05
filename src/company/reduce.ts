@@ -116,6 +116,14 @@ export function approvePlan(
   return { state, hired, rewired, saved, effects: [...notices, tellFounder(text)] };
 }
 
+/** Write down what a person's pane runs on. Gives back the same state when nothing moved. */
+export function notePerson(s: State, id: string, seen: Pick<Person, "session" | "worktree" | "branch">): State {
+  const p = personById(s.company, id);
+  if (!p || (p.session === seen.session && p.worktree === seen.worktree && p.branch === seen.branch)) return s;
+  const people = s.company.people.map((x) => (x.id === id ? { ...x, session: seen.session, worktree: seen.worktree, branch: seen.branch } : x));
+  return { ...s, company: { ...s.company, people } };
+}
+
 /** Add someone who picked up a card of a running Job. */
 export function joinJob(s: State, id: string, personId: string): State {
   const job = s.jobs.find((j) => j.id === id);

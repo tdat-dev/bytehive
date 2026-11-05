@@ -3,7 +3,7 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { fsCreateDir, runCapture, sendMessage } from "../ipc";
+import { claudeSessionExists, fsCreateDir, fsReadDir, runCapture, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
@@ -15,8 +15,8 @@ import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
-import { applyRequest, approvePlan, haltJob, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
-import { clearAlert, onStandingChange, standingAlerts } from "./alerts";
+import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
+import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
@@ -146,7 +146,37 @@ async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentS
     env: launch.env,
     title: role.title,
     ...cliLookOf(preset.badge, preset.label),
+    ...(p.session ? { sessionId: p.session } : {}),
+    ...(p.worktree ? { worktree: p.worktree, branch: p.branch } : {}),
   };
+}
+
+/** A person comes back on the conversation and branch they had. What is gone can't
+ *  be: take it off the spec so they start clean, and tell the owner they start blank.
+ *  A conversation belongs to its folder, so it goes with a worktree. */
+async function checkRestore(p: Person, spec: AgentSpec): Promise<void> {
+  const gone: string[] = [];
+  if (spec.worktree && !(await fsReadDir(spec.worktree, "").then(() => true, () => false))) {
+    gone.push("worktree");
+    delete spec.worktree;
+    delete spec.branch;
+  }
+  if (spec.sessionId && !(await claudeSessionExists(spec.worktree ?? spec.cwd ?? "", spec.sessionId).catch(() => false))) {
+    gone.push("conversation");
+    delete spec.sessionId;
+  }
+  if (gone.length) raiseAlert(`lost-${p.id}`, `${p.name}'s ${gone.join(" and ")} could not be found, so they start blank.`, p.id);
+}
+
+/** Note what every pane runs on, so closing one loses nothing. Gives back whether anything moved. */
+function remember(): boolean {
+  if (!state) return false;
+  const before = state;
+  for (const p of before.company.people) {
+    const spec = paneOf(p.id)?.pane.spec;
+    if (spec) state = notePerson(state, p.id, { session: spec.sessionId, worktree: spec.worktree, branch: spec.branch });
+  }
+  return state !== before;
 }
 
 async function ensurePerson(p: Person): Promise<void> {
@@ -156,7 +186,10 @@ async function ensurePerson(p: Person): Promise<void> {
   const dir = p.rank === "founder" ? `${root}\\${OFFICE_REL}` : floor?.dir;
   if (!role) throw new Error(`no role ${p.role}`);
   if (!dir) throw new Error(`no floor ${p.floor}`);
-  await spawnPerson(dir, await personSpec(p, role, dir), true);
+  const spec = await personSpec(p, role, dir);
+  await checkRestore(p, spec);
+  await spawnPerson(dir, spec, true);
+  if (remember()) await tryPersist([]);
 }
 
 /** Type into a person's terminal, waking them first if they are stopped. A CLI
@@ -474,7 +507,7 @@ async function watch(): Promise<void> {
   const moved = state.jobs.filter((j, i) => j !== before[i]);
   const same = JSON.stringify(next) === JSON.stringify(alerts);
   alerts = next;
-  if (moved.length) await tryPersist(moved);
+  if (remember() || moved.length) await tryPersist(moved);
   else if (!same) changed();
   await run([...work.effects, ...paused]);
 }

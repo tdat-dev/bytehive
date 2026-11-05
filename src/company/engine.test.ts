@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Board } from "../board";
-import type { Pane, Workspace } from "../panetypes";
+import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import type { JobPlan } from "./types";
 
 const ROOT = "H:\\.bytehive\\company";
@@ -20,6 +20,9 @@ const io = vi.hoisted(() => ({
   saveFails: false,
   usage: new Map<string, { fresh: number | null }>(),
   boardReads: [] as string[],
+  onBoot: null as ((spec: AgentSpec) => void) | null,
+  gone: new Set<string>(),
+  sessions: new Set<string>(),
   node: "v22.13.0\r\n" as string | null,
 }));
 
@@ -44,7 +47,9 @@ vi.mock("../ipc", () => ({
     if (content === undefined) throw { Failed: "no such path: gone" };
     return { content, mtime: 1 };
   },
+  claudeSessionExists: async (dir: string, id: string) => io.sessions.has(`${dir}|${id}`),
   fsReadDir: async (root: string, rel: string) => {
+    if (io.gone.has(root)) throw { Failed: "bad root: gone" };
     const at = `${root}\\${rel}\\`;
     const names = [...io.files.keys()].filter((k) => k.startsWith(at)).map((k) => k.slice(at.length).split("\\"));
     return [...new Map(names.map((n) => [n[0], { name: n[0], is_dir: n.length > 1, size: 0 }])).values()];
@@ -90,6 +95,7 @@ vi.mock("../spawnmodal", () => ({
   spawnPerson: async (dir: string, spec: { name: string; personId: string }) => {
     if (io.gate) await io.gate;
     if (io.spawnFails.has(spec.name)) throw new Error("no terminal");
+    io.onBoot?.(spec as AgentSpec);
     io.spawned.push(spec.name);
     addPane(dir, spec, { running: true, spawnedAt: Date.now() });
   },
@@ -158,6 +164,9 @@ beforeEach(async () => {
   io.gate = null;
   io.saveFails = false;
   io.usage.clear();
+  io.onBoot = null;
+  io.gone.clear();
+  io.sessions.clear();
   io.node = "v22.13.0\r\n";
   for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
   engine = await import("./engine");
@@ -427,6 +436,81 @@ describe("floors", () => {
     workspaces.set("D:\\x\\a", { id: "x", name: "a", dir: "D:\\x\\a", panes: new Map() } as unknown as Workspace);
     await engine.giveJob("do it");
     expect(engine.companyView()!.company.floors.map((f) => f.id)).toEqual(["a", "b", "a-2"]);
+  });
+});
+
+describe("a person whose pane closes", () => {
+  const SESSION = "11111111-2222-3333-4444-555555555555";
+  const TREE = "D:\\wt\\ana";
+  /** Ana hired on floor a, booted into a worktree and a session. */
+  async function hired() {
+    io.onBoot = (spec) => { if (spec.name === "Ana") Object.assign(spec, { sessionId: SESSION, worktree: TREE, branch: "bytehive/ana" }); };
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] });
+    await engine.approve(job().id);
+    io.onBoot = null;
+    return engine.companyView()!.company.people.find((p) => p.name === "Ana")!;
+  }
+  const paneOf = (id: string) => [...workspaces.values()].flatMap((w) => [...w.panes.values()]).find((p) => p.spec.personId === id);
+  const close = (id: string) => { for (const ws of workspaces.values()) for (const [k, p] of ws.panes) if (p.spec.personId === id) ws.panes.delete(k); };
+  const tell = (name: string) => request({ type: "message", ts: 9, from: "founder", to: name, message: "carry on" });
+  const onDisk = (id: string) => (JSON.parse(io.files.get(`${ROOT}\\company.json`)!) as { people: Array<{ id: string }> }).people.find((p) => p.id === id);
+
+  it("has their session, worktree and branch written down at boot", async () => {
+    const ana = await hired();
+    expect(ana).toMatchObject({ session: SESSION, worktree: TREE, branch: "bytehive/ana" });
+    expect(onDisk(ana.id)).toMatchObject({ session: SESSION, worktree: TREE, branch: "bytehive/ana" });
+  });
+
+  it("follows a session that moves on, like after /clear", async () => {
+    const ana = await hired();
+    paneOf(ana.id)!.spec.sessionId = "22222222-2222-3333-4444-555555555555";
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(onDisk(ana.id)).toMatchObject({ session: "22222222-2222-3333-4444-555555555555" });
+  });
+
+  it("comes back on them, with nothing to tell the owner", async () => {
+    const ana = await hired();
+    close(ana.id);
+    io.sessions.add(`${TREE}|${SESSION}`);
+    await tell("Ana");
+    expect(paneOf(ana.id)!.spec).toMatchObject({ sessionId: SESSION, worktree: TREE, branch: "bytehive/ana" });
+    expect(engine.companyAlerts()).toEqual([]);
+  });
+
+  it("raises an alert when the session is gone, and keeps the worktree", async () => {
+    const ana = await hired();
+    close(ana.id);
+    await tell("Ana");
+    const spec = paneOf(ana.id)!.spec;
+    expect(spec.sessionId).toBeUndefined();
+    expect(spec.worktree).toBe(TREE);
+    expect(engine.companyAlerts()).toEqual([expect.objectContaining({ personId: ana.id, text: expect.stringMatching(/Ana.*conversation.*blank/), standing: true })]);
+  });
+
+  it("raises an alert when the worktree is gone, and the session goes with it", async () => {
+    const ana = await hired();
+    close(ana.id);
+    io.gone.add(TREE);
+    await tell("Ana");
+    const spec = paneOf(ana.id)!.spec;
+    expect(spec.worktree).toBeUndefined();
+    expect(spec.branch).toBeUndefined();
+    expect(spec.sessionId).toBeUndefined();
+    expect(engine.companyAlerts()).toEqual([expect.objectContaining({ personId: ana.id, text: expect.stringMatching(/Ana.*worktree.*conversation.*blank/) })]);
+  });
+
+  it("writes down what they start on instead, so the next close finds it", async () => {
+    const ana = await hired();
+    close(ana.id);
+    io.gone.add(TREE);
+    io.onBoot = (spec) => { Object.assign(spec, { sessionId: "33333333-2222-3333-4444-555555555555", worktree: "D:\\wt\\new", branch: "bytehive/ana-2" }); };
+    await tell("Ana");
+    expect(onDisk(ana.id)).toMatchObject({ session: "33333333-2222-3333-4444-555555555555", worktree: "D:\\wt\\new", branch: "bytehive/ana-2" });
+  });
+
+  it("says nothing for someone who never had any", async () => {
+    await engine.giveJob("do it");
+    expect(engine.companyAlerts()).toEqual([]);
   });
 });
 
