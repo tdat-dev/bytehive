@@ -65,6 +65,21 @@ describe("company MCP", () => {
   it("shows the Founder the floors and people", () => {
     expect(statusFor(root, "founder")).toMatchObject({ floors: [{ id: "a" }], people: expect.any(Array) });
   });
+  it("lists the open jobs for the Founder, so a job can't be forgotten", () => {
+    const dir = path.join(root, "jobs");
+    fs.mkdirSync(dir);
+    const job = (id: string, status: string) => fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, title: `t ${id}`, ask: "a", status, plan: null, tokenCap: 10, tokensUsed: 1, tokenBase: {}, people: ["d1"], createdAt: 1 }));
+    for (const [id, status] of [["J-1", "running"], ["J-2", "paused"], ["J-3", "planning"], ["J-4", "awaiting-plan"], ["J-5", "awaiting-merge"], ["J-6", "done"], ["J-7", "rejected"], ["J-8", "stopped"]]) job(id, status);
+    fs.writeFileSync(path.join(dir, "J-9.json"), "{ half");
+    const seen = statusFor(root, "founder") as { jobs: Array<{ id: string; status: string; title: string }> };
+    expect(seen.jobs.map((j) => j.id)).toEqual(["J-1", "J-2", "J-3", "J-4", "J-5"]);
+    expect(seen.jobs[0]).toEqual({ id: "J-1", title: "t J-1", status: "running", tokensUsed: 1, tokenCap: 10, people: ["d1"] });
+    expect(statusFor(root, "l1")).not.toHaveProperty("jobs");
+    expect(statusFor(root, "d1")).not.toHaveProperty("jobs");
+  });
+  it("lists no jobs before there are any", () => {
+    expect(statusFor(root, "founder")).toMatchObject({ jobs: [] });
+  });
   it("appends rather than overwrites", () => {
     queueRequest(root, { type: "job-done", ts: 1, from: "founder", job: "J-1", summary: "x" });
     queueRequest(root, { type: "job-done", ts: 2, from: "founder", job: "J-2", summary: "y" });

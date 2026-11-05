@@ -78,7 +78,7 @@ export interface JobPlan {
   newRoles?: NewRole[]; // saved only when the owner approves the plan
 }
 
-export type JobStatus = "planning" | "awaiting-plan" | "running" | "awaiting-merge" | "paused" | "done" | "rejected";
+export type JobStatus = "planning" | "awaiting-plan" | "running" | "awaiting-merge" | "paused" | "stopped" | "done" | "rejected";
 
 export interface Job {
   id: string;

@@ -6,7 +6,7 @@ import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { parseOwned, personById, resolveTargets, validatePlan } from "../../src/company/org";
-import type { Company, CompanyRequest, JobPlan, RoleDef } from "../../src/company/types";
+import type { Company, CompanyRequest, Job, JobPlan, RoleDef } from "../../src/company/types";
 import { appendLine } from "./fleet.js";
 
 export const companyRoot = (home = os.homedir()) => path.join(home, ".bytehive", "company");
@@ -30,6 +30,22 @@ export function readRoles(root: string): RoleDef[] {
     } catch { /* an incomplete role is not offered */ }
   }
   return out;
+}
+
+const CLOSED: Job["status"][] = ["done", "rejected", "stopped"];
+
+/** Every Job that still wants something, for a Founder who may have lost track of
+ *  one: it has a new session after a full context, or it restarted. */
+function openJobs(root: string): unknown[] {
+  const dir = path.join(root, "jobs");
+  if (!fs.existsSync(dir)) return [];
+  const out: Job[] = [];
+  for (const name of fs.readdirSync(dir).filter((n) => n.endsWith(".json")).sort()) {
+    try {
+      out.push(parseOwned<Job>(fs.readFileSync(path.join(dir, name), "utf8")));
+    } catch { /* the app raises an alert for a damaged Job file */ }
+  }
+  return out.filter((j) => !CLOSED.includes(j.status)).map(({ id, title, status, tokensUsed, tokenCap, people }) => ({ id, title, status, tokensUsed, tokenCap, people }));
 }
 
 export function queueRequest(root: string, req: CompanyRequest): void {
@@ -70,7 +86,8 @@ export function statusFor(root: string, id: string): unknown {
   const people = c.people
     .filter((p) => me?.rank === "founder" || p.floor === me?.floor || p.id === me?.boss)
     .map(({ id: pid, name, role, rank, floor, boss }) => ({ id: pid, name, role, rank, floor, boss }));
-  return { floors: me?.rank === "founder" ? c.floors : c.floors.filter((f) => f.id === me?.floor), people, limits: c.limits };
+  const founder = me?.rank === "founder";
+  return { floors: founder ? c.floors : c.floors.filter((f) => f.id === me?.floor), people, limits: c.limits, ...(founder ? { jobs: openJobs(root) } : {}) };
 }
 
 export function floorDir(root: string, id: string, floor: string): string {
@@ -114,7 +131,7 @@ const reply = (fn: () => unknown): Reply => {
 /** Tools only members of the company get. */
 export function registerCompanyTools(server: McpServer, personId: string, root = companyRoot()): void {
   server.registerTool("company_status", {
-    description: "The floors and people you can see in the company, and its limits.",
+    description: "The floors and people you can see in the company, and its limits. The Founder also gets every open job.",
     inputSchema: {},
   }, async () => reply(() => statusFor(root, personId)));
 

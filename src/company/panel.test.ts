@@ -7,6 +7,7 @@ const eng = vi.hoisted(() => ({
   approve: vi.fn(),
   giveJob: vi.fn(),
   finishJob: vi.fn(),
+  stopJob: vi.fn(),
   alerts: [] as unknown[],
   dismissAlert: vi.fn(),
 }));
@@ -20,6 +21,7 @@ vi.mock("./engine", () => ({
   approve: eng.approve,
   giveJob: eng.giveJob,
   finishJob: eng.finishJob,
+  stopJob: eng.stopJob,
   reject: vi.fn(),
   raiseCap: vi.fn(),
 }));
@@ -40,7 +42,7 @@ const mount = () => {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("company panel", () => {
-  beforeEach(() => { document.body.innerHTML = ""; eng.view = null; eng.error = null; eng.alerts = []; eng.dismissAlert.mockReset(); eng.approve.mockReset(); eng.giveJob.mockReset(); eng.finishJob.mockReset(); });
+  beforeEach(() => { document.body.innerHTML = ""; eng.view = null; eng.error = null; eng.alerts = []; eng.dismissAlert.mockReset(); eng.approve.mockReset(); eng.giveJob.mockReset(); eng.finishJob.mockReset(); eng.stopJob.mockReset(); });
 
   it("says it is starting, then shows a load failure", () => {
     const el = mount();
@@ -128,6 +130,26 @@ describe("company panel", () => {
     expect(row.textContent).toContain("New role: Analyst (analyst, Data)");
     expect(row.querySelector(".co-prompt")?.textContent).toBe(`Reads numbers.\nThen ${evil} says what they mean.`);
     expect(row.querySelector("img")).toBeNull();
+  });
+
+  it("lists running and paused jobs with a Stop on each, and only those", () => {
+    const s = state();
+    const row = (id: string, status: string) => ({ ...s.jobs[0], id, title: `Job ${id}`, status, plan: null, tokensUsed: 1500, tokenCap: 5000000 });
+    s.jobs = [row("J-1", "running"), row("J-2", "paused"), row("J-3", "stopped"), row("J-4", "done"), row("J-5", "planning"), row("J-6", "awaiting-merge")] as never;
+    eng.view = s;
+    eng.stopJob.mockResolvedValue(undefined);
+    const el = mount();
+    const list = el.querySelector("[data-jobs]")!;
+    expect([...list.querySelectorAll<HTMLElement>('[data-act="stop"]')].map((b) => b.dataset.job)).toEqual(["J-1", "J-2"]);
+    expect(list.textContent).toContain("1,500 of 5,000,000 tokens");
+    expect(list.textContent).toContain("Paused");
+    list.querySelector<HTMLElement>('[data-act="stop"]')!.click();
+    expect(eng.stopJob).toHaveBeenCalledWith("J-1");
+  });
+
+  it("says when no job is running", () => {
+    eng.view = { ...state(), jobs: [] };
+    expect(mount().querySelector("[data-jobs]")?.textContent).toContain("No job is running.");
   });
 
   it("gives a merge row Open and Mark done", async () => {

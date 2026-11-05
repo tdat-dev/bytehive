@@ -15,7 +15,7 @@ import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
-import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type Effect, type State } from "./reduce";
+import { applyRequest, approvePlan, haltJob, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, standingAlerts } from "./alerts";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
@@ -489,6 +489,16 @@ export const finishJob = (id: string): Promise<void> => enqueue(async () => {
   if (next === state) return;
   state = next;
   await tryPersist(state.jobs.filter((j) => j.id === id));
+});
+
+/** The owner ends a running or paused Job, for good. */
+export const stopJob = (id: string): Promise<void> => enqueue(async () => {
+  if (!state) return;
+  const next = haltJob(state, id);
+  if (next === state) return;
+  state = next;
+  await tryPersist(state.jobs.filter((j) => j.id === id));
+  await run([stoppedNote(id)]);
 });
 
 /** Give a paused Job more tokens and let it carry on. */

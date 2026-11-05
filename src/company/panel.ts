@@ -2,9 +2,9 @@
 /* Temporary home of the company until the 3D office replaces it: give the
  * Founder a job, act on what needs you, see who works where. */
 import "./panel.css";
-import { approve, companyAlerts, companyError, companyView, dismissAlert, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject } from "./engine";
+import { approve, companyAlerts, companyError, companyView, dismissAlert, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject, stopJob } from "./engine";
 import { needsYou, type NeedRow, type PlanDetail } from "./needs";
-import type { Person } from "./types";
+import type { Job, Person } from "./types";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 /** A colour from a role file may be anything: only a plain hex goes in a style. */
@@ -24,13 +24,23 @@ function planHtml(p: PlanDetail): string {
   ].join("")}</dl>`;
 }
 
-function rowHtml(r: NeedRow, busy: (key: string) => boolean): string {
-  const job = r.jobId ? ` data-job="${esc(r.jobId)}"` : "";
-  // A busy button is aria-disabled, not disabled: a disabled button cannot keep keyboard focus.
-  const btn = (act: string, label: string, extra = "") => {
-    const working = busy(`${act}:${r.jobId ?? ""}`);
-    return `<button type="button" class="kb-tool" data-act="${act}"${job}${extra} aria-label="${esc(`${label}: ${r.title}`)}"${working ? ' aria-disabled="true" aria-busy="true"' : ""}>${working ? "Working..." : label}</button>`;
-  };
+type Busy = (key: string) => boolean;
+
+/** A busy button is aria-disabled, not disabled: a disabled button cannot keep keyboard focus. */
+function actButton(busy: Busy, act: string, label: string, about: string, jobId: string | null, extra = ""): string {
+  const working = busy(`${act}:${jobId ?? ""}`);
+  const job = jobId ? ` data-job="${esc(jobId)}"` : "";
+  return `<button type="button" class="kb-tool" data-act="${act}"${job}${extra} aria-label="${esc(`${label}: ${about}`)}"${working ? ' aria-disabled="true" aria-busy="true"' : ""}>${working ? "Working..." : label}</button>`;
+}
+
+const jobHtml = (j: Job, busy: Busy) => {
+  const tokens = `${j.tokensUsed.toLocaleString("en-US")} of ${j.tokenCap.toLocaleString("en-US")} tokens`;
+  const state = j.status === "paused" ? "Paused" : "Running";
+  return `<li class="co-row"><b>${esc(j.title)}</b><span>${esc(j.id)}. ${state}, ${tokens}.</span><div>${actButton(busy, "stop", "Stop", j.title, j.id)}</div></li>`;
+};
+
+function rowHtml(r: NeedRow, busy: Busy): string {
+  const btn = (act: string, label: string, extra = "") => actButton(busy, act, label, r.title, r.jobId, extra);
   const open = r.personId ? btn("open", "Open", ` data-person="${esc(r.personId)}"`) : "";
   const buttons =
     r.kind === "plan" ? btn("approve", "Approve") + btn("reject", "Send back")
@@ -63,11 +73,12 @@ export function createCompanyPanel() {
     if (!body) return;
     const s = companyView();
     const list = body.querySelector<HTMLElement>("[data-needs]");
+    const jobs = body.querySelector<HTMLElement>("[data-jobs]");
     const org = body.querySelector<HTMLElement>("[data-org]");
     const msg = body.querySelector<HTMLElement>("[data-msg]");
     const box = body.querySelector<HTMLTextAreaElement>("textarea");
     const send = body.querySelector<HTMLButtonElement>("[data-send]");
-    if (!list || !org || !msg || !box || !send) return;
+    if (!list || !jobs || !org || !msg || !box || !send) return;
 
     const loadError = companyError();
     const note = failure || (!s && loadError ? `The company could not start: ${loadError}` : "");
@@ -80,6 +91,7 @@ export function createCompanyPanel() {
     if (!s) {
       const text = loadError ? "Not available." : "Starting...";
       list.innerHTML = `<li class="co-none">${text}</li>`;
+      jobs.innerHTML = "";
       org.innerHTML = `<p class="co-none">${text}</p>`;
       box.placeholder = ASK_HINT;
       return;
@@ -98,6 +110,8 @@ export function createCompanyPanel() {
     const at = document.activeElement as HTMLElement | null;
     const focused = at && body.contains(at) && at.dataset.act ? { act: at.dataset.act, job: at.dataset.job, person: at.dataset.person } : null;
     list.innerHTML = needs.map((r) => rowHtml(r, busy)).join("") || `<li class="co-none">Nothing needs you.</li>`;
+    const live = s.jobs.filter((j) => j.status === "running" || j.status === "paused");
+    jobs.innerHTML = live.map((j) => jobHtml(j, busy)).join("") || `<li class="co-none">No job is running.</li>`;
     org.innerHTML = `<h4>Top floor</h4><ul>${founder.map(personHtml).join("") || `<li class="co-none">No Founder yet</li>`}</ul>${floors}`;
     if (focused) {
       const same = [...body.querySelectorAll<HTMLElement>("[data-act]")].find(
@@ -134,6 +148,7 @@ export function createCompanyPanel() {
         `<button type="submit" class="co-send" data-send>Send</button></form>` +
         `<p class="co-error" role="alert" data-msg hidden></p>` +
         `<h3>Needs you</h3><ul class="co-needs" data-needs></ul>` +
+        `<h3>Jobs</h3><ul class="co-jobs" data-jobs></ul>` +
         `<h3>People</h3><div class="co-org" data-org></div>`;
       const box = el.querySelector<HTMLTextAreaElement>("textarea")!;
       el.querySelector("form")?.addEventListener("submit", (e) => {
@@ -155,6 +170,7 @@ export function createCompanyPanel() {
           void act(`reject:${job}`, () => reject(job, note)).then((ok) => { if (ok && box.value === note) box.value = ""; });
         } else if (kind === "raise") void act(`raise:${job}`, () => raiseCap(job, RAISE_BY));
         else if (kind === "finish") void act(`finish:${job}`, () => finishJob(job));
+        else if (kind === "stop") void act(`stop:${job}`, () => stopJob(job));
       });
       onCompanyChange(draw);
       draw();

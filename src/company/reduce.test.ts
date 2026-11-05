@@ -1,6 +1,6 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type State } from "./reduce";
+import { applyRequest, approvePlan, haltJob, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type State } from "./reduce";
 import { emptyCompany } from "./org";
 import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
 
@@ -296,6 +296,46 @@ describe("a paused job", () => {
     const s = pauseJob(joinJob(running(), "J-0001", "l1"), "J-0001");
     const r = applyRequest(s, { type: "message", ts: 2, from: FOUNDER_ID, to: "Hai", message: "go" });
     expect(r.effects).toEqual([{ kind: "deliver", personId: FOUNDER_ID, text: expect.stringMatching(/^Held: .*J-0001.*Hai/) }]);
+  });
+});
+
+describe("a stopped job", () => {
+  const stopped = () => haltJob(joinJob(running(), "J-0001", "l1"), "J-0001");
+
+  it("comes from a running or a paused job, and from nothing else", () => {
+    expect(stopped().jobs[0].status).toBe("stopped");
+    expect(haltJob(pauseJob(running(), "J-0001"), "J-0001").jobs[0].status).toBe("stopped");
+    for (const s of [waiting(), closed(), stopped()]) expect(haltJob(s, "J-0001")).toBe(s);
+    const r = running();
+    expect(haltJob(r, "J-9999")).toBe(r);
+  });
+  it("tells the Founder it is over", () => {
+    expect(stoppedNote("J-0001")).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringMatching(/J-0001.*stopped/) });
+  });
+  it("holds messages both ways, and tells the sender", () => {
+    const s = stopped();
+    expect(applyRequest(s, { type: "message", ts: 2, from: FOUNDER_ID, to: "Hai", message: "go" }).effects).toEqual([
+      { kind: "deliver", personId: FOUNDER_ID, text: expect.stringMatching(/^Held: .*J-0001.*stopped.*Hai/) },
+    ]);
+    expect(applyRequest(s, { type: "message", ts: 2, from: "l1", to: "Founder", message: "done" }).effects).toEqual([
+      { kind: "deliver", personId: "l1", text: expect.stringMatching(/^Held: .*J-0001.*stopped.*Founder/) },
+    ]);
+  });
+  it("does not cut off someone who is on a running job too: a message names no job", () => {
+    let s = stopped();
+    s = newJob(s, "next", 5).state;
+    s = { ...s, jobs: s.jobs.map((j) => (j.id === "J-0002" ? { ...j, status: "running", people: ["l1"] } : j)) };
+    expect(applyRequest(s, { type: "message", ts: 6, from: FOUNDER_ID, to: "Hai", message: "go" }).effects).toEqual([
+      { kind: "deliver", personId: "l1", text: "[From Founder] go" },
+    ]);
+  });
+  it("cannot be finished, resumed or joined", () => {
+    const s = stopped();
+    const r = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ text: expect.stringContaining("stopped") });
+    expect(resumeJob(s, "J-0001", 1000)).toBe(s);
+    expect(joinJob(s, "J-0001", "d1")).toBe(s);
   });
 });
 

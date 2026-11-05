@@ -95,7 +95,7 @@ interface Job {
   title: string;
   ask: string;           // nguyên văn yêu cầu của bạn
   status: "planning" | "awaiting-plan" | "running" | "awaiting-merge"
-        | "paused" | "done" | "rejected";
+        | "paused" | "stopped" | "done" | "rejected";
   plan: JobPlan | null;  // card và người thuê, mỗi mục ghi tầng của nó
   tokenCap: number;
   tokensUsed: number;     // token mới, không tính cache đọc lại
@@ -133,6 +133,7 @@ Thuê thêm giữa chừng cũng tạo thẻ duyệt, không tự động.
 | Một card bị trả về 3 lần | Dừng vòng lặp, hiện trong Needs you |
 | Việc dùng 80% trần token | Cảnh báo trong Needs you |
 | Việc dùng 100% trần token | Việc chuyển `paused`, app ngừng chuyển tin mới của Việc đó và hỏi bạn. Lượt đang chạy của agent không bị cắt |
+| Việc không còn lối ra (Founder quên, hết context) | `company_status` liệt kê các Việc đang mở cho Founder. Bạn bấm Stop trên Việc đang chạy hoặc tạm dừng: Việc chuyển `stopped`, không nhận và không gửi tin, không chạy lại, Founder được báo. Tin không ghi mã Việc, nên người còn ở một Việc đang chạy vẫn nhắn được |
 | Hết limit CLI | Giữ cơ chế bàn giao và tự chạy lại hiện có |
 | Agent bị dừng khi đang có card | Mở lại bằng session cũ, không được thì hỏi bạn |
 | Founder đầy context | Mở phiên mới, đọc lại `jobs/` đang chạy |

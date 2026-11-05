@@ -34,6 +34,12 @@ describe("the Founder's laws", () => {
   });
 });
 
+describe("what the Founder is told about open jobs", () => {
+  it("says company_status lists them", () => {
+    expect(FOUNDER_LAWS).toMatch(/company_status lists every open job/);
+  });
+});
+
 describe("nodeRunsCompany", () => {
   it.each(["v22.13.0", "v22.13.0\r\n", "v22.14.1\n", "v23.0.0", "v100.1.0"])("takes %j", (v) => {
     expect(nodeRunsCompany(v)).toBe(true);

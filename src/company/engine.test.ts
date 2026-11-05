@@ -752,6 +752,50 @@ describe("watching a running job", () => {
     expect(said()).toEqual([]);
   });
 
+  it("stops a running job for good, and tells the Founder", async () => {
+    const ana = await running();
+    founderPaneRunning();
+    await engine.stopJob("J-0001");
+    expect(job().status).toBe("stopped");
+    expect(stored().status).toBe("stopped");
+    expect(said().join()).toMatch(/J-0001.*stopped/);
+    io.told.length = 0;
+    io.sent.length = 0;
+    await request({ type: "message", ts: 2, from: ana.id, to: "Founder", message: "done" });
+    expect(said()).toEqual([expect.stringMatching(/^Held/)]);
+  });
+
+  it("stops a paused job, and its stop alert goes with it", async () => {
+    const ana = await running(1000);
+    await spend(ana.id, 100, 1200);
+    await engine.stopJob("J-0001");
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().status).toBe("stopped");
+    expect(engine.companyAlerts()).toEqual([]);
+  });
+
+  it("leaves the cards of a stopped job alone and counts nothing more", async () => {
+    const ana = await running();
+    await spend(ana.id, 100, 200);
+    await engine.stopJob("J-0001");
+    io.told.length = 0;
+    io.sent.length = 0;
+    io.usage.set(ana.id, { fresh: 900 });
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(said()).toEqual([]);
+    expect(job().tokensUsed).toBe(100);
+  });
+
+  it("does not stop a job that is not running or paused", async () => {
+    await engine.giveJob("do it");
+    io.told.length = 0;
+    io.sent.length = 0;
+    await engine.stopJob("J-0001");
+    await engine.stopJob("J-9999");
+    expect(job().status).toBe("planning");
+    expect(said()).toEqual([]);
+  });
+
   it("raises the cap and carries on a paused job", async () => {
     const ana = await running(1000);
     await spend(ana.id, 100, 1200);

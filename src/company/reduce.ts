@@ -30,6 +30,17 @@ export function newJob(s: State, ask: string, now: number): { state: State; job:
   return { state, job, effects: [tellFounder(`JOB ${job.id}: ${ask}`)] };
 }
 
+/** The paused or stopped Job that keeps these two from talking. A pause ends, so it
+ *  holds everyone on it. A stop doesn't and a message names no Job, so someone on a
+ *  running Job as well stays reachable, or one stop would cut a Lead off for good. */
+function holdingJob(s: State, from: string, to: string): Job | undefined {
+  const onRunning = (id: string) => s.jobs.some((j) => j.status === "running" && j.people.includes(id));
+  return s.jobs.find((j) => {
+    const on = j.people.includes(from) || j.people.includes(to);
+    return on && (j.status === "paused" || (j.status === "stopped" && !onRunning(from) && !onRunning(to)));
+  });
+}
+
 export function applyRequest(s: State, r: CompanyRequest): { state: State; effects: Effect[] } {
   const none = { state: s, effects: [] as Effect[] };
   const from = personById(s.company, r.from);
@@ -37,9 +48,10 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   if (r.type === "message") {
     const to = r.to ? personByName(s.company, r.to) : undefined;
     if (!to || !canMessage(s.company, from.id, to.id)) return none;
-    // Nothing reaches or leaves a paused Job's people: the message is dropped, and the sender is told so.
-    const held = s.jobs.find((j) => j.status === "paused" && (j.people.includes(from.id) || j.people.includes(to.id)));
-    if (held) return { state: s, effects: [{ kind: "deliver", personId: from.id, text: `Held: your job ${held.id} is paused, so your message to ${to.name} was not sent. Wait for it to be resumed.` }] };
+    // Nothing reaches or leaves the people of a paused or stopped Job: the message is dropped, and the sender is told so.
+    const held = holdingJob(s, from.id, to.id);
+    if (held?.status === "paused") return { state: s, effects: [{ kind: "deliver", personId: from.id, text: `Held: your job ${held.id} is paused, so your message to ${to.name} was not sent. Wait for it to be resumed.` }] };
+    if (held) return { state: s, effects: [{ kind: "deliver", personId: from.id, text: `Held: your job ${held.id} is stopped, so your message to ${to.name} was not sent. That job will not run again.` }] };
     return { state: s, effects: [{ kind: "deliver", personId: to.id, text: `[From ${from.name}] ${typeable(r.message)}` }] };
   }
   if (from.rank !== "founder") return none;
@@ -116,6 +128,15 @@ export function pauseJob(s: State, id: string): State {
   if (s.jobs.find((j) => j.id === id)?.status !== "running") return s;
   return patch(s, id, { status: "paused" });
 }
+
+/** The owner ends a running or paused Job. There is no way back: a new Job is. */
+export function haltJob(s: State, id: string): State {
+  const status = s.jobs.find((j) => j.id === id)?.status;
+  return status === "running" || status === "paused" ? patch(s, id, { status: "stopped" }) : s;
+}
+
+export const stoppedNote = (id: string): Effect =>
+  tellFounder(`${id} was stopped by the owner. It takes no more messages and cannot be finished. Leave it, and do not brief anyone on it.`);
 
 /** A pause is the owner's to lift, and the Founder would otherwise only see its effects. */
 export const pausedNote = (id: string): Effect =>
