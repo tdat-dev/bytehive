@@ -455,6 +455,7 @@ describe("watching a running job", () => {
   }
   const stored = () => JSON.parse(io.files.get(`${ROOT}\\jobs\\J-0001.json`)!) as { status: string; tokensUsed: number; tokenCap: number };
   const said = () => [...io.told.map((m) => m.text), ...io.sent.map(([, text]) => text)];
+  const founderPaneRunning = () => addPane("D:\\a", { name: "Founder", personId: "founder" }, { running: true, spawnedAt: Date.now() - 60_000 });
   /** Ana reads `before`, then `after`, 30 seconds apart. */
   async function spend(id: string, before: number, after: number) {
     io.usage.set(id, { fresh: before });
@@ -500,6 +501,16 @@ describe("watching a running job", () => {
     expect(job().status).toBe("paused");
     expect(stored().status).toBe("paused");
     expect(engine.companyAlerts()).toEqual([expect.objectContaining({ job: "J-0001", level: "stop" })]);
+  });
+
+  it("tells the Founder when a job pauses, and everyone when it runs again", async () => {
+    const ana = await running(1000);
+    founderPaneRunning();
+    await spend(ana.id, 100, 1200);
+    expect(said().join()).toMatch(/J-0001.*token cap/);
+    io.sent.length = 0;
+    await engine.raiseCap("J-0001", 1000);
+    expect(said().filter((t) => t.includes("J-0001")).length).toBe(2);
   });
 
   it("keeps the stop alert for as long as the job is paused, and drops it on resume", async () => {

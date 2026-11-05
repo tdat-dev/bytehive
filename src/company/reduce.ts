@@ -116,6 +116,20 @@ export function pauseJob(s: State, id: string): State {
   return patch(s, id, { status: "paused" });
 }
 
+/** A pause is the owner's to lift, and the Founder would otherwise only see its effects. */
+export const pausedNote = (id: string): Effect =>
+  tellFounder(`${id} reached its token cap and is paused until the owner adds tokens. Its messages are held and it cannot be finished. Wait, you will be told.`);
+
+/** What was held while a Job was paused is gone, and nobody knows it runs again. */
+export function resumedNotes(s: State, id: string): Effect[] {
+  const job = s.jobs.find((j) => j.id === id);
+  if (!job) return [];
+  return [
+    tellFounder(`${id} is running again with more tokens. If its work is finished, call job_finish now.`),
+    ...job.people.map((personId): Effect => ({ kind: "deliver", personId, text: `${id} is running again. Anything you sent while it was paused was not delivered: send it again if it still matters.` })),
+  ];
+}
+
 /** Carry on a paused Job, with `extra` more tokens on its cap. */
 export function resumeJob(s: State, id: string, extra: number): State {
   const job = s.jobs.find((j) => j.id === id);

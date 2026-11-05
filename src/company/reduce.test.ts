@@ -1,6 +1,6 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, joinJob, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type State } from "./reduce";
+import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type State } from "./reduce";
 import { emptyCompany } from "./org";
 import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
 
@@ -241,6 +241,19 @@ describe("joinJob", () => {
     expect(joinJob(s, "J-9999", "d1")).toBe(s);
     const done = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state;
     expect(joinJob(done, "J-0001", "d1")).toBe(done);
+  });
+});
+
+describe("what people hear when a job stops and starts", () => {
+  it("tells the Founder why a job stopped, so they don't guess", () => {
+    expect(pausedNote("J-0001")).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringMatching(/J-0001.*token cap/) });
+  });
+  it("tells the Founder and everyone on it that it runs again: what was held is gone", () => {
+    const s = joinJob(running(), "J-0001", "d1");
+    const told = resumedNotes(s, "J-0001");
+    expect(told.map((e) => e.kind === "deliver" && e.personId)).toEqual([FOUNDER_ID, "p9", "d1"]);
+    expect(told[0]).toMatchObject({ text: expect.stringMatching(/J-0001.*job_finish/) });
+    expect(told[1]).toMatchObject({ text: expect.stringMatching(/J-0001.*again/) });
   });
 });
 

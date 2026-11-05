@@ -15,7 +15,7 @@ import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
-import { applyRequest, approvePlan, joinJob, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type Effect, type State } from "./reduce";
+import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type Effect, type State } from "./reduce";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
 import { loadRoles, seedRoles, skillFiles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
@@ -428,10 +428,13 @@ async function watch(): Promise<void> {
   // A plan can't name who a Lead hands a card to: they join when they pick it up.
   state = cards.reduce((s, c) => joinJob(s, c.job, c.assigneeId), state);
   state = { ...state, jobs: state.jobs.map(measure) };
+  const paused: Effect[] = [];
   for (const job of state.jobs) {
     const b = watchBudget(job);
-    if (b.pause) state = pauseJob(state, job.id);
-    else if (b.alert) next.push(b.alert);
+    if (b.pause) {
+      state = pauseJob(state, job.id);
+      paused.push(pausedNote(job.id));
+    } else if (b.alert) next.push(b.alert);
   }
   // watchBudget only looks at a running Job: a paused one keeps its stop alert until it is resumed.
   for (const job of state.jobs) {
@@ -443,7 +446,7 @@ async function watch(): Promise<void> {
   alerts = next;
   if (moved.length) await tryPersist(moved);
   else if (!same) changed();
-  await run(work.effects);
+  await run([...work.effects, ...paused]);
 }
 
 export const companyAlerts = () => alerts;
@@ -464,4 +467,5 @@ export const raiseCap = (id: string, extra: number): Promise<void> => enqueue(as
   if (next === state) return;
   state = next;
   await tryPersist(state.jobs.filter((j) => j.id === id));
+  await run(resumedNotes(state, id));
 });
