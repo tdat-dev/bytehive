@@ -1019,6 +1019,12 @@ fn program_on_path(program: &str, exts: &[String]) -> bool {
     false
 }
 
+/// This app's process id, for the Company's engine lock.
+#[tauri::command]
+pub fn app_pid() -> u32 {
+    std::process::id()
+}
+
 /// For each program name, report whether it resolves on PATH (see
 /// `program_on_path`). Pure std — no per-item shelling out — so the wizard can
 /// batch-check every preset's binary in one round-trip to gray out the ones

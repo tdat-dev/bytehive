@@ -61,6 +61,7 @@ vi.mock("../ipc", () => ({
     return { text: text.slice(from), next: text.length, from, size: text.length };
   },
   fsTruncateIfSize: async () => false,
+  appPid: async () => 7,
   runCapture: async (program: string, args: string[]) => {
     if (![program, ...args].join(" ").endsWith("node --version") || io.node === null) throw { Failed: "couldn't start node" };
     return io.node;
@@ -436,6 +437,98 @@ describe("floors", () => {
     workspaces.set("D:\\x\\a", { id: "x", name: "a", dir: "D:\\x\\a", panes: new Map() } as unknown as Workspace);
     await engine.giveJob("do it");
     expect(engine.companyView()!.company.floors.map((f) => f.id)).toEqual(["a", "b", "a-2"]);
+  });
+});
+
+describe("two running apps", () => {
+  const LOCK = `${ROOT}\\engine.lock`;
+  const lock = () => JSON.parse(io.files.get(LOCK)!) as { pid: number; at: number };
+  const otherApp = (at = Date.now()) => io.files.set(LOCK, JSON.stringify({ pid: 99, at }));
+  /** A second app opens while another one runs the company. */
+  async function secondApp() {
+    otherApp();
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+  }
+  const ELSEWHERE = "The Company is running in another ByteHive window.";
+
+  it("keeps the lock fresh while it runs the company", async () => {
+    expect(lock().pid).toBe(7);
+    const first = lock().at;
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(lock().at).toBeGreaterThan(first);
+  });
+
+  it("keeps the lock fresh through a long operation", async () => {
+    let open = () => {};
+    const long = engine.enqueue(() => new Promise<void>((r) => { open = r; }));
+    const first = lock().at;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(Date.now() - lock().at).toBeLessThan(3000);
+    expect(lock().at).toBeGreaterThan(first);
+    open();
+    await long;
+  });
+
+  it("stays read-only beside another app: no tick, no watch, no writes", async () => {
+    for (const k of [...io.files.keys()]) if (k !== LOCK) io.files.delete(k);
+    io.files.set(`${ROOT}\\requests.jsonl`, "");
+    await secondApp();
+    await engine.giveJob("do it");
+    for (let i = 0; i < 6; i += 1) {
+      otherApp();
+      await vi.advanceTimersByTimeAsync(1500);
+    }
+    await engine.approve("J-0001");
+    expect(engine.companyView()).toBeNull();
+    expect(engine.companyElsewhere()).toBe(ELSEWHERE);
+    expect(io.spawned).toEqual([]);
+    expect(lock().pid).toBe(99);
+    expect([...io.files.keys()].sort()).toEqual([LOCK, `${ROOT}\\requests.jsonl`].sort());
+  });
+
+  it("takes over a lock with no heartbeat for 15 seconds", async () => {
+    await secondApp();
+    expect(engine.companyView()).toBeNull();
+    await vi.advanceTimersByTimeAsync(16_500);
+    expect(engine.companyView()).not.toBeNull();
+    expect(engine.companyElsewhere()).toBeNull();
+    expect(lock().pid).toBe(7);
+  });
+
+  it("starts at once on a lock that is stale already", async () => {
+    otherApp(Date.now() - 20_000);
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    expect(engine.companyView()).not.toBeNull();
+    expect(lock().pid).toBe(7);
+  });
+
+  it("carries on after a window reload: the fresh lock is its own", async () => {
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    expect(engine.companyView()).not.toBeNull();
+  });
+
+  it("steps down when another app holds the lock, and picks up from the files later", async () => {
+    await engine.giveJob("do it");
+    otherApp();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(engine.companyView()).toBeNull();
+    expect(engine.companyElsewhere()).toBe(ELSEWHERE);
+    await vi.advanceTimersByTimeAsync(16_500);
+    expect(engine.companyView()!.jobs.map((j) => j.id)).toEqual(["J-0001"]);
+  });
+
+  it("tells the screen when it steps down", async () => {
+    const seen = vi.fn();
+    engine.onCompanyChange(seen);
+    otherApp();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(seen).toHaveBeenCalled();
   });
 });
 

@@ -2,11 +2,13 @@
  * sends requests instead, so two processes never write the same file. */
 import { fsCreateDir, fsCreateFile, fsReadDir, fsReadFile, fsRename, fsWriteFile } from "../ipc";
 import { raiseAlert } from "./alerts";
+import { parseLock, type EngineLock } from "./lock";
 import { emptyCompany, parseOwned } from "./org";
 import { DEFAULT_LIMITS, type Company, type Job } from "./types";
 
 const COMPANY_REL = "company.json";
 const COMPANY_TMP_REL = "company.json.tmp";
+const LOCK_REL = "engine.lock";
 const missing = (e: unknown) => /no such path/i.test(typeof e === "string" ? e : String((e as { Failed?: string })?.Failed ?? ""));
 
 export function companyRoot(home: string): string {
@@ -50,6 +52,18 @@ export async function loadCompany(root: string): Promise<Company> {
 export async function saveCompany(root: string, c: Company): Promise<void> {
   await writeNew(root, COMPANY_TMP_REL, JSON.stringify(c, null, 2));
   await fsRename(root, COMPANY_TMP_REL, COMPANY_REL);
+}
+
+/** A lock that can't be read is no lock: the heartbeat comes round again in moments. */
+export const readLock = (root: string): Promise<EngineLock | null> =>
+  fsReadFile(root, LOCK_REL).then((f) => parseLock(f.content), () => null);
+
+/** Swapped in whole, or another app could read half a lock as none. The temp file
+ *  has the pid in its name: two apps can be writing at the same moment. */
+export async function writeLock(root: string, lock: EngineLock): Promise<void> {
+  const tmp = `${LOCK_REL}.${lock.pid}.tmp`;
+  await writeNew(root, tmp, JSON.stringify(lock));
+  await fsRename(root, tmp, LOCK_REL);
 }
 
 /** Through a temp file, like company.json: a write cut short must not cost a Job. */

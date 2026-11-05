@@ -2,7 +2,7 @@
 /* Temporary home of the company until the 3D office replaces it: give the
  * Founder a job, act on what needs you, see who works where. */
 import "./panel.css";
-import { approve, companyAlerts, companyError, companyView, dismissAlert, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject, stopJob } from "./engine";
+import { approve, companyAlerts, companyElsewhere, companyError, companyView, dismissAlert, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject, stopJob } from "./engine";
 import { needsYou, type NeedRow, type PlanDetail } from "./needs";
 import type { Job, Person } from "./types";
 
@@ -89,7 +89,7 @@ export function createCompanyPanel() {
     send.setAttribute("aria-disabled", String(!s || giving));
 
     if (!s) {
-      const text = loadError ? "Not available." : "Starting...";
+      const text = companyElsewhere() ?? (loadError ? "Not available." : "Starting...");
       list.innerHTML = `<li class="co-none">${text}</li>`;
       jobs.innerHTML = "";
       org.innerHTML = `<p class="co-none">${text}</p>`;

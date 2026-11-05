@@ -3,7 +3,7 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { claudeSessionExists, fsCreateDir, fsReadDir, runCapture, sendMessage } from "../ipc";
+import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, runCapture, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
@@ -17,7 +17,8 @@ import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManif
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
-import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
+import { mayRun } from "./lock";
+import { companyRoot, ensureDirs, loadCompany, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
 import type { CompanyRequest, Floor, Job, Person, PlanCard, RoleDef } from "./types";
@@ -36,6 +37,12 @@ const NODE_WAIT_MS = 10_000;
 const BOARD_TRIES = 3;
 
 let root = "";
+let me = 0; // this app's pid
+/** This app runs the company. When it doesn't, state is null, and every operation
+ *  stops at that: nothing here reads a request or writes a file. */
+let holding = false;
+/** Another running app does, as far as the lock says. */
+let elsewhere = false;
 let state: State | null = null;
 let loadError: string | null = null;
 let alerts: Alert[] = [];
@@ -53,6 +60,9 @@ export function companyView() { return state; }
 
 /** Why the company could not be loaded, when it could not. */
 export const companyError = () => loadError;
+
+/** Where the company runs, when that isn't here. */
+export const companyElsewhere = (): string | null => (elsewhere ? "The Company is running in another ByteHive window." : null);
 
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -387,11 +397,9 @@ export const reject = (id: string, note: string): Promise<void> => enqueue(async
   await run(r.effects);
 });
 
-export async function initCompany(): Promise<void> {
-  const home = await homeDir();
-  await fsCreateDir(home, ".bytehive").catch(() => {});
-  await fsCreateDir(home, ".bytehive\\company").catch(() => {});
-  root = companyRoot(home);
+/** Load the company and take charge of it. Runs in the queue. */
+async function start(): Promise<void> {
+  loadError = null;
   await ensureDirs(root, OFFICE_REL);
   await ensureDirs(root, "roles");
   await seedRoles(root);
@@ -415,6 +423,46 @@ export async function initCompany(): Promise<void> {
   // A session restarts on the file it was given: after an update that is old laws.
   for (const failed of await refreshFiles(state.company.people)) console.error(`[bytehive] ${failed}`);
   changed();
+}
+
+/** Another app holds the lock: let go of everything, the files are its now. In the
+ *  queue, so no operation loses its state halfway. */
+async function stepDown(): Promise<void> {
+  holding = false;
+  state = null;
+  alerts = [];
+  nudges = new Map();
+  quiet.clear();
+  consumed.clear();
+  changed();
+}
+
+/** Who runs the company, every TICK_MS and outside the queue: a long operation
+ *  must not make the lock look abandoned. */
+async function heartbeat(): Promise<void> {
+  if (!mayRun(await readLock(root), me, Date.now())) {
+    const news = !elsewhere;
+    elsewhere = true;
+    if (holding) await enqueue(stepDown);
+    else if (news) changed();
+    return;
+  }
+  await writeLock(root, { pid: me, at: Date.now() }).catch(() => {});
+  elsewhere = false;
+  if (holding) return;
+  holding = true;
+  await enqueue(start);
+}
+
+export async function initCompany(): Promise<void> {
+  const home = await homeDir();
+  await fsCreateDir(home, ".bytehive").catch(() => {});
+  await fsCreateDir(home, ".bytehive\\company").catch(() => {});
+  root = companyRoot(home);
+  me = await appPid();
+  await heartbeat();
+  const beat = () => window.setTimeout(() => void heartbeat().catch(() => {}).finally(beat), TICK_MS);
+  beat();
   const next = () => window.setTimeout(() => void enqueue(tick).catch(() => {}).finally(next), TICK_MS);
   next();
   window.setInterval(() => void enqueue(watch).catch(() => {}), WATCH_MS);

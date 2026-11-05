@@ -9,11 +9,13 @@ const eng = vi.hoisted(() => ({
   finishJob: vi.fn(),
   stopJob: vi.fn(),
   alerts: [] as unknown[],
+  elsewhere: null as string | null,
   dismissAlert: vi.fn(),
 }));
 vi.mock("./engine", () => ({
   companyView: () => eng.view,
   companyError: () => eng.error,
+  companyElsewhere: () => eng.elsewhere,
   companyAlerts: () => eng.alerts,
   dismissAlert: eng.dismissAlert,
   onCompanyChange: () => {},
@@ -42,7 +44,7 @@ const mount = () => {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("company panel", () => {
-  beforeEach(() => { document.body.innerHTML = ""; eng.view = null; eng.error = null; eng.alerts = []; eng.dismissAlert.mockReset(); eng.approve.mockReset(); eng.giveJob.mockReset(); eng.finishJob.mockReset(); eng.stopJob.mockReset(); });
+  beforeEach(() => { document.body.innerHTML = ""; eng.view = null; eng.error = null; eng.elsewhere = null; eng.alerts = []; eng.dismissAlert.mockReset(); eng.approve.mockReset(); eng.giveJob.mockReset(); eng.finishJob.mockReset(); eng.stopJob.mockReset(); });
 
   it("says it is starting, then shows a load failure", () => {
     const el = mount();
@@ -51,6 +53,14 @@ describe("company panel", () => {
     eng.error = "bad file";
     const again = mount();
     expect(again.querySelector("[data-msg]")?.textContent).toContain("bad file");
+  });
+
+  it("says where the Company runs when it runs in another window, instead of Starting", () => {
+    eng.elsewhere = "The Company is running in another ByteHive window.";
+    const el = mount();
+    expect(el.querySelector("[data-needs]")?.textContent).toBe("The Company is running in another ByteHive window.");
+    expect(el.textContent).not.toContain("Starting...");
+    expect(el.querySelector("[data-send]")?.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("shows why an action failed instead of leaving a rejection, and lets you try again", async () => {

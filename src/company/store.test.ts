@@ -21,7 +21,7 @@ vi.mock("../ipc", () => ({
 }));
 
 import { clearAlert, standingAlerts } from "./alerts";
-import { companyRoot, loadCompany, loadJobs, parseCompany, saveCompany, saveJob } from "./store";
+import { companyRoot, loadCompany, loadJobs, parseCompany, readLock, saveCompany, saveJob, writeLock } from "./store";
 import { emptyCompany } from "./org";
 import { DEFAULT_LIMITS, type Job } from "./types";
 
@@ -93,6 +93,12 @@ describe("store", () => {
     expect((await loadJobs("R")).map((j) => j.id)).toEqual(["J-0001"]);
     expect(files.get(key("R", "jobs\\J-0002.json"))).toBe(text);
     expect(standingAlerts()).toEqual([expect.objectContaining({ level: "warn", text: expect.stringContaining("J-0002.json") })]);
+  });
+  it("round trips the engine lock, whole, and reads a missing one as none", async () => {
+    expect(await readLock("R")).toBeNull();
+    await writeLock("R", { pid: 7, at: 5 });
+    expect(await readLock("R")).toEqual({ pid: 7, at: 5 });
+    expect([...files.keys()]).toEqual([key("R", "engine.lock")]);
   });
   it("skips a temp file a crash left behind", async () => {
     await saveJob("R", job);

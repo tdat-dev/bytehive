@@ -74,6 +74,7 @@ Giới hạn cần nói rõ: đây là lan can, không phải sandbox. Agent ch�
     prompt.md         mô tả nghề
     skills/<name>/SKILL.md
   office/             thư mục làm việc của Founder
+  engine.lock         pid và nhịp tim của app đang chạy công ty
 <dự án>/.bytehive/board.json   card của tầng, thêm trường job và assigneeId
 ```
 
@@ -109,6 +110,8 @@ interface Job {
 `Pane.spec` thêm `personId`. Trường `role: "conductor"` được giữ tới khi xong mục 9 vì `src/limitguard.ts:176` đang đọc nó.
 
 Chỉ app ghi `company.json`. MCP tool gửi yêu cầu vào `requests.jsonl`, giống cách `spawn` đang chạy, nên không có hai tiến trình cùng ghi một file. Cảnh 3D chỉ đọc, không có dữ liệu riêng, nên văn phòng và board không lệch nhau.
+
+Hai app ByteHive cùng mở (bản cài và bản dev) không được cùng chạy công ty. App đang chạy làm mới `engine.lock` mỗi 1,5 giây. App kia thấy nhịp tim còn mới thì chỉ đứng ngoài: không đọc yêu cầu, không ghi gì, panel báo công ty đang chạy ở cửa sổ khác. Không có nhịp tim 15 giây thì nó nhận lại, đọc từ file. App đang chạy mà thấy khóa thuộc app khác thì tự nhường.
 
 Mã Việc đi theo card, báo cáo và token. Tên nhánh theo Việc chỉ áp dụng cho người được thuê cho Việc đó ở Pha 1, người dùng lại giữ nhánh cũ. Bấm một Việc là thấy đủ nó đang ở đâu.
 

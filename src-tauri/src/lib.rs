@@ -128,6 +128,7 @@ pub fn run() {
             commands::set_tray_tooltip,
             toast::notify_open,
             commands::programs_on_path,
+            commands::app_pid,
             commands::record_start,
             commands::record_stop,
             commands::record_read,

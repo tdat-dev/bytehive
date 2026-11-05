@@ -635,6 +635,11 @@ export async function reviewDiscardBranch(worktreePath: string): Promise<void> {
 /** Batch-check whether each program name resolves on PATH (Windows
  *  CreateProcess / PATHEXT semantics). Result is index-aligned with the input.
  *  Used to gray out CLI presets whose binary isn't installed. */
+/** This app's process id: it tells a reload of this window from another running app. */
+export async function appPid(): Promise<number> {
+  return invoke<number>("app_pid");
+}
+
 export async function programsOnPath(programs: string[]): Promise<boolean[]> {
   return invoke<boolean[]>("programs_on_path", { programs });
 }
