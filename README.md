@@ -69,13 +69,10 @@ you spawned it in. Dispatch works the other way too: send a card to a
 specific agent from the board (it records the assignee and reports back when
 the agent marks it done).
 
-```
-claude mcp add --scope user bytehive -- npx -y bytehive-mcp
-```
-
-On native Windows, wrap with `cmd /c` (see [mcp/README.md](mcp/README.md) for
-why). See that README for the full tool reference, the local-checkout install
-command, and a worktree-isolation caveat.
+People in the Company need no setup: the app carries the server and starts it
+for them, which takes Node.js on PATH. For any other agent the package is not on
+npm yet, so install it from a checkout. See [mcp/README.md](mcp/README.md) for
+that command, the full tool reference, and a worktree-isolation caveat.
 
 ## Install
 
@@ -93,6 +90,7 @@ it. ByteHive auto-updates from then on (signed releases via the Tauri updater).
 git clone https://github.com/tdat-dev/maestro.git
 cd bytehive
 npm install
+npm --prefix mcp install   # the app bundles the MCP server, see build:mcp
 npm run tauri dev     # full app (Vite + Rust backend)
 npm test              # vitest unit tests
 npx tsc --noEmit      # typecheck

@@ -163,6 +163,7 @@ Lưu ý khi làm:
 - Prompt phải đi qua file. `laws.ts` đang bị giới hạn bởi cú pháp `cmd /c` và độ dài dòng lệnh. Đường `--append-system-prompt-file` mới có trong tài liệu, Pha 0 phải chạy thử.
 - Claude khi resume dùng lại prompt đã ghi, nên đổi role thì phải mở phiên mới.
 - Không dùng `--agent` vì nó thay prompt mặc định của Claude Code.
+- Người trong công ty nhận MCP server đi cùng app qua `--mcp-config` (file `people\<id>\mcp.json`), nên máy nào có Node là chạy được, không cần cấu hình gì.
 - `BYTEHIVE_LAWS` đang bảo agent chờ người dùng duyệt card. Người trong công ty cần bản luật riêng theo cấp, nếu không họ sẽ đứng chờ.
 
 ## 8. Giao diện

@@ -5,24 +5,15 @@ Lets an AI agent (Claude Code, etc.) read and edit the board of the workspace it
 runs in — the same board the ByteHive app renders. Source of truth is
 `.bytehive/board.json` in the workspace folder.
 
+People in the ByteHive Company skip all of this: the app carries a one-file build
+of this server (`npm run build:mcp` at the repo root) and hands it to them with
+`--mcp-config`. It needs Node.js on PATH.
+
 ## Install (Claude Code)
 
-One-time, user scope — works in every workspace because the server resolves the
-board from the directory the agent runs in:
-
-```
-claude mcp add --scope user bytehive -- npx -y bytehive-mcp
-```
-
-On native Windows (not WSL), wrap the command with `cmd /c` — Claude Code's
-MCP client spawns the server directly, and `npx` there is a `.cmd` shim that
-needs a shell to resolve, so npx-based stdio servers require the wrapper:
-
-```
-claude mcp add --scope user bytehive -- cmd /c npx -y bytehive-mcp
-```
-
-From a local checkout (before the npm publish):
+The package is not on npm yet, so install from a local checkout. One-time, user
+scope: it works in every workspace because the server resolves the board from
+the directory the agent runs in:
 
 ```
 cd mcp && npm install && npm run build
