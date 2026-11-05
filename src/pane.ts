@@ -22,6 +22,7 @@ import {
 } from "./ipc";
 import { branchName } from "./worktree";
 import { launchSpec } from "./crew";
+import { clearAlert, raiseAlert } from "./company/alerts";
 import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
 import { layoutGrid, wirePaneRename, toggleMax } from "./panelayout";
 import { saveSession } from "./session";
@@ -306,8 +307,11 @@ export function createAgent(
           const subEl = el.querySelector<HTMLElement>("[data-sub]");
           if (subEl) subEl.textContent = spec.branch;
           saveSession();
+          clearAlert(`worktree-${spec.personId}`);
         } catch (e) {
           term.write(enc.encode(`\r\n\x1b[33m[worktree failed, using project dir: ${onErrMsg(e)}]\x1b[0m\r\n`));
+          // Nobody stands by a member's pane, and two people must not share a checkout.
+          if (spec.personId) raiseAlert(`worktree-${spec.personId}`, `${spec.name} has no worktree and works in the project folder: ${onErrMsg(e)}.`, spec.personId);
         }
       } else if (spec.worktree) {
         cwd = spec.worktree;
@@ -329,7 +333,13 @@ export function createAgent(
       // silent default), so the chat view reads the transcript of this run.
       cwd = runDir({ worktree: spec.worktree, cwd }, await homeFolder());
       spec.ranIn = cwd;
-      if (trustsFolder(spec)) await claudeTrustFolder(cwd).catch((e) => console.error(`[bytehive] Claude's folder question stays: ${onErrMsg(e)}`));
+      if (trustsFolder(spec)) {
+        const key = `trust-${spec.personId}`;
+        await claudeTrustFolder(cwd).then(() => clearAlert(key), (e) => {
+          console.error(`[bytehive] Claude's folder question stays: ${onErrMsg(e)}`);
+          raiseAlert(key, `${spec.name} may be stuck on Claude's folder question: ${onErrMsg(e)}.`, spec.personId ?? null);
+        });
+      }
       // Enforce ByteHive's protocol at the system-prompt level so a Claude agent
       // MUST follow it (not a soft MCP hint, not a button). The director gets the
       // dispatch prompt; every other Claude gets the plan-first worker one.
