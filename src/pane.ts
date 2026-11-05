@@ -28,7 +28,7 @@ import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { taskLine, taskOf } from "./tasks";
 import { getPref } from "./prefs";
-import { basename, runDir, agentEnv } from "./workspaces";
+import { basename, runDir, agentEnv, needsWorktree } from "./workspaces";
 import { homeDir } from "@tauri-apps/api/path";
 
 let home: Promise<string> | null = null;
@@ -297,10 +297,10 @@ export function createAgent(
       if (spec.resumeIn) {
         // Carrying on a conversation from another folder: Claude only resumes it there.
         cwd = spec.resumeIn;
-      } else if (ws.isolated && ws.repoRoot && !spec.worktree) {
+      } else if (needsWorktree(ws, spec)) {
         try {
           spec.branch = branchName(spec.name, id.slice(-6));
-          spec.worktree = await worktreeAdd(ws.repoRoot, spec.branch);
+          spec.worktree = await worktreeAdd(ws.repoRoot!, spec.branch);
           cwd = spec.worktree;
           const subEl = el.querySelector<HTMLElement>("[data-sub]");
           if (subEl) subEl.textContent = spec.branch;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyHires, canMessage, emptyCompany, personByName, reportsOf, resolveTargets, validatePlan } from "./org";
+import { applyHires, canMessage, emptyCompany, floorId, personByName, reportsOf, resolveTargets, validatePlan, validRoleId } from "./org";
 import { DEFAULT_LIMITS, FOUNDER_ID, type Company, type JobPlan, type Person, type RoleDef } from "./types";
 
 const role = (id: string, rank: "lead" | "staff"): RoleDef => ({
@@ -80,5 +80,35 @@ describe("applyHires", () => {
     expect(lead.boss).toBe(FOUNDER_ID);
     expect(next.people.find((p) => p.id === "d1")!.boss).toBe(lead.id);
     expect(hired.find((p) => p.rank === "staff")!.boss).toBe(lead.id);
+  });
+});
+
+describe("floorId", () => {
+  it("makes a short id from the project name", () => {
+    expect(floorId("My App", [])).toBe("my-app");
+  });
+  it("adds a number until the id is free", () => {
+    expect(floorId("app", ["app"])).toBe("app-2");
+    expect(floorId("app", ["app", "app-2"])).toBe("app-3");
+  });
+  it("falls back when the name has no Latin letters or digits", () => {
+    expect(floorId("日本語", [])).toBe("floor");
+    expect(floorId("日本語", ["floor"])).toBe("floor-2");
+  });
+  it("leaves no dash at either end", () => {
+    expect(floorId("--app (old)--", [])).toBe("app-old");
+  });
+});
+
+describe("validRoleId", () => {
+  it("takes a short lowercase id", () => {
+    expect(validRoleId("data-analyst")).toBe(true);
+    expect(validRoleId(`a${"b".repeat(30)}`)).toBe(true);
+  });
+  it("refuses anything that could not be a folder name or is too long", () => {
+    for (const id of ["a", "Analyst", "9lives", "a b", "a/b", `a${"b".repeat(31)}`]) expect(validRoleId(id)).toBe(false);
+  });
+  it("refuses what is not a string, even one that prints like an id", () => {
+    expect(validRoleId(undefined)).toBe(false);
   });
 });

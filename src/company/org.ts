@@ -13,6 +13,17 @@ export function emptyCompany(): Company {
   return { version: 1, floors: [], people: [founder], limits: { ...DEFAULT_LIMITS }, nextJob: 1 };
 }
 
+/** A role id becomes a folder name, so the app and the MCP tool hold it to this. */
+export const validRoleId = (id: unknown): id is string => typeof id === "string" && /^[a-z][a-z0-9-]{1,30}$/.test(id);
+
+/** A floor's id, from its project's name: two projects can share a name. */
+export function floorId(name: string, taken: string[]): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "floor";
+  let id = slug;
+  for (let n = 2; taken.includes(id); n += 1) id = `${slug}-${n}`;
+  return id;
+}
+
 export const personById = (c: Company, id: string) => c.people.find((p) => p.id === id);
 export const personByName = (c: Company, name: string) => c.people.find((p) => same(p.name, name));
 export const reportsOf = (c: Company, id: string) => c.people.filter((p) => p.boss === id);

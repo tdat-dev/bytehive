@@ -1,6 +1,6 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, newJob, rejectPlan, type State } from "./reduce";
+import { applyRequest, approvePlan, newJob, rejectPlan, reportFailures, type State } from "./reduce";
 import { emptyCompany } from "./org";
 import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
 
@@ -15,6 +15,9 @@ const state = (): State => ({
 });
 const plan: JobPlan = { summary: "Add marketing", cards: [], hires: [{ role: "marketing", floor: "b" }] };
 const pick = { name: () => "Vy", id: () => "p9" };
+const waiting = () => applyRequest(newJob(state(), "x", 1).state, { type: "plan", ts: 2, from: FOUNDER_ID, job: "J-0001", plan }).state;
+const running = () => approvePlan(waiting(), "J-0001", pick).state;
+const closed = () => rejectPlan(waiting(), "J-0001", "").state;
 
 describe("newJob", () => {
   it("numbers jobs and wakes the Founder", () => {
@@ -53,18 +56,67 @@ describe("applyRequest", () => {
     expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("ghost") });
   });
   it("marks a finished job for merge", () => {
+    expect(applyRequest(running(), { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state.jobs[0]).toMatchObject({ status: "awaiting-merge", summary: "ok" });
+  });
+  it("refuses a second plan on a running job, so nobody is hired twice", () => {
+    const s = running();
+    const r = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("running") });
+  });
+  it("refuses a plan while another waits for approval", () => {
+    const s = waiting();
+    const r = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("awaiting-plan") });
+  });
+  it("does not bring a rejected job back with a plan", () => {
+    const s = closed();
+    const r = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("rejected") });
+  });
+  it("refuses job-done during planning, so a job can't skip approval", () => {
     const s = newJob(state(), "x", 1).state;
-    expect(applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state.jobs[0]).toMatchObject({ status: "awaiting-merge", summary: "ok" });
+    const r = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("planning") });
+  });
+  it("does not bring a rejected job back with job-done", () => {
+    const s = closed();
+    const r = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("rejected") });
   });
   it("saves a proposed role and adds it to the list", () => {
     const r = applyRequest(state(), { type: "role", ts: 1, from: FOUNDER_ID, role: { ...role, id: "analyst" }, job: "J-0001" });
     expect(r.state.roles.map((x) => x.id)).toContain("analyst");
     expect(r.effects).toEqual([{ kind: "save-role", role: expect.objectContaining({ id: "analyst" }) }]);
   });
+  it("gives a proposed role the plain rights whatever it asked for", () => {
+    const r = applyRequest(state(), { type: "role", ts: 1, from: FOUNDER_ID, role: { ...role, id: "analyst", rank: "founder", cli: "powershell", denyTools: ["Read"] }, job: "J-0001" });
+    expect(r.state.roles.find((x) => x.id === "analyst")).toMatchObject({ rank: "staff", cli: "claude", denyTools: [] });
+    expect(r.effects[0]).toMatchObject({ kind: "save-role", role: { rank: "staff", cli: "claude", denyTools: [] } });
+  });
+  it("refuses to replace a role that exists", () => {
+    const s = state();
+    const r = applyRequest(s, { type: "role", ts: 1, from: FOUNDER_ID, role: { ...role, prompt: "new" }, job: "J-0001" });
+    expect(r.state).toBe(s);
+    expect(r.effects).toEqual([{ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("marketing") }]);
+  });
+  it.each(["a", "Analyst", "9lives", "..\\evil", "a b", `a${"b".repeat(31)}`])("refuses the role id %s", (id) => {
+    const s = state();
+    const r = applyRequest(s, { type: "role", ts: 1, from: FOUNDER_ID, role: { ...role, id }, job: "J-0001" });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID });
+  });
+  it("refuses a role with no id at all", () => {
+    const r = applyRequest(state(), { type: "role", ts: 1, from: FOUNDER_ID, role: { ...role, id: undefined as unknown as string }, job: "J-0001" });
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID });
+  });
 });
 
 describe("approvePlan and rejectPlan", () => {
-  const waiting = () => applyRequest(newJob(state(), "x", 1).state, { type: "plan", ts: 2, from: FOUNDER_ID, job: "J-0001", plan }).state;
   it("hires, starts the job and tells the Founder", () => {
     const r = approvePlan(waiting(), "J-0001", pick);
     expect(r.hired.map((p) => p.name)).toEqual(["Vy"]);
@@ -84,5 +136,51 @@ describe("approvePlan and rejectPlan", () => {
   });
   it("closes the job when rejected with no reason", () => {
     expect(rejectPlan(waiting(), "J-0001", "").state.jobs[0].status).toBe("rejected");
+  });
+  it("leaves a job alone unless it is waiting for approval", () => {
+    const s = running();
+    expect(rejectPlan(s, "J-0001", "changed my mind")).toEqual({ state: s, effects: [] });
+    expect(rejectPlan(s, "J-0001", "")).toEqual({ state: s, effects: [] });
+  });
+  it("sends a plan back when the second of two would give a floor two Leads", () => {
+    const leadRole: RoleDef = { ...role, id: "lead", rank: "lead" };
+    const twoLeads: JobPlan = { summary: "Lead for b", cards: [], hires: [{ role: "lead", floor: "b" }] };
+    let s: State = { ...state(), roles: [role, leadRole] };
+    s = newJob(s, "one", 1).state;
+    s = newJob(s, "two", 2).state;
+    s = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan: twoLeads }).state;
+    s = applyRequest(s, { type: "plan", ts: 4, from: FOUNDER_ID, job: "J-0002", plan: twoLeads }).state;
+    s = approvePlan(s, "J-0001", pick).state;
+    const r = approvePlan(s, "J-0002", pick);
+    expect(r.hired).toEqual([]);
+    expect(r.state.company.people.filter((p) => p.rank === "lead" && p.floor === "b").length).toBe(1);
+    expect(r.state.jobs[1]).toMatchObject({ status: "planning", plan: null });
+    expect(r.effects).toEqual([{ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("one Lead") }]);
+  });
+  it("sends a plan back when the company filled up while it waited", () => {
+    const s = waiting();
+    s.company.limits = { ...s.company.limits, peopleTotal: 3 };
+    const r = approvePlan(s, "J-0001", pick);
+    expect(r.hired).toEqual([]);
+    expect(r.state.jobs[0].status).toBe("planning");
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("limited to 3") });
+  });
+  it("sends a plan back when its role was removed, instead of crashing", () => {
+    const r = approvePlan({ ...waiting(), roles: [] }, "J-0001", pick);
+    expect(r.hired).toEqual([]);
+    expect(r.state.jobs[0].status).toBe("planning");
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("marketing") });
+  });
+});
+
+describe("reportFailures", () => {
+  const told = [{ kind: "deliver" as const, personId: FOUNDER_ID, text: "Plan approved." }];
+  it("leaves the message as it is when nothing failed", () => {
+    expect(reportFailures(told, [])).toBe(told);
+  });
+  it("adds what failed to the message", () => {
+    expect(reportFailures(told, ["Vy did not start.", "No cards on b."])[0]).toMatchObject({
+      text: expect.stringMatching(/^Plan approved\..*Vy did not start\. No cards on b\.$/),
+    });
   });
 });

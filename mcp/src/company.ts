@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { personById, resolveTargets, validatePlan } from "../../src/company/org";
+import { personById, resolveTargets, validatePlan, validRoleId } from "../../src/company/org";
 import type { Company, CompanyRequest, JobPlan, RoleDef } from "../../src/company/types";
 import { appendLine } from "./fleet.js";
 
@@ -62,6 +62,19 @@ export function planAsFounder(root: string, from: string, job: string, plan: Job
   const errors = validatePlan(c, plan, readRoles(root));
   if (errors.length) throw new Error(errors.join(" "));
   queueRequest(root, { type: "plan", ts: now, from, job, plan });
+}
+
+export function proposeRole(
+  root: string,
+  from: string,
+  draft: { job: string; id: string; title: string; department: string; prompt: string },
+  now: number,
+): void {
+  founderOnly(company(root), from);
+  const { job, id, title, department, prompt } = draft;
+  if (!validRoleId(id)) throw new Error(`Bad role id ${id}: use 2 to 31 lowercase letters, digits or dashes, starting with a letter.`);
+  const role: RoleDef = { id, title, department, rank: "staff", cli: "claude", denyTools: [], look: { shirt: "#7d8b99", hair: "#2a2e3a", prop: "none" }, prompt, skills: [] };
+  queueRequest(root, { type: "role", ts: now, from, role, job });
 }
 
 export function statusFor(root: string, id: string): unknown {
@@ -132,10 +145,8 @@ export function registerCompanyTools(server: McpServer, personId: string, root =
       department: z.string(),
       prompt: z.string().describe("What this person does and how, at least three sentences"),
     },
-  }, async ({ job, id, title, department, prompt }) => reply(() => {
-    founderOnly(company(root), personId);
-    const role: RoleDef = { id, title, department, rank: "staff", cli: "claude", denyTools: [], look: { shirt: "#7d8b99", hair: "#2a2e3a", prop: "none" }, prompt, skills: [] };
-    queueRequest(root, { type: "role", ts: Date.now(), from: personId, role, job });
+  }, async (draft) => reply(() => {
+    proposeRole(root, personId, draft, Date.now());
     return "role sent, it appears in role_list once saved";
   }));
 

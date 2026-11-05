@@ -8,7 +8,7 @@ vi.mock("./ipc", () => ({
   programsOnPath: async () => [],
 }));
 
-import { cliLookOf, configureSpawnModal, deliverTask, spawnPerson } from "./spawnmodal";
+import { cliLookOf, configureSpawnModal, deliverTask, paneAsking, spawnPerson } from "./spawnmodal";
 import type { AgentSpec, Pane, Workspace } from "./panetypes";
 
 // Claude's first screen in a folder it hasn't seen, as the terminal shows it.
@@ -78,18 +78,42 @@ describe("deliverTask", () => {
   });
 });
 
+describe("deliverTask after a question", () => {
+  beforeEach(() => { io.sent = []; vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("gives a full head start after an answer, however short the first wait was", async () => {
+    const screen = { text: TRUST };
+    const { ws } = setup(screen);
+    deliverTask(ws, ["Ana"], "add mul()", 100, 1000, 60_000, 8000);
+    await vi.advanceTimersByTimeAsync(5000);
+    screen.text = PROMPT;
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(io.sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(io.sent).toEqual([["p1", "add mul()"]]);
+  });
+});
+
+describe("paneAsking", () => {
+  it("sees a question on the pane's screen", () => {
+    expect(paneAsking(setup({ text: TRUST }).pane)).toBe(true);
+    expect(paneAsking(setup({ text: PROMPT }).pane)).toBe(false);
+  });
+});
+
 describe("spawnPerson", () => {
-  it("boots a member isolated and gives the project its own setting back", async () => {
+  it("finds the repo for the member without touching the project's setting", async () => {
     const ws = { dir: "D:\\a", repoRoot: null, isolated: false, panes: new Map() } as unknown as Workspace;
-    const atBoot: boolean[] = [];
+    const atBoot: Array<[string | null, boolean]> = [];
     configureSpawnModal({
       createWorkspace: () => ws,
-      createAgent: () => async () => { atBoot.push(ws.isolated); },
+      createAgent: () => async () => { atBoot.push([ws.repoRoot, ws.isolated]); },
       cliLook: () => ({ color: "#123456", mono: "C" }),
     });
     io.repo = "D:\\a";
     await spawnPerson("D:\\a", {} as AgentSpec, true);
-    expect(atBoot).toEqual([true]);
+    expect(atBoot).toEqual([["D:\\a", false]]);
     expect(ws.isolated).toBe(false);
   });
 

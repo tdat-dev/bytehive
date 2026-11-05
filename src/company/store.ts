@@ -1,10 +1,11 @@
 /* company.json and the Job files. Only the app writes these; the MCP server
  * sends requests instead, so two processes never write the same file. */
-import { fsCreateDir, fsCreateFile, fsReadDir, fsReadFile, fsWriteFile } from "../ipc";
+import { fsCreateDir, fsCreateFile, fsReadDir, fsReadFile, fsRename, fsWriteFile } from "../ipc";
 import { emptyCompany } from "./org";
 import type { Company, Job } from "./types";
 
 const COMPANY_REL = "company.json";
+const COMPANY_TMP_REL = "company.json.tmp";
 const missing = (e: unknown) => /no such path/i.test(typeof e === "string" ? e : String((e as { Failed?: string })?.Failed ?? ""));
 
 export function companyRoot(home: string): string {
@@ -43,7 +44,13 @@ export async function loadCompany(root: string): Promise<Company> {
   }
 }
 
-export const saveCompany = (root: string, c: Company) => writeNew(root, COMPANY_REL, JSON.stringify(c, null, 2));
+/** Through a temp file: the MCP server reads company.json at any moment, and a
+ *  write cut short must not cost the company. fs_rename replaces the old file. */
+export async function saveCompany(root: string, c: Company): Promise<void> {
+  await writeNew(root, COMPANY_TMP_REL, JSON.stringify(c, null, 2));
+  await fsRename(root, COMPANY_TMP_REL, COMPANY_REL);
+}
+
 export const saveJob = (root: string, job: Job) => writeNew(root, `jobs\\${job.id}.json`, JSON.stringify(job, null, 2));
 
 export async function loadJobs(root: string): Promise<Job[]> {

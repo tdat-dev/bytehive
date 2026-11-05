@@ -1,4 +1,4 @@
-import type { AgentSpec } from "./panetypes";
+import type { AgentSpec, Workspace } from "./panetypes";
 
 /** Where an agent's CLI starts: its worktree, else the project folder, else
  *  the home folder (a project without a folder). Never left to the PTY's own
@@ -7,6 +7,13 @@ import type { AgentSpec } from "./panetypes";
 export function runDir(spec: { worktree?: string; cwd: string | null }, home: string): string {
   const dir = spec.worktree || spec.cwd || home;
   return dir.replace(/(?<=[^:\\/])[\\/]+$/, "");
+}
+
+/** Whether an agent gets a new worktree when it boots. A member of the company
+ *  always does on a git repo, two people must not share a checkout; everyone
+ *  else follows the project's setting. */
+export function needsWorktree(ws: Pick<Workspace, "isolated" | "repoRoot">, spec: Pick<AgentSpec, "worktree" | "personId">): boolean {
+  return !!ws.repoRoot && !spec.worktree && (ws.isolated || !!spec.personId);
 }
 
 /** Whether two folder paths name the same folder (case and trailing separator aside). */

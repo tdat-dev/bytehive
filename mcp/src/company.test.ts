@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { floorDir, planAsFounder, queueRequest, readCompany, sendAsMember, statusFor } from "./company.js";
+import { floorDir, planAsFounder, proposeRole, queueRequest, readCompany, sendAsMember, statusFor } from "./company.js";
 
 let root: string;
 const look = { shirt: "#fff", hair: "#000", prop: "none" };
@@ -55,5 +55,20 @@ describe("company MCP", () => {
     queueRequest(root, { type: "job-done", ts: 1, from: "founder", job: "J-1", summary: "x" });
     queueRequest(root, { type: "job-done", ts: 2, from: "founder", job: "J-2", summary: "y" });
     expect(lines().length).toBe(2);
+  });
+});
+
+describe("role_propose", () => {
+  const draft = { job: "J-0001", id: "data-analyst", title: "Analyst", department: "Data", prompt: "p" };
+  it("queues a role from the Founder", () => {
+    proposeRole(root, "founder", draft, 5);
+    expect(lines()[0]).toMatchObject({ type: "role", job: "J-0001", role: { id: "data-analyst", rank: "staff", cli: "claude", denyTools: [] } });
+  });
+  it("only lets the Founder propose", () => {
+    expect(() => proposeRole(root, "l1", draft, 5)).toThrow(/Founder/);
+  });
+  it("refuses an id the app would refuse", () => {
+    expect(() => proposeRole(root, "founder", { ...draft, id: "../founder" }, 5)).toThrow(/id/);
+    expect(fs.existsSync(path.join(root, "requests.jsonl"))).toBe(false);
   });
 });

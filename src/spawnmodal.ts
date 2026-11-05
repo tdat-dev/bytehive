@@ -18,7 +18,7 @@ import {
   type CrewState,
   type CliPreset,
 } from "./crew";
-import { type Workspace, type AgentSpec } from "./panetypes";
+import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
 import { DIRECTOR_LAWS } from "./laws";
@@ -212,16 +212,14 @@ export async function spawnForConductor(
 /** A CLI's pane colour and letter, for code outside main.ts. */
 export const cliLookOf = (badge: string, label: string) => onCliLook(badge, label);
 
-/** Start a member of the company in its floor's project. A floor always gets
- *  worktrees when it is a git repo: two people must not share a checkout. The
- *  project's own setting comes back afterwards, for the agents who aren't members. */
+/** Start a member of the company in its floor's project. Once the repo is known
+ *  the pane gives a member a worktree by itself (needsWorktree), so the project's
+ *  own setting stays as it is for the agents who aren't members. */
 export async function spawnPerson(dir: string, spec: AgentSpec, boot: boolean): Promise<void> {
   const ws = onCreateWorkspace(dir);
-  const isolated = ws.isolated;
-  await prepareIsolation(ws, true);
+  await findRepo(ws);
   const start = onCreateAgent(ws, spec);
   if (boot) await runLimited([start], MAX_CONCURRENT_BOOT);
-  ws.isolated = isolated;
 }
 
 /** Type the job into each new agent once it is at its prompt. The CLI needs a
@@ -230,8 +228,9 @@ export async function spawnPerson(dir: string, spec: AgentSpec, boot: boolean): 
  *  exit" selected, so the job's Enter would answer it and close the agent.
  *  While a question is on screen the job waits for you to answer it, then
  *  gives the CLI the same head start again: answering the trust question
- *  restarts Claude's session, and a job typed before it is ready is lost. */
-export function deliverTask(ws: Workspace, names: string[], task: string, delayMs: number, everyMs = 1000, giveUpMs = 15 * 60_000): void {
+ *  restarts Claude's session, and a job typed before it is ready is lost.
+ *  `settleMs` is that second head start, when it isn't the same as the first. */
+export function deliverTask(ws: Workspace, names: string[], task: string, delayMs: number, everyMs = 1000, giveUpMs = 15 * 60_000, settleMs = delayMs): void {
   const left = new Set(names);
   const start = Date.now() + delayMs;
   /** When each agent's question went away, for agents that asked one. */
@@ -240,7 +239,7 @@ export function deliverTask(ws: Workspace, names: string[], task: string, delayM
     for (const name of [...left]) {
       const pane = [...ws.panes.values()].find((x) => x.spec.name === name);
       if (!pane || !pane.running) { left.delete(name); continue; }
-      if (parseAsk(pane.term.snapshot(ASK_LINES))) {
+      if (paneAsking(pane)) {
         answered.set(name, null);
         if (Date.now() - start > giveUpMs) left.delete(name); // never answer it for you
         continue;
@@ -248,7 +247,7 @@ export function deliverTask(ws: Workspace, names: string[], task: string, delayM
       if (answered.has(name)) {
         const at = answered.get(name) ?? Date.now();
         answered.set(name, at);
-        if (Date.now() - at < delayMs) continue;
+        if (Date.now() - at < settleMs) continue;
       }
       left.delete(name);
       void sendMessage(pane.id, task).catch(() => {});
@@ -260,15 +259,24 @@ export function deliverTask(ws: Workspace, names: string[], task: string, delayM
 
 /** Settings → Agents: give every agent its own worktree when the project is a
  *  git repo. Looked up once per project; the pane boot does the rest. */
-export async function prepareIsolation(ws: Workspace, force = false): Promise<void> {
-  if (!force && !getPref("worktree")) { ws.isolated = false; return; }
+export async function prepareIsolation(ws: Workspace): Promise<void> {
+  if (!getPref("worktree")) { ws.isolated = false; return; }
   if (!ws.dir) return;
-  if (!ws.repoRoot) ws.repoRoot = await gitRepoRoot(ws.dir).catch(() => null);
+  await findRepo(ws);
   ws.isolated = !!ws.repoRoot;
+}
+
+async function findRepo(ws: Workspace): Promise<void> {
+  if (ws.dir && !ws.repoRoot) ws.repoRoot = await gitRepoRoot(ws.dir).catch(() => null);
 }
 
 /** Screen lines looked at for a question the CLI opened on. */
 const ASK_LINES = 40;
+
+/** Whether the CLI in this pane is showing a question, which an Enter would answer. */
+export function paneAsking(pane: Pane): boolean {
+  return !!parseAsk(pane.term.snapshot(ASK_LINES));
+}
 
 /** Settings → Agents: how long a new CLI gets to reach its prompt. */
 function jobDelayMs(): number {

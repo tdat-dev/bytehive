@@ -2,7 +2,7 @@
 /* Everything that changes the company, as plain functions: state in, state and
  * effects out. engine.ts runs the effects. The app re-checks every rule here,
  * because a request is only a line in a file. */
-import { applyHires, canMessage, personById, personByName, validatePlan } from "./org";
+import { applyHires, canMessage, personById, personByName, validatePlan, validRoleId } from "./org";
 import { FOUNDER_ID, type Company, type CompanyRequest, type Job, type Person, type RoleDef } from "./types";
 
 export interface State { company: Company; jobs: Job[]; roles: RoleDef[] }
@@ -17,13 +17,15 @@ const patch = (s: State, id: string, change: Partial<Job>): State => ({
   jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...change } : j)),
 });
 
+const tellFounder = (text: string): Effect => ({ kind: "deliver", personId: FOUNDER_ID, text });
+
 export function newJob(s: State, ask: string, now: number): { state: State; job: Job; effects: Effect[] } {
   const job: Job = {
     id: jobId(s.company.nextJob), title: ask.trim().split("\n")[0].slice(0, 80), ask, status: "planning", plan: null,
     tokenCap: s.company.limits.tokensPerJob, tokensUsed: 0, tokenBase: {}, people: [], createdAt: now,
   };
   const state = { ...s, company: { ...s.company, nextJob: s.company.nextJob + 1 }, jobs: [...s.jobs, job] };
-  return { state, job, effects: [{ kind: "deliver", personId: FOUNDER_ID, text: `JOB ${job.id}: ${ask}` }] };
+  return { state, job, effects: [tellFounder(`JOB ${job.id}: ${ask}`)] };
 }
 
 export function applyRequest(s: State, r: CompanyRequest): { state: State; effects: Effect[] } {
@@ -36,15 +38,22 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
     return { state: s, effects: [{ kind: "deliver", personId: to.id, text: `[From ${from.name}] ${r.message}` }] };
   }
   if (from.rank !== "founder") return none;
+  const refuse = (text: string) => ({ state: s, effects: [tellFounder(text)] });
   if (r.type === "role") {
-    return { state: { ...s, roles: [...s.roles.filter((x) => x.id !== r.role.id), r.role] }, effects: [{ kind: "save-role", role: r.role }] };
+    if (!validRoleId(r.role.id)) return refuse(`Role ${r.role.id} refused: an id is 2 to 31 lowercase letters, digits or dashes, starting with a letter.`);
+    if (s.roles.some((x) => x.id === r.role.id)) return refuse(`Role ${r.role.id} refused: that role exists already. Use it, or propose another id.`);
+    const role: RoleDef = { ...r.role, rank: "staff", cli: "claude", denyTools: [] };
+    return { state: { ...s, roles: [...s.roles, role] }, effects: [{ kind: "save-role", role }] };
   }
-  if (!s.jobs.some((j) => j.id === r.job)) return none;
+  const job = s.jobs.find((j) => j.id === r.job);
+  if (!job) return none;
   if (r.type === "plan") {
+    if (job.status !== "planning") return refuse(`Plan for ${r.job} refused: the job is ${job.status}, and a plan is only taken while it is planning.`);
     const errors = validatePlan(s.company, r.plan, s.roles);
-    if (errors.length) return { state: s, effects: [{ kind: "deliver", personId: FOUNDER_ID, text: `Plan for ${r.job} refused: ${errors.join(" ")}` }] };
+    if (errors.length) return refuse(`Plan for ${r.job} refused: ${errors.join(" ")}`);
     return { state: patch(s, r.job, { status: "awaiting-plan", plan: r.plan }), effects: [] };
   }
+  if (job.status !== "running") return refuse(`${r.job} cannot be finished: it is ${job.status}, and only a running job can.`);
   return { state: patch(s, r.job, { status: "awaiting-merge", summary: r.summary }), effects: [] };
 }
 
@@ -55,6 +64,15 @@ export function approvePlan(
 ): { state: State; hired: Person[]; effects: Effect[] } {
   const job = s.jobs.find((j) => j.id === id);
   if (!job?.plan || job.status !== "awaiting-plan") return { state: s, hired: [], effects: [] };
+  // It passed on arrival, but the company may have changed while it waited.
+  const errors = validatePlan(s.company, job.plan, s.roles);
+  if (errors.length) {
+    return {
+      state: patch(s, id, { status: "planning", plan: null }),
+      hired: [],
+      effects: [tellFounder(`Plan for ${id} no longer holds: ${errors.join(" ")} Make a new plan with job_plan.`)],
+    };
+  }
   const { company, hired } = applyHires(s.company, job.plan, s.roles, pick);
   const names = hired.map((p) => `${p.name} (${p.role})`).join(", ");
   const state = patch({ ...s, company }, id, {
@@ -63,14 +81,22 @@ export function approvePlan(
     people: [...new Set([...job.people, ...hired.map((p) => p.id)])],
   });
   const text = `Plan for ${id} approved.${names ? ` Hired: ${names}.` : ""} The cards are on the boards. Brief the Lead of each floor, or the person working alone there.`;
-  return { state, hired, effects: [{ kind: "deliver", personId: FOUNDER_ID, text }] };
+  return { state, hired, effects: [tellFounder(text)] };
+}
+
+/** Add what went wrong while carrying out a plan to what the Founder is told. */
+export function reportFailures(effects: Effect[], failed: string[]): Effect[] {
+  if (!failed.length) return effects;
+  const note = ` But this went wrong: ${failed.join(" ")}`;
+  return effects.map((e) => (e.kind === "deliver" ? { ...e, text: e.text + note } : e));
 }
 
 export function rejectPlan(s: State, id: string, note: string): { state: State; effects: Effect[] } {
+  if (s.jobs.find((j) => j.id === id)?.status !== "awaiting-plan") return { state: s, effects: [] };
   const why = note.trim();
   if (!why) return { state: patch(s, id, { status: "rejected", plan: null }), effects: [] };
   return {
     state: patch(s, id, { status: "planning", plan: null }),
-    effects: [{ kind: "deliver", personId: FOUNDER_ID, text: `Plan for ${id} sent back: ${why} Make a new plan with job_plan.` }],
+    effects: [tellFounder(`Plan for ${id} sent back: ${why} Make a new plan with job_plan.`)],
   };
 }

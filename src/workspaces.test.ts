@@ -1,5 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm } from "./workspaces";
+import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm, needsWorktree } from "./workspaces";
+
+describe("needsWorktree", () => {
+  const repo = { isolated: false, repoRoot: "D:\\app" };
+  it("gives a member one on a git project, whatever the project's setting", () => {
+    expect(needsWorktree(repo, { personId: "p1" })).toBe(true);
+  });
+  it("leaves other agents to the project's setting", () => {
+    expect(needsWorktree(repo, {})).toBe(false);
+    expect(needsWorktree({ ...repo, isolated: true }, {})).toBe(true);
+  });
+  it("gives nobody one outside a git project", () => {
+    expect(needsWorktree({ isolated: false, repoRoot: null }, { personId: "p1" })).toBe(false);
+    expect(needsWorktree({ isolated: true, repoRoot: null }, {})).toBe(false);
+  });
+  it("gives nobody a second one", () => {
+    expect(needsWorktree(repo, { personId: "p1", worktree: "D:\\wt" })).toBe(false);
+  });
+});
 
 describe("basename", () => {
   it("takes the last path segment, slash or backslash", () => {

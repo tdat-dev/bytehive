@@ -1,0 +1,319 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Board } from "../board";
+import type { Pane, Workspace } from "../panetypes";
+import type { JobPlan } from "./types";
+
+const ROOT = "H:\\.bytehive\\company";
+const io = vi.hoisted(() => ({
+  files: new Map<string, string>(),
+  boards: new Map<string, unknown>(),
+  writeFails: [] as unknown[],
+  readFails: new Map<string, unknown>(),
+  sent: [] as Array<[string, string]>,
+  told: [] as Array<{ name: string; text: string; delay: number; settle?: number }>,
+  spawned: [] as string[],
+  spawnFails: new Set<string>(),
+  asking: false,
+  gate: null as Promise<void> | null,
+}));
+
+vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "H:\\" }));
+vi.mock("../ipc", () => ({
+  fsCreateDir: async () => {},
+  fsCreateFile: async (root: string, rel: string) => { if (!io.files.has(`${root}\\${rel}`)) io.files.set(`${root}\\${rel}`, ""); },
+  fsWriteFile: async (root: string, rel: string, content: string) => { io.files.set(`${root}\\${rel}`, content); return { mtime: 1 }; },
+  fsRename: async (root: string, from: string, to: string) => {
+    io.files.set(`${root}\\${to}`, io.files.get(`${root}\\${from}`)!);
+    io.files.delete(`${root}\\${from}`);
+  },
+  fsReadFile: async (root: string, rel: string) => {
+    const content = io.files.get(`${root}\\${rel}`);
+    if (content === undefined) throw { Failed: "no such path: gone" };
+    return { content, mtime: 1 };
+  },
+  fsReadDir: async (root: string, rel: string) => {
+    const at = `${root}\\${rel}\\`;
+    const names = [...io.files.keys()].filter((k) => k.startsWith(at)).map((k) => k.slice(at.length).split("\\"));
+    return [...new Map(names.map((n) => [n[0], { name: n[0], is_dir: n.length > 1, size: 0 }])).values()];
+  },
+  fsReadLinesFrom: async (root: string, rel: string, offset: number | null) => {
+    const text = io.files.get(`${root}\\${rel}`);
+    if (text === undefined) throw { Failed: "no such path: gone" };
+    const from = offset ?? text.length;
+    return { text: text.slice(from), next: text.length, from, size: text.length };
+  },
+  fsTruncateIfSize: async () => false,
+  sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return true; },
+}));
+vi.mock("../boardfile", () => ({
+  readBoardFile: async (dir: string) => {
+    if (io.readFails.has(dir)) throw io.readFails.get(dir);
+    const board = io.boards.get(dir);
+    return board ? { board: structuredClone(board), mtime: 1 } : null;
+  },
+  writeBoardFile: async (dir: string, board: unknown) => {
+    const fail = io.writeFails.shift();
+    if (fail) throw fail;
+    io.boards.set(dir, board);
+    return 2;
+  },
+}));
+
+vi.mock("../spawnmodal", () => ({
+  cliLookOf: () => ({ color: "#fff", mono: "C" }),
+  paneAsking: () => io.asking,
+  deliverTask: (_ws: unknown, names: string[], text: string, delay: number, _every?: number, _giveUp?: number, settle?: number) => {
+    io.told.push({ name: names[0], text, delay, settle });
+  },
+  spawnPerson: async (dir: string, spec: { name: string; personId: string }) => {
+    if (io.gate) await io.gate;
+    if (io.spawnFails.has(spec.name)) throw new Error("no terminal");
+    io.spawned.push(spec.name);
+    addPane(dir, spec, { running: true, spawnedAt: Date.now() });
+  },
+}));
+
+function addPane(dir: string, spec: object, over: Partial<Pane>): Pane {
+  let ws = [...workspaces.values()].find((w) => w.dir === dir);
+  if (!ws) {
+    ws = { id: dir, name: "x", dir, panes: new Map() } as unknown as Workspace;
+    workspaces.set(dir, ws);
+  }
+  const pane = { id: `pane-${ws.panes.size}-${(spec as { name: string }).name}`, running: false, spawnedAt: null, spec, ...over } as unknown as Pane;
+  ws.panes.set(pane.id, pane);
+  return pane;
+}
+
+type Engine = typeof import("./engine");
+let engine: Engine;
+let workspaces: Map<string, Workspace>; // the engine's own: vi.resetModules gives each test a new one
+const job = (n = 0) => engine.companyView()!.jobs[n];
+const cards = (dir: string) => (io.boards.get(dir) as Board).lists.flatMap((l) => l.cards);
+const planFor = (floor: string, hires = 0): JobPlan => ({
+  summary: "s",
+  cards: [{ floor, title: "Do it", desc: "d", checklist: [] }],
+  hires: Array.from({ length: hires }, () => ({ role: "developer", floor })),
+});
+const request = async (line: object) => {
+  const at = `${ROOT}\\requests.jsonl`;
+  io.files.set(at, `${io.files.get(at) ?? ""}${JSON.stringify(line)}\n`);
+  await vi.advanceTimersByTimeAsync(1500);
+};
+
+/** A company with floors for D:\a and D:\b, one Job given and its plan in. */
+async function waitingJob(plan: JobPlan): Promise<void> {
+  await engine.giveJob("do it");
+  await request({ type: "plan", ts: 1, from: "founder", job: job().id, plan });
+  expect(job().status).toBe("awaiting-plan");
+  io.told.length = 0;
+  io.sent.length = 0;
+}
+
+beforeEach(async () => {
+  vi.useFakeTimers();
+  vi.resetModules();
+  ({ workspaces } = await import("../appstate"));
+  io.files.clear();
+  io.boards.clear();
+  io.readFails.clear();
+  io.spawnFails.clear();
+  io.writeFails = [];
+  io.sent = [];
+  io.told = [];
+  io.spawned = [];
+  io.asking = false;
+  io.gate = null;
+  for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
+  engine = await import("./engine");
+  await engine.initCompany();
+  await vi.advanceTimersByTimeAsync(1500); // the first tick notes that requests.jsonl isn't there yet
+});
+afterEach(() => { vi.useRealTimers(); });
+
+describe("approve", () => {
+  it("places the cards once, however many clicks", async () => {
+    await waitingJob(planFor("a"));
+    await Promise.all([engine.approve(job().id), engine.approve(job().id)]);
+    await engine.approve(job().id);
+    expect(cards("D:\\a").length).toBe(1);
+    expect(job().status).toBe("running");
+  });
+
+  it("does nothing to a job that isn't waiting", async () => {
+    await engine.giveJob("do it");
+    await engine.approve(job().id);
+    expect(job().status).toBe("planning");
+    expect(io.boards.size).toBe(0);
+  });
+
+  it("tries the board again on a Conflict, on a fresh copy", async () => {
+    await waitingJob(planFor("a"));
+    io.writeFails = [{ Conflict: 5 }, { Conflict: 6 }];
+    await engine.approve(job().id);
+    expect(cards("D:\\a").length).toBe(1);
+    expect(io.told.concat(io.sent.map(([, text]) => ({ name: "", text, delay: 0 }))).every((m) => !/went wrong/.test(m.text))).toBe(true);
+  });
+
+  it("gives up after three Conflicts and tells the Founder, who still gets the rest", async () => {
+    await waitingJob({ ...planFor("a"), cards: [...planFor("a").cards, ...planFor("b").cards] });
+    io.writeFails = [{ Conflict: 1 }, { Conflict: 2 }, { Conflict: 3 }];
+    await engine.approve(job().id);
+    expect(job().status).toBe("running");
+    expect(cards("D:\\b").length).toBe(1);
+    const said = [...io.told.map((m) => m.text), ...io.sent.map(([, t]) => t)].join();
+    expect(said).toContain("approved");
+    expect(said).toContain("Cards for a");
+  });
+
+  it("gets past a corrupt board and a hire that won't start", async () => {
+    await waitingJob({ ...planFor("a", 1), cards: [...planFor("a").cards, ...planFor("b").cards] });
+    io.readFails.set("D:\\a", new Error("board.json is not valid JSON"));
+    io.spawnFails.add("Ana");
+    await engine.approve(job().id);
+    expect(cards("D:\\b").length).toBe(1);
+    const said = [...io.told.map((m) => m.text), ...io.sent.map(([, t]) => t)].join();
+    expect(said).toContain("Cards for a");
+    expect(said).toContain("Ana did not start: no terminal");
+  });
+
+  it("matches a card's assignee whatever the case", async () => {
+    const plan = planFor("a");
+    await waitingJob({ ...plan, cards: [{ ...plan.cards[0], assignee: "founder" }] });
+    await engine.approve(job().id);
+    expect(cards("D:\\a")[0]).toMatchObject({ assignee: "Founder", assigneeId: "founder" });
+  });
+
+  it("places nothing when the plan no longer holds, and says why", async () => {
+    await waitingJob(planFor("a", 1));
+    const c = engine.companyView()!.company;
+    c.limits = { ...c.limits, peopleTotal: 1 };
+    await engine.approve(job().id);
+    expect(job().status).toBe("planning");
+    expect(io.boards.size).toBe(0);
+    expect(io.spawned).toEqual(["Founder"]);
+  });
+});
+
+describe("reject", () => {
+  it("leaves a running job alone", async () => {
+    await waitingJob(planFor("a"));
+    await engine.approve(job().id);
+    io.told.length = 0;
+    io.sent.length = 0;
+    await engine.reject(job().id, "no");
+    expect(job().status).toBe("running");
+    expect([...io.told, ...io.sent]).toEqual([]);
+  });
+});
+
+describe("the queue", () => {
+  it("starts one Founder when two jobs arrive together", async () => {
+    let open = () => {};
+    io.gate = new Promise((r) => { open = r; });
+    const both = Promise.all([engine.giveJob("one"), engine.giveJob("two")]);
+    await vi.advanceTimersByTimeAsync(0);
+    open();
+    await both;
+    expect(io.spawned).toEqual(["Founder"]);
+    expect(engine.companyView()!.jobs.map((j) => j.id)).toEqual(["J-0001", "J-0002"]);
+  });
+
+  it("runs operations one at a time, in order, and survives a failure", async () => {
+    const seen: string[] = [];
+    let open = () => {};
+    const first = engine.enqueue(async () => { seen.push("a"); await new Promise<void>((r) => { open = r; }); seen.push("a done"); });
+    const second = engine.enqueue(async () => { seen.push("b"); throw new Error("boom"); });
+    const third = engine.enqueue(async () => { seen.push("c"); return 3; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual(["a"]);
+    open();
+    await first;
+    await expect(second).rejects.toThrow("boom");
+    expect(await third).toBe(3);
+    expect(seen).toEqual(["a", "a done", "b", "c"]);
+  });
+
+  it("writes nothing for a request that changes nothing", async () => {
+    await engine.giveJob("do it");
+    const before = io.files.get(`${ROOT}\\jobs\\J-0001.json`);
+    io.files.set(`${ROOT}\\jobs\\J-0001.json`, "untouched");
+    await request({ type: "message", ts: 1, from: "founder", to: "Nobody", message: "hi" });
+    expect(io.files.get(`${ROOT}\\jobs\\J-0001.json`)).toBe("untouched");
+    expect(before).toContain("J-0001");
+  });
+
+  it("keeps reading after a request that throws", async () => {
+    await engine.giveJob("do it");
+    await request({ type: "plan", ts: 1, from: "founder", job: "J-0001" }); // no plan: validatePlan throws
+    await request({ type: "plan", ts: 2, from: "founder", job: "J-0001", plan: planFor("a") });
+    expect(job().status).toBe("awaiting-plan");
+  });
+});
+
+describe("delivery", () => {
+  const founderPane = (over: Partial<Pane>) => addPane(`${ROOT}\\office`, { name: "Founder", personId: "founder" }, over);
+
+  it("waits out the boot of someone it just started", async () => {
+    await engine.giveJob("do it");
+    expect(io.sent).toEqual([]);
+    expect(io.told).toEqual([{ name: "Founder", text: expect.stringContaining("JOB J-0001"), delay: 8000, settle: 8000 }]);
+  });
+
+  it("types straight in once they are at their prompt", async () => {
+    const pane = founderPane({ running: true, spawnedAt: Date.now() - 60_000 });
+    await engine.giveJob("do it");
+    expect(io.sent).toEqual([[pane.id, expect.stringContaining("JOB J-0001")]]);
+  });
+
+  it("waits while a question is on screen, however long they have been up", async () => {
+    founderPane({ running: true, spawnedAt: Date.now() - 60_000 });
+    io.asking = true;
+    await engine.giveJob("do it");
+    expect(io.sent).toEqual([]);
+    expect(io.told).toEqual([expect.objectContaining({ delay: 0, settle: 8000 })]);
+  });
+
+  it("wakes a stopped person", async () => {
+    const restart = vi.fn(async () => { pane.running = true; pane.spawnedAt = Date.now(); });
+    const pane = founderPane({ running: false, restart });
+    await engine.giveJob("do it");
+    expect(restart).toHaveBeenCalledOnce();
+    expect(io.told).toEqual([expect.objectContaining({ delay: 8000 })]);
+  });
+
+  it("does not boot a pane that is already booting", async () => {
+    const restart = vi.fn(async () => {});
+    founderPane({ running: false, spawning: true, restart });
+    await engine.giveJob("do it");
+    expect(restart).not.toHaveBeenCalled();
+    expect(io.told).toEqual([expect.objectContaining({ delay: 8000 })]);
+  });
+});
+
+describe("floors", () => {
+  it("gives two folders of the same name their own floors", async () => {
+    workspaces.set("D:\\x\\a", { id: "x", name: "a", dir: "D:\\x\\a", panes: new Map() } as unknown as Workspace);
+    await engine.giveJob("do it");
+    expect(engine.companyView()!.company.floors.map((f) => f.id)).toEqual(["a", "b", "a-2"]);
+  });
+});
+
+describe("a company that won't load", () => {
+  it("keeps the error, and never writes over the file", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    io.files.set(`${ROOT}\\company.json`, "{oops");
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    expect(engine.companyError()).toBeTruthy();
+    expect(engine.companyView()).toBeNull();
+    expect(io.files.get(`${ROOT}\\company.json`)).toBe("{oops");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("has no error when it loads", () => {
+    expect(engine.companyError()).toBeNull();
+  });
+});

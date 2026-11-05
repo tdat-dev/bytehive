@@ -11,6 +11,10 @@ vi.mock("../ipc", () => ({
   fsWriteFile: async (root: string, rel: string, content: string) => { files.set(key(root, rel), content); return { mtime: 2 }; },
   fsCreateFile: async (root: string, rel: string) => { if (!files.has(key(root, rel))) files.set(key(root, rel), ""); },
   fsCreateDir: async () => {},
+  fsRename: async (root: string, from: string, to: string) => {
+    files.set(key(root, to), files.get(key(root, from))!);
+    files.delete(key(root, from));
+  },
   fsReadDir: async (root: string) => [...files.keys()]
     .filter((k) => k.startsWith(`${root}|jobs\\`))
     .map((k) => ({ name: k.split("\\").pop()!, is_dir: false, size: 0 })),
@@ -33,6 +37,17 @@ describe("store", () => {
     const c = { ...emptyCompany(), nextJob: 7 };
     await saveCompany("R", c);
     expect((await loadCompany("R")).nextJob).toBe(7);
+  });
+  it("swaps company.json in whole, so a reader never sees half a write", async () => {
+    await saveCompany("R", emptyCompany());
+    const writes: string[] = [];
+    const real = files.set.bind(files);
+    files.set = (k, v) => { writes.push(k); return real(k, v); };
+    await saveCompany("R", { ...emptyCompany(), nextJob: 7 });
+    files.set = real;
+    expect(writes[writes.length - 1]).toBe(key("R", "company.json"));
+    expect(writes.slice(0, -1).every((k) => k !== key("R", "company.json"))).toBe(true);
+    expect([...files.keys()]).toEqual([key("R", "company.json")]);
   });
   it("refuses a corrupt file instead of starting over", () => {
     expect(() => parseCompany("{oops")).toThrow();
