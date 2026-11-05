@@ -1,7 +1,7 @@
 /* The company's rules, with no DOM and no IPC: the app and the MCP bundle
  * both import this, so what an agent is told and what the app enforces
  * cannot drift apart. */
-import { DEFAULT_LIMITS, FOUNDER_ID, type Company, type JobPlan, type Person, type RoleDef } from "./types";
+import { DEFAULT_LIMITS, FOUNDER_ID, type Company, type JobPlan, type NewRole, type Person, type RoleDef } from "./types";
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -20,6 +20,16 @@ export function emptyCompany(): Company {
  *  Windows keeps some names for devices, and a folder can't have them. */
 export const validRoleId = (id: unknown): id is string =>
   typeof id === "string" && /^[a-z][a-z0-9-]{1,30}$/.test(id) && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(id);
+
+/** A drafted role as the app will run it: staff on Claude with nothing denied, whatever
+ *  the plan's JSON says. Only the four fields of a draft are the Founder's to set. */
+export const fromDraft = (d: NewRole): RoleDef => ({
+  id: d.id, title: d.title, department: d.department, prompt: d.prompt,
+  rank: "staff", cli: "claude", denyTools: [], look: { shirt: "#7d8b99", hair: "#2a2e3a", prop: "none" }, skills: [],
+});
+
+/** The cap a plan runs under: its own, inside the owner's limit, never above it. */
+export const planCap = (plan: JobPlan, limit: number) => Math.min(plan.tokenCap ?? limit, limit);
 
 /** A floor's id, from its project's name: two projects can share a name. */
 export function floorId(name: string, taken: string[]): string {
@@ -58,16 +68,34 @@ export function resolveTargets(c: Company, fromId: string, to: string | null): {
 
 const floorPeople = (c: Company, floor: string) => c.people.filter((p) => p.floor === floor);
 
-export function validatePlan(c: Company, plan: JobPlan, roles: RoleDef[]): string[] {
+/** What is wrong with the roles a plan drafts. They run with skip permissions, so
+ *  nothing here can be left to the Founder. */
+function draftErrors(drafts: NewRole[], roles: RoleDef[]): string[] {
   const errors: string[] = [];
+  drafts.forEach((d, i) => {
+    if (!validRoleId(d.id)) errors.push(`Role ${d.id} refused: an id is 2 to 31 lowercase letters, digits or dashes, starting with a letter, and not a Windows device name.`);
+    else if (d.id === FOUNDER_ID) errors.push("Role founder refused: the company has one.");
+    else if (roles.some((r) => r.id === d.id)) errors.push(`Role ${d.id} refused: that role exists already. Use it, or pick another id.`);
+    else if (drafts.findIndex((x) => x.id === d.id) !== i) errors.push(`Role ${d.id} is in the plan twice.`);
+    for (const field of ["title", "department", "prompt"] as const) {
+      if (typeof d[field] !== "string" || !d[field].trim()) errors.push(`Role ${d.id} has no ${field}.`);
+    }
+  });
+  return errors;
+}
+
+export function validatePlan(c: Company, plan: JobPlan, roles: RoleDef[]): string[] {
+  const drafts = plan.newRoles ?? [];
+  const errors = draftErrors(drafts, roles);
   const known = new Set(c.floors.map((f) => f.id));
-  const roleOf = (id: string) => roles.find((r) => r.id === id);
+  const all = [...roles, ...drafts.map(fromDraft)];
+  const roleOf = (id: string) => all.find((r) => r.id === id);
   if (plan.hires.length > c.limits.peoplePerJob) errors.push(`A plan may hire at most ${c.limits.peoplePerJob} people.`);
   if (c.people.length + plan.hires.length > c.limits.peopleTotal) errors.push(`The company is limited to ${c.limits.peopleTotal} people.`);
   for (const h of plan.hires) {
     if (!known.has(h.floor)) errors.push(`Unknown floor ${h.floor}.`);
     if (h.role === FOUNDER_ID || roleOf(h.role)?.rank === "founder") errors.push("A plan cannot hire a Founder: the company has one.");
-    else if (!roleOf(h.role)) errors.push(`Unknown role ${h.role}. See role_list or propose one with role_propose.`);
+    else if (!roleOf(h.role)) errors.push(`Unknown role ${h.role}. See role_list, or draft it in newRoles in this plan.`);
   }
   for (const card of plan.cards) {
     if (!known.has(card.floor)) errors.push(`Card "${card.title}" is on unknown floor ${card.floor}.`);

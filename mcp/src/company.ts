@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { parseOwned, personById, resolveTargets, validatePlan, validRoleId } from "../../src/company/org";
+import { parseOwned, personById, resolveTargets, validatePlan } from "../../src/company/org";
 import type { Company, CompanyRequest, JobPlan, RoleDef } from "../../src/company/types";
 import { appendLine } from "./fleet.js";
 
@@ -64,19 +64,6 @@ export function planAsFounder(root: string, from: string, job: string, plan: Job
   queueRequest(root, { type: "plan", ts: now, from, job, plan });
 }
 
-export function proposeRole(
-  root: string,
-  from: string,
-  draft: { job: string; id: string; title: string; department: string; prompt: string },
-  now: number,
-): void {
-  founderOnly(company(root), from);
-  const { job, id, title, department, prompt } = draft;
-  if (!validRoleId(id)) throw new Error(`Bad role id ${id}: use 2 to 31 lowercase letters, digits or dashes, starting with a letter.`);
-  const role: RoleDef = { id, title, department, rank: "staff", cli: "claude", denyTools: [], look: { shirt: "#7d8b99", hair: "#2a2e3a", prop: "none" }, prompt, skills: [] };
-  queueRequest(root, { type: "role", ts: now, from, role, job });
-}
-
 export function statusFor(root: string, id: string): unknown {
   const c = company(root);
   const me = personById(c, id);
@@ -106,6 +93,12 @@ const planSchema = {
   })),
   hires: z.array(z.object({ role: z.string(), floor: z.string() })),
   tokenCap: z.number().int().positive().optional(),
+  newRoles: z.array(z.object({
+    id: z.string().describe("Short lowercase id, like data-analyst"),
+    title: z.string(),
+    department: z.string(),
+    prompt: z.string().describe("What this person does and how, at least three sentences. The owner reads it before approving."),
+  })).optional().describe("Roles to create when none fits. Staff only, saved only if the owner approves; hire them in hires by id."),
 };
 
 type Reply = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -133,22 +126,8 @@ export function registerCompanyTools(server: McpServer, personId: string, root =
   server.registerTool("job_plan", {
     description: "Founder only: send a plan for the owner to approve. Hires happen only after approval.",
     inputSchema: planSchema,
-  }, async ({ job, summary, cards, hires, tokenCap }) =>
-    reply(() => { planAsFounder(root, personId, job, { summary, cards, hires, tokenCap }, Date.now()); return "plan sent, wait for the answer"; }));
-
-  server.registerTool("role_propose", {
-    description: "Founder only: draft a new role when none fits. The owner sees it with the plan.",
-    inputSchema: {
-      job: z.string(),
-      id: z.string().describe("Short lowercase id, like data-analyst"),
-      title: z.string(),
-      department: z.string(),
-      prompt: z.string().describe("What this person does and how, at least three sentences"),
-    },
-  }, async (draft) => reply(() => {
-    proposeRole(root, personId, draft, Date.now());
-    return "role sent, it appears in role_list once saved";
-  }));
+  }, async ({ job, summary, cards, hires, tokenCap, newRoles }) =>
+    reply(() => { planAsFounder(root, personId, job, { summary, cards, hires, tokenCap, newRoles }, Date.now()); return "plan sent, wait for the answer"; }));
 
   server.registerTool("job_finish", {
     description: "Founder only: report a job finished so the owner can review and merge it.",

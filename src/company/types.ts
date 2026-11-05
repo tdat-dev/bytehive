@@ -67,11 +67,15 @@ export interface PlanCard {
   assignee?: string; // Person name, an existing person or left for the Lead
 }
 
+/** A role the Founder drafts in a plan. The rest of a RoleDef is the app's to set. */
+export interface NewRole { id: string; title: string; department: string; prompt: string }
+
 export interface JobPlan {
   summary: string;
   cards: PlanCard[];
   hires: Hire[];
   tokenCap?: number;
+  newRoles?: NewRole[]; // saved only when the owner approves the plan
 }
 
 export type JobStatus = "planning" | "awaiting-plan" | "running" | "awaiting-merge" | "paused" | "done" | "rejected";
@@ -93,5 +97,4 @@ export interface Job {
 export type CompanyRequest =
   | { type: "message"; ts: number; from: string; to: string | null; message: string }
   | { type: "plan"; ts: number; from: string; job: string; plan: JobPlan }
-  | { type: "role"; ts: number; from: string; role: RoleDef; job: string }
   | { type: "job-done"; ts: number; from: string; job: string; summary: string };

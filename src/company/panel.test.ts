@@ -106,6 +106,30 @@ describe("company panel", () => {
     expect(eng.approve).toHaveBeenCalledTimes(2);
   });
 
+  it("shows the plan in full before you approve it, escaped", () => {
+    const evil = `<img src=x onerror=alert(1)>`;
+    const s = state();
+    s.company = { ...s.company, floors: [{ id: "a", dir: "D:\\a", name: "gcare" }] } as never;
+    s.roles = [{ id: "qa", title: "QA" }] as never;
+    s.jobs[0].plan = {
+      summary: "Build it", tokenCap: 1200000,
+      cards: [{ floor: "a", title: "Login page", desc: "", checklist: [] }],
+      hires: [{ role: "qa", floor: "a" }, { role: "analyst", floor: "a" }],
+      newRoles: [{ id: "analyst", title: "Analyst", department: "Data", prompt: `Reads numbers.\nThen ${evil} says what they mean.` }],
+    } as never;
+    s.jobs[0].tokenCap = 5000000;
+    eng.view = s;
+    const row = mount().querySelector(".co-plan")!;
+    expect(row.textContent).toContain("QA on gcare");
+    expect(row.textContent).toContain("Analyst on gcare");
+    expect(row.textContent).toContain("Cards on gcare");
+    expect(row.textContent).toContain("Login page");
+    expect(row.textContent).toContain("1,200,000");
+    expect(row.textContent).toContain("New role: Analyst (analyst, Data)");
+    expect(row.querySelector(".co-prompt")?.textContent).toBe(`Reads numbers.\nThen ${evil} says what they mean.`);
+    expect(row.querySelector("img")).toBeNull();
+  });
+
   it("gives a merge row Open and Mark done", async () => {
     const s = state();
     s.jobs[0] = { ...s.jobs[0], status: "awaiting-merge", summary: "Shipped", people: ["p1"] } as never;

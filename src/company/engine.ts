@@ -177,14 +177,21 @@ async function deliver(personId: string, text: string): Promise<void> {
 }
 
 async function run(effects: Effect[]): Promise<void> {
-  for (const e of effects) {
-    if (e.kind === "deliver") await deliver(e.personId, e.text);
-    else {
-      const { prompt, ...def } = e.role;
-      await writeNew(root, `roles\\${e.role.id}\\role.json`, JSON.stringify(def, null, 2));
-      await writeNew(root, `roles\\${e.role.id}\\prompt.md`, prompt);
+  for (const e of effects) await deliver(e.personId, e.text);
+}
+
+/** Write the roles a plan drafted, now the owner has approved them. Gives back which could not be. */
+async function saveRoles(roles: RoleDef[]): Promise<string[]> {
+  const failed: string[] = [];
+  for (const { prompt, ...def } of roles) {
+    try {
+      await writeNew(root, `roles\\${def.id}\\role.json`, JSON.stringify(def, null, 2));
+      await writeNew(root, `roles\\${def.id}\\prompt.md`, prompt);
+    } catch (e) {
+      failed.push(`Role ${def.id} was not saved: ${reason(e)}.`);
     }
   }
+  return failed;
 }
 
 function parseRequest(line: string): CompanyRequest | null {
@@ -334,7 +341,7 @@ export const approve = (id: string): Promise<void> => enqueue(async () => {
   } catch (e) {
     failed.push(`${job.id} could not be saved: ${reason(e)}.`);
   }
-  failed.push(...await refreshFiles(r.rewired), ...await placeCards(job), ...await startHires(r.hired));
+  failed.push(...await saveRoles(r.saved), ...await refreshFiles(r.rewired), ...await placeCards(job), ...await startHires(r.hired));
   await run(reportFailures(r.effects, failed));
 });
 

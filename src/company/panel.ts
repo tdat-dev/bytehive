@@ -3,7 +3,7 @@
  * Founder a job, act on what needs you, see who works where. */
 import "./panel.css";
 import { approve, companyAlerts, companyError, companyView, dismissAlert, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject } from "./engine";
-import { needsYou, type NeedRow } from "./needs";
+import { needsYou, type NeedRow, type PlanDetail } from "./needs";
 import type { Person } from "./types";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -13,6 +13,16 @@ const shirt = (c: string) => (/^#[0-9a-f]{3,8}$/i.test(c) ? c : "var(--idle)");
 const ASK_HINT = "Add marketing to gcare";
 const WHY_HINT = "Why send it back? Leave empty to cancel the job.";
 const RAISE_BY = 1_000_000;
+
+function planHtml(p: PlanDetail): string {
+  const item = (term: string, text: string, cls = "") => `<dt>${esc(term)}</dt><dd${cls}>${esc(text)}</dd>`;
+  return `<dl class="co-plan">${[
+    item("Hires", p.hires.join(", ") || "Nobody new"),
+    ...p.floors.map((f) => item(`Cards on ${f.floor}`, f.cards.join(", "))),
+    item("Token cap", p.tokenCap.toLocaleString("en-US")),
+    ...p.newRoles.map((r) => item(`New role: ${r.title} (${r.id}, ${r.department})`, r.prompt, ' class="co-prompt"')),
+  ].join("")}</dl>`;
+}
 
 function rowHtml(r: NeedRow, busy: (key: string) => boolean): string {
   const job = r.jobId ? ` data-job="${esc(r.jobId)}"` : "";
@@ -27,7 +37,7 @@ function rowHtml(r: NeedRow, busy: (key: string) => boolean): string {
     : r.kind === "paused" ? btn("raise", "Add 1M tokens")
     : r.kind === "merge" ? open + btn("finish", "Mark done")
     : open + (r.standing ? btn("dismiss", "Dismiss", ` data-key="${esc(r.key)}"`) : "");
-  return `<li class="co-row co-${r.kind}"><b>${esc(r.title)}</b>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}${buttons ? `<div>${buttons}</div>` : ""}</li>`;
+  return `<li class="co-row co-${r.kind}"><b>${esc(r.title)}</b>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}${r.plan ? planHtml(r.plan) : ""}${buttons ? `<div>${buttons}</div>` : ""}</li>`;
 }
 
 const personHtml = (p: Person) =>
@@ -75,7 +85,7 @@ export function createCompanyPanel() {
       return;
     }
 
-    const needs = needsYou(s.jobs, companyAlerts());
+    const needs = needsYou(s.jobs, companyAlerts(), { floors: s.company.floors, roles: s.roles });
     box.placeholder = needs.some((r) => r.kind === "plan") ? WHY_HINT : ASK_HINT;
 
     const founder = s.company.people.filter((p) => p.rank === "founder");

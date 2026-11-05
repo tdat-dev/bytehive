@@ -27,6 +27,13 @@ describe("composePrompt", () => {
   });
 });
 
+describe("the Founder's laws", () => {
+  it("say a new role goes in the plan, for the owner to read", () => {
+    expect(FOUNDER_LAWS).toContain("newRoles");
+    expect(FOUNDER_LAWS).not.toContain("role_propose");
+  });
+});
+
 describe("nodeRunsCompany", () => {
   it.each(["v22.13.0", "v22.13.0\r\n", "v22.14.1\n", "v23.0.0", "v100.1.0"])("takes %j", (v) => {
     expect(nodeRunsCompany(v)).toBe(true);

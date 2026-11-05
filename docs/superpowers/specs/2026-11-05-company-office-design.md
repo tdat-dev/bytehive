@@ -144,7 +144,7 @@ Giới hạn mặc định: 5 người mỗi Việc, 5 người dưới một Le
 
 Danh mục vai trò khởi đầu: Founder, Lead, Developer, QA, Designer, Marketing, Copywriter, Researcher. Bản mặc định đi cùng app, bản của bạn ở `~/.bytehive/company/roles` và được ưu tiên.
 
-Nếu chưa có vai trò phù hợp, Founder viết bản nháp role (prompt, chọn skill từ danh sách cài sẵn, tool). Thẻ duyệt hiện đủ nội dung. Duyệt xong role được lưu để dùng lại.
+Nếu chưa có vai trò phù hợp, Founder viết bản nháp role ngay trong kế hoạch: `job_plan` nhận `newRoles` (id, title, department, prompt). Không có tool hay yêu cầu riêng cho việc này, vì người được thuê chạy skip permissions nên không gì được lưu trước khi bạn đọc. Role nháp luôn là staff, chạy Claude, không cấm tool, không có skill; app bỏ qua mọi trường khác và từ chối id sai luật, id đã có, id `founder`. Thẻ duyệt hiện người thuê theo vai trò và tầng, tên card theo tầng, trần token và nguyên văn prompt của role mới. Duyệt xong role mới được lưu để dùng lại.
 
 Agent marketing claudekit trên máy có 32 cái đều gắn với GCare, nên chỉ dùng làm nguyên liệu và phải viết lại cho chung. Skill GCare chỉ gắn cho nhân sự ở tầng gcare.
 

@@ -295,6 +295,28 @@ describe("approve", () => {
   });
 });
 
+describe("a role the plan drafts", () => {
+  const file = (name: string) => io.files.get(`${ROOT}\\roles\\analyst\\${name}`);
+
+  it("is not on disk until the owner approves, and then the hire runs on it", async () => {
+    await waitingJob(drafting());
+    expect(file("role.json")).toBeUndefined();
+    await engine.approve(job().id);
+    expect(JSON.parse(file("role.json")!)).toMatchObject({ id: "analyst", rank: "staff", cli: "claude", denyTools: [] });
+    expect(file("prompt.md")).toBe(analyst.prompt);
+    const hire = engine.companyView()!.company.people.find((p) => p.role === "analyst")!;
+    expect(io.spawned).toContain(hire.name);
+    expect(io.files.get(`${ROOT}\\people\\${hire.id}\\prompt.md`)).toContain(analyst.prompt);
+  });
+
+  it("is never saved when the plan is sent back", async () => {
+    await waitingJob(drafting());
+    await engine.reject(job().id, "no");
+    expect(file("role.json")).toBeUndefined();
+    expect(engine.companyView()!.roles.map((r) => r.id)).not.toContain("analyst");
+  });
+});
+
 describe("reject", () => {
   it("leaves a running job alone", async () => {
     await waitingJob(planFor("a"));
@@ -470,7 +492,8 @@ describe("a company that won't load", () => {
   });
 });
 
-const analyst = { id: "analyst", title: "A", department: "A", rank: "staff", cli: "claude", denyTools: [], look: { shirt: "#fff", hair: "#000", prop: "none" }, prompt: "p", skills: [] };
+const analyst = { id: "analyst", title: "A", department: "A", prompt: "Reads numbers and says what they mean." };
+const drafting = (): JobPlan => ({ summary: "s", cards: [], hires: [{ role: "analyst", floor: "a" }], newRoles: [analyst] });
 
 describe("a disk that refuses to save", () => {
   const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
@@ -499,14 +522,24 @@ describe("a disk that refuses to save", () => {
     spy.mockRestore();
   });
 
-  it("carries out a request's effects when tick cannot save", async () => {
+  it("takes a request in memory when tick cannot save", async () => {
     const spy = quiet();
+    await engine.giveJob("do it");
     io.saveFails = true;
-    await request({ type: "role", ts: 1, from: "founder", job: "J-0001", role: analyst });
-    expect(io.files.get(`${ROOT}\\roles\\analyst\\role.json`)).toContain("analyst");
-    expect(engine.companyView()!.roles.map((r) => r.id)).toContain("analyst");
+    await request({ type: "plan", ts: 1, from: "founder", job: "J-0001", plan: drafting() });
+    expect(job().status).toBe("awaiting-plan");
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it("saves a new role and tells the Founder when one cannot be written", async () => {
+    await waitingJob(drafting());
+    const real = io.files.set.bind(io.files);
+    io.files.set = (k, v) => { if (k.endsWith("roles\\analyst\\prompt.md")) throw { Failed: "disk full" }; return real(k, v); };
+    await engine.approve(job().id);
+    io.files.set = real;
+    expect(job().status).toBe("running");
+    expect(spoken()).toContain("analyst was not saved: disk full");
   });
 
   it("tells the Founder a plan was sent back even when reject cannot save", async () => {
@@ -537,8 +570,9 @@ describe("a disk that refuses to save", () => {
     await engine.initCompany();
     await vi.advanceTimersByTimeAsync(1500); // the first tick notes that requests.jsonl isn't there yet
     io.saveFails = false;
-    await request({ type: "role", ts: 1, from: "founder", job: "J-0001", role: analyst });
-    expect(engine.companyView()!.roles.map((r) => r.id)).toContain("analyst");
+    await engine.giveJob("do it");
+    await request({ type: "plan", ts: 1, from: "founder", job: "J-0001", plan: drafting() });
+    expect(job().status).toBe("awaiting-plan");
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });

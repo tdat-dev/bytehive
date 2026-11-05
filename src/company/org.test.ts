@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyHires, canMessage, emptyCompany, floorId, personByName, reportsOf, resolveTargets, validatePlan, validRoleId } from "./org";
+import { applyHires, canMessage, emptyCompany, floorId, fromDraft, personByName, planCap, reportsOf, resolveTargets, validatePlan, validRoleId } from "./org";
 import { DEFAULT_LIMITS, FOUNDER_ID, type Company, type JobPlan, type Person, type RoleDef } from "./types";
 
 const role = (id: string, rank: "lead" | "staff"): RoleDef => ({
@@ -85,6 +85,48 @@ describe("validatePlan", () => {
   });
 });
 
+describe("validatePlan with new roles", () => {
+  const analyst = { id: "data-analyst", title: "Analyst", department: "Data", prompt: "Reads numbers and says what they mean." };
+  const hire = { role: "data-analyst", floor: "a" };
+
+  it("knows a role the plan drafts", () => {
+    expect(validatePlan(company([]), plan({ newRoles: [analyst], hires: [hire] }), roles)).toEqual([]);
+  });
+  it("tells the Founder how to add a role that does not exist", () => {
+    expect(validatePlan(company([]), plan({ hires: [hire] }), roles).join()).toContain("newRoles");
+  });
+  it.each(["a", "Analyst", "9lives", "..\\evil", "a b", `a${"b".repeat(31)}`, "con", "lpt1"])("refuses the id %s", (id) => {
+    expect(validatePlan(company([]), plan({ newRoles: [{ ...analyst, id }] }), roles).join()).toContain(`Role ${id} refused`);
+  });
+  it("refuses a draft with no id at all", () => {
+    expect(validatePlan(company([]), plan({ newRoles: [{ ...analyst, id: undefined as unknown as string }] }), roles)).not.toEqual([]);
+  });
+  it("refuses an id that exists, so a plan can't rewrite a role", () => {
+    expect(validatePlan(company([]), plan({ newRoles: [{ ...analyst, id: "developer" }] }), roles).join()).toContain("exists");
+  });
+  it("refuses the id founder even when no such role is loaded", () => {
+    expect(validatePlan(company([]), plan({ newRoles: [{ ...analyst, id: FOUNDER_ID }] }), roles).join()).toContain("Role founder refused");
+  });
+  it("refuses the same id twice in one plan", () => {
+    expect(validatePlan(company([]), plan({ newRoles: [analyst, analyst] }), roles).join()).toContain("twice");
+  });
+  it.each(["title", "department", "prompt"])("refuses a draft with an empty %s: the owner has to read it", (field) => {
+    expect(validatePlan(company([]), plan({ newRoles: [{ ...analyst, [field]: "  " }] }), roles).join()).toContain(field);
+  });
+  it("counts a drafted role as staff, whatever its JSON says", () => {
+    const forged = { ...analyst, rank: "lead" } as typeof analyst;
+    const errors = validatePlan(company([]), plan({ newRoles: [forged], hires: [hire, hire] }), roles);
+    expect(errors.join()).toContain("needs a Lead");
+  });
+});
+
+describe("fromDraft", () => {
+  it("gives a drafted role the plain rights, whatever its JSON asks for", () => {
+    const forged = { id: "x1", title: "T", department: "D", prompt: "P", rank: "founder", cli: "powershell", denyTools: ["Read"], skills: ["evil"] };
+    expect(fromDraft(forged)).toMatchObject({ id: "x1", title: "T", department: "D", prompt: "P", rank: "staff", cli: "claude", denyTools: [], skills: [] });
+  });
+});
+
 describe("applyHires", () => {
   it("reports a lone hire to the Founder", () => {
     const { hired } = applyHires(company([]), plan({ hires: [{ role: "marketing", floor: "a" }] }), roles, pick);
@@ -98,6 +140,14 @@ describe("applyHires", () => {
     expect(lead.boss).toBe(FOUNDER_ID);
     expect(next.people.find((p) => p.id === "d1")!.boss).toBe(lead.id);
     expect(hired.find((p) => p.rank === "staff")!.boss).toBe(lead.id);
+  });
+});
+
+describe("planCap", () => {
+  it("is the plan's cap inside the owner's limit", () => {
+    expect(planCap(plan({ tokenCap: 900 }), 1000)).toBe(900);
+    expect(planCap(plan({ tokenCap: 9000 }), 1000)).toBe(1000);
+    expect(planCap(plan({}), 1000)).toBe(1000);
   });
 });
 

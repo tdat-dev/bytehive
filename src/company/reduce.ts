@@ -2,14 +2,12 @@
 /* Everything that changes the company, as plain functions: state in, state and
  * effects out. engine.ts runs the effects. The app re-checks every rule here,
  * because a request is only a line in a file. */
-import { applyHires, canMessage, personById, personByName, validatePlan, validRoleId } from "./org";
+import { applyHires, canMessage, fromDraft, personById, personByName, planCap, validatePlan } from "./org";
 import { FOUNDER_ID, type Company, type CompanyRequest, type Job, type Person, type RoleDef } from "./types";
 
 export interface State { company: Company; jobs: Job[]; roles: RoleDef[] }
 
-export type Effect =
-  | { kind: "deliver"; personId: string; text: string }
-  | { kind: "save-role"; role: RoleDef };
+export type Effect = { kind: "deliver"; personId: string; text: string };
 
 const jobId = (n: number) => `J-${String(n).padStart(4, "0")}`;
 const patch = (s: State, id: string, change: Partial<Job>): State => ({
@@ -46,12 +44,6 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   }
   if (from.rank !== "founder") return none;
   const refuse = (text: string) => ({ state: s, effects: [tellFounder(text)] });
-  if (r.type === "role") {
-    if (!validRoleId(r.role.id)) return refuse(`Role ${r.role.id} refused: an id is 2 to 31 lowercase letters, digits or dashes, starting with a letter.`);
-    if (s.roles.some((x) => x.id === r.role.id)) return refuse(`Role ${r.role.id} refused: that role exists already. Use it, or propose another id.`);
-    const role: RoleDef = { ...r.role, rank: "staff", cli: "claude", denyTools: [] };
-    return { state: { ...s, roles: [...s.roles, role] }, effects: [{ kind: "save-role", role }] };
-  }
   const job = s.jobs.find((j) => j.id === r.job);
   if (!job) return none;
   if (r.type === "plan") {
@@ -69,9 +61,9 @@ export function approvePlan(
   s: State,
   id: string,
   pick: { name: (taken: string[]) => string; id: () => string },
-): { state: State; hired: Person[]; rewired: Person[]; effects: Effect[] } {
+): { state: State; hired: Person[]; rewired: Person[]; saved: RoleDef[]; effects: Effect[] } {
   const job = s.jobs.find((j) => j.id === id);
-  if (!job?.plan || job.status !== "awaiting-plan") return { state: s, hired: [], rewired: [], effects: [] };
+  if (!job?.plan || job.status !== "awaiting-plan") return { state: s, hired: [], rewired: [], saved: [], effects: [] };
   // It passed on arrival, but the company may have changed while it waited.
   const errors = validatePlan(s.company, job.plan, s.roles);
   if (errors.length) {
@@ -79,10 +71,14 @@ export function approvePlan(
       state: patch(s, id, { status: "planning", plan: null }),
       hired: [],
       rewired: [],
+      saved: [],
       effects: [tellFounder(`Plan for ${id} no longer holds: ${errors.join(" ")} Make a new plan with job_plan.`)],
     };
   }
-  const { company, hired } = applyHires(s.company, job.plan, s.roles, pick);
+  // The owner has read them now: from here a drafted role is a role.
+  const saved = (job.plan.newRoles ?? []).map(fromDraft);
+  const roles = [...s.roles, ...saved];
+  const { company, hired } = applyHires(s.company, job.plan, roles, pick);
   const names = hired.map((p) => `${p.name} (${p.role})`).join(", ");
   // Whoever a card names works this Job as much as a new hire does, and so does
   // the Lead of its floor, who hands it out and reviews it.
@@ -91,9 +87,9 @@ export function approvePlan(
     const lead = company.people.find((p) => p.floor === c.floor && p.rank === "lead");
     return [named?.id, lead?.id].filter((x): x is string => !!x);
   });
-  const state = patch({ ...s, company }, id, {
+  const state = patch({ ...s, company, roles }, id, {
     status: "running",
-    tokenCap: Math.min(job.plan.tokenCap ?? job.tokenCap, job.tokenCap), // the owner's limit, never the Founder's
+    tokenCap: planCap(job.plan, job.tokenCap), // the owner's limit, never the Founder's
     people: [...new Set([...job.people, ...hired.map((p) => p.id), ...onCards])],
   });
   // A new Lead takes over the floor. Whoever was there keeps a session that says
@@ -105,7 +101,7 @@ export function approvePlan(
     text: `[From Founder] You have a new boss: ${p.boss ? personById(company, p.boss)?.name : "nobody"}. Take your cards from them and report to them from now on.`,
   }));
   const text = `Plan for ${id} approved.${names ? ` Hired: ${names}.` : ""} The cards are on the boards. Brief the Lead of each floor, or the person working alone there.`;
-  return { state, hired, rewired, effects: [...notices, tellFounder(text)] };
+  return { state, hired, rewired, saved, effects: [...notices, tellFounder(text)] };
 }
 
 /** Add someone who picked up a card of a running Job. */
