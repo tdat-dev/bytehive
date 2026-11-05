@@ -49,6 +49,9 @@ describe("store", () => {
     expect(writes.slice(0, -1).every((k) => k !== key("R", "company.json"))).toBe(true);
     expect([...files.keys()]).toEqual([key("R", "company.json")]);
   });
+  it("reads a file saved with a byte order mark, as Windows editors do", () => {
+    expect(parseCompany(`﻿${JSON.stringify({ version: 1, people: [], floors: [] })}`).version).toBe(1);
+  });
   it("refuses a corrupt file instead of starting over", () => {
     expect(() => parseCompany("{oops")).toThrow();
   });

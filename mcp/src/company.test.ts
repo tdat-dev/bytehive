@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { floorDir, planAsFounder, proposeRole, queueRequest, readCompany, sendAsMember, statusFor } from "./company.js";
+import { floorDir, planAsFounder, proposeRole, queueRequest, readCompany, readRoles, sendAsMember, statusFor } from "./company.js";
 
 let root: string;
 const look = { shirt: "#fff", hair: "#000", prop: "none" };
@@ -28,6 +28,14 @@ const lines = () => fs.readFileSync(path.join(root, "requests.jsonl"), "utf8").t
 describe("company MCP", () => {
   it("reads the roster", () => {
     expect(readCompany(root)?.people.length).toBe(3);
+  });
+  it("reads files saved with a byte order mark, as Windows editors do", () => {
+    for (const f of ["company.json", path.join("roles", "developer", "role.json")]) {
+      const at = path.join(root, f);
+      fs.writeFileSync(at, `﻿${fs.readFileSync(at, "utf8")}`);
+    }
+    expect(readCompany(root)?.people.length).toBe(3);
+    expect(readRoles(root).map((r) => r.id)).toEqual(["developer"]);
   });
   it("queues a message to the boss when no target is given", () => {
     expect(sendAsMember(root, "d1", undefined, "done", 5)).toBe("sent to Hai");

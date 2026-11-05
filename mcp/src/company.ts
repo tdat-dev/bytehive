@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { personById, resolveTargets, validatePlan, validRoleId } from "../../src/company/org";
+import { parseOwned, personById, resolveTargets, validatePlan, validRoleId } from "../../src/company/org";
 import type { Company, CompanyRequest, JobPlan, RoleDef } from "../../src/company/types";
 import { appendLine } from "./fleet.js";
 
@@ -13,7 +13,7 @@ export const companyRoot = (home = os.homedir()) => path.join(home, ".bytehive",
 
 export function readCompany(root: string): Company | null {
   try {
-    return JSON.parse(fs.readFileSync(path.join(root, "company.json"), "utf8")) as Company;
+    return parseOwned<Company>(fs.readFileSync(path.join(root, "company.json"), "utf8"));
   } catch {
     return null;
   }
@@ -25,7 +25,7 @@ export function readRoles(root: string): RoleDef[] {
   const out: RoleDef[] = [];
   for (const id of fs.readdirSync(dir)) {
     try {
-      const def = JSON.parse(fs.readFileSync(path.join(dir, id, "role.json"), "utf8")) as Omit<RoleDef, "prompt">;
+      const def = parseOwned<Omit<RoleDef, "prompt">>(fs.readFileSync(path.join(dir, id, "role.json"), "utf8"));
       out.push({ ...def, prompt: fs.readFileSync(path.join(dir, id, "prompt.md"), "utf8") });
     } catch { /* an incomplete role is not offered */ }
   }

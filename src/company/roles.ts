@@ -1,6 +1,7 @@
 /* The roles ByteHive ships with. A copy lands in ~/.bytehive/company/roles the
  * first time, and that copy wins, so a role you edit stays edited. */
 import { fsReadDir, fsReadFile } from "../ipc";
+import { parseOwned } from "./org";
 import { writeNew } from "./store";
 import type { RoleDef } from "./types";
 
@@ -35,7 +36,7 @@ export async function loadRoles(root: string): Promise<RoleDef[]> {
   const out: RoleDef[] = [];
   for (const e of await fsReadDir(root, "roles")) {
     try {
-      const def = JSON.parse((await fsReadFile(root, `roles\\${e.name}\\role.json`)).content) as Omit<RoleDef, "prompt">;
+      const def = parseOwned<Omit<RoleDef, "prompt">>((await fsReadFile(root, `roles\\${e.name}\\role.json`)).content);
       out.push({ ...def, prompt: (await fsReadFile(root, `roles\\${e.name}\\prompt.md`)).content });
     } catch { /* a role folder missing a file is not offered */ }
   }

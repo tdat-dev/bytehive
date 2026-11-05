@@ -1,7 +1,7 @@
 /* company.json and the Job files. Only the app writes these; the MCP server
  * sends requests instead, so two processes never write the same file. */
 import { fsCreateDir, fsCreateFile, fsReadDir, fsReadFile, fsRename, fsWriteFile } from "../ipc";
-import { emptyCompany } from "./org";
+import { emptyCompany, parseOwned } from "./org";
 import type { Company, Job } from "./types";
 
 const COMPANY_REL = "company.json";
@@ -30,7 +30,7 @@ export async function writeNew(root: string, rel: string, content: string): Prom
 }
 
 export function parseCompany(text: string): Company {
-  const c = JSON.parse(text) as Company;
+  const c = parseOwned<Company>(text);
   if (c?.version !== 1 || !Array.isArray(c.people) || !Array.isArray(c.floors)) throw new Error("company.json has the wrong shape");
   return c;
 }

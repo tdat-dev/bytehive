@@ -5,6 +5,9 @@ import { DEFAULT_LIMITS, FOUNDER_ID, type Company, type JobPlan, type Person, ty
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** JSON from a file the owner may have edited: Windows editors can start it with a byte order mark. */
+export const parseOwned = <T>(text: string): T => JSON.parse(text.replace(/^﻿/, "")) as T;
+
 export function emptyCompany(): Company {
   const founder: Person = {
     id: FOUNDER_ID, name: "Founder", role: "founder", rank: "founder", floor: null, boss: null,
