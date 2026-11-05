@@ -407,7 +407,9 @@ async function doingCards(): Promise<WatchedCard[]> {
   const out: WatchedCard[] = [];
   const inDoing = new Set<string>();
   let readAll = true;
-  for (const floor of state?.company.floors ?? []) {
+  // Every open project is a floor: only one with people on it can hold a Job's card.
+  const floors = state?.company.floors.filter((f) => state?.company.people.some((p) => p.floor === f.id)) ?? [];
+  for (const floor of floors) {
     const file = await readBoardFile(floor.dir).catch(() => { readAll = false; return null; });
     const doing = file?.board.lists.find((l) => l.title.trim().toLowerCase() === "doing");
     for (const c of doing?.cards ?? []) {

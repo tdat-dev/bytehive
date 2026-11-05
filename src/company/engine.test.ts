@@ -19,6 +19,7 @@ const io = vi.hoisted(() => ({
   gate: null as Promise<void> | null,
   saveFails: false,
   usage: new Map<string, { fresh: number | null }>(),
+  boardReads: [] as string[],
   node: "v22.13.0\r\n" as string | null,
 }));
 
@@ -66,6 +67,7 @@ vi.mock("../agentcost", () => ({
 }));
 vi.mock("../boardfile", () => ({
   readBoardFile: async (dir: string) => {
+    io.boardReads.push(dir);
     if (io.readFails.has(dir)) throw io.readFails.get(dir);
     const board = io.boards.get(dir);
     return board ? { board: structuredClone(board), mtime: 1 } : null;
@@ -544,6 +546,13 @@ describe("watching a running job", () => {
     io.usage.set(id, { fresh: after });
     await vi.advanceTimersByTimeAsync(30_000);
   }
+
+  it("only reads the boards of floors with people on them", async () => {
+    await running();
+    io.boardReads.length = 0;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(io.boardReads).toEqual(["D:\\a"]);
+  });
 
   it("counts the fresh tokens a person adds from when they were first seen", async () => {
     const ana = await running();
