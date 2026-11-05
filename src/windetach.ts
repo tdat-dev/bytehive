@@ -10,6 +10,7 @@ import { destroyWindow, openDetachWindow, onAppEvent, emitAppEvent } from "./ipc
 import { type Workspace, type AgentSpec } from "./panetypes";
 import { workspaces } from "./appstate";
 import { dropWorkspace } from "./workspace";
+import { topNote } from "./hint";
 
 // Hand-off payload written to localStorage (shared across this app's windows)
 // and consumed once by the new window's boot path.
@@ -73,6 +74,11 @@ function releaseWorkspace(ws: Workspace) {
  *  the new window re-attaches to their PTYs (`pty_attach`) and the backend
  *  replays the recent scrollback. This window just drops its tab. */
 export async function detachWorkspace(ws: Workspace) {
+  // The Company runs in the main window. A member it can't see any more, it starts again.
+  if ([...ws.panes.values()].some((p) => p.spec.personId)) {
+    topNote("This project has people from the Company in it, so it stays in the main window.", 6000);
+    return;
+  }
   const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const payload = buildDetachPayload(ws);
   try {

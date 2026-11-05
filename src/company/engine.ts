@@ -62,7 +62,10 @@ export function companyView() { return state; }
 export const companyError = () => loadError;
 
 /** Where the company runs, when that isn't here. */
-export const companyElsewhere = (): string | null => (elsewhere ? "The Company is running in another ByteHive window." : null);
+export function companyElsewhere(): string | null {
+  if (new URLSearchParams(location.search).has("detach")) return "The Company runs in the main window.";
+  return elsewhere ? "The Company is running in another ByteHive window." : null;
+}
 
 let queue: Promise<unknown> = Promise.resolve();
 

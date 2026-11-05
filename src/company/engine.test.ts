@@ -440,6 +440,17 @@ describe("floors", () => {
   });
 });
 
+describe("a detached window", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  it("says the Company runs in the main window", () => {
+    vi.stubGlobal("location", { search: "?detach=abc" });
+    expect(engine.companyElsewhere()).toBe("The Company runs in the main window.");
+  });
+  it("has nothing to say in the main window", () => {
+    expect(engine.companyElsewhere()).toBeNull();
+  });
+});
+
 describe("two running apps", () => {
   const LOCK = `${ROOT}\\engine.lock`;
   const lock = () => JSON.parse(io.files.get(LOCK)!) as { pid: number; at: number };
