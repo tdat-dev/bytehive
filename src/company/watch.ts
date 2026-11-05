@@ -10,6 +10,7 @@ export interface Alert {
   personId: string | null;
   text: string;
   level: "warn" | "stop";
+  standing?: boolean; // stays until dismissed, see alerts.ts
 }
 
 export interface WatchedCard {

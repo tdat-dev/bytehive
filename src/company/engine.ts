@@ -16,6 +16,7 @@ import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type Effect, type State } from "./reduce";
+import { clearAlert, onStandingChange, standingAlerts } from "./alerts";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
 import { loadRoles, seedRoles, skillFiles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
@@ -46,6 +47,7 @@ const listeners = new Set<() => void>();
 
 export const onCompanyChange = (fn: () => void) => { listeners.add(fn); };
 const changed = () => listeners.forEach((fn) => fn());
+onStandingChange(changed);
 
 export function companyView() { return state; }
 
@@ -463,7 +465,8 @@ async function watch(): Promise<void> {
   await run([...work.effects, ...paused]);
 }
 
-export const companyAlerts = () => alerts;
+export const companyAlerts = (): Alert[] => [...standingAlerts(), ...alerts];
+export const dismissAlert = clearAlert;
 
 /** The owner has merged what a Job made: close it. */
 export const finishJob = (id: string): Promise<void> => enqueue(async () => {

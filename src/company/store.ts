@@ -1,6 +1,7 @@
 /* company.json and the Job files. Only the app writes these; the MCP server
  * sends requests instead, so two processes never write the same file. */
 import { fsCreateDir, fsCreateFile, fsReadDir, fsReadFile, fsRename, fsWriteFile } from "../ipc";
+import { raiseAlert } from "./alerts";
 import { emptyCompany, parseOwned } from "./org";
 import type { Company, Job } from "./types";
 
@@ -51,7 +52,18 @@ export async function saveCompany(root: string, c: Company): Promise<void> {
   await fsRename(root, COMPANY_TMP_REL, COMPANY_REL);
 }
 
-export const saveJob = (root: string, job: Job) => writeNew(root, `jobs\\${job.id}.json`, JSON.stringify(job, null, 2));
+/** Through a temp file, like company.json: a write cut short must not cost a Job. */
+export async function saveJob(root: string, job: Job): Promise<void> {
+  const tmp = `jobs\\${job.id}.json.tmp`;
+  await writeNew(root, tmp, JSON.stringify(job, null, 2));
+  await fsRename(root, tmp, `jobs\\${job.id}.json`);
+}
+
+function parseJob(text: string): Job {
+  const j = parseOwned<Job>(text);
+  if (typeof j?.id !== "string" || typeof j.status !== "string" || !Array.isArray(j.people)) throw new Error("not a job");
+  return j;
+}
 
 export async function loadJobs(root: string): Promise<Job[]> {
   await ensureDirs(root, "jobs");
@@ -60,8 +72,10 @@ export async function loadJobs(root: string): Promise<Job[]> {
   for (const e of entries) {
     if (e.is_dir || !e.name.endsWith(".json")) continue;
     try {
-      out.push(JSON.parse((await fsReadFile(root, `jobs\\${e.name}`)).content) as Job);
-    } catch { /* a half-written Job is read again next start */ }
+      out.push(parseJob((await fsReadFile(root, `jobs\\${e.name}`)).content));
+    } catch {
+      raiseAlert(`job-file-${e.name}`, `The job file ${e.name} could not be read. It was left in place: mend it and restart ByteHive.`);
+    }
   }
   return out.sort((a, b) => a.createdAt - b.createdAt);
 }

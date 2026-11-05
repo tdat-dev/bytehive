@@ -6,6 +6,13 @@ import type { Job } from "./types";
 const job = (over: Partial<Job>): Job => ({ id: "J-1", title: "Add login", ask: "a", status: "running", plan: null, tokenCap: 1, tokensUsed: 0, tokenBase: {}, people: [], createdAt: 1, ...over });
 
 describe("needsYou", () => {
+  it("says which alerts stand until you dismiss them", () => {
+    const rows = needsYou([], [
+      { key: "a", job: null, personId: null, text: "file", level: "warn", standing: true },
+      { key: "b", job: "J-1", personId: null, text: "stuck", level: "warn" },
+    ]);
+    expect(rows.map((r) => r.standing)).toEqual([true, false]);
+  });
   it("is empty while work just runs", () => {
     expect(needsYou([job({})], [])).toEqual([]);
   });

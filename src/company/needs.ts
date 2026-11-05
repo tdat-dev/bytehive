@@ -10,6 +10,7 @@ export interface NeedRow {
   personId: string | null;
   title: string;
   detail: string;
+  standing?: boolean;
 }
 
 const ORDER: Record<NeedRow["kind"], number> = { plan: 0, paused: 1, alert: 2, merge: 3 };
@@ -33,7 +34,7 @@ export function needsYou(jobs: Job[], alerts: Alert[]): NeedRow[] {
   }
   for (const a of alerts) {
     if (a.level === "stop") continue; // a paused Job already has its row
-    rows.push({ key: a.key, kind: "alert", jobId: a.job, personId: a.personId, title: a.text, detail: "" });
+    rows.push({ key: a.key, kind: "alert", jobId: a.job, personId: a.personId, title: a.text, detail: "", standing: !!a.standing });
   }
   return rows.sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
 }

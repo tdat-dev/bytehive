@@ -2,7 +2,7 @@
 /* Temporary home of the company until the 3D office replaces it: give the
  * Founder a job, act on what needs you, see who works where. */
 import "./panel.css";
-import { approve, companyAlerts, companyError, companyView, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject } from "./engine";
+import { approve, companyAlerts, companyError, companyView, dismissAlert, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject } from "./engine";
 import { needsYou, type NeedRow } from "./needs";
 import type { Person } from "./types";
 
@@ -26,7 +26,7 @@ function rowHtml(r: NeedRow, busy: (key: string) => boolean): string {
     r.kind === "plan" ? btn("approve", "Approve") + btn("reject", "Send back")
     : r.kind === "paused" ? btn("raise", "Add 1M tokens")
     : r.kind === "merge" ? open + btn("finish", "Mark done")
-    : open;
+    : open + (r.standing ? btn("dismiss", "Dismiss", ` data-key="${esc(r.key)}"`) : "");
   return `<li class="co-row co-${r.kind}"><b>${esc(r.title)}</b>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}${buttons ? `<div>${buttons}</div>` : ""}</li>`;
 }
 
@@ -138,6 +138,7 @@ export function createCompanyPanel() {
         const job = b.dataset.job ?? "";
         const kind = b.dataset.act;
         if (kind === "open") openPerson(b.dataset.person ?? "");
+        else if (kind === "dismiss") dismissAlert(b.dataset.key ?? "");
         else if (kind === "approve") void act(`approve:${job}`, () => approve(job));
         else if (kind === "reject") {
           const note = box.value;

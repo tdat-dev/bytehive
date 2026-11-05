@@ -7,11 +7,14 @@ const eng = vi.hoisted(() => ({
   approve: vi.fn(),
   giveJob: vi.fn(),
   finishJob: vi.fn(),
+  alerts: [] as unknown[],
+  dismissAlert: vi.fn(),
 }));
 vi.mock("./engine", () => ({
   companyView: () => eng.view,
   companyError: () => eng.error,
-  companyAlerts: () => [],
+  companyAlerts: () => eng.alerts,
+  dismissAlert: eng.dismissAlert,
   onCompanyChange: () => {},
   openPerson: () => {},
   approve: eng.approve,
@@ -37,7 +40,7 @@ const mount = () => {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("company panel", () => {
-  beforeEach(() => { document.body.innerHTML = ""; eng.view = null; eng.error = null; eng.approve.mockReset(); eng.giveJob.mockReset(); eng.finishJob.mockReset(); });
+  beforeEach(() => { document.body.innerHTML = ""; eng.view = null; eng.error = null; eng.alerts = []; eng.dismissAlert.mockReset(); eng.approve.mockReset(); eng.giveJob.mockReset(); eng.finishJob.mockReset(); });
 
   it("says it is starting, then shows a load failure", () => {
     const el = mount();
@@ -113,6 +116,19 @@ describe("company panel", () => {
     expect(row.querySelector('[data-act="open"]')?.getAttribute("data-person")).toBe("p1");
     row.querySelector<HTMLButtonElement>('[data-act="finish"]')!.click();
     expect(eng.finishJob).toHaveBeenCalledWith("J-1");
+  });
+
+  it("offers Dismiss on an alert that stands, and only there", () => {
+    eng.view = { ...state(), jobs: [] };
+    eng.alerts = [
+      { key: "file", job: null, personId: null, text: "J-1.json could not be read.", level: "warn", standing: true },
+      { key: "stuck", job: null, personId: "p1", text: "It is stuck.", level: "warn" },
+    ];
+    const el = mount();
+    const buttons = [...el.querySelectorAll<HTMLElement>('[data-act="dismiss"]')];
+    expect(buttons.map((b) => b.dataset.key)).toEqual(["file"]);
+    buttons[0].click();
+    expect(eng.dismissAlert).toHaveBeenCalledWith("file");
   });
 
   it("escapes what jobs, roles and people write", () => {

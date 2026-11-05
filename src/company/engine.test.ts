@@ -395,6 +395,27 @@ describe("floors", () => {
   });
 });
 
+describe("a job file that can't be read", () => {
+  it("raises an alert and stays where it is, and the rest of the company starts", async () => {
+    await engine.giveJob("do it");
+    io.files.set(`${ROOT}\\jobs\\J-0009.json`, "{ half");
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    expect(engine.companyView()!.jobs.map((j) => j.id)).toEqual(["J-0001"]);
+    expect(engine.companyAlerts()).toEqual([expect.objectContaining({ text: expect.stringContaining("J-0009.json") })]);
+    expect(io.files.get(`${ROOT}\\jobs\\J-0009.json`)).toBe("{ half");
+  });
+  it("goes away when you dismiss it", async () => {
+    io.files.set(`${ROOT}\\jobs\\J-0009.json`, "{ half");
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    engine.dismissAlert(engine.companyAlerts()[0].key);
+    expect(engine.companyAlerts()).toEqual([]);
+  });
+});
+
 describe("a company that won't load", () => {
   it("keeps the error, and never writes over the file", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
