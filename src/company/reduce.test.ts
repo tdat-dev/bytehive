@@ -70,6 +70,12 @@ describe("applyRequest", () => {
   it("marks a finished job for merge", () => {
     expect(applyRequest(running(), { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state.jobs[0]).toMatchObject({ status: "awaiting-merge", summary: "ok" });
   });
+  it("ignores a request type it does not know, even from the Founder", () => {
+    const s = running();
+    const r = applyRequest(s, { type: "mystery", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" } as never);
+    expect(r).toEqual({ state: s, effects: [] });
+    expect(r.state.jobs[0].status).toBe("running");
+  });
   it("refuses a second plan on a running job, so nobody is hired twice", () => {
     const s = running();
     const r = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan });

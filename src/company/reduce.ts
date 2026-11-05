@@ -56,6 +56,7 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
     if (errors.length) return refuse(`Plan for ${r.job} refused: ${errors.join(" ")}`);
     return { state: patch(s, r.job, { status: "awaiting-plan", plan: r.plan }), effects: [] };
   }
+  if (r.type !== "job-done") return none;
   if (job.status !== "running") return refuse(`${r.job} cannot be finished: it is ${job.status}, and only a running job can.`);
   return { state: patch(s, r.job, { status: "awaiting-merge", summary: r.summary }), effects: [] };
 }
