@@ -3,6 +3,7 @@
   "title": "Researcher",
   "department": "Research",
   "rank": "staff",
+  "cli": "claude",
   "denyTools": [],
   "look": {
     "shirt": "#3ad29f",

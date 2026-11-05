@@ -3,6 +3,7 @@
   "title": "Marketing",
   "department": "Marketing",
   "rank": "staff",
+  "cli": "claude",
   "denyTools": [],
   "look": {
     "shirt": "#e0913a",

@@ -3,6 +3,7 @@
   "title": "Founder",
   "department": "Management",
   "rank": "founder",
+  "cli": "claude",
   "denyTools": [
     "Edit",
     "Write",

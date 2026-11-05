@@ -3,6 +3,7 @@
   "title": "Designer",
   "department": "Design",
   "rank": "staff",
+  "cli": "claude",
   "denyTools": [],
   "look": {
     "shirt": "#ff6b6b",

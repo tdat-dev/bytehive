@@ -3,6 +3,7 @@
   "title": "Team Lead",
   "department": "Management",
   "rank": "lead",
+  "cli": "claude",
   "denyTools": [
     "Edit",
     "Write",

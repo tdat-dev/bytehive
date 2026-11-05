@@ -3,6 +3,7 @@
   "title": "Developer",
   "department": "Engineering",
   "rank": "staff",
+  "cli": "claude",
   "denyTools": [],
   "look": {
     "shirt": "#5fd08a",

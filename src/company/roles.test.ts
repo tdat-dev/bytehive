@@ -7,6 +7,12 @@ describe("default roles", () => {
       ["copywriter", "designer", "developer", "founder", "lead", "marketing", "qa", "researcher"],
     );
   });
+  it("names the CLI every role runs on", () => {
+    for (const r of DEFAULT_ROLES) {
+      expect(typeof r.cli).toBe("string");
+      expect(r.cli.length).toBeGreaterThan(0);
+    }
+  });
   it("gives every role a prompt", () => {
     for (const r of DEFAULT_ROLES) expect(r.prompt.length).toBeGreaterThan(80);
   });
