@@ -15,7 +15,7 @@ import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
-import { applyRequest, approvePlan, newJob, pauseJob, rejectPlan, reportFailures, resumeJob, type Effect, type State } from "./reduce";
+import { applyRequest, approvePlan, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type Effect, type State } from "./reduce";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
 import { loadRoles, seedRoles, skillFiles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
@@ -429,6 +429,15 @@ async function watch(): Promise<void> {
 }
 
 export const companyAlerts = () => alerts;
+
+/** The owner has merged what a Job made: close it. */
+export const finishJob = (id: string): Promise<void> => enqueue(async () => {
+  if (!state) return;
+  const next = closeJob(state, id);
+  if (next === state) return;
+  state = next;
+  await tryPersist(state.jobs.filter((j) => j.id === id));
+});
 
 /** Give a paused Job more tokens and let it carry on. */
 export const raiseCap = (id: string, extra: number): Promise<void> => enqueue(async () => {

@@ -100,6 +100,13 @@ export function resumeJob(s: State, id: string, extra: number): State {
   return patch(s, id, { status: "running", tokenCap: job.tokenCap + extra });
 }
 
+/** The owner has reviewed and merged what a Job made: it is done. Only a Job
+ *  that is waiting for that can be closed. */
+export function closeJob(s: State, id: string): State {
+  if (s.jobs.find((j) => j.id === id)?.status !== "awaiting-merge") return s;
+  return patch(s, id, { status: "done" });
+}
+
 /** Add what went wrong while carrying out a plan to what the Founder is told. */
 export function reportFailures(effects: Effect[], failed: string[]): Effect[] {
   if (!failed.length) return effects;

@@ -19,6 +19,10 @@ describe("needsYou", () => {
     const rows = needsYou([job({ status: "awaiting-merge", summary: "Done" }), job({ id: "J-2", status: "paused" })], []);
     expect(rows.map((r) => r.kind)).toEqual(["paused", "merge"]);
   });
+  it("lets a merge row open the first person of the job", () => {
+    const rows = needsYou([job({ status: "awaiting-merge", people: ["p1", "p2"] }), job({ id: "J-2", status: "awaiting-merge" })], []);
+    expect(rows.map((r) => r.personId)).toEqual(["p1", null]);
+  });
   it("puts plans first, then stops, then the rest", () => {
     const rows = needsYou([job({ status: "awaiting-merge" }), job({ id: "J-2", status: "awaiting-plan", plan: { summary: "s", cards: [], hires: [] } })], [
       { key: "k", job: "J-1", personId: "d1", text: "stuck", level: "warn" },

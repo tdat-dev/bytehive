@@ -1,6 +1,6 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, newJob, pauseJob, rejectPlan, reportFailures, resumeJob, type State } from "./reduce";
+import { applyRequest, approvePlan, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type State } from "./reduce";
 import { emptyCompany } from "./org";
 import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
 
@@ -216,5 +216,19 @@ describe("pauseJob and resumeJob", () => {
     const s = running();
     expect(resumeJob(s, "J-0001", 1000)).toBe(s);
     expect(resumeJob(s, "J-9999", 1000)).toBe(s);
+  });
+});
+
+describe("closeJob", () => {
+  const merging = () => applyRequest(running(), { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state;
+  it("moves a job waiting for merge to done", () => {
+    expect(closeJob(merging(), "J-0001").jobs[0].status).toBe("done");
+  });
+  it("refuses a job that is not waiting for merge, or does not exist", () => {
+    const s = running();
+    expect(closeJob(s, "J-0001")).toBe(s);
+    expect(closeJob(s, "J-9999")).toBe(s);
+    const done = closeJob(merging(), "J-0001");
+    expect(closeJob(done, "J-0001")).toBe(done);
   });
 });

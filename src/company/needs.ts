@@ -28,7 +28,7 @@ export function needsYou(jobs: Job[], alerts: Alert[]): NeedRow[] {
       rows.push({ key: `paused-${j.id}`, kind: "paused", jobId: j.id, personId: null, title: `Paused: ${j.title}`, detail: "It reached its token cap." });
     }
     if (j.status === "awaiting-merge") {
-      rows.push({ key: `merge-${j.id}`, kind: "merge", jobId: j.id, personId: null, title: `Review and merge: ${j.title}`, detail: j.summary ?? "" });
+      rows.push({ key: `merge-${j.id}`, kind: "merge", jobId: j.id, personId: j.people[0] ?? null, title: `Review and merge: ${j.title}`, detail: j.summary ?? "" });
     }
   }
   for (const a of alerts) {

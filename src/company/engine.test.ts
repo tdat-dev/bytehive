@@ -550,6 +550,19 @@ describe("watching a running job", () => {
     expect(job()).toMatchObject({ status: "paused", tokenCap: 1000 });
   });
 
+  it("closes a job that waits for merge, and only that", async () => {
+    await running(1000);
+    await engine.finishJob("J-0001");
+    expect(job().status).toBe("running");
+    await request({ type: "job-done", ts: 5, from: "founder", job: "J-0001", summary: "ok" });
+    expect(job().status).toBe("awaiting-merge");
+    await engine.finishJob("J-0001");
+    expect(job().status).toBe("done");
+    expect(stored().status).toBe("done");
+    await engine.finishJob("J-9999");
+    expect(job().status).toBe("done");
+  });
+
   it("does not raise the cap of a job that is not paused", async () => {
     await running(1000);
     await engine.raiseCap("J-0001", 5000);
