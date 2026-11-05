@@ -279,14 +279,18 @@ const ASK_LINES = 40;
  *  one this can't read, and typing anyway beats losing the job. */
 const PROMPT_WAIT_MS = 2 * 60_000;
 
+/** What the pane shows now. On a tall pane the buffer's last lines are the blank
+ *  rows under what a new CLI has drawn, so the screen itself is what to read. */
+const paneScreen = (pane: Pane) => pane.term.screen?.() ?? pane.term.snapshot(ASK_LINES);
+
 /** Whether the CLI in this pane is showing a question, which an Enter would answer. */
 export function paneAsking(pane: Pane): boolean {
-  return !!parseAsk(pane.term.snapshot(ASK_LINES));
+  return !!parseAsk(paneScreen(pane));
 }
 
 /** Whether this pane is ready to be typed into. Only Claude draws a box to look for. */
 export function paneAtPrompt(pane: Pane): boolean {
-  return pane.spec.badge !== "claude" || composerDrawn(pane.term.snapshot(ASK_LINES));
+  return pane.spec.badge !== "claude" || composerDrawn(paneScreen(pane));
 }
 
 /** Settings → Agents: how long a new CLI gets to reach its prompt. */

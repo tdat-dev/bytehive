@@ -154,6 +154,32 @@ describe("paneAsking", () => {
   });
 });
 
+describe("on a tall pane", () => {
+  /** A terminal `rows` high: what is drawn sits at the top, blank rows below it,
+   *  and snapshot(40) only reads the buffer's last 40 lines. */
+  const tall = (rows: number, text: string, badge = "claude") => {
+    const lines = [...text.split("\n"), ...Array(rows).fill("")].slice(0, rows);
+    const term = {
+      snapshot: (n = 40) => lines.slice(-n).join("\n"),
+      screen: () => lines.join("\n"),
+    };
+    return { id: "p1", running: true, spec: { name: "Ana", badge }, term } as unknown as Pane;
+  };
+  const BOX = "──────────────\n> \n──────────────";
+
+  it.each([52, 60, 120])("sees Claude's box on %i rows, drawn above the last 40", (rows) => {
+    expect(paneAtPrompt(tall(rows, BOX))).toBe(true);
+  });
+  it.each([52, 60, 120])("sees a question on %i rows", (rows) => {
+    expect(paneAsking(tall(rows, TRUST))).toBe(true);
+  });
+  it("still reads a terminal with no screen of its own", () => {
+    const { pane } = setup({ text: BOX });
+    pane.spec.badge = "claude";
+    expect(paneAtPrompt(pane)).toBe(true);
+  });
+});
+
 describe("spawnPerson", () => {
   it("finds the repo for the member without touching the project's setting", async () => {
     const ws = { dir: "D:\\a", repoRoot: null, isolated: false, panes: new Map() } as unknown as Workspace;
