@@ -64,15 +64,16 @@ export function approvePlan(
   s: State,
   id: string,
   pick: { name: (taken: string[]) => string; id: () => string },
-): { state: State; hired: Person[]; effects: Effect[] } {
+): { state: State; hired: Person[]; rewired: Person[]; effects: Effect[] } {
   const job = s.jobs.find((j) => j.id === id);
-  if (!job?.plan || job.status !== "awaiting-plan") return { state: s, hired: [], effects: [] };
+  if (!job?.plan || job.status !== "awaiting-plan") return { state: s, hired: [], rewired: [], effects: [] };
   // It passed on arrival, but the company may have changed while it waited.
   const errors = validatePlan(s.company, job.plan, s.roles);
   if (errors.length) {
     return {
       state: patch(s, id, { status: "planning", plan: null }),
       hired: [],
+      rewired: [],
       effects: [tellFounder(`Plan for ${id} no longer holds: ${errors.join(" ")} Make a new plan with job_plan.`)],
     };
   }
@@ -85,8 +86,16 @@ export function approvePlan(
     tokenCap: job.plan.tokenCap ?? job.tokenCap,
     people: [...new Set([...job.people, ...hired.map((p) => p.id), ...named])],
   });
+  // A new Lead takes over the floor. Whoever was there keeps a session that says
+  // otherwise, and would refuse the Lead's orders until they hear it.
+  const rewired = company.people.filter((p) => personById(s.company, p.id) && personById(s.company, p.id)?.boss !== p.boss);
+  const notices = rewired.map((p): Effect => ({
+    kind: "deliver",
+    personId: p.id,
+    text: `[From Founder] You have a new boss: ${p.boss ? personById(company, p.boss)?.name : "nobody"}. Take your cards from them and report to them from now on.`,
+  }));
   const text = `Plan for ${id} approved.${names ? ` Hired: ${names}.` : ""} The cards are on the boards. Brief the Lead of each floor, or the person working alone there.`;
-  return { state, hired, effects: [tellFounder(text)] };
+  return { state, hired, rewired, effects: [...notices, tellFounder(text)] };
 }
 
 /** Stop a running Job, usually because it reached its token cap. */
@@ -113,7 +122,7 @@ export function closeJob(s: State, id: string): State {
 export function reportFailures(effects: Effect[], failed: string[]): Effect[] {
   if (!failed.length) return effects;
   const note = ` But this went wrong: ${failed.join(" ")}`;
-  return effects.map((e) => (e.kind === "deliver" ? { ...e, text: e.text + note } : e));
+  return effects.map((e) => (e.kind === "deliver" && e.personId === FOUNDER_ID ? { ...e, text: e.text + note } : e));
 }
 
 export function rejectPlan(s: State, id: string, note: string): { state: State; effects: Effect[] } {

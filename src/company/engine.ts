@@ -280,6 +280,19 @@ async function startHires(hired: Person[]): Promise<string[]> {
   return failed;
 }
 
+/** What a person's prompt says about their boss changes with the floor: whoever
+ *  restarts reads the file again. Gives back whose could not be written. */
+async function refreshPrompts(people: Person[]): Promise<string[]> {
+  const failed: string[] = [];
+  for (const p of people) {
+    const role = state?.roles.find((r) => r.id === p.role);
+    if (!state || !role) continue;
+    await writeNew(root, `people\\${p.id}\\prompt.md`, composePrompt(p, role, state.company))
+      .catch((e) => failed.push(`${p.name}'s prompt was not updated: ${reason(e)}.`));
+  }
+  return failed;
+}
+
 /** Every pane's name: deliverTask finds a pane by name in its project, so a new
  *  hire must not share one with an agent that isn't in the company. */
 const paneNames = () => [...workspaces.values()].flatMap((ws) => [...ws.panes.values()].map((p) => p.spec.name));
@@ -300,7 +313,7 @@ export const approve = (id: string): Promise<void> => enqueue(async () => {
   } catch (e) {
     failed.push(`${job.id} could not be saved: ${reason(e)}.`);
   }
-  failed.push(...await placeCards(job), ...await startHires(r.hired));
+  failed.push(...await refreshPrompts(r.rewired), ...await placeCards(job), ...await startHires(r.hired));
   await run(reportFailures(r.effects, failed));
 });
 

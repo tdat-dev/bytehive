@@ -141,6 +141,17 @@ describe("approvePlan and rejectPlan", () => {
     s.jobs[0].plan = { ...plan, cards: [{ floor: "a", title: "t", desc: "d", checklist: [], assignee: "Linh" }] };
     expect(approvePlan(s, "J-0001", pick).state.jobs[0].people).toEqual(["p9", "d1"]);
   });
+  it("tells staff who get a new boss from a new Lead, and says who was moved", () => {
+    const s = waiting();
+    const alone: Person = { ...dev, id: "d2", name: "Mai", floor: "b", boss: FOUNDER_ID };
+    s.company.people.push(alone);
+    s.roles.push({ ...role, id: "lead", rank: "lead" });
+    s.jobs[0].plan = { ...plan, hires: [{ role: "lead", floor: "b" }] };
+    const r = approvePlan(s, "J-0001", pick);
+    expect(r.rewired.map((p) => [p.name, p.boss])).toEqual([["Mai", "p9"]]);
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: "d2", text: expect.stringContaining("Vy") });
+    expect(r.effects[1]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID });
+  });
   it("uses the plan's token cap when it has one", () => {
     const s = waiting();
     s.jobs[0].plan = { ...plan, tokenCap: 900 };
@@ -199,6 +210,10 @@ describe("reportFailures", () => {
     expect(reportFailures(told, ["Vy did not start.", "No cards on b."])[0]).toMatchObject({
       text: expect.stringMatching(/^Plan approved\..*Vy did not start\. No cards on b\.$/),
     });
+  });
+  it("tells only the Founder", () => {
+    const staff = { kind: "deliver" as const, personId: "d1", text: "New boss." };
+    expect(reportFailures([staff, ...told], ["Vy did not start."])[0]).toBe(staff);
   });
 });
 

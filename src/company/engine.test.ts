@@ -146,6 +146,17 @@ beforeEach(async () => {
 afterEach(() => { vi.useRealTimers(); });
 
 describe("approve", () => {
+  it("rewrites the prompt of someone a new Lead becomes boss of, so a restart reads the truth", async () => {
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] });
+    await engine.approve(job().id);
+    const staff = engine.companyView()!.company.people.find((p) => p.rank === "staff")!;
+    await engine.giveJob("a lead");
+    await request({ type: "plan", ts: 1, from: "founder", job: job(1).id, plan: { summary: "s", cards: [], hires: [{ role: "lead", floor: "a" }] } });
+    await engine.approve(job(1).id);
+    const lead = engine.companyView()!.company.people.find((p) => p.rank === "lead")!;
+    expect(io.files.get(`${ROOT}\\people\\${staff.id}\\prompt.md`)).toContain(`Your boss is ${lead.name}.`);
+  });
+
   it("places the cards once, however many clicks", async () => {
     await waitingJob(planFor("a"));
     await Promise.all([engine.approve(job().id), engine.approve(job().id)]);
