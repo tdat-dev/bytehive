@@ -67,6 +67,7 @@ export interface CardInput {
   labels?: string[];
   due?: string | null;
   checklist?: string[];
+  job?: string; // the company Job it belongs to, for the app to watch
 }
 
 function validateLabels(labels: string[] | undefined): void {
@@ -97,6 +98,7 @@ export function addCard(board: Board, listRef: string, input: CardInput): Card {
     labels: input.labels ?? [],
     due: input.due ?? null,
     checklist: mkChecklist(input.checklist ?? []),
+    ...(input.job?.trim() ? { job: input.job.trim() } : {}),
   };
   list.cards.push(card);
   return card;

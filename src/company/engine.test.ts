@@ -610,6 +610,15 @@ describe("watching a running job", () => {
     expect(io.boardReads).toEqual(["D:\\a"]);
   });
 
+  it("watches a card a Lead added with its job, and its assignee joins the job", async () => {
+    await running();
+    const board = io.boards.get("D:\\a") as Board;
+    board.lists.find((l) => l.title === "Doing")!.cards.push({ id: "lead-card", title: "Added later", desc: "", labels: [], due: null, checklist: [], job: "J-0001", assignee: "Founder", assigneeId: "founder" });
+    await vi.advanceTimersByTimeAsync(10 * 60_000 + 30_000);
+    expect(job().people).toContain("founder");
+    expect(engine.companyAlerts().map((a) => a.text).join()).toContain("Added later"); // nobody above the Founder to nudge
+  });
+
   it("counts the fresh tokens a person adds from when they were first seen", async () => {
     const ana = await running();
     io.usage.set(ana.id, { fresh: 400 });

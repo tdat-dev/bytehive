@@ -132,10 +132,11 @@ export function createServer(dir: string): McpServer {
         labels: labelsSchema,
         due: z.string().optional().describe("Due date, yyyy-mm-dd"),
         checklist: z.array(z.string()).optional().describe("Checklist item texts"),
+        job: z.string().optional().describe("Members of the company: the job this card belongs to, like J-0142"),
       },
     },
-    async ({ list, title, desc, labels, due, checklist }) =>
-      mutate((b) => addCard(b, list, { title, desc, labels, due, checklist })),
+    async ({ list, title, desc, labels, due, checklist, job }) =>
+      mutate((b) => addCard(b, list, { title, desc, labels, due, checklist, job })),
   );
 
   server.registerTool(

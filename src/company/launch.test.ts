@@ -40,6 +40,12 @@ describe("what the Founder is told about open jobs", () => {
   });
 });
 
+describe("what a Lead is told about their own cards", () => {
+  it("says to pass the job to card_add", () => {
+    expect(LEAD_LAWS).toMatch(/card_add.*job/);
+  });
+});
+
 describe("nodeRunsCompany", () => {
   it.each(["v22.13.0", "v22.13.0\r\n", "v22.14.1\n", "v23.0.0", "v100.1.0"])("takes %j", (v) => {
     expect(nodeRunsCompany(v)).toBe(true);

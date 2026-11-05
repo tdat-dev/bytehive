@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { defaultBoard } from "./board.js";
 import { addCard, markDone, moveCard } from "./ops.js";
 
+describe("a card's Job", () => {
+  it("is kept when one is given", () => {
+    expect(addCard(defaultBoard(), "To do", { title: "fix bug", job: "J-0007" }).job).toBe("J-0007");
+  });
+  it("is left off when none is given, or it is blank", () => {
+    expect(addCard(defaultBoard(), "To do", { title: "fix bug" })).not.toHaveProperty("job");
+    expect(addCard(defaultBoard(), "To do", { title: "fix bug", job: "  " })).not.toHaveProperty("job");
+  });
+});
+
 describe("actor identity", () => {
   it("markDone stamps done.by", () => {
     const b = defaultBoard();
