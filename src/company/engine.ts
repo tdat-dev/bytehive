@@ -351,6 +351,8 @@ export async function initCompany(): Promise<void> {
     // Nothing is lost: the next change saves it again.
     console.error(`[bytehive] the company could not be saved: ${reason(e)}`);
   }
+  // A session restarts on the file it was given: after an update that is old laws.
+  for (const failed of await refreshPrompts(state.company.people)) console.error(`[bytehive] ${failed}`);
   changed();
   const next = () => window.setTimeout(() => void enqueue(tick).catch(() => {}).finally(next), TICK_MS);
   next();

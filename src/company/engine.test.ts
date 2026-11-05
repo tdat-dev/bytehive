@@ -145,6 +145,20 @@ beforeEach(async () => {
 });
 afterEach(() => { vi.useRealTimers(); });
 
+describe("starting the app", () => {
+  it("brings everyone's prompt up to date: a session restarts on the file it was given", async () => {
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] });
+    await engine.approve(job().id);
+    const staff = engine.companyView()!.company.people.find((p) => p.rank === "staff")!;
+    const file = `${ROOT}\\people\\${staff.id}\\prompt.md`;
+    io.files.set(file, "laws from an older version");
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    expect(io.files.get(file)).toContain(`Your name is ${staff.name}.`);
+  });
+});
+
 describe("approve", () => {
   it("rewrites the prompt of someone a new Lead becomes boss of, so a restart reads the truth", async () => {
     await waitingJob({ summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] });
