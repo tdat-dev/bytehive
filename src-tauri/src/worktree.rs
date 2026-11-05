@@ -114,7 +114,7 @@ fn write_shared_cargo_target(worktree_parent: &Path, repo_root: &str) {
     let _ = std::fs::write(&cfg, body);
 }
 
-fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
+pub(crate) fn git(args: &[&str], cwd: &str) -> Result<String, CommandError> {
     let mut cmd = Command::new("git");
     cmd.args(args).current_dir(cwd);
     #[cfg(windows)]

@@ -16,6 +16,12 @@ export function needsWorktree(ws: Pick<Workspace, "isolated" | "repoRoot">, spec
   return !!ws.repoRoot && !spec.worktree && (ws.isolated || !!spec.personId);
 }
 
+/** Whether ByteHive says yes to Claude's "trust this folder?" for this agent. The
+ *  owner approved a member's hire, and nobody stands by its pane to answer. */
+export function trustsFolder(spec: Pick<AgentSpec, "personId" | "badge">): boolean {
+  return !!spec.personId && spec.badge === "claude";
+}
+
 /** Whether two folder paths name the same folder (case and trailing separator aside). */
 export function sameFolder(a: string | null | undefined, b: string | null | undefined): boolean {
   const norm = (p: string) => p.replace(/[\\/]+$/, "").replace(/\//g, "\\").toLowerCase();

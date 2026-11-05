@@ -503,6 +503,11 @@ export async function gitRepoRoot(dir: string): Promise<string | null> {
 }
 
 /** Create a worktree on `branch` off HEAD of `repoRoot`; returns its path. */
+/** Tell Claude this folder is trusted, so it starts there without asking. */
+export async function claudeTrustFolder(dir: string): Promise<void> {
+  await invoke("claude_trust_folder", { dir });
+}
+
 export async function worktreeAdd(repoRoot: string, branch: string): Promise<string> {
   return invoke<string>("worktree_add", { repoRoot, branch });
 }

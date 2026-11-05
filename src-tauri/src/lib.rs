@@ -1,5 +1,6 @@
 pub mod adopt;
 pub mod browser;
+pub mod claudetrust;
 pub mod commands;
 pub mod core;
 pub mod dashauth;
@@ -148,6 +149,7 @@ pub fn run() {
             commands::claude_sessions,
             commands::claude_sessions_everywhere,
             commands::claude_sessions_in,
+            claudetrust::claude_trust_folder,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,

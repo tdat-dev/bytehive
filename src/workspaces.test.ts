@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm, needsWorktree } from "./workspaces";
+import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm, needsWorktree, trustsFolder } from "./workspaces";
+
+describe("trustsFolder", () => {
+  it("answers Claude's folder question for a member: the owner approved the hire", () => {
+    expect(trustsFolder({ personId: "p1", badge: "claude" })).toBe(true);
+  });
+  it("leaves it to you for your own agents", () => {
+    expect(trustsFolder({ badge: "claude" })).toBe(false);
+  });
+  it("only Claude asks it", () => {
+    expect(trustsFolder({ personId: "p1", badge: "codex" })).toBe(false);
+  });
+});
 
 describe("needsWorktree", () => {
   const repo = { isolated: false, repoRoot: "D:\\app" };

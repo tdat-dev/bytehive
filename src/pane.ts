@@ -11,6 +11,7 @@ import {
   killPty,
   spawnPty,
   claudeSessionExists,
+  claudeTrustFolder,
   attachPty,
   openExternal,
   worktreeAdd,
@@ -28,7 +29,7 @@ import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { taskLine, taskOf } from "./tasks";
 import { getPref } from "./prefs";
-import { basename, runDir, agentEnv, needsWorktree } from "./workspaces";
+import { basename, runDir, agentEnv, needsWorktree, trustsFolder } from "./workspaces";
 import { homeDir } from "@tauri-apps/api/path";
 
 let home: Promise<string> | null = null;
@@ -328,6 +329,7 @@ export function createAgent(
       // silent default), so the chat view reads the transcript of this run.
       cwd = runDir({ worktree: spec.worktree, cwd }, await homeFolder());
       spec.ranIn = cwd;
+      if (trustsFolder(spec)) await claudeTrustFolder(cwd).catch((e) => console.error(`[bytehive] Claude's folder question stays: ${onErrMsg(e)}`));
       // Enforce ByteHive's protocol at the system-prompt level so a Claude agent
       // MUST follow it (not a soft MCP hint, not a button). The director gets the
       // dispatch prompt; every other Claude gets the plan-first worker one.
