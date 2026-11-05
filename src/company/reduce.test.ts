@@ -139,12 +139,15 @@ describe("approvePlan and rejectPlan", () => {
   it("counts someone already here who a card names as working the job", () => {
     const s = waiting();
     s.jobs[0].plan = { ...plan, cards: [{ floor: "a", title: "t", desc: "d", checklist: [], assignee: "Linh" }] };
-    expect(approvePlan(s, "J-0001", pick).state.jobs[0].people).toEqual(["p9", "d1"]);
+    expect(approvePlan(s, "J-0001", pick).state.jobs[0].people).toEqual(["p9", "d1", "l1"]);
   });
-  it("counts the floor's Lead on a card with nobody named: they run that card", () => {
+  it("counts the Lead of every floor with a card: they run the floor, whoever does the card", () => {
     const s = waiting();
     s.jobs[0].plan = { ...plan, hires: [], cards: [{ floor: "a", title: "t", desc: "d", checklist: [] }] };
     expect(approvePlan(s, "J-0001", pick).state.jobs[0].people).toEqual(["l1"]);
+    const named = waiting();
+    named.jobs[0].plan = { ...plan, hires: [], cards: [{ floor: "a", title: "t", desc: "d", checklist: [], assignee: "Linh" }] };
+    expect(approvePlan(named, "J-0001", pick).state.jobs[0].people).toEqual(["d1", "l1"]);
   });
   it("tells staff who get a new boss from a new Lead, and says who was moved", () => {
     const s = waiting();
