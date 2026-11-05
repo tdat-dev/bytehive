@@ -19,6 +19,7 @@ const io = vi.hoisted(() => ({
   gate: null as Promise<void> | null,
   saveFails: false,
   usage: new Map<string, { fresh: number | null }>(),
+  node: true,
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -54,6 +55,7 @@ vi.mock("../ipc", () => ({
     return { text: text.slice(from), next: text.length, from, size: text.length };
   },
   fsTruncateIfSize: async () => false,
+  programsOnPath: async (names: string[]) => names.map((n) => n === "node" && io.node),
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return true; },
 }));
 vi.mock("../agentcost", () => ({
@@ -141,6 +143,7 @@ beforeEach(async () => {
   io.gate = null;
   io.saveFails = false;
   io.usage.clear();
+  io.node = true;
   for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
   engine = await import("./engine");
   await engine.initCompany();
@@ -159,6 +162,22 @@ describe("the MCP server a member gets", () => {
     const pane = [...workspaces.values()].flatMap((w) => [...w.panes.values()]).find((p) => p.spec.personId === "founder")!;
     expect(pane.spec.args[pane.spec.args.indexOf("--mcp-config") + 1]).toBe(at);
     expect(pane.spec.args).not.toContain("--strict-mcp-config"); // the owner's other servers keep working
+  });
+});
+
+describe("giving a job without Node", () => {
+  it("says what is missing and starts nothing", async () => {
+    io.node = false;
+    await expect(engine.giveJob("do it")).rejects.toThrow("ByteHive needs Node.js to run the Company.");
+    expect(engine.companyView()!.jobs).toEqual([]);
+    expect(io.spawned).toEqual([]);
+  });
+  it("looks again next time: Node may have been installed since", async () => {
+    io.node = false;
+    await engine.giveJob("do it").catch(() => {});
+    io.node = true;
+    await engine.giveJob("do it");
+    expect(engine.companyView()!.jobs).toHaveLength(1);
   });
 });
 

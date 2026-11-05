@@ -3,7 +3,7 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { fsCreateDir, sendMessage } from "../ipc";
+import { fsCreateDir, programsOnPath, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, nameForNewPane, effectiveArgs } from "../crew";
@@ -217,6 +217,9 @@ function syncFloors(): void {
 
 export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   if (!state || !ask.trim()) return;
+  // Every member's MCP server runs on it: without Node the Founder has no job_plan.
+  const [node] = await programsOnPath(["node"]);
+  if (!node) throw new Error("ByteHive needs Node.js to run the Company.");
   syncFloors();
   const r = newJob(state, ask, Date.now());
   state = r.state;

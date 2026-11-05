@@ -143,4 +143,14 @@ describe("company panel", () => {
     expect(box.value).toBe("Add search");
     expect(el.querySelector("[data-msg]")?.textContent).toBe("no Founder");
   });
+
+  it("says in plain words when Node is missing", async () => {
+    eng.view = state();
+    eng.giveJob.mockRejectedValueOnce(new Error("ByteHive needs Node.js to run the Company."));
+    const el = mount();
+    el.querySelector("textarea")!.value = "Add search";
+    el.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await tick();
+    expect(el.querySelector("[data-msg]")?.textContent).toBe("ByteHive needs Node.js to run the Company.");
+  });
 });
