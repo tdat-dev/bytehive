@@ -167,7 +167,7 @@ export function createServer(dir: string): McpServer {
       },
     },
     async ({ card, to_list, position }) =>
-      mutate((b) => moveCard(b, card, to_list, position, agentName)),
+      mutate((b) => moveCard(b, card, to_list, position, agentName, personId)),
   );
 
   server.registerTool(

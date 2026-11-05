@@ -17,6 +17,13 @@ describe("actor identity", () => {
     expect(card.assignee).toBe("Claude Code #1");
   });
 
+  it("moveCard to Doing records who claimed it by id too, for a member of the company", () => {
+    const b = defaultBoard();
+    addCard(b, "To do", { title: "fix bug" });
+    const card = moveCard(b, "fix bug", "Doing", undefined, "Dot", "p7");
+    expect(card).toMatchObject({ assignee: "Dot", assigneeId: "p7" });
+  });
+
   it("moveCard never overwrites an existing assignee", () => {
     const b = defaultBoard();
     const c = addCard(b, "To do", { title: "fix bug" });

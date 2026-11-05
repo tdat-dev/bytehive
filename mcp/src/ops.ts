@@ -124,6 +124,7 @@ export function moveCard(
   toListRef: string,
   position?: number,
   actor?: string,
+  actorId?: string,
 ): Card {
   const found = resolveCard(board, cardRef);
   const target = resolveOrCreateList(board, toListRef);
@@ -134,8 +135,10 @@ export function moveCard(
       : Math.max(0, Math.min(position, target.cards.length));
   target.cards.splice(pos, 0, found.card);
   // An agent moving a card into Doing claims it (never steals an assignment).
-  if (actor && !found.card.assignee && norm(target.title) === "doing")
+  if (actor && !found.card.assignee && norm(target.title) === "doing") {
     found.card.assignee = actor;
+    if (actorId) found.card.assigneeId = actorId; // the app watches a Job's cards by id
+  }
   // A Job card going back from Review or Done is a return: a Lead that keeps
   // sending the same card back is a loop the app wants to hear about.
   if (found.card.job && ["done", "review"].includes(norm(found.list.title)) && ["doing", "to do"].includes(norm(target.title)))
