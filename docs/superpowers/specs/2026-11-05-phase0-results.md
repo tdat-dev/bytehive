@@ -67,20 +67,27 @@ window not minimized throughout; a separate rAF counter ran at about 60 per seco
 
 | # | Gate | Result | Verdict |
 |---|------|--------|---------|
-| 1 | Moving scene, 10 New agent modal open/close, 20 project switches (10 round trips, alpha and beta), 10 window resizes: `over200` must be 0 | Two valid runs: `over200` 0 and 0, `maxGap` 100 ms and 100 ms, `longMax` 105 ms and 94 ms, `lost` 0. An earlier run had 1 gap of 266 ms during the modal phase (right after spawning the 12 shells); its resize phase was invalid (script bug gave the window a 65535 px height) | PASS (see notes) |
+| 1 | Moving scene, 10 New agent modal open/close, 20 project switches (10 round trips, alpha and beta), 10 window resizes: `over200` must be 0 | Two valid runs: `over200` 0 and 0, `maxGap` 100 ms and 100 ms, `longMax` 105 ms and 94 ms, `lost` 0. An earlier run had 1 gap of 266 ms during the modal phase (right after spawning the 12 shells); its resize phase was invalid (script bug gave the window a 65535 px height) | PASS in 2 of 3 runs (see notes) |
 | 2 | Scene still, 1 hour idle: `lost` 0, or restored within 2 s | 19:59 to 20:59 local, sampled every minute: `lost` 0, `restored` 0, `isContextLost()` false at every sample and at the end, `over200` 0, `maxGap` 99 ms. Screenshot at the end shows the scene drawn | PASS |
-| 3 | Scene still, CPU of the app process tree for 1 minute: under 5% | 12.5 CPU-s in 60 s over 31 processes = 20.8% of one core = 1.74% of all 12 cores (WebView2 16.8% of a core, bytehive-dev 3.6%, shells 0.4%). Control with the canvas hidden: 1.90% of all cores | PASS |
+| 3 | Scene still, CPU of the app process tree for 1 minute: under 5% | 12.5 CPU-s in 60 s over 31 processes = 20.8% of one core = 1.74% of all 12 cores (the pass rests on dividing by all 12 cores; as a share of one core it is 20.8%, which is over 5%) (WebView2 16.8% of a core, bytehive-dev 3.6%, shells 0.4%). Control with the canvas hidden: 1.90% of all cores | PASS, on the all-cores figure |
 
 No fallback (OffscreenCanvas in a Worker, second Tauri window) was needed.
 
 ## Notes
 
-- The earlier freeze (src/terminal.ts:124) did not reproduce with a separate three.js canvas next to DOM-rendered
-  terminals. Terminals in this app use the DOM renderer, not xterm's WebGL addon, which is a different case.
+- Gate 1 passed in 2 of 3 runs. The first run had one 266 ms gap in the modal phase, right after spawning the 12
+  shells; the cause was not measured. A user opening the New agent modal right after spawning agents is a normal
+  case, so re-measure it in Phase 2.
+- The earlier freeze (src/terminal.ts:124) was triggered by the glow when toggling a crew card in the spawn modal
+  while xterm WebGL canvases were present. This test never toggled that glow and the terminals used the DOM
+  renderer, not xterm's WebGL addon, so that trigger is untested, not ruled out.
 - Gate 3: hiding the canvas costs the same CPU (1.9% vs 1.74%), so the scene adds about nothing when still. The
   1.7 to 1.9% is the app itself idle.
-- Not covered: a moving scene's CPU/GPU load was not measured, only its frame gaps; the canvas drawing buffer is
+- Not covered: the second half of gate 2 (context restored within 2 s) never ran, because no context was lost
+  in the hour, so how fast a lost context comes back is unknown; the crew card glow trigger above; a moving scene's CPU/GPU load was not measured, only its frame gaps; the canvas drawing buffer is
   sized once, so window resizes stretched it and did not reallocate it; the shells were idle and only one pane is
   visible at a time; no sleep/wake, display-off or GPU switch during the hour; no streaming agent output.
 - The window lost foreground focus at about minute 20 (someone used the machine) but stayed visible and rAF
   kept running, so the hour still counts.
+
+Bottom line: viable on this machine; re-measure with a resizing renderer and a streaming fleet in Phase 2.
