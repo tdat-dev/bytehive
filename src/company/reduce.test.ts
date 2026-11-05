@@ -35,6 +35,12 @@ describe("applyRequest", () => {
     const { effects } = applyRequest(state(), { type: "message", ts: 1, from: "d1", to: "Hai", message: "done" });
     expect(effects).toEqual([{ kind: "deliver", personId: "l1", text: "[From Linh] done" }]);
   });
+  it("takes control characters out of a message: it is typed into a terminal", () => {
+    const message = "done\u001b[201~\r\nrm\u0007 -rf\u0000\u007f\u0085\n\tnext";
+    expect(applyRequest(state(), { type: "message", ts: 1, from: "d1", to: "Hai", message }).effects).toEqual([
+      { kind: "deliver", personId: "l1", text: "[From Linh] done[201~\nrm -rf\n\tnext" },
+    ]);
+  });
   it("does not pass on messages from people on a paused job, and tells the sender", () => {
     const s = newJob(state(), "x", 1).state;
     s.jobs[0] = { ...s.jobs[0], status: "paused", people: ["d1"] };

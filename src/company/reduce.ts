@@ -19,6 +19,10 @@ const patch = (s: State, id: string, change: Partial<Job>): State => ({
 
 const tellFounder = (text: string): Effect => ({ kind: "deliver", personId: FOUNDER_ID, text });
 
+/** A message ends up typed into a terminal: an escape or a carriage return in it
+ *  would be a keypress there, not text. Line breaks and tabs are still text. */
+const typeable = (text: string) => text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+
 export function newJob(s: State, ask: string, now: number): { state: State; job: Job; effects: Effect[] } {
   const job: Job = {
     id: jobId(s.company.nextJob), title: ask.trim().split("\n")[0].slice(0, 80), ask, status: "planning", plan: null,
@@ -38,7 +42,7 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
     // Nothing reaches or leaves a paused Job's people: the message is dropped, and the sender is told so.
     const held = s.jobs.find((j) => j.status === "paused" && (j.people.includes(from.id) || j.people.includes(to.id)));
     if (held) return { state: s, effects: [{ kind: "deliver", personId: from.id, text: `Held: your job ${held.id} is paused, so your message to ${to.name} was not sent. Wait for it to be resumed.` }] };
-    return { state: s, effects: [{ kind: "deliver", personId: to.id, text: `[From ${from.name}] ${r.message}` }] };
+    return { state: s, effects: [{ kind: "deliver", personId: to.id, text: `[From ${from.name}] ${typeable(r.message)}` }] };
   }
   if (from.rank !== "founder") return none;
   const refuse = (text: string) => ({ state: s, effects: [tellFounder(text)] });
