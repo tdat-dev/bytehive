@@ -87,15 +87,19 @@ fn stale(lock: &Path, limit: Duration) -> bool {
         .is_some_and(|age| age > limit)
 }
 
+/// Whether a refused lock folder means somebody has it. Windows says
+/// PermissionDenied while a folder is on its way out, which is a Claude letting go.
+fn lock_contended(kind: ErrorKind) -> bool {
+    kind == ErrorKind::AlreadyExists || (cfg!(windows) && kind == ErrorKind::PermissionDenied)
+}
+
 fn take_lock(lock: PathBuf, wait: Duration, limit: Duration) -> Result<ConfigLock, CommandError> {
     let until = Instant::now() + wait;
     loop {
         match fs::create_dir(&lock) {
             Ok(()) => return Ok(ConfigLock(lock)),
-            Err(e) if e.kind() != ErrorKind::AlreadyExists => return Err(failed("Claude's config lock", e)),
-            Err(_) if stale(&lock, limit) => {
-                let _ = fs::remove_dir(&lock);
-            }
+            Err(e) if !lock_contended(e.kind()) => return Err(failed("Claude's config lock", e)),
+            Err(_) if stale(&lock, limit) && fs::remove_dir(&lock).is_ok() => {}
             Err(_) if Instant::now() >= until => return Err(failed("Claude's config", "another Claude is holding it")),
             Err(_) => sleep(LOCK_POLL),
         }
@@ -137,6 +141,11 @@ fn swap_with(file: &Path, text: &str, write: impl Fn(&Path, &str) -> std::io::Re
 /// a Claude that has never run starts with its own setup anyway.
 fn trust_in(file: &Path, key: &str, wait: Duration, limit: Duration) -> Result<(), CommandError> {
     if !file.exists() {
+        return Ok(());
+    }
+    // Most starts find the folder trusted already and never touch a file Claudes are
+    // busy with. A read that fails or looks torn is settled under the lock.
+    if fs::read_to_string(file).is_ok_and(|text| matches!(with_trust(&text, key), Ok(None))) {
         return Ok(());
     }
     let mut lock = file.as_os_str().to_owned();
@@ -265,6 +274,36 @@ mod tests {
         let tmp = dir.path().join("t");
         write_temp(&tmp, "{\"a\":1}").unwrap();
         assert_eq!(fs::read_to_string(&tmp).unwrap(), "{\"a\":1}");
+    }
+
+    #[test]
+    fn a_trusted_folder_needs_no_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(".claude.json");
+        fs::write(&file, r#"{"projects":{"D:/a":{"hasTrustDialogAccepted":true}}}"#).unwrap();
+        fs::create_dir(dir.path().join(".claude.json.lock")).unwrap();
+        trust_in(&file, "D:/a", NOW, LONG).unwrap();
+        assert!(dir.path().join(".claude.json.lock").exists());
+    }
+
+    #[test]
+    fn windows_refusing_the_lock_folder_counts_as_held() {
+        assert!(lock_contended(ErrorKind::AlreadyExists));
+        assert_eq!(lock_contended(ErrorKind::PermissionDenied), cfg!(windows));
+        assert!(!lock_contended(ErrorKind::NotFound));
+    }
+
+    #[test]
+    fn a_stale_lock_that_will_not_go_is_given_up_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(".claude.json");
+        fs::write(&file, "{}").unwrap();
+        let lock = dir.path().join(".claude.json.lock");
+        fs::create_dir(&lock).unwrap();
+        fs::write(lock.join("in-use"), "").unwrap(); // remove_dir refuses a folder with something in it
+        sleep(Duration::from_millis(30));
+        assert!(trust_in(&file, "D:/a", NOW, Duration::from_millis(1)).is_err());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "{}");
     }
 
     #[test]
