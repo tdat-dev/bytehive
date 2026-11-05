@@ -44,9 +44,7 @@ const labelsSchema = z
   .optional()
   .describe(`Label colour keys: ${LABELS.join("|")}`);
 
-const INSTRUCTIONS = `ByteHive board — how to work in this workspace.
-
-For any non-trivial task, plan on the board BEFORE implementing:
+const BOARD_STEPS = `For any non-trivial task, plan on the board BEFORE implementing:
 1. Call board_get to see the current lists and cards.
 2. Break the work into FEW, BIG tasks — one card per deliverable — and put the
    small concrete steps INSIDE each card as its checklist. Do NOT create one
@@ -54,7 +52,17 @@ For any non-trivial task, plan on the board BEFORE implementing:
    one-line desc, and the checklist array.
 3. Stop and let the user review (they move cards to "To do" to approve).
 4. While working: card_move your card to "Doing" when you start it, and
-   card_done with a one-line summary when it is finished.
+   card_done with a one-line summary when it is finished.`;
+
+/** A member of the company takes its cards from its boss: nobody reviews them first,
+ *  and waiting for a person who is not watching would stop the Job. */
+const MEMBER_STEPS = `Your boss gives you cards, and you do not wait for anyone's approval to start one.
+While working: card_move your card to "Doing" when you start it, and card_done
+with a one-line summary when it is finished.`;
+
+const instructions = (steps: string) => `ByteHive board: how to work in this workspace.
+
+${steps}
 
 Keep card titles stable so the board can track them. Use fleet_status to see
 the other agents here and fleet_send to hand work to a specific one.
@@ -78,9 +86,11 @@ hand-off. Answer the user in the language they used.
 ${BROWSER_INSTRUCTIONS}`;
 
 export function createServer(dir: string): McpServer {
+  // Set only for members of the company; everyone else keeps the flat fleet.
+  const personId = process.env.BYTEHIVE_AGENT_ID?.trim() || undefined;
   // The project's memory rides in the instructions, so an agent knows it
   // before its first tool call (read once, when the agent starts).
-  const server = new McpServer({ name: "bytehive", version: "0.1.0" }, { instructions: INSTRUCTIONS + memoryForInstructions(dir) });
+  const server = new McpServer({ name: "bytehive", version: "0.1.0" }, { instructions: instructions(personId ? MEMBER_STEPS : BOARD_STEPS) + memoryForInstructions(dir) });
 
   // ByteHive sets BYTEHIVE_AGENT=<pane name> on every terminal it spawns, so
   // board mutations can record which agent acted (done.by, claim-on-move).
@@ -88,8 +98,6 @@ export function createServer(dir: string): McpServer {
   // The board lives in the project (dir); card_done evidence is read where this
   // agent works, which for an isolated agent is its worktree.
   const runDir = evidenceDir(process.env, dir);
-  // Set only for members of the company; everyone else keeps the flat fleet.
-  const personId = process.env.BYTEHIVE_AGENT_ID?.trim() || undefined;
 
   /** load → mutate → save, mapping any thrown error to an isError tool result. */
   const mutate = (fn: (b: Board) => unknown): ToolResult => {

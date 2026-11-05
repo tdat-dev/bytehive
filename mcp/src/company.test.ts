@@ -80,6 +80,36 @@ describe("company MCP", () => {
   it("lists no jobs before there are any", () => {
     expect(statusFor(root, "founder")).toMatchObject({ jobs: [] });
   });
+  describe("what company_status shows", () => {
+    const other = { id: "l2", name: "Vy", role: "lead", rank: "lead", floor: "b", boss: "founder", cli: "claude", look };
+    const two = () => fs.writeFileSync(path.join(root, "company.json"), JSON.stringify({
+      version: 1, floors: [{ id: "a", dir: "D:\\a", name: "a" }, { id: "b", dir: "D:\\b", name: "b" }], people: [...people, other], limits, nextJob: 1,
+    }));
+    const seen = (id: string) => statusFor(root, id) as { floors: Array<{ id: string }>; people: Array<{ id: string }> };
+
+    it("gives the Founder everything", () => {
+      two();
+      expect(seen("founder").floors.map((f) => f.id)).toEqual(["a", "b"]);
+      expect(seen("founder").people.map((p) => p.id)).toEqual(["founder", "l1", "d1", "l2"]);
+    });
+    it("gives a Lead their floor and their boss", () => {
+      two();
+      expect(seen("l1").floors.map((f) => f.id)).toEqual(["a"]);
+      expect(seen("l1").people.map((p) => p.id)).toEqual(["founder", "l1", "d1"]);
+    });
+    it("gives staff their floor, which holds their boss, and nobody from another floor", () => {
+      two();
+      expect(seen("d1").floors.map((f) => f.id)).toEqual(["a"]);
+      expect(seen("d1").people.map((p) => p.id)).toEqual(["l1", "d1"]);
+    });
+    it("gives someone not on the roster nothing", () => {
+      two();
+      expect(seen("ghost")).toMatchObject({ floors: [], people: [] });
+    });
+    it("leaves out what a person should not read about another", () => {
+      expect(seen("d1").people[0]).toEqual({ id: "l1", name: "Hai", role: "lead", rank: "lead", floor: "a", boss: "founder" });
+    });
+  });
   it("appends rather than overwrites", () => {
     queueRequest(root, { type: "job-done", ts: 1, from: "founder", job: "J-1", summary: "x" });
     queueRequest(root, { type: "job-done", ts: 2, from: "founder", job: "J-2", summary: "y" });

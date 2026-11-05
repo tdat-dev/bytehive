@@ -75,6 +75,10 @@ describe("applyRequest", () => {
     expect(r.state.jobs[0].status).toBe("planning");
     expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("ghost") });
   });
+  it("refuses job-done from anyone but the Founder", () => {
+    const s = running();
+    expect(applyRequest(s, { type: "job-done", ts: 2, from: "l1", job: "J-0001", summary: "ok" })).toEqual({ state: s, effects: [] });
+  });
   it("marks a finished job for merge", () => {
     expect(applyRequest(running(), { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state.jobs[0]).toMatchObject({ status: "awaiting-merge", summary: "ok" });
   });
