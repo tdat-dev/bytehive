@@ -93,11 +93,14 @@ export function approvePlan(
   const { company, hired } = applyHires(s.company, job.plan, roles, pick);
   const names = hired.map((p) => `${p.name} (${p.role})`).join(", ");
   // Whoever a card names works this Job as much as a new hire does, and so does
-  // the Lead of its floor, who hands it out and reviews it.
+  // the Lead of its floor, who hands it out and reviews it. A floor with no Lead
+  // has nobody to hand it out: its people are briefed directly, and a stop on an
+  // older Job would cut them off if this one left them out.
   const onCards = job.plan.cards.flatMap((c) => {
     const named = c.assignee ? personByName(company, c.assignee) : undefined;
-    const lead = company.people.find((p) => p.floor === c.floor && p.rank === "lead");
-    return [named?.id, lead?.id].filter((x): x is string => !!x);
+    const floor = company.people.filter((p) => p.floor === c.floor);
+    const lead = floor.find((p) => p.rank === "lead");
+    return [named?.id, ...(lead ? [lead] : floor).map((p) => p.id)].filter((x): x is string => !!x);
   });
   const state = patch({ ...s, company, roles }, id, {
     status: "running",

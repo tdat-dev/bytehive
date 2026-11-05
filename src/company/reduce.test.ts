@@ -353,6 +353,27 @@ describe("a stopped job", () => {
       { kind: "deliver", personId: "l1", text: "[From Founder] go" },
     ]);
   });
+  describe("and the next job on a floor with no Lead", () => {
+    const unassigned = (floor: string): JobPlan => ({ summary: "More", cards: [{ floor, title: "Do it", desc: "d", checklist: [] }], hires: [] });
+    const next = (s: State, p: JobPlan) => {
+      const planned = applyRequest(newJob(s, "next", 5).state, { type: "plan", ts: 6, from: FOUNDER_ID, job: "J-0002", plan: p }).state;
+      return approvePlan(planned, "J-0002", pick).state;
+    };
+    it("takes on whoever works there alone, so the Founder's brief reaches them", () => {
+      const s = next(haltJob(running(), "J-0001"), unassigned("b"));
+      expect(s.jobs[1].status).toBe("running");
+      expect(s.jobs[1].people).toEqual(["p9"]);
+      expect(applyRequest(s, { type: "message", ts: 7, from: FOUNDER_ID, to: "Vy", message: "go" }).effects).toEqual([
+        { kind: "deliver", personId: "p9", text: "[From Founder] go" },
+      ]);
+      expect(applyRequest(s, { type: "message", ts: 8, from: "p9", to: "Founder", message: "done" }).effects).toEqual([
+        { kind: "deliver", personId: FOUNDER_ID, text: "[From Vy] done" },
+      ]);
+    });
+    it("leaves a floor with a Lead to the Lead: they hand the card to someone", () => {
+      expect(next(running(), unassigned("a")).jobs[1].people).toEqual(["l1"]);
+    });
+  });
   it("cannot be finished, resumed or joined", () => {
     const s = stopped();
     const r = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" });
