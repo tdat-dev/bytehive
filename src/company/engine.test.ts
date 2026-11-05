@@ -460,6 +460,16 @@ describe("watching a running job", () => {
     expect(stored().tokensUsed).toBe(250);
   });
 
+  it("counts someone who picked up a card of the job, from when they took it", async () => {
+    await running();
+    const board = io.boards.get("D:\\a") as Board;
+    board.lists.find((l) => l.title === "Doing")!.cards[0].assigneeId = "founder";
+    addPane("D:\\a", { name: "Founder", personId: "founder" }, { running: true, spawnedAt: Date.now() });
+    await spend("founder", 500, 800);
+    expect(job().people).toContain("founder");
+    expect(job().tokensUsed).toBe(300);
+  });
+
   it("does not take a person's unread usage for zero", async () => {
     const ana = await running();
     await vi.advanceTimersByTimeAsync(30_000);

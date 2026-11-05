@@ -15,7 +15,7 @@ import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
-import { applyRequest, approvePlan, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type Effect, type State } from "./reduce";
+import { applyRequest, approvePlan, joinJob, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type Effect, type State } from "./reduce";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
 import { loadRoles, seedRoles, skillFiles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
@@ -412,8 +412,9 @@ async function doingCards(): Promise<WatchedCard[]> {
 /** Every WATCH_MS: who has gone quiet, and how many tokens each Job has used. Runs in the queue. */
 async function watch(): Promise<void> {
   if (!state) return;
+  const cards = await doingCards();
   const work = watchWork({
-    cards: await doingCards(),
+    cards,
     nudges,
     limits: state.company.limits,
     bossOf: (id) => (state ? personById(state.company, id)?.boss ?? null : null),
@@ -422,7 +423,9 @@ async function watch(): Promise<void> {
   nudges = work.nudges;
   const next: Alert[] = [...work.alerts];
   const before = state.jobs;
-  state = { ...state, jobs: before.map(measure) };
+  // A plan can't name who a Lead hands a card to: they join when they pick it up.
+  state = cards.reduce((s, c) => joinJob(s, c.job, c.assigneeId), state);
+  state = { ...state, jobs: state.jobs.map(measure) };
   for (const job of state.jobs) {
     const b = watchBudget(job);
     if (b.pause) state = pauseJob(state, job.id);

@@ -1,6 +1,6 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type State } from "./reduce";
+import { applyRequest, approvePlan, joinJob, newJob, closeJob, pauseJob, rejectPlan, reportFailures, resumeJob, type State } from "./reduce";
 import { emptyCompany } from "./org";
 import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
 
@@ -141,6 +141,11 @@ describe("approvePlan and rejectPlan", () => {
     s.jobs[0].plan = { ...plan, cards: [{ floor: "a", title: "t", desc: "d", checklist: [], assignee: "Linh" }] };
     expect(approvePlan(s, "J-0001", pick).state.jobs[0].people).toEqual(["p9", "d1"]);
   });
+  it("counts the floor's Lead on a card with nobody named: they run that card", () => {
+    const s = waiting();
+    s.jobs[0].plan = { ...plan, hires: [], cards: [{ floor: "a", title: "t", desc: "d", checklist: [] }] };
+    expect(approvePlan(s, "J-0001", pick).state.jobs[0].people).toEqual(["l1"]);
+  });
   it("tells staff who get a new boss from a new Lead, and says who was moved", () => {
     const s = waiting();
     const alone: Person = { ...dev, id: "d2", name: "Mai", floor: "b", boss: FOUNDER_ID };
@@ -214,6 +219,19 @@ describe("reportFailures", () => {
   it("tells only the Founder", () => {
     const staff = { kind: "deliver" as const, personId: "d1", text: "New boss." };
     expect(reportFailures([staff, ...told], ["Vy did not start."])[0]).toBe(staff);
+  });
+});
+
+describe("joinJob", () => {
+  it("adds someone who picked up a card of a running job", () => {
+    expect(joinJob(running(), "J-0001", "d1").jobs[0].people).toEqual(["p9", "d1"]);
+  });
+  it("gives the same state back when nothing changes", () => {
+    const s = running();
+    expect(joinJob(s, "J-0001", "p9")).toBe(s);
+    expect(joinJob(s, "J-9999", "d1")).toBe(s);
+    const done = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state;
+    expect(joinJob(done, "J-0001", "d1")).toBe(done);
   });
 });
 

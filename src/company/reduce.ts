@@ -79,12 +79,16 @@ export function approvePlan(
   }
   const { company, hired } = applyHires(s.company, job.plan, s.roles, pick);
   const names = hired.map((p) => `${p.name} (${p.role})`).join(", ");
-  // Someone already here who a card names works this Job as much as a new hire does.
-  const named = job.plan.cards.flatMap((c) => (c.assignee ? personByName(company, c.assignee)?.id ?? [] : []));
+  // Whoever a card names works this Job as much as a new hire does; a card with
+  // nobody named is the floor Lead's to hand out.
+  const onCards = job.plan.cards.flatMap((c) => {
+    const who = c.assignee ? personByName(company, c.assignee) : company.people.find((p) => p.floor === c.floor && p.rank === "lead");
+    return who ? [who.id] : [];
+  });
   const state = patch({ ...s, company }, id, {
     status: "running",
     tokenCap: job.plan.tokenCap ?? job.tokenCap,
-    people: [...new Set([...job.people, ...hired.map((p) => p.id), ...named])],
+    people: [...new Set([...job.people, ...hired.map((p) => p.id), ...onCards])],
   });
   // A new Lead takes over the floor. Whoever was there keeps a session that says
   // otherwise, and would refuse the Lead's orders until they hear it.
@@ -96,6 +100,13 @@ export function approvePlan(
   }));
   const text = `Plan for ${id} approved.${names ? ` Hired: ${names}.` : ""} The cards are on the boards. Brief the Lead of each floor, or the person working alone there.`;
   return { state, hired, rewired, effects: [...notices, tellFounder(text)] };
+}
+
+/** Add someone who picked up a card of a running Job. */
+export function joinJob(s: State, id: string, personId: string): State {
+  const job = s.jobs.find((j) => j.id === id);
+  if (job?.status !== "running" || job.people.includes(personId)) return s;
+  return patch(s, id, { people: [...job.people, personId] });
 }
 
 /** Stop a running Job, usually because it reached its token cap. */
