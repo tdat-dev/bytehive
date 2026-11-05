@@ -235,6 +235,14 @@ describe("joinJob", () => {
   });
 });
 
+describe("a paused job", () => {
+  it("holds a message to someone on it, and tells the sender", () => {
+    const s = pauseJob(joinJob(running(), "J-0001", "l1"), "J-0001");
+    const r = applyRequest(s, { type: "message", ts: 2, from: FOUNDER_ID, to: "Hai", message: "go" });
+    expect(r.effects).toEqual([{ kind: "deliver", personId: FOUNDER_ID, text: expect.stringMatching(/^Held: .*J-0001.*Hai/) }]);
+  });
+});
+
 describe("pauseJob and resumeJob", () => {
   it("pauses a running job", () => {
     expect(pauseJob(running(), "J-0001").jobs[0].status).toBe("paused");
