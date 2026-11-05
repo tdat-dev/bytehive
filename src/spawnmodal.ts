@@ -6,6 +6,7 @@
 import { gitRepoRoot, programsOnPath, sendMessage } from "./ipc";
 import { getPref } from "./prefs";
 import { parseAsk } from "./askparse";
+import { composerDrawn } from "./typing";
 import { revealPane } from "./agentbridge";
 import {
   CLI_PRESETS,
@@ -249,6 +250,8 @@ export function deliverTask(ws: Workspace, names: string[], task: string, delayM
         answered.set(name, at);
         if (Date.now() - at < settleMs) continue;
       }
+      // A resume can take half a minute with hooks and MCP servers starting.
+      if (!paneAtPrompt(pane) && Date.now() - start < PROMPT_WAIT_MS) continue;
       left.delete(name);
       void sendMessage(pane.id, task).catch(() => {});
     }
@@ -272,10 +275,18 @@ async function findRepo(ws: Workspace): Promise<void> {
 
 /** Screen lines looked at for a question the CLI opened on. */
 const ASK_LINES = 40;
+/** How long a job waits for Claude's input box. A screen that never shows one is
+ *  one this can't read, and typing anyway beats losing the job. */
+const PROMPT_WAIT_MS = 2 * 60_000;
 
 /** Whether the CLI in this pane is showing a question, which an Enter would answer. */
 export function paneAsking(pane: Pane): boolean {
   return !!parseAsk(pane.term.snapshot(ASK_LINES));
+}
+
+/** Whether this pane is ready to be typed into. Only Claude draws a box to look for. */
+export function paneAtPrompt(pane: Pane): boolean {
+  return pane.spec.badge !== "claude" || composerDrawn(pane.term.snapshot(ASK_LINES));
 }
 
 /** Settings → Agents: how long a new CLI gets to reach its prompt. */

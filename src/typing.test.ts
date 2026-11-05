@@ -3,6 +3,7 @@ import {
   chunkText,
   typeInto,
   serialize,
+  composerDrawn,
   composerText,
   stillHolding,
   TYPE_CHUNK,
@@ -233,6 +234,22 @@ describe("composerText", () => {
       "line",
     ].join("\n");
     expect(composerText(screen)).toBe("");
+  });
+});
+
+describe("composerDrawn", () => {
+  it("sees the box, empty or not", () => {
+    expect(composerDrawn(screenWith(""))).toBe(true);
+    expect(composerDrawn(screenWith("half a message"))).toBe(true);
+  });
+
+  it("is false while a CLI is starting and has drawn no box yet", () => {
+    expect(composerDrawn("")).toBe(false);
+    expect(composerDrawn(" ▐▛███▜▌   Claude Code\n\n  Loading…\n")).toBe(false);
+  });
+
+  it("isn't fooled by two rules with no prompt between them", () => {
+    expect(composerDrawn("──────────────\n Accessing workspace:\n──────────────\n")).toBe(false);
   });
 });
 

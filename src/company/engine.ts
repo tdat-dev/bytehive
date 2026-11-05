@@ -7,7 +7,7 @@ import { fsCreateDir, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, nameForNewPane, effectiveArgs } from "../crew";
-import { cliLookOf, deliverTask, paneAsking, spawnPerson } from "../spawnmodal";
+import { cliLookOf, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "../spawnmodal";
 import { readBoardFile, writeBoardFile } from "../boardfile";
 import { mkCard, defaultBoard } from "../board";
 import { sameFolder } from "../workspaces";
@@ -158,7 +158,7 @@ async function deliver(personId: string, text: string): Promise<void> {
   const { ws, pane } = found;
   if (!pane.running && !pane.spawning) await pane.restart?.();
   const left = pane.running ? BOOT_MS - (Date.now() - (pane.spawnedAt ?? 0)) : BOOT_MS;
-  if (left > 0 || paneAsking(pane)) deliverTask(ws, [p.name], text, Math.max(left, 0), undefined, undefined, BOOT_MS);
+  if (left > 0 || paneAsking(pane) || !paneAtPrompt(pane)) deliverTask(ws, [p.name], text, Math.max(left, 0), undefined, undefined, BOOT_MS);
   else await sendMessage(pane.id, text).catch(() => {});
 }
 

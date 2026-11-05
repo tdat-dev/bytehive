@@ -8,7 +8,7 @@ vi.mock("./ipc", () => ({
   programsOnPath: async () => [],
 }));
 
-import { cliLookOf, configureSpawnModal, deliverTask, paneAsking, spawnPerson } from "./spawnmodal";
+import { cliLookOf, configureSpawnModal, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "./spawnmodal";
 import type { AgentSpec, Pane, Workspace } from "./panetypes";
 
 // Claude's first screen in a folder it hasn't seen, as the terminal shows it.
@@ -75,6 +75,58 @@ describe("deliverTask", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(io.sent).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("deliverTask to a Claude still starting", () => {
+  beforeEach(() => { io.sent = []; vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const box = "──────────────\n> \n──────────────\n  ⏵⏵ bypass permissions on";
+  const claude = (screen: { text: string }) => {
+    const s = setup(screen);
+    s.pane.spec.badge = "claude";
+    return s;
+  };
+
+  it("holds the job until its input box is on screen, however long a resume takes", async () => {
+    const screen = { text: " Loading…" };
+    const { ws } = claude(screen);
+    deliverTask(ws, ["Ana"], "add mul()", 1000, 1000);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(io.sent).toEqual([]);
+    screen.text = box;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(io.sent).toEqual([["p1", "add mul()"]]);
+  });
+
+  it("types anyway after a while: a screen it can't read must not lose the job", async () => {
+    const { ws } = claude({ text: " something new" });
+    deliverTask(ws, ["Ana"], "add mul()", 1000, 1000);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(io.sent).toEqual([["p1", "add mul()"]]);
+  });
+
+  it("doesn't look for a box in a CLI that draws none", async () => {
+    const { ws } = setup({ text: " aider>" });
+    deliverTask(ws, ["Ana"], "add mul()", 1000, 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(io.sent).toEqual([["p1", "add mul()"]]);
+  });
+});
+
+describe("paneAtPrompt", () => {
+  const screen = (text: string, badge: string) => {
+    const { pane } = setup({ text });
+    pane.spec.badge = badge;
+    return pane;
+  };
+  it("is true once Claude has drawn its box", () => {
+    expect(paneAtPrompt(screen("──────────────\n> \n──────────────", "claude"))).toBe(true);
+    expect(paneAtPrompt(screen(" Loading…", "claude"))).toBe(false);
+  });
+  it("is always true for a CLI with no box to look for", () => {
+    expect(paneAtPrompt(screen(" Loading…", "aider"))).toBe(true);
   });
 });
 

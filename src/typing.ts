@@ -94,6 +94,26 @@ const squash = (s: string): string => s.replace(/\s+/g, "").toLowerCase();
 const HINT_LINE =
   /press up to edit queued|bypass permissions|shift\+tab to cycle|esc to interrupt|for shortcuts/i;
 
+/** Which lines are the horizontal rules Claude Code draws its composer between. */
+function ruleLines(lines: string[]): number[] {
+  const rules: number[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const t = lines[i].trim();
+    if (t.length > 10 && /^[─—-]+$/.test(t)) rules.push(i);
+  }
+  return rules;
+}
+
+/** Whether Claude Code has drawn its input box yet. Until it has, what is typed
+ *  waits in the terminal: it shows up in the box later, but with no way to see it
+ *  there `typeInto` takes it as sent and its Enter is gone. */
+export function composerDrawn(screen: string): boolean {
+  const lines = screen.split(/\r?\n/);
+  const rules = ruleLines(lines);
+  if (rules.length < 2) return false;
+  return lines.slice(rules[rules.length - 2] + 1, rules[rules.length - 1]).some((l) => /^\s*[>›]/.test(l));
+}
+
 /** What is currently sitting in the pane's input box, read from a plain-text
  *  screen snapshot.
  *
@@ -106,11 +126,7 @@ const HINT_LINE =
  *  act on this text alone — only when it matches text you just typed. */
 export function composerText(screen: string): string {
   const lines = screen.split(/\r?\n/);
-  const rules: number[] = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const t = lines[i].trim();
-    if (t.length > 10 && /^[─—-]+$/.test(t)) rules.push(i);
-  }
+  const rules = ruleLines(lines);
   // Codex draws no box: the prompt is a bare `›` line near the bottom with the
   // status footer under it. Read that line alone — the lines below it are not
   // composer content. Only the bottom of the screen, so a transcript echo of an

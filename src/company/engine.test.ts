@@ -15,6 +15,7 @@ const io = vi.hoisted(() => ({
   spawned: [] as string[],
   spawnFails: new Set<string>(),
   asking: false,
+  starting: false,
   gate: null as Promise<void> | null,
   saveFails: false,
   usage: new Map<string, { fresh: number | null }>(),
@@ -72,6 +73,7 @@ vi.mock("../boardfile", () => ({
 vi.mock("../spawnmodal", () => ({
   cliLookOf: () => ({ color: "#fff", mono: "C" }),
   paneAsking: () => io.asking,
+  paneAtPrompt: () => !io.starting,
   deliverTask: (_ws: unknown, names: string[], text: string, delay: number, _every?: number, _giveUp?: number, settle?: number) => {
     io.told.push({ name: names[0], text, delay, settle });
   },
@@ -132,6 +134,7 @@ beforeEach(async () => {
   io.told = [];
   io.spawned = [];
   io.asking = false;
+  io.starting = false;
   io.gate = null;
   io.saveFails = false;
   io.usage.clear();
@@ -280,6 +283,14 @@ describe("delivery", () => {
   it("waits while a question is on screen, however long they have been up", async () => {
     founderPane({ running: true, spawnedAt: Date.now() - 60_000 });
     io.asking = true;
+    await engine.giveJob("do it");
+    expect(io.sent).toEqual([]);
+    expect(io.told).toEqual([expect.objectContaining({ delay: 0, settle: 8000 })]);
+  });
+
+  it("waits for one who is up but not at their prompt yet: a resume can outlast the head start", async () => {
+    founderPane({ running: true, spawnedAt: Date.now() - 60_000 });
+    io.starting = true;
     await engine.giveJob("do it");
     expect(io.sent).toEqual([]);
     expect(io.told).toEqual([expect.objectContaining({ delay: 0, settle: 8000 })]);
