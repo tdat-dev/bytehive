@@ -193,6 +193,15 @@ describe("starting the app", () => {
     await engine.initCompany();
     expect(io.files.get(file)).toContain(`Your name is ${staff.name}.`);
   });
+  it("points everyone's MCP config at this app: a pane that restarts never gets a new one", async () => {
+    await engine.giveJob("do it");
+    const file = `${ROOT}\\people\\founder\\mcp.json`;
+    io.files.set(file, "a server from another install");
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    expect(io.files.get(file)).toContain("Program Files");
+  });
 });
 
 describe("approve", () => {

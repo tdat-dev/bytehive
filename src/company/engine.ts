@@ -110,11 +110,14 @@ async function tryPersist(jobs: Job[]): Promise<void> {
   }
 }
 
+const writeMcpConfig = async (p: Person) =>
+  writeNew(root, `people\\${p.id}\\mcp.json`, mcpConfig(await resolveResource(MCP_RESOURCE)));
+
 /** Write a person's prompt, MCP config and plugin, and give back their launch recipe. */
 async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentSpec> {
   const base = `people\\${p.id}`;
   await writeNew(root, `${base}\\prompt.md`, composePrompt(p, role, state!.company));
-  await writeNew(root, `${base}\\mcp.json`, mcpConfig(await resolveResource(MCP_RESOURCE)));
+  await writeMcpConfig(p);
   const skills = skillFiles(role);
   let pluginDir: string | null = null;
   if (skills.length) {
@@ -286,15 +289,17 @@ async function startHires(hired: Person[]): Promise<string[]> {
   return failed;
 }
 
-/** What a person's prompt says about their boss changes with the floor: whoever
- *  restarts reads the file again. Gives back whose could not be written. */
-async function refreshPrompts(people: Person[]): Promise<string[]> {
+/** What a person's prompt says about their boss changes with the floor, and their
+ *  MCP config follows the app: whoever restarts reads both files again. Gives back
+ *  whose could not be written. */
+async function refreshFiles(people: Person[]): Promise<string[]> {
   const failed: string[] = [];
   for (const p of people) {
     const role = state?.roles.find((r) => r.id === p.role);
     if (!state || !role) continue;
     await writeNew(root, `people\\${p.id}\\prompt.md`, composePrompt(p, role, state.company))
       .catch((e) => failed.push(`${p.name}'s prompt was not updated: ${reason(e)}.`));
+    await writeMcpConfig(p).catch((e) => failed.push(`${p.name}'s MCP config was not updated: ${reason(e)}.`));
   }
   return failed;
 }
@@ -319,7 +324,7 @@ export const approve = (id: string): Promise<void> => enqueue(async () => {
   } catch (e) {
     failed.push(`${job.id} could not be saved: ${reason(e)}.`);
   }
-  failed.push(...await refreshPrompts(r.rewired), ...await placeCards(job), ...await startHires(r.hired));
+  failed.push(...await refreshFiles(r.rewired), ...await placeCards(job), ...await startHires(r.hired));
   await run(reportFailures(r.effects, failed));
 });
 
@@ -358,7 +363,7 @@ export async function initCompany(): Promise<void> {
     console.error(`[bytehive] the company could not be saved: ${reason(e)}`);
   }
   // A session restarts on the file it was given: after an update that is old laws.
-  for (const failed of await refreshPrompts(state.company.people)) console.error(`[bytehive] ${failed}`);
+  for (const failed of await refreshFiles(state.company.people)) console.error(`[bytehive] ${failed}`);
   changed();
   const next = () => window.setTimeout(() => void enqueue(tick).catch(() => {}).finally(next), TICK_MS);
   next();
