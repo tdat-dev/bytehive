@@ -245,8 +245,8 @@ export function deliverTask(ws: Workspace, names: string[], task: string, delayM
 
 /** Settings → Agents: give every agent its own worktree when the project is a
  *  git repo. Looked up once per project; the pane boot does the rest. */
-export async function prepareIsolation(ws: Workspace): Promise<void> {
-  if (!getPref("worktree")) { ws.isolated = false; return; }
+export async function prepareIsolation(ws: Workspace, force = false): Promise<void> {
+  if (!force && !getPref("worktree")) { ws.isolated = false; return; }
   if (!ws.dir) return;
   if (!ws.repoRoot) ws.repoRoot = await gitRepoRoot(ws.dir).catch(() => null);
   ws.isolated = !!ws.repoRoot;

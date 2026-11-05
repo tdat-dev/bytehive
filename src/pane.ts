@@ -312,7 +312,7 @@ export function createAgent(
         cwd = spec.worktree;
         // Agents work in the project folder unless a worktree each is on: one
         // made before leaves it, if it holds no work of its own.
-        if (!getPref("worktree")) {
+        if (!getPref("worktree") && !spec.personId) {
           const home = await worktreeLeave(spec.worktree, spec.badge === "claude" ? spec.sessionId ?? null : null).catch(() => null);
           if (home) {
             delete spec.worktree;
@@ -337,8 +337,11 @@ export function createAgent(
       const laws = spec.role === "conductor" ? DIRECTOR_LAWS : BYTEHIVE_LAWS;
       const own = spec.badge === "claude" ? await claudeSessionArgs(spec, cwd) : [];
       if (own.length) saveSession(); // History finds this run's transcript after a restart too
+      // A member of the company brings its laws in its own args (company/launch.ts).
       const args =
-        spec.badge === "claude" ? [...spec.args, ...own, "--append-system-prompt", laws] : spec.args;
+        spec.badge !== "claude" ? spec.args
+        : spec.personId ? [...spec.args, ...own]
+        : [...spec.args, ...own, "--append-system-prompt", laws];
       // Resolve npm/script CLIs (claude, codex, …) through cmd.exe /c so Windows
       // can actually launch them — see launchSpec.
       const launch = launchSpec(spec.program, args);
