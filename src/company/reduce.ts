@@ -35,6 +35,8 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   if (r.type === "message") {
     const to = r.to ? personByName(s.company, r.to) : undefined;
     if (!to || !canMessage(s.company, from.id, to.id)) return none;
+    // A paused Job is held: its people's messages wait for it to be resumed.
+    if (s.jobs.some((j) => j.status === "paused" && j.people.includes(from.id))) return none;
     return { state: s, effects: [{ kind: "deliver", personId: to.id, text: `[From ${from.name}] ${r.message}` }] };
   }
   if (from.rank !== "founder") return none;
@@ -82,6 +84,19 @@ export function approvePlan(
   });
   const text = `Plan for ${id} approved.${names ? ` Hired: ${names}.` : ""} The cards are on the boards. Brief the Lead of each floor, or the person working alone there.`;
   return { state, hired, effects: [tellFounder(text)] };
+}
+
+/** Stop a running Job, usually because it reached its token cap. */
+export function pauseJob(s: State, id: string): State {
+  if (s.jobs.find((j) => j.id === id)?.status !== "running") return s;
+  return patch(s, id, { status: "paused" });
+}
+
+/** Carry on a paused Job, with `extra` more tokens on its cap. */
+export function resumeJob(s: State, id: string, extra: number): State {
+  const job = s.jobs.find((j) => j.id === id);
+  if (job?.status !== "paused") return s;
+  return patch(s, id, { status: "running", tokenCap: job.tokenCap + extra });
 }
 
 /** Add what went wrong while carrying out a plan to what the Founder is told. */

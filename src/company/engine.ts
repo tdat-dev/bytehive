@@ -2,6 +2,7 @@
 /* Runs the company: reads requests, applies the rules, starts people, types
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir } from "@tauri-apps/api/path";
+import { agentUsage } from "../agentcost";
 import { fsCreateDir, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
@@ -14,14 +15,16 @@ import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
-import { applyRequest, approvePlan, newJob, rejectPlan, reportFailures, type Effect, type State } from "./reduce";
+import { applyRequest, approvePlan, newJob, pauseJob, rejectPlan, reportFailures, resumeJob, type Effect, type State } from "./reduce";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
 import { loadRoles, seedRoles, skillFiles } from "./roles";
+import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
 import type { CompanyRequest, Floor, Job, Person, PlanCard, RoleDef } from "./types";
 
 const OFFICE_REL = "office";
 const REQUESTS_REL = "requests.jsonl";
 const TICK_MS = 1500;
+const WATCH_MS = 30_000;
 /** How long a new CLI gets to reach its prompt. */
 const BOOT_MS = 8000;
 /** Tries at a board an agent keeps writing to. */
@@ -30,6 +33,10 @@ const BOARD_TRIES = 3;
 let root = "";
 let state: State | null = null;
 let loadError: string | null = null;
+let alerts: Alert[] = [];
+let nudges = new Map<string, number>();
+/** When each card in Doing went quiet. */
+const quiet = new Map<string, number>();
 const consumed = new Map<string, number>();
 const listeners = new Set<() => void>();
 
@@ -86,6 +93,17 @@ async function persist(jobs: Job[]): Promise<void> {
   await saveCompany(root, state.company);
   for (const j of jobs) await saveJob(root, j);
   changed();
+}
+
+/** Save, and carry on if the disk says no (antivirus holding a file, a full
+ *  disk): what a request asked for must still happen. The next save tries again. */
+async function tryPersist(jobs: Job[]): Promise<void> {
+  try {
+    await persist(jobs);
+  } catch (e) {
+    console.error(`[bytehive] the company could not be saved: ${reason(e)}`);
+    changed();
+  }
 }
 
 /** Write a person's prompt and plugin, and give back their launch recipe. */
@@ -174,7 +192,7 @@ async function tick(): Promise<void> {
       const r = applyRequest(state, req);
       if (r.state !== state) {
         state = r.state;
-        await persist(state.jobs);
+        await tryPersist(state.jobs);
       }
       await run(r.effects);
     } catch { /* these lines are read only once: one bad request never costs the rest */ }
@@ -197,7 +215,7 @@ export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   syncFloors();
   const r = newJob(state, ask, Date.now());
   state = r.state;
-  await persist([r.job]);
+  await tryPersist([r.job]);
   await run(r.effects);
 });
 
@@ -273,9 +291,14 @@ export const approve = (id: string): Promise<void> => enqueue(async () => {
   state = r.state;
   const job = state.jobs.find((j) => j.id === id);
   if (!job) return;
-  await persist([job]);
   // Whatever fails from here, the Job is running: the Founder has to hear about it.
-  const failed = [...await placeCards(job), ...await startHires(r.hired)];
+  const failed: string[] = [];
+  try {
+    await persist([job]);
+  } catch (e) {
+    failed.push(`${job.id} could not be saved: ${reason(e)}.`);
+  }
+  failed.push(...await placeCards(job), ...await startHires(r.hired));
   await run(reportFailures(r.effects, failed));
 });
 
@@ -307,8 +330,93 @@ export async function initCompany(): Promise<void> {
     return;
   }
   syncFloors();
-  await saveCompany(root, state.company);
+  try {
+    await saveCompany(root, state.company);
+  } catch (e) {
+    // Nothing is lost: the next change saves it again.
+    console.error(`[bytehive] the company could not be saved: ${reason(e)}`);
+  }
   changed();
   const next = () => window.setTimeout(() => void enqueue(tick).catch(() => {}).finally(next), TICK_MS);
   next();
+  window.setInterval(() => void enqueue(watch).catch(() => {}), WATCH_MS);
 }
+
+/** Fresh tokens of everyone on a Job since they joined it. A person whose usage
+ *  has not been read yet is left out until it has: counting it as zero would
+ *  charge the Job for everything they did before. Gives back the same Job when
+ *  nothing moved, so an idle company writes nothing. */
+function measure(job: Job): Job {
+  if (job.status !== "running" && job.status !== "paused") return job;
+  const base = { ...job.tokenBase };
+  let used = 0;
+  for (const id of job.people) {
+    const found = paneOf(id);
+    const usage = found ? agentUsage(found.pane) : null;
+    if (!usage) continue;
+    const fresh = usage.fresh ?? 0;
+    base[id] ??= fresh;
+    used += fresh - base[id];
+  }
+  const tokensUsed = Math.max(job.tokensUsed, used);
+  const same = tokensUsed === job.tokensUsed && Object.keys(base).length === Object.keys(job.tokenBase).length;
+  return same ? job : { ...job, tokenBase: base, tokensUsed };
+}
+
+/** The cards in Doing that belong to a running Job, and how long each has been quiet. */
+async function doingCards(): Promise<WatchedCard[]> {
+  const out: WatchedCard[] = [];
+  for (const floor of state?.company.floors ?? []) {
+    const file = await readBoardFile(floor.dir).catch(() => null);
+    const doing = file?.board.lists.find((l) => l.title.trim().toLowerCase() === "doing");
+    for (const c of doing?.cards ?? []) {
+      if (!c.job || !c.assigneeId) continue;
+      // A paused Job is quiet on purpose.
+      if (state?.jobs.find((j) => j.id === c.job)?.status !== "running") { quiet.delete(c.id); continue; }
+      const pane = paneOf(c.assigneeId)?.pane;
+      const working = !!pane?.running && Date.now() - pane.lastOutputAt < 60_000;
+      if (working) quiet.delete(c.id);
+      else if (!quiet.has(c.id)) quiet.set(c.id, Date.now());
+      out.push({ id: c.id, title: c.title, job: c.job, assigneeId: c.assigneeId, quietSince: quiet.get(c.id) ?? null, returns: c.returns ?? 0 });
+    }
+  }
+  return out;
+}
+
+/** Every WATCH_MS: who has gone quiet, and how many tokens each Job has used. Runs in the queue. */
+async function watch(): Promise<void> {
+  if (!state) return;
+  const work = watchWork({
+    cards: await doingCards(),
+    nudges,
+    limits: state.company.limits,
+    bossOf: (id) => (state ? personById(state.company, id)?.boss ?? null : null),
+    now: Date.now(),
+  });
+  nudges = work.nudges;
+  const next: Alert[] = [...work.alerts];
+  const before = state.jobs;
+  state = { ...state, jobs: before.map(measure) };
+  for (const job of state.jobs) {
+    const b = watchBudget(job);
+    if (b.alert) next.push(b.alert);
+    if (b.pause) state = pauseJob(state, job.id);
+  }
+  const moved = state.jobs.filter((j, i) => j !== before[i]);
+  const same = JSON.stringify(next) === JSON.stringify(alerts);
+  alerts = next;
+  if (moved.length) await tryPersist(moved);
+  else if (!same) changed();
+  await run(work.effects);
+}
+
+export const companyAlerts = () => alerts;
+
+/** Give a paused Job more tokens and let it carry on. */
+export const raiseCap = (id: string, extra: number): Promise<void> => enqueue(async () => {
+  if (!state) return;
+  const next = resumeJob(state, id, extra);
+  if (next === state) return;
+  state = next;
+  await persist(state.jobs.filter((j) => j.id === id));
+});

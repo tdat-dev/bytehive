@@ -1,6 +1,6 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, newJob, rejectPlan, reportFailures, type State } from "./reduce";
+import { applyRequest, approvePlan, newJob, pauseJob, rejectPlan, reportFailures, resumeJob, type State } from "./reduce";
 import { emptyCompany } from "./org";
 import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
 
@@ -34,6 +34,16 @@ describe("applyRequest", () => {
   it("delivers a message between boss and report with who sent it", () => {
     const { effects } = applyRequest(state(), { type: "message", ts: 1, from: "d1", to: "Hai", message: "done" });
     expect(effects).toEqual([{ kind: "deliver", personId: "l1", text: "[From Linh] done" }]);
+  });
+  it("holds messages from people on a paused job", () => {
+    const s = newJob(state(), "x", 1).state;
+    s.jobs[0] = { ...s.jobs[0], status: "paused", people: ["d1"] };
+    expect(applyRequest(s, { type: "message", ts: 1, from: "d1", to: "Hai", message: "done" }).effects).toEqual([]);
+  });
+  it("still delivers a message from someone who is not on the paused job", () => {
+    const s = newJob(state(), "x", 1).state;
+    s.jobs[0] = { ...s.jobs[0], status: "paused", people: ["l1"] };
+    expect(applyRequest(s, { type: "message", ts: 1, from: "d1", to: "Hai", message: "done" }).effects).toHaveLength(1);
   });
   it("drops a forged message that breaks the hierarchy", () => {
     expect(applyRequest(state(), { type: "message", ts: 1, from: "d1", to: "Founder", message: "hi" }).effects).toEqual([]);
@@ -182,5 +192,27 @@ describe("reportFailures", () => {
     expect(reportFailures(told, ["Vy did not start.", "No cards on b."])[0]).toMatchObject({
       text: expect.stringMatching(/^Plan approved\..*Vy did not start\. No cards on b\.$/),
     });
+  });
+});
+
+describe("pauseJob and resumeJob", () => {
+  it("pauses a running job", () => {
+    expect(pauseJob(running(), "J-0001").jobs[0].status).toBe("paused");
+  });
+  it("leaves a job that is not running alone", () => {
+    const s = waiting();
+    expect(pauseJob(s, "J-0001")).toBe(s);
+    const r = running();
+    expect(pauseJob(r, "J-9999")).toBe(r);
+  });
+  it("resumes a paused job with a higher cap", () => {
+    const s = pauseJob(running(), "J-0001");
+    const cap = s.jobs[0].tokenCap;
+    expect(resumeJob(s, "J-0001", 1000).jobs[0]).toMatchObject({ status: "running", tokenCap: cap + 1000 });
+  });
+  it("acts only on a paused job", () => {
+    const s = running();
+    expect(resumeJob(s, "J-0001", 1000)).toBe(s);
+    expect(resumeJob(s, "J-9999", 1000)).toBe(s);
   });
 });

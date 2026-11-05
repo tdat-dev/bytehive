@@ -136,6 +136,10 @@ export function moveCard(
   // An agent moving a card into Doing claims it (never steals an assignment).
   if (actor && !found.card.assignee && norm(target.title) === "doing")
     found.card.assignee = actor;
+  // A Job card going back from Review or Done is a return: a Lead that keeps
+  // sending the same card back is a loop the app wants to hear about.
+  if (found.card.job && ["done", "review"].includes(norm(found.list.title)) && ["doing", "to do"].includes(norm(target.title)))
+    found.card.returns = (found.card.returns ?? 0) + 1;
   return found.card;
 }
 

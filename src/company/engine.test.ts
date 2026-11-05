@@ -16,13 +16,19 @@ const io = vi.hoisted(() => ({
   spawnFails: new Set<string>(),
   asking: false,
   gate: null as Promise<void> | null,
+  saveFails: false,
+  usage: new Map<string, { fresh: number | null }>(),
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "H:\\" }));
 vi.mock("../ipc", () => ({
   fsCreateDir: async () => {},
   fsCreateFile: async (root: string, rel: string) => { if (!io.files.has(`${root}\\${rel}`)) io.files.set(`${root}\\${rel}`, ""); },
-  fsWriteFile: async (root: string, rel: string, content: string) => { io.files.set(`${root}\\${rel}`, content); return { mtime: 1 }; },
+  fsWriteFile: async (root: string, rel: string, content: string) => {
+    if (io.saveFails && rel === "company.json.tmp") throw { Failed: "access denied: company.json.tmp" };
+    io.files.set(`${root}\\${rel}`, content);
+    return { mtime: 1 };
+  },
   fsRename: async (root: string, from: string, to: string) => {
     io.files.set(`${root}\\${to}`, io.files.get(`${root}\\${from}`)!);
     io.files.delete(`${root}\\${from}`);
@@ -45,6 +51,9 @@ vi.mock("../ipc", () => ({
   },
   fsTruncateIfSize: async () => false,
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return true; },
+}));
+vi.mock("../agentcost", () => ({
+  agentUsage: (pane: Pane) => io.usage.get(pane.spec.personId ?? "") ?? null,
 }));
 vi.mock("../boardfile", () => ({
   readBoardFile: async (dir: string) => {
@@ -124,6 +133,8 @@ beforeEach(async () => {
   io.spawned = [];
   io.asking = false;
   io.gate = null;
+  io.saveFails = false;
+  io.usage.clear();
   for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
   engine = await import("./engine");
   await engine.initCompany();
@@ -315,5 +326,164 @@ describe("a company that won't load", () => {
 
   it("has no error when it loads", () => {
     expect(engine.companyError()).toBeNull();
+  });
+});
+
+const analyst = { id: "analyst", title: "A", department: "A", rank: "staff", cli: "claude", denyTools: [], look: { shirt: "#fff", hair: "#000", prop: "none" }, prompt: "p", skills: [] };
+
+describe("a disk that refuses to save", () => {
+  const quiet = () => vi.spyOn(console, "error").mockImplementation(() => {});
+  const spoken = () => [...io.told.map((m) => m.text), ...io.sent.map(([, text]) => text)].join();
+
+  it("still places the cards, starts the hires and tells the Founder when approve cannot save", async () => {
+    const spy = quiet();
+    await waitingJob(planFor("a", 1));
+    io.saveFails = true;
+    await engine.approve(job().id);
+    expect(job().status).toBe("running");
+    expect(cards("D:\\a").length).toBe(1);
+    expect(io.spawned).toContain("Ana");
+    expect(spoken()).toContain("approved");
+    expect(spoken()).toContain("J-0001 could not be saved: access denied");
+    spy.mockRestore();
+  });
+
+  it("does not let a failed save open the door to a second approve", async () => {
+    const spy = quiet();
+    await waitingJob(planFor("a"));
+    io.saveFails = true;
+    await engine.approve(job().id);
+    await engine.approve(job().id);
+    expect(cards("D:\\a").length).toBe(1);
+    spy.mockRestore();
+  });
+
+  it("carries out a request's effects when tick cannot save", async () => {
+    const spy = quiet();
+    io.saveFails = true;
+    await request({ type: "role", ts: 1, from: "founder", job: "J-0001", role: analyst });
+    expect(io.files.get(`${ROOT}\\roles\\analyst\\role.json`)).toContain("analyst");
+    expect(engine.companyView()!.roles.map((r) => r.id)).toContain("analyst");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("tells the Founder of a new job when giveJob cannot save", async () => {
+    const spy = quiet();
+    io.saveFails = true;
+    await engine.giveJob("do it");
+    expect(io.told).toEqual([expect.objectContaining({ name: "Founder", text: expect.stringContaining("JOB J-0001") })]);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("starts reading requests even when the first save fails", async () => {
+    const spy = quiet();
+    io.saveFails = true;
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    await vi.advanceTimersByTimeAsync(1500); // the first tick notes that requests.jsonl isn't there yet
+    io.saveFails = false;
+    await request({ type: "role", ts: 1, from: "founder", job: "J-0001", role: analyst });
+    expect(engine.companyView()!.roles.map((r) => r.id)).toContain("analyst");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("watching a running job", () => {
+  /** Job J-0001 running, with Ana on floor a holding one card in Doing. */
+  async function running(tokenCap?: number) {
+    const plan = planFor("a", 1);
+    await waitingJob({ ...plan, tokenCap, cards: [{ ...plan.cards[0], assignee: "Ana" }] });
+    await engine.approve(job().id);
+    const ana = engine.companyView()!.company.people.find((p) => p.name === "Ana")!;
+    const board = io.boards.get("D:\\a") as Board;
+    const doing = board.lists.find((l) => l.title === "Doing")!;
+    doing.cards.push(board.lists.find((l) => l.title === "To do")!.cards.pop()!);
+    io.told.length = 0;
+    io.sent.length = 0;
+    return ana;
+  }
+  const stored = () => JSON.parse(io.files.get(`${ROOT}\\jobs\\J-0001.json`)!) as { status: string; tokensUsed: number; tokenCap: number };
+  const said = () => [...io.told.map((m) => m.text), ...io.sent.map(([, text]) => text)];
+  /** Ana reads `before`, then `after`, 30 seconds apart. */
+  async function spend(id: string, before: number, after: number) {
+    io.usage.set(id, { fresh: before });
+    await vi.advanceTimersByTimeAsync(30_000);
+    io.usage.set(id, { fresh: after });
+    await vi.advanceTimersByTimeAsync(30_000);
+  }
+
+  it("counts the fresh tokens a person adds from when they were first seen", async () => {
+    const ana = await running();
+    io.usage.set(ana.id, { fresh: 400 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokenBase).toEqual({ [ana.id]: 400 });
+    io.usage.set(ana.id, { fresh: 650 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokensUsed).toBe(250);
+    expect(stored().tokensUsed).toBe(250);
+  });
+
+  it("does not take a person's unread usage for zero", async () => {
+    const ana = await running();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokenBase).toEqual({});
+    io.usage.set(ana.id, { fresh: 90_000 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().tokenBase).toEqual({ [ana.id]: 90_000 });
+    expect(job().tokensUsed).toBe(0);
+  });
+
+  it("pauses the job at its cap and raises an alert", async () => {
+    const ana = await running(1000);
+    await spend(ana.id, 100, 1200);
+    expect(job().status).toBe("paused");
+    expect(stored().status).toBe("paused");
+    expect(engine.companyAlerts()).toEqual([expect.objectContaining({ job: "J-0001", level: "stop" })]);
+  });
+
+  it("writes nothing while nothing changes", async () => {
+    const ana = await running();
+    io.usage.set(ana.id, { fresh: 100 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    io.files.set(`${ROOT}\\jobs\\J-0001.json`, "untouched");
+    io.files.set(`${ROOT}\\company.json`, "untouched");
+    await vi.advanceTimersByTimeAsync(5 * 30_000);
+    expect(io.files.get(`${ROOT}\\jobs\\J-0001.json`)).toBe("untouched");
+    expect(io.files.get(`${ROOT}\\company.json`)).toBe("untouched");
+  });
+
+  it("asks the boss to look at a card that has gone quiet", async () => {
+    await running();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(said()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(said().filter((s) => s.includes("gone quiet") && s.includes("Do it"))).toHaveLength(1);
+  });
+
+  it("leaves the cards of a paused job alone", async () => {
+    const ana = await running(1000);
+    await spend(ana.id, 100, 1200);
+    io.told.length = 0;
+    io.sent.length = 0;
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(said()).toEqual([]);
+  });
+
+  it("raises the cap and carries on a paused job", async () => {
+    const ana = await running(1000);
+    await spend(ana.id, 100, 1200);
+    await engine.raiseCap("J-0001", 5000);
+    expect(job()).toMatchObject({ status: "running", tokenCap: 6000 });
+    expect(stored()).toMatchObject({ status: "running", tokenCap: 6000 });
+  });
+
+  it("does not raise the cap of a job that is not paused", async () => {
+    await running(1000);
+    await engine.raiseCap("J-0001", 5000);
+    expect(job().tokenCap).toBe(1000);
   });
 });

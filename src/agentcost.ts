@@ -17,6 +17,8 @@ export interface Usage {
   /** USD so far: at API prices for Claude, the CLI's own figure otherwise. */
   usd: number | null;
   tokens: number | null;
+  /** Tokens without cached re-reads: what a budget should count. */
+  fresh: number | null;
   /** How full its context is, 0–100. */
   contextPct: number | null;
 }
@@ -50,17 +52,19 @@ export function usageOnScreen(screen: string): Partial<Usage> {
 }
 
 async function read(pane: Pane, dir: string): Promise<Usage> {
-  const u: Usage = { usd: null, tokens: null, contextPct: null };
+  const u: Usage = { usd: null, tokens: null, fresh: null, contextPct: null };
   const badge = pane.spec.badge;
   if (badge === "claude" && pane.spec.sessionId) {
     const rows = await claudeSessionUsage(dir, pane.spec.sessionId);
     u.usd = totalCost(rows);
     const t = rows.reduce((n, r) => n + r.input_tokens + r.output_tokens + r.cache_creation + r.cache_read, 0);
     u.tokens = t || null;
+    u.fresh = rows.reduce((n, r) => n + r.input_tokens + r.output_tokens + r.cache_creation, 0) || null;
   } else if (READABLE.has(badge)) {
     const r = await readAgentUsage(badge, dir, pane.spawnedAt ? pane.spawnedAt - 5000 : null);
     u.usd = r.usd ?? null;
     u.tokens = r.tokens ?? null;
+    u.fresh = u.tokens;
     u.contextPct = r.context_pct ?? null;
   }
   // What the screen says fills what the files didn't.

@@ -32,3 +32,38 @@ describe("actor identity", () => {
     expect(card.assignee).toBeUndefined();
   });
 });
+
+describe("returns", () => {
+  const listed = (from: string) => {
+    const b = defaultBoard();
+    b.lists.push({ id: "lreview00001", title: "Review", cards: [] });
+    const c = addCard(b, from, { title: "login" });
+    c.job = "J-0001";
+    return { b, c };
+  };
+
+  it("counts a Job card sent back from Review to Doing", () => {
+    const { b, c } = listed("Review");
+    moveCard(b, "login", "Doing");
+    expect(c.returns).toBe(1);
+    moveCard(b, "login", "Review");
+    moveCard(b, "login", "To do");
+    expect(c.returns).toBe(2);
+  });
+
+  it("counts a Job card sent back from Done", () => {
+    const { b, c } = listed("Done");
+    moveCard(b, "login", "Doing");
+    expect(c.returns).toBe(1);
+  });
+
+  it("does not count forward moves, or cards that belong to no Job", () => {
+    const { b, c } = listed("To do");
+    moveCard(b, "login", "Doing");
+    moveCard(b, "login", "Review");
+    expect(c.returns).toBeUndefined();
+    const plain = addCard(b, "Done", { title: "plain" });
+    moveCard(b, "plain", "Doing");
+    expect(plain.returns).toBeUndefined();
+  });
+});

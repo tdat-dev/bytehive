@@ -25,7 +25,7 @@ describe("what each agent has used", () => {
     await flush();
     expect(io.asked).toEqual([["D:/app", "s-1"]]);
     expect(told).toBe(1);
-    expect(agentUsage(p, 2000)).toEqual({ usd: 20, tokens: 1e6, contextPct: null });
+    expect(agentUsage(p, 2000)).toEqual({ usd: 20, tokens: 1e6, fresh: 1e6, contextPct: null });
     // quiet since: no new read, however long it has been
     agentCost(p, 1000 + 120_000);
     await flush();
@@ -46,16 +46,24 @@ describe("what each agent has used", () => {
     agentUsage(p, 1000);
     await flush();
     expect(io.other).toEqual([["codex", "D:/app", 5000]]);
-    expect(agentUsage(p, 2000)).toEqual({ usd: null, tokens: 54_000, contextPct: 25 });
+    expect(agentUsage(p, 2000)).toEqual({ usd: null, tokens: 54_000, fresh: 54_000, contextPct: 25 });
   });
 
   it("takes what any other CLI's status line says, and has nothing for a shell", async () => {
     const p = pane({ badge: "aider", sessionId: undefined }, 0, "Tokens: 2.1k sent, 250 received. Cost: $0.01 message, $0.08 session.");
     agentUsage(p, 1000);
     await flush();
-    expect(agentUsage(p, 2000)).toEqual({ usd: 0.08, tokens: null, contextPct: null });
+    expect(agentUsage(p, 2000)).toEqual({ usd: 0.08, tokens: null, fresh: null, contextPct: null });
     expect(io.other).toEqual([]);
     expect(agentUsage(pane({ badge: "shell" }))).toBeNull();
+  });
+
+  it("counts fresh tokens without the cache re-reads a long session piles up", async () => {
+    io.rows = [{ model: "claude-opus-5-5", input_tokens: 1000, output_tokens: 2000, cache_creation: 500, cache_read: 9_000_000, messages: 40 }];
+    const p = pane();
+    agentUsage(p, 1000);
+    await flush();
+    expect(agentUsage(p, 2000)).toMatchObject({ tokens: 9_003_500, fresh: 3500 });
   });
 
   it("starts over on another conversation", async () => {
