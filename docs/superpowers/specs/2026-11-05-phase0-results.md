@@ -50,3 +50,37 @@ check 3 retry `1befb844-bd31-47fc-9740-a40fdf2167c2`.
   before relying on it.
 - Resume worked with the role flags re-passed (check 5). Precaution, not a result: use `buildRoleLaunch`
   for resume launches as well as fresh ones. Resume without the flags was not tested.
+
+# Phase 0 results: WebGL next to terminals in WebView2
+
+Date: 2026-11-05. Windows 11 Pro 10.0.26200, WebView2 runtime 156.0.4314.58, three 0.170.0. Canvas renderer
+reported by the page: ANGLE, Intel UHD Graphics 630, Direct3D11 (the machine also has an NVIDIA RTX 2070
+Max-Q; the spike asks for `powerPreference: "low-power"`). 12 logical cores. App: `npm run tauri:dev`
+(ByteHive Dev, Vite dev server, debug Rust build), driven over WebView2 CDP on port 9333.
+
+Setup: a 45vw x 60vh three.js canvas (5 floors, 30 desks, 30 capsules, one hemisphere light, antialias) fixed
+over the app at z-index 40 and `pointer-events: none`, rendering at about 60 fps while "moving". 12 PowerShell
+shell agents (6 in each of two scratch folders), started through the real Home composer. Frame gaps are
+measured with `requestAnimationFrame` inside the page. All clicks were real mouse events through CDP, window
+resizes were native `SetWindowPos` calls on the dev window, and `visibilityState` was `visible` with the
+window not minimized throughout; a separate rAF counter ran at about 60 per second per loop.
+
+| # | Gate | Result | Verdict |
+|---|------|--------|---------|
+| 1 | Moving scene, 10 New agent modal open/close, 20 project switches (10 round trips, alpha and beta), 10 window resizes: `over200` must be 0 | Two valid runs: `over200` 0 and 0, `maxGap` 100 ms and 100 ms, `longMax` 105 ms and 94 ms, `lost` 0. An earlier run had 1 gap of 266 ms during the modal phase (right after spawning the 12 shells); its resize phase was invalid (script bug gave the window a 65535 px height) | PASS (see notes) |
+| 2 | Scene still, 1 hour idle: `lost` 0, or restored within 2 s | 19:59 to 20:59 local, sampled every minute: `lost` 0, `restored` 0, `isContextLost()` false at every sample and at the end, `over200` 0, `maxGap` 99 ms. Screenshot at the end shows the scene drawn | PASS |
+| 3 | Scene still, CPU of the app process tree for 1 minute: under 5% | 12.5 CPU-s in 60 s over 31 processes = 20.8% of one core = 1.74% of all 12 cores (WebView2 16.8% of a core, bytehive-dev 3.6%, shells 0.4%). Control with the canvas hidden: 1.90% of all cores | PASS |
+
+No fallback (OffscreenCanvas in a Worker, second Tauri window) was needed.
+
+## Notes
+
+- The earlier freeze (src/terminal.ts:124) did not reproduce with a separate three.js canvas next to DOM-rendered
+  terminals. Terminals in this app use the DOM renderer, not xterm's WebGL addon, which is a different case.
+- Gate 3: hiding the canvas costs the same CPU (1.9% vs 1.74%), so the scene adds about nothing when still. The
+  1.7 to 1.9% is the app itself idle.
+- Not covered: a moving scene's CPU/GPU load was not measured, only its frame gaps; the canvas drawing buffer is
+  sized once, so window resizes stretched it and did not reallocate it; the shells were idle and only one pane is
+  visible at a time; no sleep/wake, display-off or GPU switch during the hour; no streaming agent output.
+- The window lost foreground focus at about minute 20 (someone used the machine) but stayed visible and rAF
+  kept running, so the hour still counts.
