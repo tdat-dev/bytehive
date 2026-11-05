@@ -1,7 +1,7 @@
 // src/company/engine.ts
 /* Runs the company: reads requests, applies the rules, starts people, types
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
-import { homeDir } from "@tauri-apps/api/path";
+import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
 import { fsCreateDir, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
@@ -13,7 +13,7 @@ import { mkCard, defaultBoard } from "../board";
 import { sameFolder } from "../workspaces";
 import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
-import { buildRoleLaunch, composePrompt, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, mcpConfig, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type Effect, type State } from "./reduce";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
@@ -23,6 +23,8 @@ import type { CompanyRequest, Floor, Job, Person, PlanCard, RoleDef } from "./ty
 
 const OFFICE_REL = "office";
 const REQUESTS_REL = "requests.jsonl";
+/** Where tauri.conf.json puts the MCP server, under the app's resources. */
+const MCP_RESOURCE = "mcp-server/bytehive-mcp.mjs";
 const TICK_MS = 1500;
 const WATCH_MS = 30_000;
 /** How long a new CLI gets to reach its prompt. */
@@ -108,10 +110,11 @@ async function tryPersist(jobs: Job[]): Promise<void> {
   }
 }
 
-/** Write a person's prompt and plugin, and give back their launch recipe. */
+/** Write a person's prompt, MCP config and plugin, and give back their launch recipe. */
 async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentSpec> {
   const base = `people\\${p.id}`;
   await writeNew(root, `${base}\\prompt.md`, composePrompt(p, role, state!.company));
+  await writeNew(root, `${base}\\mcp.json`, mcpConfig(await resolveResource(MCP_RESOURCE)));
   const skills = skillFiles(role);
   let pluginDir: string | null = null;
   if (skills.length) {
@@ -119,7 +122,7 @@ async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentS
     await writeNew(root, `${base}\\plugin\\.claude-plugin\\plugin.json`, pluginManifest(p));
     for (const s of skills) await writeNew(root, `${base}\\plugin\\skills\\${s.name}\\SKILL.md`, s.text);
   }
-  const launch = buildRoleLaunch({ person: p, role, promptFile: `${root}\\${base}\\prompt.md`, pluginDir });
+  const launch = buildRoleLaunch({ person: p, role, promptFile: `${root}\\${base}\\prompt.md`, mcpConfig: `${root}\\${base}\\mcp.json`, pluginDir });
   const preset = CLI_PRESETS.find((x) => x.id === p.cli);
   if (!preset) throw new Error(`unknown CLI ${p.cli}`);
   return {

@@ -17,14 +17,21 @@ export function composePrompt(person: Person, role: RoleDef, c: Company): string
   return `${LAWS[person.rank]}\n\n${place}\n\n${role.prompt}`;
 }
 
-export function buildRoleLaunch(o: { person: Person; role: RoleDef; promptFile: string; pluginDir: string | null }): {
+/** No --strict-mcp-config: the owner's other servers keep working. When they have
+ *  a `bytehive` of their own, Claude starts this one instead (run to find out). */
+export function buildRoleLaunch(o: { person: Person; role: RoleDef; promptFile: string; mcpConfig: string; pluginDir: string | null }): {
   args: string[];
   env: Array<[string, string]>;
 } {
-  const args = ["--append-system-prompt-file", o.promptFile];
+  const args = ["--append-system-prompt-file", o.promptFile, "--mcp-config", o.mcpConfig];
   if (o.pluginDir) args.push("--plugin-dir", o.pluginDir);
   if (o.role.denyTools.length) args.push("--disallowedTools", o.role.denyTools.join(","));
   return { args, env: [["BYTEHIVE_AGENT_ID", o.person.id]] };
+}
+
+/** Starts the server the app carries, so a member's tools match the app on any machine. */
+export function mcpConfig(server: string): string {
+  return JSON.stringify({ mcpServers: { bytehive: { command: "node", args: [server] } } }, null, 2);
 }
 
 export function pluginManifest(person: Person): string {

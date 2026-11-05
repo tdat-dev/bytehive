@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRoleLaunch, composePrompt, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, mcpConfig, pluginManifest } from "./launch";
 import { emptyCompany } from "./org";
 import { FOUNDER_LAWS, LEAD_LAWS, STAFF_LAWS } from "../laws";
 import { FOUNDER_ID, type Person, type RoleDef } from "./types";
@@ -28,14 +28,21 @@ describe("composePrompt", () => {
 });
 
 describe("buildRoleLaunch", () => {
-  it("passes the prompt file, the plugin and the identity", () => {
-    const l = buildRoleLaunch({ person, role, promptFile: "C:\\p\\prompt.md", pluginDir: "C:\\p\\plugin" });
-    expect(l.args).toEqual(["--append-system-prompt-file", "C:\\p\\prompt.md", "--plugin-dir", "C:\\p\\plugin"]);
+  it("passes the prompt file, the MCP config, the plugin and the identity", () => {
+    const l = buildRoleLaunch({ person, role, promptFile: "C:\\p\\prompt.md", mcpConfig: "C:\\p\\mcp.json", pluginDir: "C:\\p\\plugin" });
+    expect(l.args).toEqual(["--append-system-prompt-file", "C:\\p\\prompt.md", "--mcp-config", "C:\\p\\mcp.json", "--plugin-dir", "C:\\p\\plugin"]);
     expect(l.env).toContainEqual(["BYTEHIVE_AGENT_ID", "p1"]);
   });
   it("adds denied tools only when the role has some, and skips an empty plugin", () => {
-    const l = buildRoleLaunch({ person, role: { ...role, denyTools: ["Edit", "Write"] }, promptFile: "f", pluginDir: null });
-    expect(l.args).toEqual(["--append-system-prompt-file", "f", "--disallowedTools", "Edit,Write"]);
+    const l = buildRoleLaunch({ person, role: { ...role, denyTools: ["Edit", "Write"] }, promptFile: "f", mcpConfig: "m", pluginDir: null });
+    expect(l.args).toEqual(["--append-system-prompt-file", "f", "--mcp-config", "m", "--disallowedTools", "Edit,Write"]);
+  });
+});
+
+describe("mcpConfig", () => {
+  it("starts the server the app carries with node, under the name the laws use", () => {
+    const server = "C:\\Program Files\\ByteHive\\mcp-server\\bytehive-mcp.mjs";
+    expect(JSON.parse(mcpConfig(server))).toEqual({ mcpServers: { bytehive: { command: "node", args: [server] } } });
   });
 });
 

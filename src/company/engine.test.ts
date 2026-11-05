@@ -21,7 +21,10 @@ const io = vi.hoisted(() => ({
   usage: new Map<string, { fresh: number | null }>(),
 }));
 
-vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "H:\\" }));
+vi.mock("@tauri-apps/api/path", () => ({
+  homeDir: async () => "H:\\",
+  resolveResource: async (rel: string) => `C:\\Program Files\\ByteHive\\${rel.replace(/\//g, "\\")}`,
+}));
 vi.mock("../ipc", () => ({
   fsCreateDir: async () => {},
   fsCreateFile: async (root: string, rel: string) => { if (!io.files.has(`${root}\\${rel}`)) io.files.set(`${root}\\${rel}`, ""); },
@@ -144,6 +147,20 @@ beforeEach(async () => {
   await vi.advanceTimersByTimeAsync(1500); // the first tick notes that requests.jsonl isn't there yet
 });
 afterEach(() => { vi.useRealTimers(); });
+
+describe("the MCP server a member gets", () => {
+  it("is the one the app carries, in a config of their own", async () => {
+    await engine.giveJob("do it");
+    const at = `${ROOT}\\people\\founder\\mcp.json`;
+    const text = io.files.get(at)!;
+    const server = "C:\\Program Files\\ByteHive\\mcp-server\\bytehive-mcp.mjs";
+    expect(JSON.parse(text)).toEqual({ mcpServers: { bytehive: { command: "node", args: [server] } } });
+    expect(text).toContain(JSON.stringify(server)); // a Windows path, escaped, its space kept
+    const pane = [...workspaces.values()].flatMap((w) => [...w.panes.values()]).find((p) => p.spec.personId === "founder")!;
+    expect(pane.spec.args[pane.spec.args.indexOf("--mcp-config") + 1]).toBe(at);
+    expect(pane.spec.args).not.toContain("--strict-mcp-config"); // the owner's other servers keep working
+  });
+});
 
 describe("starting the app", () => {
   it("brings everyone's prompt up to date: a session restarts on the file it was given", async () => {
