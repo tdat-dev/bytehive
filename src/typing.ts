@@ -99,7 +99,7 @@ function ruleLines(lines: string[]): number[] {
   const rules: number[] = [];
   for (let i = 0; i < lines.length; i += 1) {
     const t = lines[i].trim();
-    if (t.length > 10 && /^[─—-]+$/.test(t)) rules.push(i);
+    if (t.length > 10 && /^[─\u2014-]+$/.test(t)) rules.push(i);
   }
   return rules;
 }
