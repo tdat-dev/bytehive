@@ -11,7 +11,7 @@
 //! swaps the file in whole.
 
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
@@ -102,9 +102,24 @@ fn take_lock(lock: PathBuf, wait: Duration, limit: Duration) -> Result<ConfigLoc
     }
 }
 
+/// All of the text, on the disk: a crash right after the swap must not leave an
+/// empty config behind the name of the real one.
+fn write_temp(tmp: &Path, text: &str) -> std::io::Result<()> {
+    let mut f = fs::File::create(tmp)?;
+    f.write_all(text.as_bytes())?;
+    f.sync_all()
+}
+
 fn swap_in(file: &Path, text: &str) -> Result<(), CommandError> {
+    swap_with(file, text, write_temp)
+}
+
+fn swap_with(file: &Path, text: &str, write: impl Fn(&Path, &str) -> std::io::Result<()>) -> Result<(), CommandError> {
     let tmp = file.with_extension(format!("json.bytehive.{}", std::process::id()));
-    fs::write(&tmp, text).map_err(|e| failed("Claude's config cannot be written", e))?;
+    if let Err(e) = write(&tmp, text) {
+        let _ = fs::remove_file(&tmp);
+        return Err(failed("Claude's config cannot be written", e));
+    }
     for tries in 1.. {
         match fs::rename(&tmp, file) {
             Ok(()) => return Ok(()),
@@ -227,6 +242,29 @@ mod tests {
         assert!(trust_in(&file, "D:/a", NOW, LONG).is_err());
         assert_eq!(fs::read_to_string(&file).unwrap(), "{}");
         assert!(dir.path().join(".claude.json.lock").exists());
+    }
+
+    #[test]
+    fn a_write_that_fails_leaves_the_config_and_no_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(".claude.json");
+        fs::write(&file, "{}").unwrap();
+        let half_written = |tmp: &Path, _: &str| -> std::io::Result<()> {
+            fs::write(tmp, "{ half")?;
+            Err(std::io::Error::other("disk full"))
+        };
+        assert!(swap_with(&file, "{\"a\":1}", half_written).is_err());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "{}");
+        let names: Vec<_> = fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, [".claude.json"]);
+    }
+
+    #[test]
+    fn the_temp_file_holds_all_of_the_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let tmp = dir.path().join("t");
+        write_temp(&tmp, "{\"a\":1}").unwrap();
+        assert_eq!(fs::read_to_string(&tmp).unwrap(), "{\"a\":1}");
     }
 
     #[test]
