@@ -40,6 +40,7 @@ import {
   notify,
 } from "./ipc";
 import { hiddenGate } from "./hiddengate";
+import { isCompanyFloor } from "./company/engine";
 import {
   openFileInPanel,
   openDiff,
@@ -389,7 +390,7 @@ export function createKanban() {
   /** Conductor tick: when enabled, pair free agents with approved To-do cards
    *  (auto also tops up To do from Proposed), dispatch, and move to Doing. */
   async function conductorTick(): Promise<void> {
-    if (conductorMode === "off" || !ctx) return;
+    if (conductorMode === "off" || !ctx || isCompanyFloor(ctx.dir)) return;
     const agents = listAgents().map((a) => ({ id: a.id, name: a.name, running: a.running }));
     if (conductorMode === "pipeline") return pipelineTick(agents);
     const plan = planConductor(conductorMode, board, agents);

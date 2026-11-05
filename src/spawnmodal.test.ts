@@ -1,15 +1,15 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ sent: [] as Array<[string, string]> }));
+const io = vi.hoisted(() => ({ sent: [] as Array<[string, string]>, repo: null as string | null }));
 vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
-  gitRepoRoot: async () => null,
+  gitRepoRoot: async () => io.repo,
   programsOnPath: async () => [],
 }));
 
-import { deliverTask } from "./spawnmodal";
-import type { Pane, Workspace } from "./panetypes";
+import { cliLookOf, configureSpawnModal, deliverTask, spawnPerson } from "./spawnmodal";
+import type { AgentSpec, Pane, Workspace } from "./panetypes";
 
 // Claude's first screen in a folder it hasn't seen, as the terminal shows it.
 const TRUST = [
@@ -75,5 +75,30 @@ describe("deliverTask", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(io.sent).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("spawnPerson", () => {
+  it("boots a member isolated and gives the project its own setting back", async () => {
+    const ws = { dir: "D:\\a", repoRoot: null, isolated: false, panes: new Map() } as unknown as Workspace;
+    const atBoot: boolean[] = [];
+    configureSpawnModal({
+      createWorkspace: () => ws,
+      createAgent: () => async () => { atBoot.push(ws.isolated); },
+      cliLook: () => ({ color: "#123456", mono: "C" }),
+    });
+    io.repo = "D:\\a";
+    await spawnPerson("D:\\a", {} as AgentSpec, true);
+    expect(atBoot).toEqual([true]);
+    expect(ws.isolated).toBe(false);
+  });
+
+  it("reads the CLI look main.ts set, not the placeholder", () => {
+    configureSpawnModal({
+      createWorkspace: () => { throw new Error("unused"); },
+      createAgent: () => async () => {},
+      cliLook: () => ({ color: "#123456", mono: "C" }),
+    });
+    expect(cliLookOf("claude", "Claude Code")).toEqual({ color: "#123456", mono: "C" });
   });
 });

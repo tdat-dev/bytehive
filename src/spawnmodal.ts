@@ -209,6 +209,21 @@ export async function spawnForConductor(
   if (req.task) deliverTask(ws, newNames, req.task, jobDelayMs());
 }
 
+/** A CLI's pane colour and letter, for code outside main.ts. */
+export const cliLookOf = (badge: string, label: string) => onCliLook(badge, label);
+
+/** Start a member of the company in its floor's project. A floor always gets
+ *  worktrees when it is a git repo: two people must not share a checkout. The
+ *  project's own setting comes back afterwards, for the agents who aren't members. */
+export async function spawnPerson(dir: string, spec: AgentSpec, boot: boolean): Promise<void> {
+  const ws = onCreateWorkspace(dir);
+  const isolated = ws.isolated;
+  await prepareIsolation(ws, true);
+  const start = onCreateAgent(ws, spec);
+  if (boot) await runLimited([start], MAX_CONCURRENT_BOOT);
+  ws.isolated = isolated;
+}
+
 /** Type the job into each new agent once it is at its prompt. The CLI needs a
  *  few seconds to get there, and some open on a question first: Claude asks
  *  whether to trust a folder it hasn't seen, like a new worktree, with "No,

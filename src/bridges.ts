@@ -30,6 +30,7 @@ import { initFleetBridge, deliveryTargets } from "./fleetbridge";
 import { knownConversation } from "./chatsource";
 import { exitVerdict, holdExit, setExitHandler } from "./ptyexit";
 import { spawnForConductor } from "./spawnmodal";
+import { initCompany } from "./company/engine";
 import { paneStatus } from "./fleet";
 import { showDelegation, showDelegationToast } from "./delegation";
 import { pushFlow } from "./flow";
@@ -328,6 +329,9 @@ export function initBridges(): void {
     },
     spawn: (dir, req) => void spawnForConductor(dir, req),
   });
+  // Main window only: a detached window would read the same requests and, not
+  // seeing the people's panes, start everyone a second time.
+  if (!new URLSearchParams(location.search).has("detach")) void initCompany().catch(() => {});
   void onDragDrop((e) => {
     if (e.type === "leave") return setDropTarget(null);
     if (e.type === "enter" || e.type === "over") {
