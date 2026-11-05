@@ -157,6 +157,12 @@ describe("approvePlan and rejectPlan", () => {
     expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: "d2", text: expect.stringContaining("Vy") });
     expect(r.effects[1]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID });
   });
+  it("keeps a plan's token cap inside the owner's limit", () => {
+    const s = waiting();
+    const limit = s.jobs[0].tokenCap;
+    s.jobs[0].plan = { ...plan, tokenCap: limit * 10 };
+    expect(approvePlan(s, "J-0001", pick).state.jobs[0].tokenCap).toBe(limit);
+  });
   it("uses the plan's token cap when it has one", () => {
     const s = waiting();
     s.jobs[0].plan = { ...plan, tokenCap: 900 };

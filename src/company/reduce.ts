@@ -87,7 +87,7 @@ export function approvePlan(
   });
   const state = patch({ ...s, company }, id, {
     status: "running",
-    tokenCap: job.plan.tokenCap ?? job.tokenCap,
+    tokenCap: Math.min(job.plan.tokenCap ?? job.tokenCap, job.tokenCap), // the owner's limit, never the Founder's
     people: [...new Set([...job.people, ...hired.map((p) => p.id), ...onCards])],
   });
   // A new Lead takes over the floor. Whoever was there keeps a session that says
