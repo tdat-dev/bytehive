@@ -1,0 +1,3 @@
+# Made by `npm run build:mcp`. This file keeps the folder in git: cargo check on a
+# clean checkout fails if a bundled resource folder is missing.
+bytehive-mcp.mjs

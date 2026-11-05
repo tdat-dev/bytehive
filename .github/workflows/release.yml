@@ -49,6 +49,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # beforeBuildCommand bundles the MCP server the installer carries.
+      - name: Install MCP server dependencies
+        run: npm ci --prefix mcp
+
       # This repository is private, so its releases can't be downloaded by the
       # people who installed ByteHive. Installers and the updater's latest.json
       # go to the public tdat-dev/maestro-releases instead (releases only, no

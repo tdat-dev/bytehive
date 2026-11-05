@@ -7,8 +7,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:17630",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeDevCommand": "npm run build:mcp && npm run dev",
+    "beforeBuildCommand": "npm run build:mcp && npm run build"
   },
   "app": {
     "windows": [
@@ -50,7 +50,8 @@
       "debugApplicationIdSuffix": ".debug"
     },
     "resources": {
-      "../browser-extension/": "browser-extension/"
+      "../browser-extension/": "browser-extension/",
+      "resources/mcp/": "mcp-server/"
     }
   }
 }

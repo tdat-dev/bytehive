@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/index.js",
+    "bundle": "node bundle.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "prepublishOnly": "npm run typecheck && npm run build && npm test"

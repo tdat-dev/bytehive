@@ -19,6 +19,7 @@ logs/
 /bytehive.exe
 /bytehive.old*.exe
 /icon.ico
+/mcp-server/
 /browser-extension/.bytehive-installed
 *.lnk
 
