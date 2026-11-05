@@ -484,5 +484,5 @@ export const raiseCap = (id: string, extra: number): Promise<void> => enqueue(as
   if (next === state) return;
   state = next;
   await tryPersist(state.jobs.filter((j) => j.id === id));
-  await run(resumedNotes(state, id));
+  await run(resumedNotes(state, id, (person) => !!paneOf(person)?.pane.running));
 });

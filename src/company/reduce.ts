@@ -125,13 +125,14 @@ export function pauseJob(s: State, id: string): State {
 export const pausedNote = (id: string): Effect =>
   tellFounder(`${id} reached its token cap and is paused until the owner adds tokens. Its messages are held and it cannot be finished. Wait, you will be told.`);
 
-/** What was held while a Job was paused is gone, and nobody knows it runs again. */
-export function resumedNotes(s: State, id: string): Effect[] {
+/** What was held while a Job was paused is gone, and nobody knows it runs again.
+ *  Someone stopped is left out: a delivery would start them just to hear it. */
+export function resumedNotes(s: State, id: string, isUp: (personId: string) => boolean = () => true): Effect[] {
   const job = s.jobs.find((j) => j.id === id);
   if (!job) return [];
   return [
     tellFounder(`${id} is running again with more tokens. If its work is finished, call job_finish now.`),
-    ...job.people.map((personId): Effect => ({ kind: "deliver", personId, text: `${id} is running again. Anything you sent while it was paused was not delivered: send it again if it still matters.` })),
+    ...job.people.filter(isUp).map((personId): Effect => ({ kind: "deliver", personId, text: `${id} is running again. Anything you sent while it was paused was not delivered: send it again if it still matters.` })),
   ];
 }
 

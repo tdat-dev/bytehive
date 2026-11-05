@@ -594,6 +594,20 @@ describe("watching a running job", () => {
     expect(said().filter((t) => t.includes("J-0001")).length).toBe(2);
   });
 
+  it("leaves someone stopped asleep when the job runs again", async () => {
+    const ana = await running(1000);
+    founderPaneRunning();
+    await spend(ana.id, 100, 1200);
+    const pane = [...workspaces.values()].flatMap((w) => [...w.panes.values()]).find((p) => p.spec.personId === ana.id)!;
+    pane.running = false;
+    pane.restart = vi.fn(async () => {});
+    io.told.length = 0;
+    io.sent.length = 0;
+    await engine.raiseCap("J-0001", 1000);
+    expect(pane.restart).not.toHaveBeenCalled();
+    expect(said().filter((t) => t.includes("running again"))).toHaveLength(1);
+  });
+
   it("keeps the stop alert for as long as the job is paused, and drops it on resume", async () => {
     const ana = await running(1000);
     await spend(ana.id, 100, 1200);
