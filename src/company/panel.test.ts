@@ -145,12 +145,13 @@ describe("company panel", () => {
   });
 
   it("says in plain words when Node is missing", async () => {
+    const needed = "ByteHive needs Node.js 22.13 or newer to run the Company. If you just installed it, restart ByteHive.";
     eng.view = state();
-    eng.giveJob.mockRejectedValueOnce(new Error("ByteHive needs Node.js to run the Company."));
+    eng.giveJob.mockRejectedValueOnce(new Error(needed));
     const el = mount();
     el.querySelector("textarea")!.value = "Add search";
     el.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
     await tick();
-    expect(el.querySelector("[data-msg]")?.textContent).toBe("ByteHive needs Node.js to run the Company.");
+    expect(el.querySelector("[data-msg]")?.textContent).toBe(needed);
   });
 });

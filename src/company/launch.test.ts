@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRoleLaunch, composePrompt, mcpConfig, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { emptyCompany } from "./org";
 import { FOUNDER_LAWS, LEAD_LAWS, STAFF_LAWS } from "../laws";
 import { FOUNDER_ID, type Person, type RoleDef } from "./types";
@@ -24,6 +24,15 @@ describe("composePrompt", () => {
   });
   it("does not tell a member to wait for the user's approval", () => {
     expect(STAFF_LAWS).not.toMatch(/wait for the user/i);
+  });
+});
+
+describe("nodeRunsCompany", () => {
+  it.each(["v22.13.0", "v22.13.0\r\n", "v22.14.1\n", "v23.0.0", "v100.1.0"])("takes %j", (v) => {
+    expect(nodeRunsCompany(v)).toBe(true);
+  });
+  it.each(["v22.12.9", "v22.9.0", "v20.19.0", "v9.99.0", "", "'node' is not recognized", "22"])("refuses %j", (v) => {
+    expect(nodeRunsCompany(v)).toBe(false);
   });
 });
 

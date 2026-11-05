@@ -19,7 +19,7 @@ const io = vi.hoisted(() => ({
   gate: null as Promise<void> | null,
   saveFails: false,
   usage: new Map<string, { fresh: number | null }>(),
-  node: true,
+  node: "v22.13.0\r\n" as string | null,
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -55,7 +55,10 @@ vi.mock("../ipc", () => ({
     return { text: text.slice(from), next: text.length, from, size: text.length };
   },
   fsTruncateIfSize: async () => false,
-  programsOnPath: async (names: string[]) => names.map((n) => n === "node" && io.node),
+  runCapture: async (program: string, args: string[]) => {
+    if (![program, ...args].join(" ").endsWith("node --version") || io.node === null) throw { Failed: "couldn't start node" };
+    return io.node;
+  },
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return true; },
 }));
 vi.mock("../agentcost", () => ({
@@ -143,7 +146,7 @@ beforeEach(async () => {
   io.gate = null;
   io.saveFails = false;
   io.usage.clear();
-  io.node = true;
+  io.node = "v22.13.0\r\n";
   for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
   engine = await import("./engine");
   await engine.initCompany();
@@ -165,17 +168,18 @@ describe("the MCP server a member gets", () => {
   });
 });
 
-describe("giving a job without Node", () => {
-  it("says what is missing and starts nothing", async () => {
-    io.node = false;
-    await expect(engine.giveJob("do it")).rejects.toThrow("ByteHive needs Node.js to run the Company.");
+describe("giving a job without a Node that can run the MCP server", () => {
+  const NEEDED = "ByteHive needs Node.js 22.13 or newer to run the Company. If you just installed it, restart ByteHive.";
+  it.each([[null], [""], ["v22.12.9\r\n"], ["v20.19.0\r\n"]])("says what is missing and starts nothing, given %j", async (node) => {
+    io.node = node;
+    await expect(engine.giveJob("do it")).rejects.toThrow(NEEDED);
     expect(engine.companyView()!.jobs).toEqual([]);
     expect(io.spawned).toEqual([]);
   });
   it("looks again next time: Node may have been installed since", async () => {
-    io.node = false;
+    io.node = null;
     await engine.giveJob("do it").catch(() => {});
-    io.node = true;
+    io.node = "v24.1.0\n";
     await engine.giveJob("do it");
     expect(engine.companyView()!.jobs).toHaveLength(1);
   });

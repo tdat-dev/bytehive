@@ -17,6 +17,14 @@ export function composePrompt(person: Person, role: RoleDef, c: Company): string
   return `${LAWS[person.rank]}\n\n${place}\n\n${role.prompt}`;
 }
 
+/** What the MCP server needs, from mcp/package.json. `node --version` prints v22.13.0. */
+export function nodeRunsCompany(version: string): boolean {
+  const v = /^v(\d+)\.(\d+)\./.exec(version.trim());
+  if (!v) return false;
+  const [major, minor] = [Number(v[1]), Number(v[2])];
+  return major > 22 || (major === 22 && minor >= 13);
+}
+
 /** No --strict-mcp-config: the owner's other servers keep working. When they have
  *  a `bytehive` of their own, Claude starts this one instead (run to find out). */
 export function buildRoleLaunch(o: { person: Person; role: RoleDef; promptFile: string; mcpConfig: string; pluginDir: string | null }): {

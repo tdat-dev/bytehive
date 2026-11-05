@@ -3,17 +3,17 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { fsCreateDir, programsOnPath, sendMessage } from "../ipc";
+import { fsCreateDir, runCapture, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
-import { CLI_PRESETS, nameForNewPane, effectiveArgs } from "../crew";
+import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
 import { cliLookOf, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "../spawnmodal";
 import { readBoardFile, writeBoardFile } from "../boardfile";
 import { mkCard, defaultBoard } from "../board";
 import { sameFolder } from "../workspaces";
 import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
-import { buildRoleLaunch, composePrompt, mcpConfig, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type Effect, type State } from "./reduce";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
@@ -29,6 +29,8 @@ const TICK_MS = 1500;
 const WATCH_MS = 30_000;
 /** How long a new CLI gets to reach its prompt. */
 const BOOT_MS = 8000;
+/** How long `node --version` gets. */
+const NODE_WAIT_MS = 10_000;
 /** Tries at a board an agent keeps writing to. */
 const BOARD_TRIES = 3;
 
@@ -221,8 +223,9 @@ function syncFloors(): void {
 export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   if (!state || !ask.trim()) return;
   // Every member's MCP server runs on it: without Node the Founder has no job_plan.
-  const [node] = await programsOnPath(["node"]);
-  if (!node) throw new Error("ByteHive needs Node.js to run the Company.");
+  const node = launchSpec("node", ["--version"]);
+  const version = await runCapture(node.program, node.args, null, NODE_WAIT_MS).catch(() => "");
+  if (!nodeRunsCompany(version)) throw new Error("ByteHive needs Node.js 22.13 or newer to run the Company. If you just installed it, restart ByteHive.");
   syncFloors();
   const r = newJob(state, ask, Date.now());
   state = r.state;
