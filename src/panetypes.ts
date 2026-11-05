@@ -58,7 +58,7 @@ export interface Workspace {
   id: string;
   name: string;
   dir: string | null;
-  repoRoot: string | null; // git repo root when isolated; else null
+  repoRoot: string | null; // git repo root, once a worktree may be needed (isolated, or a member of the company); else null
   isolated: boolean; // create a worktree per agent
   gridEl: HTMLElement;
   panes: Map<string, Pane>;
