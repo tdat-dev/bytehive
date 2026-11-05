@@ -971,6 +971,14 @@ describe("watching a running job", () => {
     expect(engine.companyAlerts()).toEqual([]);
   });
 
+  it("takes a stopped job's warning off Needs you at once", async () => {
+    const ana = await running(1000);
+    await spend(ana.id, 100, 950);
+    expect(engine.companyAlerts()).toEqual([expect.objectContaining({ key: "cap-J-0001", level: "warn" })]);
+    await engine.stopJob("J-0001");
+    expect(engine.companyAlerts()).toEqual([]);
+  });
+
   it("leaves the cards of a stopped job alone and counts nothing more", async () => {
     const ana = await running();
     await spend(ana.id, 100, 200);

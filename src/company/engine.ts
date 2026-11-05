@@ -581,6 +581,7 @@ export const stopJob = (id: string): Promise<void> => enqueue(async () => {
   const next = haltJob(state, id);
   if (next === state) return;
   state = next;
+  alerts = alerts.filter((a) => a.job !== id); // the watch would only drop them on its next round
   await tryPersist(state.jobs.filter((j) => j.id === id));
   await run([stoppedNote(id)]);
 });
