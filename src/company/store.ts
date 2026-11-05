@@ -3,7 +3,7 @@
 import { fsCreateDir, fsCreateFile, fsReadDir, fsReadFile, fsRename, fsWriteFile } from "../ipc";
 import { raiseAlert } from "./alerts";
 import { emptyCompany, parseOwned } from "./org";
-import type { Company, Job } from "./types";
+import { DEFAULT_LIMITS, type Company, type Job } from "./types";
 
 const COMPANY_REL = "company.json";
 const COMPANY_TMP_REL = "company.json.tmp";
@@ -33,7 +33,7 @@ export async function writeNew(root: string, rel: string, content: string): Prom
 export function parseCompany(text: string): Company {
   const c = parseOwned<Company>(text);
   if (c?.version !== 1 || !Array.isArray(c.people) || !Array.isArray(c.floors)) throw new Error("company.json has the wrong shape");
-  return c;
+  return { ...c, limits: { ...DEFAULT_LIMITS, ...c.limits } }; // a limit added since it was saved, or left out by hand
 }
 
 export async function loadCompany(root: string): Promise<Company> {

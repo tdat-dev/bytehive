@@ -23,7 +23,7 @@ vi.mock("../ipc", () => ({
 import { clearAlert, standingAlerts } from "./alerts";
 import { companyRoot, loadCompany, loadJobs, parseCompany, saveCompany, saveJob } from "./store";
 import { emptyCompany } from "./org";
-import type { Job } from "./types";
+import { DEFAULT_LIMITS, type Job } from "./types";
 
 beforeEach(() => {
   files.clear();
@@ -55,6 +55,11 @@ describe("store", () => {
   });
   it("reads a file saved with a byte order mark, as Windows editors do", () => {
     expect(parseCompany(`﻿${JSON.stringify({ version: 1, people: [], floors: [] })}`).version).toBe(1);
+  });
+  it("fills in the limits a file does not have, and keeps the ones it does", () => {
+    const c = parseCompany(JSON.stringify({ version: 1, people: [], floors: [], limits: { peopleTotal: 3 } }));
+    expect(c.limits).toEqual({ ...DEFAULT_LIMITS, peopleTotal: 3 });
+    expect(parseCompany(JSON.stringify({ version: 1, people: [], floors: [] })).limits).toEqual(DEFAULT_LIMITS);
   });
   it("refuses a corrupt file instead of starting over", () => {
     expect(() => parseCompany("{oops")).toThrow();
