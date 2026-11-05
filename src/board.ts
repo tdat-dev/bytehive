@@ -24,6 +24,8 @@ export interface Card {
   due: string | null; // ISO date (yyyy-mm-dd) or null
   checklist: ChecklistItem[];
   assignee?: string; // pane name of the agent working this card
+  job?: string; // the company Job this card belongs to
+  assigneeId?: string; // the Person working it; survives a rename
   done?: DoneInfo; // present once the task is marked Done (code evidence)
 }
 export interface List {
@@ -76,6 +78,8 @@ export function normalizeCard(c: Partial<Card>): Card {
     checklist: Array.isArray(c.checklist) ? c.checklist : [],
   };
   if (typeof c.assignee === "string" && c.assignee.trim()) card.assignee = c.assignee;
+  if (typeof c.job === "string" && c.job) card.job = c.job;
+  if (typeof c.assigneeId === "string" && c.assigneeId) card.assigneeId = c.assigneeId;
   const d = c.done;
   if (d && typeof d === "object" && Array.isArray(d.files) && typeof d.repoRoot === "string") {
     card.done = {

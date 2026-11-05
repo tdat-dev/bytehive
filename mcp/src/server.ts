@@ -20,6 +20,7 @@ import {
 import { changedFiles, evidenceDir } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
+import { companyRoot, floorDir, registerCompanyTools, sendAsMember } from "./company.js";
 import { agentContext } from "./context/agentcontext.js";
 import { memoryDelete, memoryForInstructions, memoryGet, memorySave, memoryUpdate } from "./memory.js";
 import os from "node:os";
@@ -87,6 +88,8 @@ export function createServer(dir: string): McpServer {
   // The board lives in the project (dir); card_done evidence is read where this
   // agent works, which for an isolated agent is its worktree.
   const runDir = evidenceDir(process.env, dir);
+  // Set only for members of the company; everyone else keeps the flat fleet.
+  const personId = process.env.BYTEHIVE_AGENT_ID?.trim() || undefined;
 
   /** load → mutate → save, mapping any thrown error to an isError tool result. */
   const mutate = (fn: (b: Board) => unknown): ToolResult => {
@@ -104,12 +107,13 @@ export function createServer(dir: string): McpServer {
     "board_get",
     {
       description:
-        "Read the ByteHive kanban board for this workspace (.bytehive/board.json): all lists and their cards, including ids to use with the other tools.",
-      inputSchema: {},
+        "Read the ByteHive kanban board for this workspace (.bytehive/board.json): all lists and their cards, including ids to use with the other tools. The Founder can pass floor to read another project.",
+      inputSchema: { floor: z.string().optional().describe("Founder only: a floor id from company_status") },
     },
-    async () => {
+    async ({ floor }) => {
       try {
-        return ok(loadBoard(dir));
+        if (floor && !personId) return fail("Only members of the company have floors.");
+        return ok(loadBoard(floor ? floorDir(companyRoot(), personId!, floor) : dir));
       } catch (e) {
         return fail(e);
       }
@@ -262,6 +266,7 @@ export function createServer(dir: string): McpServer {
     },
     async ({ message, to }) => {
       try {
+        if (personId) return ok(sendAsMember(companyRoot(), personId, to, message, Date.now()));
         const m = queueMessage(dir, { from: agentName, to, message, now: Date.now() });
         return ok(m.to ? `sent to ${m.to}` : "broadcast to the fleet");
       } catch (e) {
@@ -387,6 +392,7 @@ export function createServer(dir: string): McpServer {
     },
     async ({ cli, task, count }) => {
       try {
+        if (personId) return fail("Members of the company do not start agents. Hiring goes through the Founder's plan.");
         const r = queueSpawn(dir, { from: agentName, cli, task, count, now: Date.now() });
         return ok(`queued ${r.count}× ${r.cli}${r.task ? " with a task" : ""}`);
       } catch (e) {
@@ -394,6 +400,8 @@ export function createServer(dir: string): McpServer {
       }
     },
   );
+
+  if (personId) registerCompanyTools(server, personId);
 
   // The user's real browsers, through the ByteHive hub (see browser.ts).
   registerBrowserTools(server, new HubClient(agentName ?? "Agent"), dir, agentName ?? "Agent");
