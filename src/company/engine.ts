@@ -18,7 +18,7 @@ import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, joinJob, newJob, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, standingAlerts } from "./alerts";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, saveCompany, saveJob, writeNew } from "./store";
-import { loadRoles, seedRoles, skillFiles } from "./roles";
+import { loadRoles, roleSkills, seedRoles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
 import type { CompanyRequest, Floor, Job, Person, PlanCard, RoleDef } from "./types";
 
@@ -117,18 +117,22 @@ async function tryPersist(jobs: Job[]): Promise<void> {
 const writeMcpConfig = async (p: Person) =>
   writeNew(root, `people\\${p.id}\\mcp.json`, mcpConfig(await resolveResource(MCP_RESOURCE)));
 
+/** Write a person's plugin from their role's skills. Gives back its folder, or null with no skills. */
+async function writePlugin(p: Person, role: RoleDef): Promise<string | null> {
+  const skills = await roleSkills(root, role);
+  if (!skills.length) return null;
+  const base = `people\\${p.id}\\plugin`;
+  await writeNew(root, `${base}\\.claude-plugin\\plugin.json`, pluginManifest(p));
+  for (const s of skills) await writeNew(root, `${base}\\skills\\${s.name}\\SKILL.md`, s.text);
+  return `${root}\\${base}`;
+}
+
 /** Write a person's prompt, MCP config and plugin, and give back their launch recipe. */
 async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentSpec> {
   const base = `people\\${p.id}`;
   await writeNew(root, `${base}\\prompt.md`, composePrompt(p, role, state!.company));
   await writeMcpConfig(p);
-  const skills = skillFiles(role);
-  let pluginDir: string | null = null;
-  if (skills.length) {
-    pluginDir = `${root}\\${base}\\plugin`;
-    await writeNew(root, `${base}\\plugin\\.claude-plugin\\plugin.json`, pluginManifest(p));
-    for (const s of skills) await writeNew(root, `${base}\\plugin\\skills\\${s.name}\\SKILL.md`, s.text);
-  }
+  const pluginDir = await writePlugin(p, role);
   const launch = buildRoleLaunch({ person: p, role, promptFile: `${root}\\${base}\\prompt.md`, mcpConfig: `${root}\\${base}\\mcp.json`, pluginDir });
   const preset = CLI_PRESETS.find((x) => x.id === p.cli);
   if (!preset) throw new Error(`unknown CLI ${p.cli}`);
@@ -294,9 +298,9 @@ async function startHires(hired: Person[]): Promise<string[]> {
   return failed;
 }
 
-/** What a person's prompt says about their boss changes with the floor, and their
- *  MCP config follows the app: whoever restarts reads both files again. Gives back
- *  whose could not be written. */
+/** What a person's prompt says about their boss changes with the floor, their MCP
+ *  config follows the app, and the owner can edit a skill: whoever restarts reads
+ *  these files again. Gives back whose could not be written. */
 async function refreshFiles(people: Person[]): Promise<string[]> {
   const failed: string[] = [];
   for (const p of people) {
@@ -305,6 +309,7 @@ async function refreshFiles(people: Person[]): Promise<string[]> {
     await writeNew(root, `people\\${p.id}\\prompt.md`, composePrompt(p, role, state.company))
       .catch((e) => failed.push(`${p.name}'s prompt was not updated: ${reason(e)}.`));
     await writeMcpConfig(p).catch((e) => failed.push(`${p.name}'s MCP config was not updated: ${reason(e)}.`));
+    await writePlugin(p, role).catch((e) => failed.push(`${p.name}'s skills were not updated: ${reason(e)}.`));
   }
   return failed;
 }

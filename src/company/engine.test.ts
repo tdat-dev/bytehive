@@ -408,6 +408,28 @@ describe("floors", () => {
   });
 });
 
+describe("a role's skills", () => {
+  const skill = `${ROOT}\\roles\\marketing\\skills\\campaign-brief\\SKILL.md`;
+  const hired = () => engine.companyView()!.company.people.find((p) => p.role === "marketing")!;
+  const copy = () => io.files.get(`${ROOT}\\people\\${hired().id}\\plugin\\skills\\campaign-brief\\SKILL.md`);
+
+  it("reach a new hire the way the owner edited them", async () => {
+    io.files.set(skill, "edited by hand");
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "marketing", floor: "a" }] });
+    await engine.approve(job().id);
+    expect(copy()).toBe("edited by hand");
+  });
+  it("reach someone already hired on the next start: a pane restarts on the files it was given", async () => {
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "marketing", floor: "a" }] });
+    await engine.approve(job().id);
+    io.files.set(skill, "edited later");
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    expect(copy()).toBe("edited later");
+  });
+});
+
 describe("a job file that can't be read", () => {
   it("raises an alert and stays where it is, and the rest of the company starts", async () => {
     await engine.giveJob("do it");

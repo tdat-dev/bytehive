@@ -1,5 +1,34 @@
-import { describe, it, expect } from "vitest";
-import { DEFAULT_ROLES, skillFiles } from "./roles";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const files = new Map<string, string>();
+vi.mock("../ipc", () => ({
+  fsReadFile: async (_root: string, rel: string) => {
+    const content = files.get(rel);
+    if (content === undefined) throw { Failed: "no such path: gone" };
+    return { content, mtime: 1 };
+  },
+}));
+
+import { DEFAULT_ROLES, roleSkills, skillFiles } from "./roles";
+
+describe("roleSkills", () => {
+  const marketing = DEFAULT_ROLES.find((r) => r.id === "marketing")!;
+  const at = (role: string, skill: string) => `roles\\${role}\\skills\\${skill}\\SKILL.md`;
+  beforeEach(() => files.clear());
+
+  it("reads the owner's copy, so an edited SKILL.md counts", async () => {
+    files.set(at("marketing", "campaign-brief"), "edited by hand");
+    expect(await roleSkills("R", marketing)).toEqual([{ name: "campaign-brief", text: "edited by hand" }]);
+  });
+  it("falls back on the app's copy of a skill the folder does not have", async () => {
+    expect(await roleSkills("R", marketing)).toEqual(skillFiles(marketing));
+  });
+  it("finds a skill the app never shipped", async () => {
+    files.set(at("analyst", "charts"), "draw them");
+    const analyst = { ...marketing, id: "analyst", skills: ["charts", "ghost"] };
+    expect(await roleSkills("R", analyst)).toEqual([{ name: "charts", text: "draw them" }]);
+  });
+});
 
 describe("default roles", () => {
   it("covers the starting catalog", () => {

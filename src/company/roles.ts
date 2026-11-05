@@ -21,6 +21,18 @@ export function skillFiles(role: RoleDef): Array<{ name: string; text: string }>
   });
 }
 
+/** A role's skills from the owner's roles folder, the copy they edit. One that
+ *  isn't there, like a skill added to a role in an update, comes from the app. */
+export async function roleSkills(root: string, role: RoleDef): Promise<Array<{ name: string; text: string }>> {
+  const shipped = new Map(skillFiles(role).map((s) => [s.name, s.text]));
+  const out: Array<{ name: string; text: string }> = [];
+  for (const name of role.skills) {
+    const text = await fsReadFile(root, `roles\\${role.id}\\skills\\${name}\\SKILL.md`).then((f) => f.content, () => shipped.get(name));
+    if (text) out.push({ name, text });
+  }
+  return out;
+}
+
 export async function seedRoles(root: string): Promise<void> {
   for (const role of DEFAULT_ROLES) {
     const exists = await fsReadFile(root, `roles\\${role.id}\\role.json`).then(() => true, () => false);
