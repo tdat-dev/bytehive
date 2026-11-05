@@ -16,8 +16,10 @@ export function emptyCompany(): Company {
   return { version: 1, floors: [], people: [founder], limits: { ...DEFAULT_LIMITS }, nextJob: 1 };
 }
 
-/** A role id becomes a folder name, so the app and the MCP tool hold it to this. */
-export const validRoleId = (id: unknown): id is string => typeof id === "string" && /^[a-z][a-z0-9-]{1,30}$/.test(id);
+/** A role id becomes a folder name, so the app and the MCP tool hold it to this.
+ *  Windows keeps some names for devices, and a folder can't have them. */
+export const validRoleId = (id: unknown): id is string =>
+  typeof id === "string" && /^[a-z][a-z0-9-]{1,30}$/.test(id) && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(id);
 
 /** A floor's id, from its project's name: two projects can share a name. */
 export function floorId(name: string, taken: string[]): string {
@@ -44,7 +46,8 @@ export function resolveTargets(c: Company, fromId: string, to: string | null): {
   if (!from) return { error: `You are not on the company roster (${fromId}).` };
   if (to === null) {
     const boss = from.boss ? personById(c, from.boss) : undefined;
-    return { people: boss ? [boss] : reportsOf(c, from.id) };
+    const people = boss ? [boss] : reportsOf(c, from.id);
+    return people.length ? { people } : { error: "You have nobody to message yet: no boss and no reports." };
   }
   const target = personByName(c, to);
   if (!target) return { error: `Nobody named ${to} works here. See company_status.` };

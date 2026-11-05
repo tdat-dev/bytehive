@@ -41,6 +41,12 @@ describe("company MCP", () => {
     expect(sendAsMember(root, "d1", undefined, "done", 5)).toBe("sent to Hai");
     expect(lines()[0]).toMatchObject({ type: "message", from: "d1", to: "Hai", message: "done", ts: 5 });
   });
+  it("tells a person with nobody to message so, instead of saying it was sent", () => {
+    const at = path.join(root, "company.json");
+    fs.writeFileSync(at, JSON.stringify({ version: 1, floors: [], people: [people[0]], limits, nextJob: 1 }));
+    expect(() => sendAsMember(root, "founder", undefined, "hi", 5)).toThrow(/nobody/);
+    expect(fs.existsSync(path.join(root, "requests.jsonl"))).toBe(false);
+  });
   it("refuses a skip level message and queues nothing", () => {
     expect(() => sendAsMember(root, "d1", "Founder", "hi", 5)).toThrow(/Hai/);
     expect(fs.existsSync(path.join(root, "requests.jsonl"))).toBe(false);

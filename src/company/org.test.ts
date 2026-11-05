@@ -34,6 +34,9 @@ describe("canMessage", () => {
 
 describe("resolveTargets", () => {
   const c = company([person("l1", "lead", "a", FOUNDER_ID), person("d1", "staff", "a", "l1")]);
+  it("says so when a person has nobody to message", () => {
+    expect(resolveTargets(emptyCompany(), FOUNDER_ID, null)).toEqual({ error: expect.stringContaining("nobody") });
+  });
   it("sends a message with no target to the boss, or the reports of a person with none above", () => {
     expect(resolveTargets(c, "d1", null)).toEqual({ people: [personByName(c, "L1")] });
     expect(resolveTargets(c, FOUNDER_ID, null)).toEqual({ people: reportsOf(c, FOUNDER_ID) });
@@ -122,6 +125,12 @@ describe("validRoleId", () => {
   });
   it("refuses anything that could not be a folder name or is too long", () => {
     for (const id of ["a", "Analyst", "9lives", "a b", "a/b", `a${"b".repeat(31)}`]) expect(validRoleId(id)).toBe(false);
+  });
+  it.each(["con", "prn", "aux", "nul", "com1", "com9", "lpt1", "lpt9"])("refuses %s: Windows keeps that name for a device", (id) => {
+    expect(validRoleId(id)).toBe(false);
+  });
+  it("takes a name that only starts like a device", () => {
+    for (const id of ["console", "com10", "lpt0", "aux-writer", "nullable"]) expect(validRoleId(id)).toBe(true);
   });
   it("refuses what is not a string, even one that prints like an id", () => {
     expect(validRoleId(undefined)).toBe(false);
