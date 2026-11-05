@@ -65,6 +65,21 @@ describe("validatePlan", () => {
   it("rejects a card on an unknown floor", () => {
     expect(validatePlan(company([]), plan({ cards: [{ floor: "z", title: "t", desc: "", checklist: [] }] }), roles).join()).toMatch(/floor/);
   });
+  it("refuses to hire a second Founder, whatever the role file says", () => {
+    const founderRole: RoleDef = { ...role("founder", "staff"), rank: "founder" };
+    expect(validatePlan(company([]), plan({ hires: [{ role: "founder", floor: "a" }] }), [...roles, founderRole]).join()).toContain("Founder");
+    expect(validatePlan(company([]), plan({ hires: [{ role: "boss", floor: "a" }] }), [...roles, { ...founderRole, id: "boss" }]).join()).toContain("Founder");
+  });
+  it("refuses a card on a floor with nobody on it and nobody hired there", () => {
+    const card = { floor: "a", title: "Ship it", desc: "", checklist: [] };
+    expect(validatePlan(company([]), plan({ cards: [card] }), roles).join()).toContain("Ship it");
+    expect(validatePlan(company([]), plan({ cards: [card], hires: [{ role: "developer", floor: "b" }] }), roles).join()).toContain("Ship it");
+  });
+  it("takes a card on a floor with someone on it, or someone hired there", () => {
+    const card = { floor: "a", title: "Ship it", desc: "", checklist: [] };
+    expect(validatePlan(company([person("d1", "staff", "a", FOUNDER_ID)]), plan({ cards: [card] }), roles)).toEqual([]);
+    expect(validatePlan(company([]), plan({ cards: [card], hires: [{ role: "developer", floor: "a" }] }), roles)).toEqual([]);
+  });
 });
 
 describe("applyHires", () => {

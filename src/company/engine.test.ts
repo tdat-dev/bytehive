@@ -120,9 +120,19 @@ const request = async (line: object) => {
   await vi.advanceTimersByTimeAsync(1500);
 };
 
+/** A card needs someone on its floor: whoever the plan doesn't hire already works there. */
+function staffFloors(plan: JobPlan): void {
+  const c = engine.companyView()!.company;
+  for (const floor of new Set(plan.cards.map((x) => x.floor))) {
+    if (plan.hires.some((h) => h.floor === floor)) continue;
+    c.people.push({ id: `r-${floor}`, name: `Resident ${floor}`, role: "developer", rank: "staff", floor, boss: "founder", cli: "claude", look: { shirt: "#fff", hair: "#000", prop: "none" } });
+  }
+}
+
 /** A company with floors for D:\a and D:\b, one Job given and its plan in. */
 async function waitingJob(plan: JobPlan): Promise<void> {
   await engine.giveJob("do it");
+  staffFloors(plan);
   await request({ type: "plan", ts: 1, from: "founder", job: job().id, plan });
   expect(job().status).toBe("awaiting-plan");
   io.told.length = 0;
@@ -334,6 +344,7 @@ describe("the queue", () => {
   it("keeps reading after a request that throws", async () => {
     await engine.giveJob("do it");
     await request({ type: "plan", ts: 1, from: "founder", job: "J-0001" }); // no plan: validatePlan throws
+    staffFloors(planFor("a"));
     await request({ type: "plan", ts: 2, from: "founder", job: "J-0001", plan: planFor("a") });
     expect(job().status).toBe("awaiting-plan");
   });

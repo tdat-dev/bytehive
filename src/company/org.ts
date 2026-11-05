@@ -63,9 +63,15 @@ export function validatePlan(c: Company, plan: JobPlan, roles: RoleDef[]): strin
   if (c.people.length + plan.hires.length > c.limits.peopleTotal) errors.push(`The company is limited to ${c.limits.peopleTotal} people.`);
   for (const h of plan.hires) {
     if (!known.has(h.floor)) errors.push(`Unknown floor ${h.floor}.`);
-    if (!roleOf(h.role)) errors.push(`Unknown role ${h.role}. See role_list or propose one with role_propose.`);
+    if (h.role === FOUNDER_ID || roleOf(h.role)?.rank === "founder") errors.push("A plan cannot hire a Founder: the company has one.");
+    else if (!roleOf(h.role)) errors.push(`Unknown role ${h.role}. See role_list or propose one with role_propose.`);
   }
-  for (const card of plan.cards) if (!known.has(card.floor)) errors.push(`Card "${card.title}" is on unknown floor ${card.floor}.`);
+  for (const card of plan.cards) {
+    if (!known.has(card.floor)) errors.push(`Card "${card.title}" is on unknown floor ${card.floor}.`);
+    else if (!floorPeople(c, card.floor).length && !plan.hires.some((h) => h.floor === card.floor)) {
+      errors.push(`Card "${card.title}" is on floor ${card.floor}, where nobody works: hire someone there.`);
+    }
+  }
   for (const floor of known) {
     const hires = plan.hires.filter((h) => h.floor === floor);
     if (!hires.length) continue;
