@@ -26,3 +26,9 @@ export function changedFiles(dir: string): string[] {
     .map((p) => p.replace(/^"|"$/g, "")) // git quotes paths with special chars
     .filter(Boolean);
 }
+
+/** Where card_done looks for what the agent changed: the folder it runs in
+ *  (BYTEHIVE_RUN_DIR, its worktree when isolated), else the board's folder. */
+export function evidenceDir(env: Record<string, string | undefined>, boardDir: string): string {
+  return env.BYTEHIVE_RUN_DIR?.trim() || boardDir;
+}

@@ -2,8 +2,8 @@
 /* bytehive-mcp entry: stdio MCP server for the ByteHive kanban board.
  * Workspace resolution, most-specific first:
  *   1. argv[2]            — explicit override (`bytehive-mcp <dir>`)
- *   2. BYTEHIVE_WORKSPACE  — the workspace folder ByteHive spawned the agent in;
- *      set on every ByteHive-spawned terminal. Pins the board to that workspace
+ *   2. BYTEHIVE_WORKSPACE  — the project folder, also for an agent running in
+ *      a worktree; set on every ByteHive-spawned terminal. Pins the board to it
  *      even if the agent's cwd drifts (a `cd`, a subdir, a git worktree), so an
  *      agent can never write its cards into a DIFFERENT project's board.
  *   3. process.cwd()      — fallback for agents launched outside ByteHive. */

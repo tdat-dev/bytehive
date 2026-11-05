@@ -17,7 +17,7 @@ import {
   renameList,
   deleteList,
 } from "./ops.js";
-import { changedFiles } from "./git.js";
+import { changedFiles, evidenceDir } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
 import { agentContext } from "./context/agentcontext.js";
@@ -84,6 +84,9 @@ export function createServer(dir: string): McpServer {
   // ByteHive sets BYTEHIVE_AGENT=<pane name> on every terminal it spawns, so
   // board mutations can record which agent acted (done.by, claim-on-move).
   const agentName = process.env.BYTEHIVE_AGENT?.trim() || process.env.MAESTRO_AGENT?.trim() || undefined;
+  // The board lives in the project (dir); card_done evidence is read where this
+  // agent works, which for an isolated agent is its worktree.
+  const runDir = evidenceDir(process.env, dir);
 
   /** load → mutate → save, mapping any thrown error to an isError tool result. */
   const mutate = (fn: (b: Board) => unknown): ToolResult => {
@@ -188,7 +191,7 @@ export function createServer(dir: string): McpServer {
     },
     async ({ card, summary }) =>
       mutate((b) =>
-        markDone(b, card, { repoRoot: dir, files: changedFiles(dir), summary, by: agentName }),
+        markDone(b, card, { repoRoot: runDir, files: changedFiles(runDir), summary, by: agentName }),
       ),
   );
 

@@ -58,17 +58,26 @@ describe("sameFolder", () => {
 
 describe("agentEnv", () => {
   it("pins the workspace to the project even when the agent runs in a worktree", () => {
-    const env = agentEnv({ name: "Ana", cwd: "D:\app" }, "D:\.bytehive-worktrees\app-1\ana");
-    expect(env).toContainEqual(["BYTEHIVE_WORKSPACE", "D:\app"]);
+    const env = agentEnv({ name: "Ana", cwd: "D:\\app" }, "D:\\.bytehive-worktrees\\app-1\\ana");
+    expect(env).toContainEqual(["BYTEHIVE_WORKSPACE", "D:\\app"]);
     expect(env).toContainEqual(["BYTEHIVE_AGENT", "Ana"]);
   });
 
   it("falls back to the run folder for an agent with no project", () => {
-    expect(agentEnv({ name: "Ana", cwd: null }, "C:\Users\me")).toContainEqual(["BYTEHIVE_WORKSPACE", "C:\Users\me"]);
+    expect(agentEnv({ name: "Ana", cwd: null }, "C:\\Users\\me")).toContainEqual(["BYTEHIVE_WORKSPACE", "C:\\Users\\me"]);
   });
 
   it("adds the spec's own variables", () => {
-    const env = agentEnv({ name: "Ana", cwd: "D:\app", env: [["BYTEHIVE_AGENT_ID", "p1"]] }, null);
+    const env = agentEnv({ name: "Ana", cwd: "D:\\app", env: [["BYTEHIVE_AGENT_ID", "p1"]] }, null);
     expect(env).toContainEqual(["BYTEHIVE_AGENT_ID", "p1"]);
+  });
+
+  it("names the folder the agent really works in, apart from the project", () => {
+    const env = agentEnv({ name: "Ana", cwd: "D:\\app" }, "D:\\.bytehive-worktrees\\app-1\\ana");
+    expect(env).toContainEqual(["BYTEHIVE_RUN_DIR", "D:\\.bytehive-worktrees\\app-1\\ana"]);
+  });
+
+  it("works in the project when there is no separate run folder", () => {
+    expect(agentEnv({ name: "Ana", cwd: "D:\\app" }, null)).toContainEqual(["BYTEHIVE_RUN_DIR", "D:\\app"]);
   });
 });

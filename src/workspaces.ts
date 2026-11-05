@@ -44,11 +44,14 @@ export function needsCloseConfirm(total: number): boolean {
 }
 
 /** The variables every agent process gets. BYTEHIVE_WORKSPACE is the project,
- *  never the worktree: the app reads the board and the outbox in the project. */
+ *  never the worktree: the app reads the board and the outbox in the project.
+ *  BYTEHIVE_RUN_DIR is where the agent really works (its worktree), which is
+ *  where card_done looks for what it changed. */
 export function agentEnv(spec: Pick<AgentSpec, "name" | "cwd" | "env">, ranIn: string | null): Array<[string, string]> {
   return [
     ["BYTEHIVE_AGENT", spec.name],
     ["BYTEHIVE_WORKSPACE", spec.cwd ?? ranIn ?? ""],
+    ["BYTEHIVE_RUN_DIR", ranIn ?? spec.cwd ?? ""],
     ...(spec.env ?? []),
   ];
 }
