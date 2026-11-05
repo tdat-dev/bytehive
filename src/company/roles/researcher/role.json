@@ -1,0 +1,13 @@
+{
+  "id": "researcher",
+  "title": "Researcher",
+  "department": "Research",
+  "rank": "staff",
+  "denyTools": [],
+  "look": {
+    "shirt": "#3ad29f",
+    "hair": "#2a2e3a",
+    "prop": "book"
+  },
+  "skills": []
+}

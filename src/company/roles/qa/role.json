@@ -1,0 +1,15 @@
+{
+  "id": "qa",
+  "title": "QA",
+  "department": "Engineering",
+  "rank": "staff",
+  "denyTools": [],
+  "look": {
+    "shirt": "#b18cf0",
+    "hair": "#2a2e3a",
+    "prop": "magnifier"
+  },
+  "skills": [
+    "test-report"
+  ]
+}

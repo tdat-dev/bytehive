@@ -1,0 +1,13 @@
+{
+  "id": "designer",
+  "title": "Designer",
+  "department": "Design",
+  "rank": "staff",
+  "denyTools": [],
+  "look": {
+    "shirt": "#ff6b6b",
+    "hair": "#2a2e3a",
+    "prop": "pencil"
+  },
+  "skills": []
+}

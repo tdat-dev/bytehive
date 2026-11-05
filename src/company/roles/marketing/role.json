@@ -1,0 +1,15 @@
+{
+  "id": "marketing",
+  "title": "Marketing",
+  "department": "Marketing",
+  "rank": "staff",
+  "denyTools": [],
+  "look": {
+    "shirt": "#e0913a",
+    "hair": "#2a2e3a",
+    "prop": "megaphone"
+  },
+  "skills": [
+    "campaign-brief"
+  ]
+}

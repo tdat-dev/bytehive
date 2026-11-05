@@ -1,0 +1,18 @@
+{
+  "id": "lead",
+  "title": "Team Lead",
+  "department": "Management",
+  "rank": "lead",
+  "denyTools": [
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit"
+  ],
+  "look": {
+    "shirt": "#5ec2f0",
+    "hair": "#2a2e3a",
+    "prop": "clipboard"
+  },
+  "skills": []
+}
