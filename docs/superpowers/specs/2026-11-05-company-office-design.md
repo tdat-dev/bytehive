@@ -33,7 +33,7 @@ Nguồn đầy đủ nằm trong lịch sử phiên làm việc. Một số con 
 
 - Tối đa 3 cấp: Founder, Lead, nhân viên. Nhân viên không thuê được ai (Claude Code agent teams cấm lồng nhóm; Cognition ghi nhận một cấp quản lý là mô hình chạy tốt).
 - Thuê người phải qua duyệt và có ngân sách (Paperclip dùng cách này).
-- Đếm token từ transcript, không đếm tiền. Paperclip issue #339: agent trả theo gói thuê bao ghi $0 nên trần chi phí không kích hoạt, một agent đốt 19,8 triệu token trong một giờ.
+- Đếm token từ transcript, không đếm tiền, và bỏ phần cache đọc lại vì nó tăng rất nhanh ở mọi phiên dài. Paperclip issue #339: agent trả theo gói thuê bao ghi $0 nên trần chi phí không kích hoạt, một agent đốt 19,8 triệu token trong một giờ.
 - Mỗi vùng file một người viết. Người review có context sạch (Cognition).
 - Lead hay tự làm thay hoặc kết thúc sớm (CrewAI, tài liệu Claude agent teams), nên Lead và Founder bị cấm sửa file bằng quyền tool, không chỉ bằng prompt.
 - Agent con mặc định không báo cáo lại (Cognition), nên `card_done` là bắt buộc và app theo dõi.
@@ -96,9 +96,11 @@ interface Job {
   ask: string;           // nguyên văn yêu cầu của bạn
   status: "planning" | "awaiting-plan" | "running" | "awaiting-merge"
         | "paused" | "done" | "rejected";
-  plan: { floor: string; cards: string[]; hires: Hire[] }[];
+  plan: JobPlan | null;  // card và người thuê, mỗi mục ghi tầng của nó
   tokenCap: number;
-  tokensUsed: number;
+  tokensUsed: number;     // token mới, không tính cache đọc lại
+  tokenBase: Record<string, number>;
+  people: string[];
 }
 ```
 
@@ -106,7 +108,7 @@ interface Job {
 
 Chỉ app ghi `company.json`. MCP tool gửi yêu cầu vào `requests.jsonl`, giống cách `spawn` đang chạy, nên không có hai tiến trình cùng ghi một file. Cảnh 3D chỉ đọc, không có dữ liệu riêng, nên văn phòng và board không lệch nhau.
 
-Mã Việc đi theo card, tên nhánh (`job/J-0142/login-fix`), báo cáo và token. Bấm một Việc là thấy đủ nó đang ở đâu.
+Mã Việc đi theo card, báo cáo và token. Tên nhánh theo Việc chỉ áp dụng cho người được thuê cho Việc đó ở Pha 1, người dùng lại giữ nhánh cũ. Bấm một Việc là thấy đủ nó đang ở đâu.
 
 ## 6. Luồng một Việc
 
@@ -253,6 +255,6 @@ Mỗi pha phát hành riêng được.
 - `src/pane.ts:337-347`: dùng `buildRoleLaunch`.
 - `src/fleetbridge.ts:107`: `SpawnLine` đang làm mất `from`.
 - `src/bridges.ts:299`: `deliver` chỉ tìm trong một thư mục, cần gửi liên tầng và kiểm tra quyền.
-- `mcp/src/server.ts:374`, `mcp/src/fleet.ts:58`: tool mới. `board_get` và `card_add` nhận thêm `floor` để Founder đọc và tạo card ở tầng khác.
+- `mcp/src/server.ts:374`, `mcp/src/fleet.ts:58`: tool mới. `board_get` nhận thêm `floor` để Founder đọc tầng khác. Card trong kế hoạch do app tạo khi bạn duyệt.
 - `src/spawnmodal.ts:178`: `spawnForConductor`.
 - `src/laws.ts`: luật theo cấp.
