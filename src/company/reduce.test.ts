@@ -136,6 +136,11 @@ describe("approvePlan and rejectPlan", () => {
     expect(r.state.jobs[0].people).toContain("p9");
     expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("approved") });
   });
+  it("counts someone already here who a card names as working the job", () => {
+    const s = waiting();
+    s.jobs[0].plan = { ...plan, cards: [{ floor: "a", title: "t", desc: "d", checklist: [], assignee: "Linh" }] };
+    expect(approvePlan(s, "J-0001", pick).state.jobs[0].people).toEqual(["p9", "d1"]);
+  });
   it("uses the plan's token cap when it has one", () => {
     const s = waiting();
     s.jobs[0].plan = { ...plan, tokenCap: 900 };

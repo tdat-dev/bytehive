@@ -78,10 +78,12 @@ export function approvePlan(
   }
   const { company, hired } = applyHires(s.company, job.plan, s.roles, pick);
   const names = hired.map((p) => `${p.name} (${p.role})`).join(", ");
+  // Someone already here who a card names works this Job as much as a new hire does.
+  const named = job.plan.cards.flatMap((c) => (c.assignee ? personByName(company, c.assignee)?.id ?? [] : []));
   const state = patch({ ...s, company }, id, {
     status: "running",
     tokenCap: job.plan.tokenCap ?? job.tokenCap,
-    people: [...new Set([...job.people, ...hired.map((p) => p.id)])],
+    people: [...new Set([...job.people, ...hired.map((p) => p.id), ...named])],
   });
   const text = `Plan for ${id} approved.${names ? ` Hired: ${names}.` : ""} The cards are on the boards. Brief the Lead of each floor, or the person working alone there.`;
   return { state, hired, effects: [tellFounder(text)] };
