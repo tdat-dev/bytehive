@@ -37,7 +37,7 @@ describe("needsCloseConfirm", () => {
   });
 });
 
-import { runDir, sameFolder } from "./workspaces";
+import { runDir, sameFolder, agentEnv } from "./workspaces";
 describe("runDir", () => {
   it("starts an agent in its worktree, else the project, else home, without a trailing slash", () => {
     expect(runDir({ worktree: "D:\\wt\\a", cwd: "D:\\app" }, "C:\\Users\\me")).toBe("D:\\wt\\a");
@@ -53,5 +53,22 @@ describe("sameFolder", () => {
     expect(sameFolder("D:\\App\\", "d:/app")).toBe(true);
     expect(sameFolder("D:\\app", "D:\\app2")).toBe(false);
     expect(sameFolder(null, "D:\\app")).toBe(false);
+  });
+});
+
+describe("agentEnv", () => {
+  it("pins the workspace to the project even when the agent runs in a worktree", () => {
+    const env = agentEnv({ name: "Ana", cwd: "D:\app" }, "D:\.bytehive-worktrees\app-1\ana");
+    expect(env).toContainEqual(["BYTEHIVE_WORKSPACE", "D:\app"]);
+    expect(env).toContainEqual(["BYTEHIVE_AGENT", "Ana"]);
+  });
+
+  it("falls back to the run folder for an agent with no project", () => {
+    expect(agentEnv({ name: "Ana", cwd: null }, "C:\Users\me")).toContainEqual(["BYTEHIVE_WORKSPACE", "C:\Users\me"]);
+  });
+
+  it("adds the spec's own variables", () => {
+    const env = agentEnv({ name: "Ana", cwd: "D:\app", env: [["BYTEHIVE_AGENT_ID", "p1"]] }, null);
+    expect(env).toContainEqual(["BYTEHIVE_AGENT_ID", "p1"]);
   });
 });

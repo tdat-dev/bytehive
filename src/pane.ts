@@ -28,7 +28,7 @@ import { openReplays, REC_DIR_REL } from "./replay";
 import { workspaces, newId } from "./appstate";
 import { taskLine, taskOf } from "./tasks";
 import { getPref } from "./prefs";
-import { basename, runDir } from "./workspaces";
+import { basename, runDir, agentEnv } from "./workspaces";
 import { homeDir } from "@tauri-apps/api/path";
 
 let home: Promise<string> | null = null;
@@ -344,10 +344,7 @@ export function createAgent(
       const launch = launchSpec(spec.program, args);
       // Identity for the child process: bytehive-mcp uses BYTEHIVE_AGENT to
       // stamp who moved/finished a board card (see mcp/src/server.ts).
-      const envPairs: Array<[string, string]> = [
-        ["BYTEHIVE_AGENT", spec.name],
-        ["BYTEHIVE_WORKSPACE", cwd ?? ""],
-      ];
+      const envPairs = agentEnv(spec, cwd);
       pane.spawning = true;
       pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
         pane.lastOutputAt = Date.now();

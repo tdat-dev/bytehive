@@ -21,6 +21,8 @@ export interface AgentSpec {
   sessionId?: string; // Claude Code session of the current run, so the chat view finds its transcript
   resumeIn?: string; // a conversation begun in another folder is carried on there: the CLI runs in it, no worktree
   ranIn?: string; // the folder the CLI was started in: its worktree, the project folder, or home for a project without one
+  env?: Array<[string, string]>; // extra variables for this agent's process
+  personId?: string; // set for a member of the company: its Person id
 }
 
 /** One agent pane: its DOM, its terminal, and live status bookkeeping. */

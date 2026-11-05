@@ -1,3 +1,5 @@
+import type { AgentSpec } from "./panetypes";
+
 /** Where an agent's CLI starts: its worktree, else the project folder, else
  *  the home folder (a project without a folder). Never left to the PTY's own
  *  default, so ByteHive always knows it; trailing separators dropped so the
@@ -39,4 +41,14 @@ export function pickNextActive(ids: string[], closingId: string): string | null 
 /** Confirm before quitting only when at least one terminal is live. */
 export function needsCloseConfirm(total: number): boolean {
   return total > 0;
+}
+
+/** The variables every agent process gets. BYTEHIVE_WORKSPACE is the project,
+ *  never the worktree: the app reads the board and the outbox in the project. */
+export function agentEnv(spec: Pick<AgentSpec, "name" | "cwd" | "env">, ranIn: string | null): Array<[string, string]> {
+  return [
+    ["BYTEHIVE_AGENT", spec.name],
+    ["BYTEHIVE_WORKSPACE", spec.cwd ?? ranIn ?? ""],
+    ...(spec.env ?? []),
+  ];
 }
