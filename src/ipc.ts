@@ -640,6 +640,11 @@ export async function appPid(): Promise<number> {
   return invoke<number>("app_pid");
 }
 
+/** Whether a process is running: it tells a dead lock holder from one gone quiet. */
+export async function processAlive(pid: number): Promise<boolean> {
+  return invoke<boolean>("process_alive", { pid });
+}
+
 export async function programsOnPath(programs: string[]): Promise<boolean[]> {
   return invoke<boolean[]>("programs_on_path", { programs });
 }

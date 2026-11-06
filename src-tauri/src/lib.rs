@@ -129,6 +129,7 @@ pub fn run() {
             toast::notify_open,
             commands::programs_on_path,
             commands::app_pid,
+            commands::process_alive,
             commands::record_start,
             commands::record_stop,
             commands::record_read,

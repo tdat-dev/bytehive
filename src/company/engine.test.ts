@@ -24,6 +24,8 @@ const io = vi.hoisted(() => ({
   gone: new Set<string>(),
   sessions: new Set<string>(),
   node: "v22.13.0\r\n" as string | null,
+  alive: new Set<number>(),
+  lockFails: false,
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -43,8 +45,9 @@ vi.mock("../ipc", () => ({
     io.files.delete(`${root}\\${from}`);
   },
   fsReadFile: async (root: string, rel: string) => {
+    if (io.lockFails && rel === "engine.lock") throw { Failed: "no such path: Access is denied. (os error 5)" };
     const content = io.files.get(`${root}\\${rel}`);
-    if (content === undefined) throw { Failed: "no such path: gone" };
+    if (content === undefined) throw { Failed: "no such path: The system cannot find the file specified. (os error 2)" };
     return { content, mtime: 1 };
   },
   claudeSessionExists: async (dir: string, id: string) => io.sessions.has(`${dir}|${id}`),
@@ -62,6 +65,7 @@ vi.mock("../ipc", () => ({
   },
   fsTruncateIfSize: async () => false,
   appPid: async () => 7,
+  processAlive: async (pid: number) => io.alive.has(pid),
   runCapture: async (program: string, args: string[]) => {
     if (![program, ...args].join(" ").endsWith("node --version") || io.node === null) throw { Failed: "couldn't start node" };
     return io.node;
@@ -169,6 +173,8 @@ beforeEach(async () => {
   io.gone.clear();
   io.sessions.clear();
   io.node = "v22.13.0\r\n";
+  io.alive.clear();
+  io.lockFails = false;
   for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
   engine = await import("./engine");
   await engine.initCompany();
@@ -499,7 +505,7 @@ describe("two running apps", () => {
     expect([...io.files.keys()].sort()).toEqual([LOCK, `${ROOT}\\requests.jsonl`].sort());
   });
 
-  it("takes over a lock with no heartbeat for 15 seconds", async () => {
+  it("takes over the lock of a dead app after 15 seconds with no heartbeat", async () => {
     await secondApp();
     expect(engine.companyView()).toBeNull();
     await vi.advanceTimersByTimeAsync(16_500);
@@ -532,6 +538,81 @@ describe("two running apps", () => {
     expect(engine.companyElsewhere()).toBe(ELSEWHERE);
     await vi.advanceTimersByTimeAsync(16_500);
     expect(engine.companyView()!.jobs.map((j) => j.id)).toEqual(["J-0001"]);
+  });
+
+  describe("beside an app that is alive but silent", () => {
+    const MIN = 60_000;
+    const TAKEOVER = /process 99.*stopped answering.*took over the Company/;
+    const standing = () => engine.companyAlerts().filter((a) => a.key === "lock-takeover");
+
+    it("stays read-only after a minute, and starts nobody", async () => {
+      await secondApp();
+      io.alive.add(99);
+      await vi.advanceTimersByTimeAsync(MIN);
+      expect(engine.companyView()).toBeNull();
+      expect(engine.companyElsewhere()).toBe(ELSEWHERE);
+      expect(lock().pid).toBe(99);
+    });
+    it("takes over after 10 minutes without a heartbeat, and says what happened", async () => {
+      otherApp();
+      io.alive.add(99);
+      await vi.advanceTimersByTimeAsync(9 * MIN);
+      expect(engine.companyView()).toBeNull();
+      await vi.advanceTimersByTimeAsync(MIN + 1500);
+      expect(engine.companyView()).not.toBeNull();
+      expect(lock().pid).toBe(7);
+      expect(standing()).toEqual([expect.objectContaining({ level: "warn", text: expect.stringMatching(TAKEOVER) })]);
+    });
+    it("takes over at once from a lock silent that long already, and says so", async () => {
+      otherApp(Date.now() - 11 * MIN);
+      io.alive.add(99);
+      vi.resetModules();
+      engine = await import("./engine");
+      await engine.initCompany();
+      await engine.enqueue(async () => {});
+      expect(engine.companyView()).not.toBeNull();
+      expect(standing()).toHaveLength(1);
+    });
+    it("leaves a live app be after the machine slept: nobody starts twice", async () => {
+      await secondApp();
+      io.alive.add(99);
+      vi.setSystemTime(Date.now() + 8 * 60 * MIN); // no timer runs in a sleep
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(engine.companyView()).toBeNull();
+      expect(lock().pid).toBe(99);
+      expect(standing()).toEqual([]);
+      otherApp(); // the holder is awake too
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(engine.companyElsewhere()).toBe(ELSEWHERE);
+    });
+    it("raises no alert when the holder is simply dead", async () => {
+      await secondApp();
+      await vi.advanceTimersByTimeAsync(16_500);
+      expect(engine.companyView()).not.toBeNull();
+      expect(standing()).toEqual([]);
+    });
+  });
+
+  describe("on a lock it cannot read", () => {
+    it("never takes over on that one failed read", async () => {
+      await secondApp();
+      await vi.advanceTimersByTimeAsync(1500);
+      io.lockFails = true;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(engine.companyView()).toBeNull();
+      expect(lock().pid).toBe(99);
+    });
+    it("keeps running what it runs, and writes no heartbeat until it can read again", async () => {
+      await engine.giveJob("do it");
+      const before = lock().at;
+      io.lockFails = true;
+      await vi.advanceTimersByTimeAsync(4500);
+      expect(engine.companyView()).not.toBeNull();
+      expect(lock().at).toBe(before);
+      io.lockFails = false;
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(lock().at).toBeGreaterThan(before);
+    });
   });
 
   it("tells the screen when it steps down", async () => {

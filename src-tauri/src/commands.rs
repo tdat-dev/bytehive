@@ -1025,6 +1025,28 @@ pub fn app_pid() -> u32 {
     std::process::id()
 }
 
+/// Whether a process is running, so the Company can tell an app that died from
+/// one that went quiet. A process we may not look at still exists: only "no such
+/// process" or an exit code says it is gone.
+#[tauri::command]
+pub fn process_alive(pid: u32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, STILL_ACTIVE};
+    use windows::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    unsafe {
+        match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            Ok(handle) => {
+                let mut code = 0u32;
+                let read = GetExitCodeProcess(handle, &mut code);
+                let _ = CloseHandle(handle);
+                read.is_err() || code == STILL_ACTIVE.0 as u32
+            }
+            Err(e) => e.code() != ERROR_INVALID_PARAMETER.to_hresult(),
+        }
+    }
+}
+
 /// For each program name, report whether it resolves on PATH (see
 /// `program_on_path`). Pure std — no per-item shelling out — so the wizard can
 /// batch-check every preset's binary in one round-trip to gray out the ones
@@ -1062,6 +1084,23 @@ fn programs_on_path_impl(programs: Vec<String>) -> Result<Vec<bool>, CommandErro
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn process_alive_tells_a_running_process_from_a_gone_one() {
+        assert!(super::process_alive(std::process::id()));
+        let mut child = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 30 127.0.0.1 >nul"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        assert!(super::process_alive(pid));
+        child.kill().unwrap();
+        child.wait().unwrap();
+        // the handle we still hold keeps the pid: it has an exit code now
+        assert!(!super::process_alive(pid));
+        drop(child);
+        assert!(!super::process_alive(pid));
+    }
+
     #[test]
     fn usage_counts_a_reply_once_and_reads_only_what_was_added() {
         let line = |id: &str, model: &str| format!(

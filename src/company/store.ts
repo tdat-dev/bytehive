@@ -2,14 +2,16 @@
  * sends requests instead, so two processes never write the same file. */
 import { fsCreateDir, fsCreateFile, fsReadDir, fsReadFile, fsRename, fsWriteFile } from "../ipc";
 import { raiseAlert } from "./alerts";
-import { parseLock, type EngineLock } from "./lock";
+import { parseLock, type EngineLock, type LockRead } from "./lock";
 import { emptyCompany, parseOwned } from "./org";
 import { DEFAULT_LIMITS, type Company, type Job } from "./types";
 
 const COMPANY_REL = "company.json";
 const COMPANY_TMP_REL = "company.json.tmp";
 const LOCK_REL = "engine.lock";
-const missing = (e: unknown) => /no such path/i.test(typeof e === "string" ? e : String((e as { Failed?: string })?.Failed ?? ""));
+/** The file isn't there. The backend says "no such path" for whatever stopped it finding
+ *  the file, access denied included, so it is the OS error that tells: 2 and 3 are not found. */
+const missing = (e: unknown) => /no such path.*os error [23]\b/i.test(typeof e === "string" ? e : String((e as { Failed?: string })?.Failed ?? ""));
 
 export function companyRoot(home: string): string {
   return `${home.replace(/[\\/]+$/, "")}\\.bytehive\\company`;
@@ -54,9 +56,10 @@ export async function saveCompany(root: string, c: Company): Promise<void> {
   await fsRename(root, COMPANY_TMP_REL, COMPANY_REL);
 }
 
-/** A lock that can't be read is no lock: the heartbeat comes round again in moments. */
-export const readLock = (root: string): Promise<EngineLock | null> =>
-  fsReadFile(root, LOCK_REL).then((f) => parseLock(f.content), () => null);
+/** Only a missing file is no lock. Any other failure says nothing about who holds it:
+ *  the heartbeat skips that beat and comes round again in moments. */
+export const readLock = (root: string): Promise<LockRead> =>
+  fsReadFile(root, LOCK_REL).then((f) => parseLock(f.content), (e) => (missing(e) ? null : "unknown"));
 
 /** Swapped in whole, or another app could read half a lock as none. The temp file
  *  has the pid in its name: two apps can be writing at the same moment. */

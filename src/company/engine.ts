@@ -3,7 +3,7 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, runCapture, sendMessage } from "../ipc";
+import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, processAlive, runCapture, sendMessage } from "../ipc";
 import { workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
@@ -17,7 +17,7 @@ import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManif
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
-import { mayRun } from "./lock";
+import { LOCK_ABANDONED_MS, lockMove, lockSilent } from "./lock";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
@@ -43,6 +43,9 @@ let me = 0; // this app's pid
 let holding = false;
 /** Another running app does, as far as the lock says. */
 let elsewhere = false;
+/** When the last heartbeat ran, and when this app last came out of a sleep. */
+let lastBeat = 0;
+let awakeSince = 0;
 let state: State | null = null;
 let loadError: string | null = null;
 let alerts: Alert[] = [];
@@ -443,7 +446,17 @@ async function stepDown(): Promise<void> {
 /** Who runs the company, every TICK_MS and outside the queue: a long operation
  *  must not make the lock look abandoned. */
 async function heartbeat(): Promise<void> {
-  if (!mayRun(await readLock(root), me, Date.now())) {
+  const read = await readLock(root);
+  const now = Date.now();
+  // No timer runs in a sleep: a gap this long means the holder was asleep too.
+  if (now - lastBeat >= LOCK_ABANDONED_MS) awakeSince = now;
+  lastBeat = now;
+  // Asked only of a lock gone quiet. If the answer doesn't come, count them alive: staying out costs less than starting everyone twice.
+  const silent = read && read !== "unknown" && lockSilent(read, me, now) ? read : null;
+  const alive = silent ? await processAlive(silent.pid).catch(() => true) : false;
+  const move = lockMove(read, me, now, alive, awakeSince);
+  if (move === "skip") return;
+  if (move === "stay-out") {
     const news = !elsewhere;
     elsewhere = true;
     if (holding) await enqueue(stepDown);
@@ -452,6 +465,7 @@ async function heartbeat(): Promise<void> {
   }
   await writeLock(root, { pid: me, at: Date.now() }).catch(() => {});
   elsewhere = false;
+  if (move === "take-over") raiseAlert("lock-takeover", `Another ByteHive app (process ${silent?.pid}) stopped answering for 10 minutes, so this one took over the Company. If that app is still open, close it: the people it started are still running, next to the ones started here.`);
   if (holding) return;
   holding = true;
   await enqueue(start);
@@ -463,6 +477,7 @@ export async function initCompany(): Promise<void> {
   await fsCreateDir(home, ".bytehive\\company").catch(() => {});
   root = companyRoot(home);
   me = await appPid();
+  lastBeat = Date.now();
   await heartbeat();
   const beat = () => window.setTimeout(() => void heartbeat().catch(() => {}).finally(beat), TICK_MS);
   beat();

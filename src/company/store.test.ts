@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const files = new Map<string, string>();
+const readFails = new Map<string, unknown>();
 const key = (root: string, rel: string) => `${root}|${rel}`;
 vi.mock("../ipc", () => ({
   fsReadFile: async (root: string, rel: string) => {
+    if (readFails.has(rel)) throw readFails.get(rel);
     const content = files.get(key(root, rel));
-    if (content === undefined) throw { Failed: "no such path: gone" };
+    if (content === undefined) throw { Failed: "no such path: The system cannot find the file specified. (os error 2)" };
     return { content, mtime: 1 };
   },
   fsWriteFile: async (root: string, rel: string, content: string) => { files.set(key(root, rel), content); return { mtime: 2 }; },
@@ -27,6 +29,7 @@ import { DEFAULT_LIMITS, type Job } from "./types";
 
 beforeEach(() => {
   files.clear();
+  readFails.clear();
   for (const a of standingAlerts()) clearAlert(a.key);
 });
 
@@ -99,6 +102,19 @@ describe("store", () => {
     await writeLock("R", { pid: 7, at: 5 });
     expect(await readLock("R")).toEqual({ pid: 7, at: 5 });
     expect([...files.keys()]).toEqual([key("R", "engine.lock")]);
+  });
+  it.each([
+    ["the file is being swapped in", { Failed: "no such path: Access is denied. (os error 5)" }],
+    ["something has it open", { Failed: "The process cannot access the file because it is being used by another process. (os error 32)" }],
+    ["the app could not be asked", "ipc gone"],
+  ])("reads the lock as unknown, not as none, when %s", async (_what, e) => {
+    await writeLock("R", { pid: 7, at: 5 });
+    readFails.set("engine.lock", e);
+    expect(await readLock("R")).toBe("unknown");
+  });
+  it("does not start an empty company over one it could not read", async () => {
+    readFails.set("company.json", { Failed: "no such path: Access is denied. (os error 5)" });
+    await expect(loadCompany("R")).rejects.toEqual({ Failed: expect.stringContaining("os error 5") });
   });
   it("skips a temp file a crash left behind", async () => {
     await saveJob("R", job);

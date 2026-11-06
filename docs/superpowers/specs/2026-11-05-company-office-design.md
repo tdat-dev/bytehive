@@ -111,7 +111,7 @@ interface Job {
 
 Chỉ app ghi `company.json`. MCP tool gửi yêu cầu vào `requests.jsonl`, giống cách `spawn` đang chạy, nên không có hai tiến trình cùng ghi một file. Cảnh 3D chỉ đọc, không có dữ liệu riêng, nên văn phòng và board không lệch nhau.
 
-Hai app ByteHive cùng mở (bản cài và bản dev) không được cùng chạy công ty. App đang chạy làm mới `engine.lock` mỗi 1,5 giây. App kia thấy nhịp tim còn mới thì chỉ đứng ngoài: không đọc yêu cầu, không ghi gì, panel báo công ty đang chạy ở cửa sổ khác. Không có nhịp tim 15 giây thì nó nhận lại, đọc từ file. App đang chạy mà thấy khóa thuộc app khác thì tự nhường.
+Hai app ByteHive cùng mở (bản cài và bản dev) không được cùng chạy công ty. App đang chạy làm mới `engine.lock` mỗi 1,5 giây. App kia thấy nhịp tim còn mới thì chỉ đứng ngoài: không đọc yêu cầu, không ghi gì, panel báo công ty đang chạy ở cửa sổ khác. Không có nhịp tim 15 giây thì nó hỏi tiến trình giữ khóa còn sống không. Tiến trình đã chết thì nó nhận lại, đọc từ file. Tiến trình còn sống thì nó vẫn đứng ngoài, vì pane của app kia còn chạy và nhận lại lúc này sẽ bật mọi người hai lần (máy ngủ dậy là trường hợp hay gặp). Chỉ sau 10 phút không có nhịp tim, tính từ lúc máy thức, nó mới nhận lại và báo cho bạn chuyện đã xảy ra. Đọc khóa lỗi vì bất cứ lý do gì ngoài file không tồn tại thì bỏ qua nhịp đó, không coi là không có khóa. App đang chạy mà thấy khóa thuộc app khác thì tự nhường.
 
 Công ty chạy ở cửa sổ chính. Tab có người trong công ty không tách được sang cửa sổ riêng, vì cửa sổ chính không còn thấy pane của họ sẽ bật lại từ đầu. Panel trong cửa sổ đã tách báo công ty chạy ở cửa sổ chính.
 
