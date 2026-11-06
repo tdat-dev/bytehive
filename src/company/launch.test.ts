@@ -74,19 +74,22 @@ describe("founderFolder", () => {
 describe("nodeVerdict", () => {
   const NEEDS = "ByteHive needs Node.js 22.13 or newer to run the Company.";
   it.each(["v22.13.0", "v22.13.0\r\n", "v22.14.1\n", "v23.0.0", "v24.6.0\r\n", "v100.1.0"])("lets %j through", (v) => {
-    expect(nodeVerdict({ printed: v })).toEqual({});
+    expect(nodeVerdict({ printed: v, code: 0 })).toEqual({});
   });
   it.each([["v22.12.9", "v22.12.9"], ["v22.9.0\r\n", "v22.9.0"], ["v20.19.0\n", "v20.19.0"], ["v18.20.0", "v18.20.0"], ["v9.99.0", "v9.99.0"]])("refuses %j, naming the version", (v, found) => {
-    expect(nodeVerdict({ printed: v })).toEqual({ refuse: `${NEEDS} Found ${found}.` });
+    expect(nodeVerdict({ printed: v, code: 0 })).toEqual({ refuse: `${NEEDS} Found ${found}.` });
   });
-  it.each(["", "\r\n", "  "])("says Node was not found when the command printed nothing: %j", (v) => {
-    expect(nodeVerdict({ printed: v })).toEqual({ refuse: `${NEEDS} Node.js was not found. If you just installed it, restart ByteHive.` });
+  it.each([["", 1], ["\r\n", 1], ["  ", 9009]])("says Node was not found when the command printed nothing and failed: %j, exit %j", (v, code) => {
+    expect(nodeVerdict({ printed: v, code })).toEqual({ refuse: `${NEEDS} Node.js was not found. If you just installed it, restart ByteHive.` });
+  });
+  it.each([[0], [null]])("does not call Node missing on empty output without a failed exit: exit %j", (code) => {
+    expect(nodeVerdict({ printed: "", code })).toEqual({ log: expect.stringContaining("printed nothing") });
   });
   it("does not block when the check itself failed or timed out, and gives the reason to log", () => {
     expect(nodeVerdict({ failed: "node took longer than 30 s" })).toEqual({ log: expect.stringContaining("node took longer than 30 s") });
   });
   it.each(["'node' is not recognized", "22", "Welcome to nvm"])("does not block on an answer it cannot read: %j", (v) => {
-    expect(nodeVerdict({ printed: v })).toEqual({ log: expect.stringContaining(v) });
+    expect(nodeVerdict({ printed: v, code: 0 })).toEqual({ log: expect.stringContaining(v) });
   });
 });
 

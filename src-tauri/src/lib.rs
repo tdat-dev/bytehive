@@ -147,6 +147,7 @@ pub fn run() {
             commands::save_pasted_image,
             commands::save_pasted_file,
             commands::run_capture,
+            commands::run_capture_status,
             commands::claude_session_exists,
             commands::claude_live_sessions,
             commands::claude_sessions,

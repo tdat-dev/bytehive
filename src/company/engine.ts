@@ -3,7 +3,7 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, gitExcludeBytehive, processAlive, runCapture, sendMessage } from "../ipc";
+import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, gitExcludeBytehive, processAlive, runCaptureStatus, sendMessage } from "../ipc";
 import { activeWs, workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
@@ -334,7 +334,7 @@ export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   if (!paneOf(FOUNDER_ID) && !founderDir()) throw new Error(NO_PROJECT);
   // Every member's MCP server runs on it: without Node the Founder has no job_plan.
   const node = launchSpec("node", ["--version"]);
-  const verdict = nodeVerdict(await runCapture(node.program, node.args, null, NODE_WAIT_MS).then((printed) => ({ printed }), (e) => ({ failed: reason(e) })));
+  const verdict = nodeVerdict(await runCaptureStatus(node.program, node.args, null, NODE_WAIT_MS).then((r) => ({ printed: r.stdout, code: r.code }), (e) => ({ failed: reason(e) })));
   if (verdict.refuse) throw new Error(verdict.refuse);
   if (verdict.log) console.error(`[bytehive] ${verdict.log}`);
   syncFloors();

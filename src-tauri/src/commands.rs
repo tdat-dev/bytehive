@@ -890,6 +890,28 @@ pub async fn run_capture(
 }
 
 fn run_capture_impl(program: &str, args: &[String], cwd: Option<&str>, timeout_ms: u64) -> Result<String, CommandError> {
+    capture(program, args, cwd, timeout_ms).map(|c| c.stdout)
+}
+
+/// What a finished run left: its stdout, and its exit code (None if it had none).
+#[derive(serde::Serialize)]
+pub struct Captured {
+    stdout: String,
+    code: Option<i32>,
+}
+
+/// `run_capture` for a caller that must tell "printed nothing" from "failed".
+#[tauri::command]
+pub async fn run_capture_status(
+    program: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<Captured, CommandError> {
+    run_blocking(move || capture(&program, &args, cwd.as_deref(), timeout_ms.unwrap_or(60_000))).await
+}
+
+fn capture(program: &str, args: &[String], cwd: Option<&str>, timeout_ms: u64) -> Result<Captured, CommandError> {
     use std::io::Read;
     use std::process::{Command, Stdio};
     let mut cmd = Command::new(program);
@@ -927,8 +949,8 @@ fn run_capture_impl(program: &str, args: &[String], cwd: Option<&str>, timeout_m
     });
     match rx.recv_timeout(std::time::Duration::from_millis(timeout_ms)) {
         Ok(buf) => {
-            let _ = child.wait();
-            Ok(String::from_utf8_lossy(&buf).into_owned())
+            let code = child.wait().ok().and_then(|status| status.code());
+            Ok(Captured { stdout: String::from_utf8_lossy(&buf).into_owned(), code })
         }
         Err(_) => {
             // Take the whole tree down: a .cmd shim leaves its node process behind.
@@ -1080,6 +1102,51 @@ fn programs_on_path_impl(programs: Vec<String>) -> Result<Vec<bool>, CommandErro
         .iter()
         .map(|p| program_on_path(p, &exts))
         .collect())
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+
+    /** A shell line, the way the platform runs one. */
+    fn shell(line: &str) -> (&'static str, Vec<String>) {
+        if cfg!(windows) {
+            ("cmd", vec!["/c".into(), line.into()])
+        } else {
+            ("sh", vec!["-c".into(), line.into()])
+        }
+    }
+
+    #[test]
+    fn a_run_that_prints_gives_its_output_and_exit_zero() {
+        let (program, args) = shell("echo hi");
+        let got = capture(program, &args, None, 10_000).unwrap();
+        assert_eq!(got.stdout.trim(), "hi");
+        assert_eq!(got.code, Some(0));
+    }
+
+    #[test]
+    fn empty_output_with_a_failed_exit_is_told_from_a_clean_one() {
+        let (program, args) = shell("exit 3");
+        let got = capture(program, &args, None, 10_000).unwrap();
+        assert_eq!((got.stdout.as_str(), got.code), ("", Some(3)));
+        let (program, args) = shell("exit 0");
+        assert_eq!(capture(program, &args, None, 10_000).unwrap().code, Some(0));
+    }
+
+    #[test]
+    fn a_program_the_shell_cannot_find_prints_nothing_and_fails() {
+        let (program, args) = shell("no-such-program-for-bytehive --version");
+        let got = capture(program, &args, None, 10_000).unwrap();
+        assert_eq!(got.stdout, "");
+        assert!(matches!(got.code, Some(c) if c != 0));
+    }
+
+    #[test]
+    fn run_capture_still_gives_back_just_the_output() {
+        let (program, args) = shell("echo hi");
+        assert_eq!(run_capture_impl(program, &args, None, 10_000).unwrap().trim(), "hi");
+    }
 }
 
 #[cfg(test)]

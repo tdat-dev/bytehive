@@ -26,12 +26,15 @@ export function founderFolder(active: { dir: string | null } | null, open: Array
 const NEEDS_NODE = "ByteHive needs Node.js 22.13 or newer to run the Company.";
 
 /** What `node --version` says about giving a job, as it prints v22.13.0. The MCP
- *  server needs that, from mcp/package.json. Only a clear answer refuses: a check
- *  that failed, or printed what can't be read, says nothing about Node. */
-export function nodeVerdict(r: { printed: string } | { failed: string }): { refuse?: string; log?: string } {
+ *  server needs that, from mcp/package.json. Only a clear answer refuses: a version
+ *  too old, or no output from a run that failed. Anything else says nothing about Node. */
+export function nodeVerdict(r: { printed: string; code: number | null } | { failed: string }): { refuse?: string; log?: string } {
   if ("failed" in r) return { log: `the Node.js check failed: ${r.failed}` };
   const printed = r.printed.trim();
-  if (!printed) return { refuse: `${NEEDS_NODE} Node.js was not found. If you just installed it, restart ByteHive.` };
+  if (!printed) {
+    if (r.code === 0 || r.code === null) return { log: `the Node.js check printed nothing, exit code ${r.code}` };
+    return { refuse: `${NEEDS_NODE} Node.js was not found. If you just installed it, restart ByteHive.` };
+  }
   const v = /^v(\d+)\.(\d+)\./.exec(printed);
   if (!v) return { log: `the Node.js check printed something else: ${printed}` };
   const [major, minor] = [Number(v[1]), Number(v[2])];

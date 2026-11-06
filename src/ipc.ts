@@ -213,6 +213,11 @@ export async function runCapture(program: string, args: string[], cwd: string | 
   return invoke<string>("run_capture", { program, args, cwd, timeoutMs });
 }
 
+/** runCapture with the exit code, for a caller that must tell "printed nothing" from "failed". */
+export async function runCaptureStatus(program: string, args: string[], cwd: string | null, timeoutMs = 60_000): Promise<{ stdout: string; code: number | null }> {
+  return invoke<{ stdout: string; code: number | null }>("run_capture_status", { program, args, cwd, timeoutMs });
+}
+
 export async function resizePty(agentId: string, cols: number, rows: number): Promise<void> {
   await invoke("pty_resize", { agentId, cols, rows });
 }

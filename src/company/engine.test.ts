@@ -33,6 +33,7 @@ const io = vi.hoisted(() => ({
   excludeFails: false,
   excluding: 0,
   excludingAtOnce: 0,
+  nodeCode: 0 as number | null,
   nodeWait: 0,
 }));
 
@@ -83,10 +84,10 @@ vi.mock("../ipc", () => ({
   },
   appPid: async () => 7,
   processAlive: async (pid: number) => io.alive.has(pid),
-  runCapture: async (program: string, args: string[], _cwd: string | null, timeoutMs: number) => {
+  runCaptureStatus: async (program: string, args: string[], _cwd: string | null, timeoutMs: number) => {
     io.nodeWait = timeoutMs;
     if (![program, ...args].join(" ").endsWith("node --version") || io.node === null) throw { Failed: "node took longer than 30 s" };
-    return io.node;
+    return { stdout: io.node, code: io.nodeCode };
   },
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return true; },
 }));
@@ -198,6 +199,7 @@ beforeEach(async () => {
   io.gone.clear();
   io.sessions.clear();
   io.node = "v22.13.0\r\n";
+  io.nodeCode = 0;
   io.alive.clear();
   io.lockFails = false;
   io.seedFails = false;
@@ -234,11 +236,12 @@ describe("giving a job without a Node that can run the MCP server", () => {
     expect(io.nodeWait).toBe(30_000);
   });
   it.each([
-    ["v22.12.9\r\n", `${NEEDS} Found v22.12.9.`],
-    ["v18.20.0\r\n", `${NEEDS} Found v18.20.0.`],
-    ["", `${NEEDS} Node.js was not found. If you just installed it, restart ByteHive.`],
-  ])("says what it found and starts nothing, given %j", async (node, said) => {
+    ["v22.12.9\r\n", 0, `${NEEDS} Found v22.12.9.`],
+    ["v18.20.0\r\n", 0, `${NEEDS} Found v18.20.0.`],
+    ["", 1, `${NEEDS} Node.js was not found. If you just installed it, restart ByteHive.`],
+  ])("says what it found and starts nothing, given %j", async (node, code, said) => {
     io.node = node;
+    io.nodeCode = code;
     await expect(engine.giveJob("do it")).rejects.toThrow(said);
     expect(engine.companyView()!.jobs).toEqual([]);
     expect(io.spawned).toEqual([]);
@@ -251,10 +254,20 @@ describe("giving a job without a Node that can run the MCP server", () => {
     expect(spy).toHaveBeenCalledWith(expect.stringContaining("node took longer than 30 s"));
     spy.mockRestore();
   });
+  it("does not call Node missing when the command printed nothing but did not fail", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    io.node = "";
+    await engine.giveJob("do it");
+    expect(engine.companyView()!.jobs).toHaveLength(1);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("printed nothing"));
+    spy.mockRestore();
+  });
   it("looks again next time: Node may have been installed since", async () => {
     io.node = "";
+    io.nodeCode = 1;
     await engine.giveJob("do it").catch(() => {});
     io.node = "v24.1.0\n";
+    io.nodeCode = 0;
     await engine.giveJob("do it");
     expect(engine.companyView()!.jobs).toHaveLength(1);
   });
