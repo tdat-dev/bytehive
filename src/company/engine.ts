@@ -318,7 +318,12 @@ function syncFloors(): void {
     floors.push({ id: floorId(ws.name, floors.map((f) => f.id)), dir: ws.dir, name: ws.name });
   }
   if (floors.length !== state.company.floors.length) state = { ...state, company: { ...state.company, floors } };
-  for (const f of floors) void keepOutOfGit(f.dir);
+}
+
+/** The floors a Job can touch. Never for a launch alone: a project is a floor just
+ *  by being open, and someone who has not used the Company has their repo left alone. */
+function excludeFloors(): void {
+  for (const f of state?.company.floors ?? []) void keepOutOfGit(f.dir);
 }
 
 export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
@@ -330,6 +335,7 @@ export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   if (verdict.refuse) throw new Error(verdict.refuse);
   if (verdict.log) console.error(`[bytehive] ${verdict.log}`);
   syncFloors();
+  excludeFloors();
   const r = newJob(state, ask, Date.now());
   state = r.state;
   await tryPersist([r.job]);
@@ -471,6 +477,7 @@ async function start(): Promise<void> {
   }
   await closeOldOffice();
   syncFloors();
+  if (state.jobs.length) excludeFloors();
   try {
     await saveCompany(root, state.company);
   } catch (e) {

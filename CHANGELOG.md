@@ -19,10 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project open, ByteHive asks you to open one first. After this update the old
   office tab closes by itself, its folder stays on disk, and running jobs carry
   on.
-- **The Company leaves nothing new in `git status`.** When a project becomes a
-  floor, or the Founder starts in it, ByteHive adds `.bytehive/` to that repo's
-  local `.git/info/exclude`, unless it is already ignored. Your `.gitignore` is
-  never edited. The Founder also runs with hooks off, so your hooks no longer
+- **The Company leaves nothing new in `git status`.** When you give a job,
+  ByteHive adds `.bytehive/` to the local `.git/info/exclude` of every project
+  the job can touch, unless it is already ignored or your repo tracks it. Your
+  `.gitignore` is never edited, and nothing changes until you use the Company. The Founder also runs with hooks off, so your hooks no longer
   write `.claude/` or `logs/` into the project it sits in. Everyone else keeps
   your hooks.
 

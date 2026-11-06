@@ -31,6 +31,10 @@ fn exclude_impl(dir: &str) -> Result<(), CommandError> {
     if git(&["check-ignore", "-q", ".bytehive/"], dir).is_ok() {
         return Ok(());
     }
+    // A team that commits the folder wants new files in it to show up.
+    if git(&["ls-files", "--", ".bytehive"], dir).is_ok_and(|tracked| !tracked.is_empty()) {
+        return Ok(());
+    }
     let file = Path::new(dir).join(rel);
     let text = match fs::read(&file) {
         Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
@@ -136,6 +140,19 @@ mod tests {
         exclude_impl(dir.to_str().unwrap()).unwrap();
         assert_eq!(count(&exclude_of(&dir)), 0);
         assert_eq!(fs::read_to_string(dir.join(".gitignore")).unwrap(), ".bytehive/\n");
+    }
+
+    #[test]
+    fn a_folder_the_team_commits_is_left_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = repo(tmp.path());
+        make_bytehive(&dir);
+        run(&dir, &["add", "."]);
+        run(&dir, &["commit", "-qm", "board"]);
+        exclude_impl(dir.to_str().unwrap()).unwrap();
+        assert_eq!(count(&exclude_of(&dir)), 0);
+        fs::write(dir.join(".bytehive/new.json"), "{}").unwrap();
+        assert!(run(&dir, &["status", "--short"]).contains("new.json"));
     }
 
     #[test]

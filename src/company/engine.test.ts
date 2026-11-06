@@ -637,14 +637,33 @@ describe("where the Founder sits", () => {
 describe("keeping git status clean", () => {
   const openProject = (dir: string) => workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
 
-  it("excludes .bytehive/ in every project that is a floor", () => {
-    expect(io.excluded).toEqual(["D:\\a", "D:\\b"]);
+  /** The app comes back with the same two projects open. */
+  async function relaunch() {
+    vi.resetModules();
+    ({ workspaces } = await import("../appstate"));
+    openProjects();
+    engine = await import("./engine");
+    await engine.initCompany();
+    await started();
+  }
+
+  it("changes nothing in anyone's repo at launch when the Company was never used", async () => {
+    expect(io.excluded).toEqual([]);
+    await relaunch();
+    expect(io.excluded).toEqual([]);
   });
 
-  it("does it when a project becomes a floor", async () => {
+  it("excludes .bytehive/ in every floor a job can touch, when the job is given", async () => {
     openProject("D:\\c");
     await engine.giveJob("do it");
-    expect(io.excluded).toContain("D:\\c");
+    expect(io.excluded).toEqual(["D:\\a", "D:\\b", "D:\\c"]);
+  });
+
+  it("does it at launch once there are Jobs: a project made a floor by 0.14.0 needs it too", async () => {
+    await engine.giveJob("do it");
+    io.excluded = [];
+    await relaunch();
+    expect(io.excluded).toEqual(["D:\\a", "D:\\b"]);
   });
 
   it("asks once per folder", async () => {
