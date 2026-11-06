@@ -3,10 +3,13 @@
 
 import { execFileSync } from "node:child_process";
 
+/** Without this git writes a non-ASCII name as a quoted octal escape, and the same file shows up twice. */
+const PLAIN = ["-c", "core.quotepath=off"];
+
 export function changedFiles(dir: string): string[] {
   let out: string;
   try {
-    out = execFileSync("git", ["status", "--porcelain"], {
+    out = execFileSync("git", [...PLAIN, "status", "--porcelain"], {
       cwd: dir,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -42,7 +45,7 @@ export function branchFiles(runDir: string, boardDir: string): string[] {
   try {
     const base = run(boardDir, "rev-parse", "HEAD");
     const fork = run(runDir, "merge-base", "HEAD", base);
-    return run(runDir, "diff", "--name-only", fork, "HEAD").split("\n").filter(Boolean);
+    return run(runDir, ...PLAIN, "diff", "--name-only", fork, "HEAD").split("\n").filter(Boolean);
   } catch {
     return [];
   }

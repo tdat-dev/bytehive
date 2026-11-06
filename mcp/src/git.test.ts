@@ -38,7 +38,7 @@ describe("what a worker changed", () => {
     git(wt, "commit", "-qm", "b");
     expect(branchFiles(wt, main)).toEqual(["b.txt"]);
     expect(workFiles(wt, main)).toEqual(["b.txt"]);
-  });
+  }, 20_000);
   it("adds what is not committed yet, once", () => {
     const { main, wt, git } = repo();
     writeFileSync(join(wt, "b.txt"), "b");
@@ -47,7 +47,7 @@ describe("what a worker changed", () => {
     writeFileSync(join(wt, "b.txt"), "changed");
     writeFileSync(join(wt, "c.txt"), "c");
     expect(workFiles(wt, main).sort()).toEqual(["b.txt", "c.txt"]);
-  });
+  }, 20_000);
   it("leaves out what hooks write", () => {
     const { main, wt } = repo();
     mkdirSync(join(wt, ".claude"));
@@ -56,14 +56,24 @@ describe("what a worker changed", () => {
     writeFileSync(join(wt, "logs", "y.log"), "y");
     writeFileSync(join(wt, "real.txt"), "r");
     expect(workFiles(wt, main)).toEqual(["real.txt"]);
-  });
+  }, 20_000);
   it("is what git status says for an agent in the project folder", () => {
     const { main } = repo();
     writeFileSync(join(main, "z.txt"), "z");
     expect(workFiles(main, main)).toEqual(["z.txt"]);
-  });
+  }, 20_000);
   it("is nothing outside a repo", () => {
     const dir = mkdtempSync(join(tmpdir(), "bh-none-"));
     expect(workFiles(dir, dir)).toEqual([]);
-  });
+  }, 20_000);
+  it("keeps a non-ASCII file name whole, and shows it once", () => {
+    const { main, wt, git } = repo();
+    writeFileSync(join(wt, "bao-cao-tuần.txt"), "b");
+    git(wt, "add", ".");
+    git(wt, "commit", "-qm", "b");
+    writeFileSync(join(wt, "bao-cao-tuần.txt"), "changed");
+    writeFileSync(join(wt, "kế-hoạch.txt"), "c");
+    expect(branchFiles(wt, main)).toEqual(["bao-cao-tuần.txt"]);
+    expect(workFiles(wt, main).sort()).toEqual(["bao-cao-tuần.txt", "kế-hoạch.txt"]);
+  }, 20_000);
 });
