@@ -14,6 +14,11 @@ export function runDir(spec: { worktree?: string; cwd: string | null }, home: st
  *  it runs in a project without being a worker there. */
 export const isFounder = (spec: Pick<AgentSpec, "personId">) => spec.personId === FOUNDER_ID;
 
+/** The panes a project's board can hand cards to. The Founder sits in a project
+ *  but takes no cards, from the Conductor or anyone. */
+export const boardPanes = <P extends { spec: Pick<AgentSpec, "personId"> }>(panes: Iterable<P>): P[] =>
+  [...panes].filter((p) => !isFounder(p.spec));
+
 /** Whether an agent gets a new worktree when it boots. A member of the company
  *  always does on a git repo, two people must not share a checkout; everyone
  *  else follows the project's setting. The Founder never does: it writes nothing. */

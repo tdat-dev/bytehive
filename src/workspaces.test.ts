@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { basename, isFounder, nextWorkspaceName, pickNextActive, needsCloseConfirm, needsWorktree, trustsFolder } from "./workspaces";
+import { basename, boardPanes, isFounder, nextWorkspaceName, pickNextActive, needsCloseConfirm, needsWorktree, trustsFolder } from "./workspaces";
 
 describe("trustsFolder", () => {
   it("answers Claude's folder question for a member: the owner approved the hire", () => {
@@ -18,6 +18,18 @@ describe("isFounder", () => {
     expect(isFounder({ personId: "founder" })).toBe(true);
     expect(isFounder({ personId: "p1" })).toBe(false);
     expect(isFounder({})).toBe(false);
+  });
+});
+
+describe("boardPanes", () => {
+  const founder = { spec: { personId: "founder" } };
+  const member = { spec: { personId: "p1" } };
+  const plain = { spec: {} };
+  it("offers the board everyone in the project but the Founder", () => {
+    expect(boardPanes(new Map([["a", founder], ["b", member], ["c", plain]]).values())).toEqual([member, plain]);
+  });
+  it("leaves nothing to dispatch to when the Founder sits there alone", () => {
+    expect(boardPanes([founder])).toEqual([]);
   });
 });
 

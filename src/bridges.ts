@@ -31,7 +31,7 @@ import { knownConversation } from "./chatsource";
 import { exitVerdict, holdExit, setExitHandler } from "./ptyexit";
 import { spawnForConductor } from "./spawnmodal";
 import { initCompany } from "./company/engine";
-import { isFounder } from "./workspaces";
+import { boardPanes } from "./workspaces";
 import { paneStatus } from "./fleet";
 import { showDelegation, showDelegationToast } from "./delegation";
 import { pushFlow } from "./flow";
@@ -172,11 +172,10 @@ export function initBridges(): void {
       return { id: target.id, name: target.spec.name, color: target.color, running: target.running };
     },
   });
-  // Fleet directory for the board: running panes of the active workspace. The
-  // Founder sits in a project but takes no cards, from the Conductor or anyone.
+  // Fleet directory for the board: running panes of the active workspace.
   setFleet(() =>
     activeWs
-      ? [...activeWs.panes.values()].filter((p) => !isFounder(p.spec)).map((p) => ({
+      ? boardPanes(activeWs.panes.values()).map((p) => ({
           id: p.id,
           name: p.spec.name,
           color: p.color,
