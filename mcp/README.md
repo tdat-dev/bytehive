@@ -7,7 +7,7 @@ runs in — the same board the ByteHive app renders. Source of truth is
 
 People in the ByteHive Company skip all of this: the app carries a one-file build
 of this server (`npm run build:mcp` at the repo root) and hands it to them with
-`--mcp-config`. It needs Node.js on PATH.
+`--mcp-config`. It needs Node.js 22.13 or newer on PATH.
 
 ## Install (Claude Code)
 

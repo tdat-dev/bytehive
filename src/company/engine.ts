@@ -172,8 +172,10 @@ async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentS
  *  A conversation belongs to its folder, so it goes with a worktree. */
 async function checkRestore(p: Person, spec: AgentSpec): Promise<void> {
   const gone: string[] = [];
+  let commits = "";
   if (spec.worktree && !(await fsReadDir(spec.worktree, "").then(() => true, () => false))) {
     gone.push("worktree");
+    if (spec.branch) commits = ` Anything they committed is on branch ${spec.branch}.`;
     delete spec.worktree;
     delete spec.branch;
   }
@@ -181,7 +183,7 @@ async function checkRestore(p: Person, spec: AgentSpec): Promise<void> {
     gone.push("conversation");
     delete spec.sessionId;
   }
-  if (gone.length) raiseAlert(`lost-${p.id}`, `${p.name}'s ${gone.join(" and ")} could not be found, so they start blank.`, p.id);
+  if (gone.length) raiseAlert(`lost-${p.id}`, `${p.name}'s ${gone.join(" and ")} could not be found, so they start blank.${commits}`, p.id);
 }
 
 /** Note what every pane runs on, so closing one loses nothing. Gives back whether anything moved. */
@@ -471,7 +473,12 @@ async function heartbeat(): Promise<void> {
   if (move === "take-over") raiseAlert("lock-takeover", `Another ByteHive app (process ${silent?.pid}) stopped answering for 10 minutes, so this one took over the Company. If that app is still open, close it: the people it started are still running, next to the ones started here.`);
   if (holding) return;
   holding = true;
-  await enqueue(start);
+  // Not awaited: start waits its turn in the queue, and this is what keeps the lock fresh meanwhile.
+  void enqueue(start).catch((e) => {
+    loadError = reason(e);
+    console.error(`[bytehive] the company could not start: ${loadError}`);
+    changed();
+  });
 }
 
 export async function initCompany(): Promise<void> {

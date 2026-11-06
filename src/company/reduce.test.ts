@@ -22,6 +22,10 @@ const running = () => approvePlan(waiting(), "J-0001", pick).state;
 const closed = () => rejectPlan(waiting(), "J-0001", "").state;
 
 describe("newJob", () => {
+  it("titles a job with its whole first line: the panel wraps it, nothing cuts a word", () => {
+    const line = "Write the launch post for the new pricing page and check every number in it against the billing code";
+    expect(newJob(state(), `  ${line}\nmore detail`, 100).job.title).toBe(line);
+  });
   it("numbers jobs and wakes the Founder", () => {
     const { state: s, job, effects } = newJob(state(), "add marketing to b", 100);
     expect(job.id).toBe("J-0001");

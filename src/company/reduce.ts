@@ -25,7 +25,7 @@ const typeable = (text: string) => text.replace(/[\u0000-\u0008\u000b-\u001f\u00
 
 export function newJob(s: State, ask: string, now: number): { state: State; job: Job; effects: Effect[] } {
   const job: Job = {
-    id: jobId(s.company.nextJob), title: ask.trim().split("\n")[0].slice(0, 80), ask, status: "planning", plan: null,
+    id: jobId(s.company.nextJob), title: ask.trim().split("\n")[0].trim(), ask, status: "planning", plan: null,
     tokenCap: s.company.limits.tokensPerJob, tokensUsed: 0, tokenBase: {}, people: [], createdAt: now,
   };
   const state = { ...s, company: { ...s.company, nextJob: s.company.nextJob + 1 }, jobs: [...s.jobs, job] };

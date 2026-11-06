@@ -26,6 +26,7 @@ const io = vi.hoisted(() => ({
   node: "v22.13.0\r\n" as string | null,
   alive: new Set<number>(),
   lockFails: false,
+  seedFails: false,
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -37,6 +38,7 @@ vi.mock("../ipc", () => ({
   fsCreateFile: async (root: string, rel: string) => { if (!io.files.has(`${root}\\${rel}`)) io.files.set(`${root}\\${rel}`, ""); },
   fsWriteFile: async (root: string, rel: string, content: string) => {
     if (io.saveFails && rel === "company.json.tmp") throw { Failed: "access denied: company.json.tmp" };
+    if (io.seedFails && rel.startsWith("roles\\")) throw { Failed: "disk full" };
     io.files.set(`${root}\\${rel}`, content);
     return { mtime: 1 };
   },
@@ -120,6 +122,8 @@ function addPane(dir: string, spec: object, over: Partial<Pane>): Pane {
 type Engine = typeof import("./engine");
 let engine: Engine;
 let workspaces: Map<string, Workspace>; // the engine's own: vi.resetModules gives each test a new one
+/** initCompany leaves start in the queue: past this it has run. */
+const started = () => engine.enqueue(async () => {});
 const job = (n = 0) => engine.companyView()!.jobs[n];
 const cards = (dir: string) => (io.boards.get(dir) as Board).lists.flatMap((l) => l.cards);
 const planFor = (floor: string, hires = 0): JobPlan => ({
@@ -175,6 +179,7 @@ beforeEach(async () => {
   io.node = "v22.13.0\r\n";
   io.alive.clear();
   io.lockFails = false;
+  io.seedFails = false;
   for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
   engine = await import("./engine");
   await engine.initCompany();
@@ -223,6 +228,7 @@ describe("starting the app", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     expect(io.files.get(file)).toContain(`Your name is ${staff.name}.`);
   });
   it("points everyone's MCP config at this app: a pane that restarts never gets a new one", async () => {
@@ -232,6 +238,7 @@ describe("starting the app", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     expect(io.files.get(file)).toContain("Program Files");
   });
 });
@@ -467,6 +474,7 @@ describe("two running apps", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
   }
   const ELSEWHERE = "The Company is running in another ByteHive window.";
 
@@ -486,6 +494,36 @@ describe("two running apps", () => {
     expect(lock().at).toBeGreaterThan(first);
     open();
     await long;
+  });
+
+  it("keeps the lock fresh while its start waits behind a long operation", async () => {
+    otherApp();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(engine.companyView()).toBeNull();
+    let open = () => {};
+    const long = engine.enqueue(() => new Promise<void>((r) => { open = r; }));
+    await vi.advanceTimersByTimeAsync(16_500); // the other app is gone: this one takes the lock, and start queues
+    expect(lock().pid).toBe(7);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(Date.now() - lock().at).toBeLessThan(3000);
+    open();
+    await long;
+    await started();
+    expect(engine.companyView()).not.toBeNull();
+  });
+
+  it("says why it could not start, and keeps the heartbeat going", async () => {
+    io.files.clear();
+    io.seedFails = true;
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    await started();
+    expect(engine.companyError()).toContain("disk full");
+    expect(engine.companyView()).toBeNull();
+    const first = lock().at;
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(lock().at).toBeGreaterThan(first);
   });
 
   it("stays read-only beside another app: no tick, no watch, no writes", async () => {
@@ -519,6 +557,7 @@ describe("two running apps", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     expect(engine.companyView()).not.toBeNull();
     expect(lock().pid).toBe(7);
   });
@@ -527,6 +566,7 @@ describe("two running apps", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     expect(engine.companyView()).not.toBeNull();
   });
 
@@ -569,7 +609,7 @@ describe("two running apps", () => {
       vi.resetModules();
       engine = await import("./engine");
       await engine.initCompany();
-      await engine.enqueue(async () => {});
+      await started();
       expect(engine.companyView()).not.toBeNull();
       expect(standing()).toHaveLength(1);
     });
@@ -684,6 +724,21 @@ describe("a person whose pane closes", () => {
     expect(engine.companyAlerts()).toEqual([expect.objectContaining({ personId: ana.id, text: expect.stringMatching(/Ana.*worktree.*conversation.*blank/) })]);
   });
 
+  it("names the branch of a lost worktree, so the commits on it can be found", async () => {
+    const ana = await hired();
+    close(ana.id);
+    io.gone.add(TREE);
+    await tell("Ana");
+    expect(engine.companyAlerts()[0].text).toContain("bytehive/ana");
+  });
+
+  it("names no branch when only the conversation is gone: the worktree is still there", async () => {
+    const ana = await hired();
+    close(ana.id);
+    await tell("Ana");
+    expect(engine.companyAlerts()[0].text).not.toContain("bytehive/ana");
+  });
+
   it("writes down what they start on instead, so the next close finds it", async () => {
     const ana = await hired();
     close(ana.id);
@@ -717,6 +772,7 @@ describe("a role's skills", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     expect(copy()).toBe("edited later");
   });
 });
@@ -728,6 +784,7 @@ describe("a job file that can't be read", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     expect(engine.companyView()!.jobs.map((j) => j.id)).toEqual(["J-0001"]);
     expect(engine.companyAlerts()).toEqual([expect.objectContaining({ text: expect.stringContaining("J-0009.json") })]);
     expect(io.files.get(`${ROOT}\\jobs\\J-0009.json`)).toBe("{ half");
@@ -737,6 +794,7 @@ describe("a job file that can't be read", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     engine.dismissAlert(engine.companyAlerts()[0].key);
     expect(engine.companyAlerts()).toEqual([]);
   });
@@ -749,6 +807,7 @@ describe("a company that won't load", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     expect(engine.companyError()).toBeTruthy();
     expect(engine.companyView()).toBeNull();
     expect(io.files.get(`${ROOT}\\company.json`)).toBe("{oops");
@@ -837,6 +896,7 @@ describe("a disk that refuses to save", () => {
     vi.resetModules();
     engine = await import("./engine");
     await engine.initCompany();
+    await started();
     await vi.advanceTimersByTimeAsync(1500); // the first tick notes that requests.jsonl isn't there yet
     io.saveFails = false;
     await engine.giveJob("do it");

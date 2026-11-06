@@ -76,8 +76,8 @@ describe("agent_context", () => {
       expect(await agentContext(dir, "Ana", env)).toContain("1. fix the login");
       expect(await agentContext(dir, "Zed", env)).toContain('No agent "Zed" here.');
     } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
-  });
+  }, 30_000); // it opens real files on a machine that may be busy, and Windows may hold a folder for a moment
 });

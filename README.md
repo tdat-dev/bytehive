@@ -70,7 +70,7 @@ specific agent from the board (it records the assignee and reports back when
 the agent marks it done).
 
 People in the Company need no setup: the app carries the server and starts it
-for them, which takes Node.js on PATH. For any other agent the package is not on
+for them, which takes Node.js 22.13 or newer on PATH. For any other agent the package is not on
 npm yet, so install it from a checkout. See [mcp/README.md](mcp/README.md) for
 that command, the full tool reference, and a worktree-isolation caveat.
 
@@ -96,7 +96,7 @@ npm test              # vitest unit tests
 npx tsc --noEmit      # typecheck
 ```
 
-Prerequisites: Node 20+, Rust (stable, MSVC toolchain), and the
+Prerequisites: Node 22.13 or newer, Rust (stable, MSVC toolchain), and the
 [Tauri 2 Windows prerequisites](https://tauri.app/start/prerequisites/).
 
 ### Project layout

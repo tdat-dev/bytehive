@@ -15,8 +15,8 @@
 .co-send[aria-disabled="true"], .co-row .kb-tool[aria-disabled="true"] { opacity: .5; cursor: default; }
 .co-error { margin: 0; padding: 8px 10px; border-radius: var(--r1); border: 1px solid var(--err); color: var(--err); font-size: 12px; line-height: 1.5; }
 .co-row { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); }
-.co-row b { font-weight: 600; font-size: 12.5px; }
-.co-row span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.co-row b { font-weight: 600; font-size: 12.5px; overflow-wrap: anywhere; }
+.co-row span { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .co-row div { display: flex; gap: 6px; margin-top: 2px; }
 .co-plan { margin: 2px 0; font-size: 12px; line-height: 1.5; }
 .co-plan dt { color: var(--muted); margin-top: 6px; }
