@@ -106,11 +106,17 @@ describe("applyRequest", () => {
     expect(r.state).toBe(s);
     expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("rejected") });
   });
-  it("refuses job-done during planning, so a job can't skip approval", () => {
+  it("closes a planning job that needs no work: straight to done, no merge, and the owner hears why", () => {
     const s = newJob(state(), "x", 1).state;
+    const r = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "It was done last week." });
+    expect(r.state.jobs[0]).toMatchObject({ status: "done", summary: "It was done last week.", plan: null, people: [] });
+    expect(r.effects).toEqual([{ kind: "owner", key: "no-work-J-0001", text: expect.stringMatching(/J-0001.*no work.*It was done last week\./) }]);
+  });
+  it("still refuses job-done on a plan the owner is reading, so a job can't skip approval", () => {
+    const s = waiting();
     const r = applyRequest(s, { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" });
     expect(r.state).toBe(s);
-    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("planning") });
+    expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("awaiting-plan") });
   });
   it("does not bring a rejected job back with job-done", () => {
     const s = closed();
@@ -326,12 +332,21 @@ describe("a paused job", () => {
 describe("a stopped job", () => {
   const stopped = () => haltJob(joinJob(running(), "J-0001", "l1"), "J-0001");
 
-  it("comes from a running or a paused job, and from nothing else", () => {
+  it("comes from any job still going, and from nothing else", () => {
     expect(stopped().jobs[0].status).toBe("stopped");
     expect(haltJob(pauseJob(running(), "J-0001"), "J-0001").jobs[0].status).toBe("stopped");
-    for (const s of [waiting(), closed(), stopped()]) expect(haltJob(s, "J-0001")).toBe(s);
+    expect(haltJob(newJob(state(), "x", 1).state, "J-0001").jobs[0].status).toBe("stopped");
+    expect(haltJob(waiting(), "J-0001").jobs[0].status).toBe("stopped");
+    const merging = applyRequest(running(), { type: "job-done", ts: 2, from: FOUNDER_ID, job: "J-0001", summary: "ok" }).state;
+    for (const s of [merging, closeJob(merging, "J-0001"), closed(), stopped()]) expect(haltJob(s, "J-0001")).toBe(s);
     const r = running();
     expect(haltJob(r, "J-9999")).toBe(r);
+  });
+  it("takes no plan once a job is stopped while planning", () => {
+    const s = haltJob(newJob(state(), "x", 1).state, "J-0001");
+    const r = applyRequest(s, { type: "plan", ts: 2, from: FOUNDER_ID, job: "J-0001", plan });
+    expect(r.state).toBe(s);
+    expect(r.effects[0]).toMatchObject({ text: expect.stringContaining("stopped") });
   });
   it("tells the Founder it is over", () => {
     expect(stoppedNote("J-0001")).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringMatching(/J-0001.*stopped/) });

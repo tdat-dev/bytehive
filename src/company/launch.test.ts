@@ -40,6 +40,12 @@ describe("what the Founder is told about open jobs", () => {
   });
 });
 
+describe("what the Founder is told about a job with nothing to do", () => {
+  it("says to tell the owner with job_finish instead of planning it", () => {
+    expect(FOUNDER_LAWS).toMatch(/If a job needs no work.*job_finish/);
+  });
+});
+
 describe("what a Lead is told about their own cards", () => {
   it("says to pass the job to card_add", () => {
     expect(LEAD_LAWS).toMatch(/card_add.*job/);

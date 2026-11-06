@@ -91,6 +91,10 @@ describe("a member's tools", () => {
     expect(r.isError).toBe(true);
     expect(text(r)).toContain("Founder's plan");
   });
+  it("say job_finish also closes a job that needs no work", async () => {
+    const { tools } = await (await connect("founder")).listTools();
+    expect(tools.find((t) => t.name === "job_finish")?.description).toMatch(/needs no work/);
+  });
   it("only let the Founder call job_finish", async () => {
     const args = { name: "job_finish", arguments: { job: "J-0001", summary: "done" } };
     const r = await (await connect("l1")).callTool(args);

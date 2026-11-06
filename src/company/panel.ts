@@ -4,7 +4,7 @@
 import "./panel.css";
 import { approve, companyAlerts, companyElsewhere, companyError, companyView, dismissAlert, finishJob, giveJob, onCompanyChange, openPerson, raiseCap, reject, stopJob } from "./engine";
 import { needsYou, type NeedRow, type PlanDetail } from "./needs";
-import type { Job, Person } from "./types";
+import type { Job, JobStatus, Person } from "./types";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 /** A colour from a role file may be anything: only a plain hex goes in a style. */
@@ -13,6 +13,8 @@ const shirt = (c: string) => (/^#[0-9a-f]{3,8}$/i.test(c) ? c : "var(--idle)");
 const ASK_HINT = "Add marketing to gcare";
 const WHY_HINT = "Why send it back? Leave empty to cancel the job.";
 const RAISE_BY = 1_000_000;
+/** The Jobs still going, as the panel names them. A Stop works on each. */
+const GOING: Partial<Record<JobStatus, string>> = { planning: "Planning", "awaiting-plan": "Waiting for your approval", running: "Running", paused: "Paused" };
 
 function planHtml(p: PlanDetail): string {
   const item = (term: string, text: string, cls = "") => `<dt>${esc(term)}</dt><dd${cls}>${esc(text)}</dd>`;
@@ -35,8 +37,7 @@ function actButton(busy: Busy, act: string, label: string, about: string, jobId:
 
 const jobHtml = (j: Job, busy: Busy) => {
   const tokens = `${j.tokensUsed.toLocaleString("en-US")} of ${j.tokenCap.toLocaleString("en-US")} tokens`;
-  const state = j.status === "paused" ? "Paused" : "Running";
-  return `<li class="co-row"><b>${esc(j.title)}</b><span>${esc(j.id)}. ${state}, ${tokens}.</span><div>${actButton(busy, "stop", "Stop", j.title, j.id)}</div></li>`;
+  return `<li class="co-row"><b>${esc(j.title)}</b><span>${esc(j.id)}. ${GOING[j.status]}, ${tokens}.</span><div>${actButton(busy, "stop", "Stop", j.title, j.id)}</div></li>`;
 };
 
 function rowHtml(r: NeedRow, busy: Busy): string {
@@ -110,7 +111,7 @@ export function createCompanyPanel() {
     const at = document.activeElement as HTMLElement | null;
     const focused = at && body.contains(at) && at.dataset.act ? { act: at.dataset.act, job: at.dataset.job, person: at.dataset.person } : null;
     list.innerHTML = needs.map((r) => rowHtml(r, busy)).join("") || `<li class="co-none">Nothing needs you.</li>`;
-    const live = s.jobs.filter((j) => j.status === "running" || j.status === "paused");
+    const live = s.jobs.filter((j) => GOING[j.status]);
     jobs.innerHTML = live.map((j) => jobHtml(j, busy)).join("") || `<li class="co-none">No job is running.</li>`;
     org.innerHTML = `<h4>Top floor</h4><ul>${founder.map(personHtml).join("") || `<li class="co-none">No Founder yet</li>`}</ul>${floors}`;
     if (focused) {

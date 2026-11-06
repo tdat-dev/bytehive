@@ -226,7 +226,10 @@ async function deliver(personId: string, text: string): Promise<void> {
 }
 
 async function run(effects: Effect[]): Promise<void> {
-  for (const e of effects) await deliver(e.personId, e.text);
+  for (const e of effects) {
+    if (e.kind === "owner") raiseAlert(e.key, e.text);
+    else await deliver(e.personId, e.text);
+  }
 }
 
 /** Write the roles a plan drafted, now the owner has approved them. Gives back which could not be. */
@@ -590,7 +593,7 @@ export const finishJob = (id: string): Promise<void> => enqueue(async () => {
   await tryPersist(state.jobs.filter((j) => j.id === id));
 });
 
-/** The owner ends a running or paused Job, for good. */
+/** The owner ends a Job that is still going, for good. */
 export const stopJob = (id: string): Promise<void> => enqueue(async () => {
   if (!state) return;
   const next = haltJob(state, id);

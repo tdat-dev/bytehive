@@ -7,7 +7,9 @@ import { FOUNDER_ID, type Company, type CompanyRequest, type Job, type Person, t
 
 export interface State { company: Company; jobs: Job[]; roles: RoleDef[] }
 
-export type Effect = { kind: "deliver"; personId: string; text: string };
+export type Effect =
+  | { kind: "deliver"; personId: string; text: string }
+  | { kind: "owner"; key: string; text: string }; // shown under Needs you: the owner is no terminal
 
 const jobId = (n: number) => `J-${String(n).padStart(4, "0")}`;
 const patch = (s: State, id: string, change: Partial<Job>): State => ({
@@ -65,7 +67,11 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
     return { state: patch(s, r.job, { status: "awaiting-plan", plan: r.plan }), effects: [] };
   }
   if (r.type !== "job-done") return none;
-  if (job.status !== "running") return refuse(`${r.job} cannot be finished: it is ${job.status}, and only a running job can.`);
+  // Nothing was planned, so nobody worked and there is nothing to merge. A plan the owner is reading still has to be answered.
+  if (job.status === "planning") {
+    return { state: patch(s, r.job, { status: "done", summary: r.summary }), effects: [{ kind: "owner", key: `no-work-${r.job}`, text: `${r.job} needed no work: ${r.summary}` }] };
+  }
+  if (job.status !== "running") return refuse(`${r.job} cannot be finished: it is ${job.status}, and only a running job, or a planning one that needs no work, can.`);
   return { state: patch(s, r.job, { status: "awaiting-merge", summary: r.summary }), effects: [] };
 }
 
@@ -140,10 +146,12 @@ export function pauseJob(s: State, id: string): State {
   return patch(s, id, { status: "paused" });
 }
 
-/** The owner ends a running or paused Job. There is no way back: a new Job is. */
+const GOING: Job["status"][] = ["planning", "awaiting-plan", "running", "paused"];
+
+/** The owner ends a Job that is still going, planned or not. There is no way back: a new Job is. */
 export function haltJob(s: State, id: string): State {
   const status = s.jobs.find((j) => j.id === id)?.status;
-  return status === "running" || status === "paused" ? patch(s, id, { status: "stopped" }) : s;
+  return status && GOING.includes(status) ? patch(s, id, { status: "stopped" }) : s;
 }
 
 export const stoppedNote = (id: string): Effect =>

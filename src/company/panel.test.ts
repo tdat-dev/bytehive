@@ -142,17 +142,19 @@ describe("company panel", () => {
     expect(row.querySelector("img")).toBeNull();
   });
 
-  it("lists running and paused jobs with a Stop on each, and only those", () => {
+  it("lists every job still going with a Stop on each, and only those", () => {
     const s = state();
     const row = (id: string, status: string) => ({ ...s.jobs[0], id, title: `Job ${id}`, status, plan: null, tokensUsed: 1500, tokenCap: 5000000 });
-    s.jobs = [row("J-1", "running"), row("J-2", "paused"), row("J-3", "stopped"), row("J-4", "done"), row("J-5", "planning"), row("J-6", "awaiting-merge")] as never;
+    s.jobs = [row("J-1", "running"), row("J-2", "paused"), row("J-3", "stopped"), row("J-4", "done"), row("J-5", "planning"), row("J-6", "awaiting-merge"), row("J-7", "awaiting-plan")] as never;
     eng.view = s;
     eng.stopJob.mockResolvedValue(undefined);
     const el = mount();
     const list = el.querySelector("[data-jobs]")!;
-    expect([...list.querySelectorAll<HTMLElement>('[data-act="stop"]')].map((b) => b.dataset.job)).toEqual(["J-1", "J-2"]);
+    expect([...list.querySelectorAll<HTMLElement>('[data-act="stop"]')].map((b) => b.dataset.job)).toEqual(["J-1", "J-2", "J-5", "J-7"]);
     expect(list.textContent).toContain("1,500 of 5,000,000 tokens");
     expect(list.textContent).toContain("Paused");
+    expect(list.textContent).toContain("J-5. Planning,");
+    expect(list.textContent).toContain("J-7. Waiting for your approval,");
     list.querySelector<HTMLElement>('[data-act="stop"]')!.click();
     expect(eng.stopJob).toHaveBeenCalledWith("J-1");
   });

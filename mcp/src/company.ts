@@ -147,7 +147,7 @@ export function registerCompanyTools(server: McpServer, personId: string, root =
     reply(() => { planAsFounder(root, personId, job, { summary, cards, hires, tokenCap, newRoles }, Date.now()); return "plan sent, wait for the answer"; }));
 
   server.registerTool("job_finish", {
-    description: "Founder only: report a job finished so the owner can review and merge it.",
+    description: "Founder only: report a job finished so the owner can review and merge it. If a job needs no work, call this while it is planning with the reason as the summary: it closes with nothing to merge.",
     inputSchema: { job: z.string(), summary: z.string() },
   }, async ({ job, summary }) => reply(() => {
     founderOnly(company(root), personId);

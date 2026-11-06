@@ -1072,14 +1072,33 @@ describe("watching a running job", () => {
     expect(job().tokensUsed).toBe(100);
   });
 
-  it("does not stop a job that is not running or paused", async () => {
+  it("stops a job still being planned, and tells the Founder", async () => {
     await engine.giveJob("do it");
+    founderPaneRunning();
+    io.told.length = 0;
+    io.sent.length = 0;
+    await engine.stopJob("J-0001");
+    expect(job().status).toBe("stopped");
+    expect(stored().status).toBe("stopped");
+    expect(said().join()).toMatch(/J-0001.*stopped/);
+  });
+
+  it("does not stop a job that is over, or one that isn't there", async () => {
+    await engine.giveJob("do it");
+    await engine.stopJob("J-0001");
     io.told.length = 0;
     io.sent.length = 0;
     await engine.stopJob("J-0001");
     await engine.stopJob("J-9999");
-    expect(job().status).toBe("planning");
     expect(said()).toEqual([]);
+  });
+
+  it("closes a job that needs no work, and shows the owner why", async () => {
+    await engine.giveJob("is it done?");
+    await request({ type: "job-done", ts: 5, from: "founder", job: "J-0001", summary: "Yes, last week." });
+    expect(job().status).toBe("done");
+    expect(stored()).toMatchObject({ status: "done", summary: "Yes, last week." });
+    expect(engine.companyAlerts()).toEqual([expect.objectContaining({ key: "no-work-J-0001", standing: true, text: expect.stringContaining("Yes, last week.") })]);
   });
 
   it("raises the cap and carries on a paused job", async () => {
