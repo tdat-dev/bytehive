@@ -3,7 +3,7 @@ export const FOUNDER_ID = "founder";
 
 export type Rank = "founder" | "lead" | "staff";
 
-export interface Look { shirt: string; hair: string; prop: string }
+export interface Look { shirt: string; hair: string; prop: string; edited?: boolean } // edited: the owner chose this look (Phase 3)
 
 export interface Floor { id: string; dir: string; name: string }
 
