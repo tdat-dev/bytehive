@@ -23,8 +23,33 @@ export function companyRoot(home: string): string {
  *  one unless it is told to, and only a dev build can be told. */
 export function pickRoot(home: string, o: { dev: boolean; root?: string }): string {
   if (!o.dev) return companyRoot(home);
-  const set = o.root?.trim().replace(/[\\/]+$/, "");
-  return set || `${companyRoot(home)}-dev`;
+  const real = companyRoot(home);
+  const set = o.root ? cleanPath(o.root) : "";
+  const absolute = /^[A-Za-z]:\\/.test(set) || /^\\\\[^\\]+\\[^\\]+/.test(set);
+  const at = set.toLowerCase();
+  const mine = real.toLowerCase();
+  // The real company, or anything inside it, is never a sandbox, however it is spelled.
+  if (!absolute || at === mine || at.startsWith(`${mine}\\`)) return `${real}-dev`;
+  return set;
+}
+
+/** Backslashes, no trailing slash, and . and .. folded away. */
+function cleanPath(p: string): string {
+  const s = p.trim().replace(/\//g, "\\");
+  const unc = s.startsWith("\\\\");
+  const out: string[] = [];
+  for (const part of s.split("\\")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") out.pop();
+    else out.push(part);
+  }
+  return (unc ? "\\\\" : "") + out.join("\\");
+}
+
+/** An absolute folder as the drive (or share) to start from and the folders under it. */
+export function rootParts(root: string): { base: string; rel: string } {
+  const m = root.match(/^([A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\?)(.*)$/);
+  return m ? { base: m[1].endsWith("\\") ? m[1] : `${m[1]}\\`, rel: m[2] } : { base: root, rel: "" };
 }
 
 /** Create each folder of `rel` under `root`; a folder already there is fine. */

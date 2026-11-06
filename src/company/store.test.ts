@@ -23,7 +23,7 @@ vi.mock("../ipc", () => ({
 }));
 
 import { clearAlert, standingAlerts } from "./alerts";
-import { companyRoot, pickRoot, loadCompany, loadJobs, parseCompany, readLock, saveCompany, saveJob, writeLock } from "./store";
+import { companyRoot, pickRoot, rootParts, loadCompany, loadJobs, parseCompany, readLock, saveCompany, saveJob, writeLock } from "./store";
 import { emptyCompany } from "./org";
 import { DEFAULT_LIMITS, type Job } from "./types";
 
@@ -45,6 +45,36 @@ describe("pickRoot", () => {
   });
   it("takes an override in a dev build, without a trailing slash", () => {
     expect(pickRoot("C:\\Users\\me", { dev: true, root: "D:\\scratch\\co\\" })).toBe("D:\\scratch\\co");
+  });
+  it("writes the override with backslashes", () => {
+    expect(pickRoot("C:\\Users\\me", { dev: true, root: "D:/scratch/co/" })).toBe("D:\\scratch\\co");
+  });
+  it("never lets a dev build use the real company, in any spelling", () => {
+    const sandbox = "C:\\Users\\me\\.bytehive\\company-dev";
+    for (const root of [
+      "C:\\Users\\me\\.bytehive\\company",
+      "C:\\Users\\me\\.bytehive\\company\\",
+      "c:/users/ME/.ByteHive/Company",
+      "C:\\Users\\me\\.bytehive\\company\\people\\x",
+      "C:/Users/me/.bytehive/company/jobs",
+      "C:\\Users\\me\\.bytehive\\scratch\\..\\company",
+      "C:\\Users\\me\\.bytehive\\.\\company",
+    ]) expect(pickRoot("C:\\Users\\me", { dev: true, root })).toBe(sandbox);
+  });
+  it("keeps a sibling whose name only starts like the real folder", () => {
+    expect(pickRoot("C:\\Users\\me", { dev: true, root: "C:\\Users\\me\\.bytehive\\company-x" })).toBe("C:\\Users\\me\\.bytehive\\company-x");
+  });
+  it("falls back to the sandbox for a path that is not absolute", () => {
+    expect(pickRoot("C:\\Users\\me", { dev: true, root: "scratch\\co" })).toBe("C:\\Users\\me\\.bytehive\\company-dev");
+  });
+});
+
+describe("rootParts", () => {
+  it("splits a drive path into the drive and the folders to create", () => {
+    expect(rootParts("D:\\scratch\\co")).toEqual({ base: "D:\\", rel: "scratch\\co" });
+  });
+  it("splits a share path after the share", () => {
+    expect(rootParts("\\\\srv\\sh\\a\\b")).toEqual({ base: "\\\\srv\\sh\\", rel: "a\\b" });
   });
 });
 

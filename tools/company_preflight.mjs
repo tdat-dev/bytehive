@@ -13,7 +13,15 @@ import path from "node:path";
 const real = path.join(os.homedir(), ".bytehive", "company");
 const arg = process.argv[2];
 
+/** The owner's real folder, or anything inside it, in any case and with either slash. */
+function insideReal(p) {
+  const at = path.resolve(p).replace(/\//g, "\\").toLowerCase();
+  const mine = path.resolve(real).replace(/\//g, "\\").toLowerCase();
+  return at === mine || at.startsWith(`${mine}\\`);
+}
+
 function walk(dir) {
+  if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) return e.name === "people" ? [] : walk(p);
@@ -30,7 +38,7 @@ if (arg === "--hash") {
 
 if (arg === "--hold-lock") {
   const root = process.argv[3];
-  if (!root || path.resolve(root) === path.resolve(real)) { console.error("refused: a sandbox root only"); process.exit(1); }
+  if (!root || insideReal(root)) { console.error("refused: a sandbox root only"); process.exit(1); }
   fs.mkdirSync(root, { recursive: true });
   const beat = () => fs.writeFileSync(path.join(root, "engine.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
   beat();
