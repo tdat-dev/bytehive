@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,8 @@ let dir: string;
 let client: Client;
 
 beforeEach(async () => {
+  // Run inside a ByteHive agent, these name that agent, not the server under test.
+  for (const name of ["BYTEHIVE_AGENT_ID", "BYTEHIVE_AGENT", "MAESTRO_AGENT", "BYTEHIVE_RUN_DIR"]) vi.stubEnv(name, "");
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "bytehive-mcp-srv-"));
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createServer(dir);
@@ -20,6 +22,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await client.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
