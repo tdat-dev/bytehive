@@ -29,6 +29,8 @@ const io = vi.hoisted(() => ({
   seedFails: false,
   made: [] as string[],
   closed: [] as Array<string | null>,
+  excluded: [] as string[],
+  excludeFails: false,
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -68,6 +70,10 @@ vi.mock("../ipc", () => ({
     return { text: text.slice(from), next: text.length, from, size: text.length };
   },
   fsTruncateIfSize: async () => false,
+  gitExcludeBytehive: async (dir: string) => {
+    if (io.excludeFails) throw { Failed: "git's exclude file: access denied" };
+    io.excluded.push(dir);
+  },
   appPid: async () => 7,
   processAlive: async (pid: number) => io.alive.has(pid),
   runCapture: async (program: string, args: string[]) => {
@@ -189,6 +195,8 @@ beforeEach(async () => {
   io.seedFails = false;
   io.made = [];
   io.closed = [];
+  io.excluded = [];
+  io.excludeFails = false;
   openProjects();
   engine = await import("./engine");
   await engine.initCompany();
@@ -605,6 +613,79 @@ describe("where the Founder sits", () => {
       expect(after.company.people.map((p) => p.id)).toEqual(before.people.map((p) => p.id));
       expect(io.boards.get("D:\\a")).toEqual(before.board);
     });
+  });
+});
+
+describe("keeping git status clean", () => {
+  const openProject = (dir: string) => workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
+
+  it("excludes .bytehive/ in every project that is a floor", () => {
+    expect(io.excluded).toEqual(["D:\\a", "D:\\b"]);
+  });
+
+  it("does it when a project becomes a floor", async () => {
+    openProject("D:\\c");
+    await engine.giveJob("do it");
+    expect(io.excluded).toContain("D:\\c");
+  });
+
+  it("asks once per folder", async () => {
+    await engine.giveJob("one");
+    await engine.giveJob("two");
+    expect(io.excluded.filter((d) => d === "D:\\a")).toHaveLength(1);
+  });
+
+  it("does it where the Founder starts, floor or not", async () => {
+    await engine.giveJob("do it");
+    staffFloors(planFor("b"));
+    workspaces.clear();
+    openProject("D:\\c");
+    await request({ type: "message", ts: 1, from: "r-b", to: "Founder", message: "done" });
+    expect(io.excluded).toContain("D:\\c");
+    expect(engine.companyView()!.company.floors.map((f) => f.dir)).not.toContain("D:\\c");
+  });
+
+  it("never blocks a job, says why, and tries again", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    openProject("D:\\c");
+    io.excludeFails = true;
+    await engine.giveJob("one");
+    expect(engine.companyView()!.jobs).toHaveLength(1);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("access denied"));
+    spy.mockRestore();
+    io.excludeFails = false;
+    await engine.giveJob("two");
+    expect(io.excluded).toContain("D:\\c");
+  });
+});
+
+describe("hooks", () => {
+  const SETTINGS = `${ROOT}\\people\\founder\\settings.json`;
+  const paneOf = (id: string) => [...workspaces.values()].flatMap((w) => [...w.panes.values()]).find((p) => p.spec.personId === id)!;
+
+  it("are off for the Founder, through a settings file of its own", async () => {
+    await engine.giveJob("do it");
+    expect(JSON.parse(io.files.get(SETTINGS)!)).toEqual({ disableAllHooks: true });
+    const { args } = paneOf("founder").spec;
+    expect(args[args.indexOf("--settings") + 1]).toBe(SETTINGS);
+  });
+
+  it("stay on for everyone else", async () => {
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] });
+    await engine.approve(job().id);
+    const staff = engine.companyView()!.company.people.find((p) => p.rank === "staff")!;
+    expect(paneOf(staff.id).spec.args).not.toContain("--settings");
+    expect(io.files.has(`${ROOT}\\people\\${staff.id}\\settings.json`)).toBe(false);
+  });
+
+  it("stay off after a restart: a pane restarts on the file it was given", async () => {
+    await engine.giveJob("do it");
+    io.files.delete(SETTINGS);
+    vi.resetModules();
+    engine = await import("./engine");
+    await engine.initCompany();
+    await started();
+    expect(JSON.parse(io.files.get(SETTINGS)!)).toEqual({ disableAllHooks: true });
   });
 });
 

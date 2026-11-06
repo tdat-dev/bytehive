@@ -503,6 +503,11 @@ export async function gitRepoRoot(dir: string): Promise<string | null> {
 }
 
 /** Create a worktree on `branch` off HEAD of `repoRoot`; returns its path. */
+/** Keep `.bytehive/` out of `git status` in the repo at `dir`, if it is one. */
+export async function gitExcludeBytehive(dir: string): Promise<void> {
+  await invoke("git_exclude_bytehive", { dir });
+}
+
 /** Tell Claude this folder is trusted, so it starts there without asking. */
 export async function claudeTrustFolder(dir: string): Promise<void> {
   await invoke("claude_trust_folder", { dir });

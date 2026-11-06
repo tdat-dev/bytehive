@@ -3,7 +3,7 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, processAlive, runCapture, sendMessage } from "../ipc";
+import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, gitExcludeBytehive, processAlive, runCapture, sendMessage } from "../ipc";
 import { activeWs, workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
@@ -13,7 +13,7 @@ import { mkCard, defaultBoard } from "../board";
 import { sameFolder } from "../workspaces";
 import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
-import { buildRoleLaunch, composePrompt, founderFolder, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
@@ -56,6 +56,8 @@ let nudges = new Map<string, number>();
 /** When each card in Doing went quiet. */
 const quiet = new Map<string, number>();
 const consumed = new Map<string, number>();
+/** Folders whose git has been told about .bytehive/ in this run. */
+const excluded = new Set<string>();
 const listeners = new Set<() => void>();
 
 export const onCompanyChange = (fn: () => void) => { listeners.add(fn); };
@@ -133,6 +135,20 @@ async function tryPersist(jobs: Job[]): Promise<void> {
   }
 }
 
+/** Keep a project's .bytehive/ out of its git status. Not awaited by anyone: a git
+ *  that fails or hangs must not hold up a job. */
+async function keepOutOfGit(dir: string): Promise<void> {
+  const key = dir.toLowerCase();
+  if (excluded.has(key)) return;
+  excluded.add(key);
+  await gitExcludeBytehive(dir).catch((e) => {
+    excluded.delete(key); // the next job tries again
+    console.error(`[bytehive] .bytehive/ could not be excluded in ${dir}: ${reason(e)}`);
+  });
+}
+
+const writeSettings = (p: Person) => writeNew(root, `people\\${p.id}\\settings.json`, FOUNDER_SETTINGS);
+
 const writeMcpConfig = async (p: Person) =>
   writeNew(root, `people\\${p.id}\\mcp.json`, mcpConfig(await resolveResource(MCP_RESOURCE)));
 
@@ -152,7 +168,10 @@ async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentS
   await writeNew(root, `${base}\\prompt.md`, composePrompt(p, role, state!.company));
   await writeMcpConfig(p);
   const pluginDir = await writePlugin(p, role);
-  const launch = buildRoleLaunch({ person: p, role, promptFile: `${root}\\${base}\\prompt.md`, mcpConfig: `${root}\\${base}\\mcp.json`, pluginDir });
+  // The Founder has no shell and needs no hooks, and the owner's write into the project it sits in.
+  const founder = p.rank === "founder";
+  if (founder) await writeSettings(p);
+  const launch = buildRoleLaunch({ person: p, role, promptFile: `${root}\\${base}\\prompt.md`, mcpConfig: `${root}\\${base}\\mcp.json`, pluginDir, settings: founder ? `${root}\\${base}\\settings.json` : null });
   const preset = CLI_PRESETS.find((x) => x.id === p.cli);
   if (!preset) throw new Error(`unknown CLI ${p.cli}`);
   return {
@@ -211,6 +230,7 @@ async function ensurePerson(p: Person): Promise<void> {
   const dir = p.rank === "founder" ? founderDir() : floor?.dir;
   if (!role) throw new Error(`no role ${p.role}`);
   if (!dir) throw new Error(p.rank === "founder" ? NO_PROJECT : `no floor ${p.floor}`);
+  if (p.rank === "founder") void keepOutOfGit(dir);
   const spec = await personSpec(p, role, dir);
   await checkRestore(p, spec);
   await spawnPerson(dir, spec, true);
@@ -298,6 +318,7 @@ function syncFloors(): void {
     floors.push({ id: floorId(ws.name, floors.map((f) => f.id)), dir: ws.dir, name: ws.name });
   }
   if (floors.length !== state.company.floors.length) state = { ...state, company: { ...state.company, floors } };
+  for (const f of floors) void keepOutOfGit(f.dir);
 }
 
 export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
@@ -385,6 +406,7 @@ async function refreshFiles(people: Person[]): Promise<string[]> {
       .catch((e) => failed.push(`${p.name}'s prompt was not updated: ${reason(e)}.`));
     await writeMcpConfig(p).catch((e) => failed.push(`${p.name}'s MCP config was not updated: ${reason(e)}.`));
     await writePlugin(p, role).catch((e) => failed.push(`${p.name}'s skills were not updated: ${reason(e)}.`));
+    if (p.rank === "founder") await writeSettings(p).catch((e) => failed.push(`${p.name}'s settings were not updated: ${reason(e)}.`));
   }
   return failed;
 }

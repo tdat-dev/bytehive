@@ -6,6 +6,7 @@ pub mod core;
 pub mod dashauth;
 pub mod dashboard;
 pub mod error;
+pub mod gitexclude;
 pub mod land;
 pub mod planusage;
 pub mod agentusage;
@@ -152,6 +153,7 @@ pub fn run() {
             commands::claude_sessions_everywhere,
             commands::claude_sessions_in,
             claudetrust::claude_trust_folder,
+            gitexclude::git_exclude_bytehive,
             worktree::git_repo_root,
             worktree::worktree_add,
             worktree::worktree_remove,

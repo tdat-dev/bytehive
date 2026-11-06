@@ -31,15 +31,19 @@ export function nodeRunsCompany(version: string): boolean {
   return major > 22 || (major === 22 && minor >= 13);
 }
 
+/** The Founder's settings file: its hooks stay off, everyone else keeps the owner's. */
+export const FOUNDER_SETTINGS = JSON.stringify({ disableAllHooks: true });
+
 /** No --strict-mcp-config: the owner's other servers keep working. When they have
  *  a `bytehive` of their own, Claude starts this one instead (run to find out). */
-export function buildRoleLaunch(o: { person: Person; role: RoleDef; promptFile: string; mcpConfig: string; pluginDir: string | null }): {
+export function buildRoleLaunch(o: { person: Person; role: RoleDef; promptFile: string; mcpConfig: string; pluginDir: string | null; settings?: string | null }): {
   args: string[];
   env: Array<[string, string]>;
 } {
   const args = ["--append-system-prompt-file", o.promptFile, "--mcp-config", o.mcpConfig];
   if (o.pluginDir) args.push("--plugin-dir", o.pluginDir);
   if (o.role.denyTools.length) args.push("--disallowedTools", o.role.denyTools.join(","));
+  if (o.settings) args.push("--settings", o.settings);
   return { args, env: [["BYTEHIVE_AGENT_ID", o.person.id]] };
 }
 

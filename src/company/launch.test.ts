@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRoleLaunch, composePrompt, founderFolder, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { emptyCompany } from "./org";
 import { FOUNDER_LAWS, LEAD_LAWS, STAFF_LAWS } from "../laws";
 import { FOUNDER_ID, type Person, type RoleDef } from "./types";
@@ -89,6 +89,17 @@ describe("buildRoleLaunch", () => {
   it("adds denied tools only when the role has some, and skips an empty plugin", () => {
     const l = buildRoleLaunch({ person, role: { ...role, denyTools: ["Edit", "Write"] }, promptFile: "f", mcpConfig: "m", pluginDir: null });
     expect(l.args).toEqual(["--append-system-prompt-file", "f", "--mcp-config", "m", "--disallowedTools", "Edit,Write"]);
+  });
+});
+
+describe("the Founder's settings", () => {
+  it("turn every hook off", () => {
+    expect(JSON.parse(FOUNDER_SETTINGS)).toEqual({ disableAllHooks: true });
+  });
+  it("are passed when given, and only then", () => {
+    const base = { person, role, promptFile: "f", mcpConfig: "m", pluginDir: null };
+    expect(buildRoleLaunch({ ...base, settings: "C:\\p\\settings.json" }).args).toEqual(["--append-system-prompt-file", "f", "--mcp-config", "m", "--settings", "C:\\p\\settings.json"]);
+    expect(buildRoleLaunch({ ...base, settings: null }).args).not.toContain("--settings");
   });
 });
 
