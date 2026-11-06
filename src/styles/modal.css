@@ -282,3 +282,11 @@ input.input[type=time]{font-family:var(--mono)}
 .bp-wait i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:bp-wait 1.6s ease-in-out infinite}
 @keyframes bp-wait{50%{opacity:.3}}
 @media (prefers-reduced-motion:reduce){.bp-wait i{animation:none}}
+
+/* Settings > Ingest: the classifier endpoint and the gate's limits */
+.ing-form .input{flex:none;width:100%;max-width:420px}
+.ing-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ing-note{flex:1;font-size:12px;color:var(--muted);min-height:1em}
+.ing-note.ok{color:#6fd6a0}
+.ing-note.err{color:#f87171}
+.ing-num{flex:none;width:96px;text-align:right}

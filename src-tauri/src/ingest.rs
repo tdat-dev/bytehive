@@ -95,7 +95,7 @@ pub struct SaveInput {
 
 #[tauri::command]
 pub fn ingest_provider_get() -> Result<ProviderView, CommandError> {
-    Ok(view(&read_config()?))
+    Ok(view(&read_config().unwrap_or_default()))
 }
 
 #[tauri::command]

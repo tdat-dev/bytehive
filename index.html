@@ -149,6 +149,7 @@
       <nav class="set-nav" aria-label="Settings sections">
         <button class="sn on" type="button" data-sec="agents">Agents</button>
         <button class="sn" type="button" data-sec="inbox">Inbox</button>
+        <button class="sn" type="button" data-sec="ingest">Ingest</button>
         <button class="sn" type="button" data-sec="terminal">Terminal</button>
         <button class="sn" type="button" data-sec="browser">Browser</button>
         <button class="sn" type="button" data-sec="fleet">Remote</button>
@@ -192,6 +193,29 @@
             <div class="sr-txt"><b>Agents in the Grid</b><span>Most agents the Grid shows: the one you work with as a terminal, the others as cards beside it, taken from the top of the list.</span></div>
             <div class="seg" id="prefSplitMax" role="group" aria-label="Agents in the Grid"><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button><button type="button" data-v="6">6</button><button type="button" data-v="9">9</button></div>
           </div>
+        </section>
+        <section class="sec" data-sec="ingest">
+          <h3>Ingest</h3>
+          <label class="toggle"><input type="checkbox" id="prefIngest"><span class="tg"></span><span class="sr-txt"><b>Hold back noise before it reaches an agent</b><span>Small talk never touches a pane, a repeated message between agents is held for a few minutes, and cost questions are answered with code. Off, every message goes straight through.</span></span></label>
+          <div class="srow col ing-form">
+            <div class="sr-txt"><b>Classifier</b><span>An OpenAI-compatible endpoint. It never uses the sign-in or quota of Claude Code, Codex or OpenCode. The key stays on this computer and is never shown again after saving.</span></div>
+            <input class="input" id="ingBaseUrl" type="url" placeholder="https://9router.zoldify.com/v1" aria-label="Base URL" spellcheck="false">
+            <input class="input" id="ingModel" type="text" placeholder="cx/gpt-6-luna" aria-label="Model" spellcheck="false">
+            <input class="input" id="ingKey" type="password" placeholder="API key" aria-label="API key" autocomplete="off">
+            <select class="input" id="ingJsonMode" aria-label="JSON mode">
+              <option value="schema">Strict JSON schema</option>
+              <option value="prompt">Prompt only (provider has no schema support)</option>
+            </select>
+            <div class="ing-foot">
+              <span class="ing-note" id="ingNote" role="status"></span>
+              <button type="button" class="sbtn" id="ingTest">Test saved settings</button>
+              <button type="button" class="sbtn" id="ingSave">Save</button>
+            </div>
+          </div>
+          <div class="srow"><div class="sr-txt"><b>Cache lifetime</b><span>Days an answered cost question stays cached. A change to the price table clears old answers on its own.</span></div><input class="input ing-num" id="ingTtlDays" type="number" min="1" max="30" aria-label="Cache days"></div>
+          <div class="srow"><div class="sr-txt"><b>Classifier calls a day</b><span>Past this, a message goes straight to the agent instead of the API.</span></div><input class="input ing-num" id="ingDailyCalls" type="number" min="0" max="5000" aria-label="Daily calls"></div>
+          <div class="srow"><div class="sr-txt"><b>Classifier tokens a day</b><span>Same idea, counted from the provider's own usage numbers.</span></div><input class="input ing-num" id="ingDailyTokens" type="number" min="0" max="5000000" aria-label="Daily tokens"></div>
+          <div class="srow"><div class="sr-txt"><b>Repeat window</b><span>Minutes the same agent-to-agent message is held back. Messages from you are never held by this.</span></div><input class="input ing-num" id="ingLoopMin" type="number" min="1" max="120" aria-label="Repeat minutes"></div>
         </section>
         <section class="sec" data-sec="terminal">
           <h3>Terminal</h3>
@@ -244,7 +268,7 @@
           <label class="toggle"><input type="checkbox" id="prefRestore"><span class="tg"></span><span class="sr-txt"><b>Reopen my projects on start</b><span>ByteHive brings back last session's projects and agents, stopped, so nothing heavy launches by itself. Resume the ones you need.</span></span></label>
           <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks ByteHive into the system tray; agents keep running.</span></span></label>
           <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">ByteHive</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
-          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>
+          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, Ingest, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>
         </section>
       </div>
     </div>

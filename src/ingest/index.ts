@@ -1,7 +1,7 @@
 /** Wire the gate to the app: one instance per project, files under
  *  `.bytehive/`, settings from prefs, and the classifier from Rust. */
 import { fsCreateFile, fsReadFile, fsWriteFile, sendMessage } from "../ipc";
-import { getPrefs } from "../prefs";
+import { getPrefs, onPrefs } from "../prefs";
 import { pricesFingerprint } from "../pricing";
 import { taskOf } from "../tasks";
 import { ResultCache } from "./cache";
@@ -68,6 +68,16 @@ function resultLine(result: ToolResult): string {
 }
 
 const gates = new Map<string, Gate>();
+
+// Only a changed ingest setting rebuilds a gate; a font or tray change must not
+// disturb a log write that is still on its debounce.
+let lastSettings = JSON.stringify(ingestSettings());
+onPrefs(() => {
+  const next = JSON.stringify(ingestSettings());
+  if (next === lastSettings) return;
+  lastSettings = next;
+  gates.clear();
+});
 
 function gateFor(dir: string): Gate {
   const hit = gates.get(dir);

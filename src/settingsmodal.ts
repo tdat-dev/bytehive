@@ -20,6 +20,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { workspaces } from "./appstate";
 import { initPrefsView, resetPrefsView, syncPrefsView } from "./prefsview";
 import { initBrowserPrefs, refreshBrowserPrefs } from "./browserprefs";
+import { initIngestView, syncIngestView } from "./settingsingest";
 
 /* ---------------- settings modal ---------------- */
 const settingsModal = document.getElementById("settingsModal") as HTMLElement | null;
@@ -72,6 +73,7 @@ export function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
   syncFontLabel();
   syncPrefsView();
+  syncIngestView();
   void refreshBrowserPrefs();
   document.getElementById("setContent")?.scrollTo(0, 0);
   navToSection("agents", false); // land on the first section
@@ -93,6 +95,7 @@ export function closeSettings() {
 export function initSettingsModal(): void {
   initPrefsView();
   initBrowserPrefs();
+  initIngestView();
   // Show the running version in the Settings "Updates" row.
   void getVersion()
     .then((v) => { if (setVersion) setVersion.textContent = `ByteHive · v${v}`; })
@@ -129,7 +132,7 @@ export function initSettingsModal(): void {
   document.getElementById("prefReset")?.addEventListener("click", async () => {
     const r = await confirmModal({
       title: "Reset settings?",
-      message: "Agents, Inbox, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.",
+      message: "Agents, Inbox, Ingest, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.",
       okLabel: "Reset",
       danger: true,
     });
