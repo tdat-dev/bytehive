@@ -205,26 +205,14 @@ describe("inbox DOM", () => {
     setInbox(false);
   });
 
-  describe("a project with only the Founder in it", () => {
-    const empty = () => document.querySelector<HTMLElement>(".ib-empty")!;
-    beforeEach(() => {
-      panes[0].spec.personId = "founder";
-      workspaces.get("ws-1")!.panes.delete("e");
-      panes[1].el.remove();
-      state.tasks = [task("a", "Founder", "idle")];
-    });
-
-    it("still offers New agent, and leaves the stage free for it", () => {
-      setInbox(true);
-      expect(empty().hidden).toBe(false);
-      expect(panes[0].el.classList.contains("focused")).toBe(false);
-    });
-
-    it("keeps the terminal clear once the owner puts the Founder on the stage", () => {
-      panes[0].el.classList.add("focused");
-      setInbox(true);
-      expect(empty().hidden).toBe(true);
-    });
+  it("shows the Founder in a project where it sits alone, with no empty state", () => {
+    panes[0].spec.personId = "founder";
+    workspaces.get("ws-1")!.panes.delete("e");
+    panes[1].el.remove();
+    state.tasks = [task("a", "Founder", "idle")];
+    setInbox(true);
+    expect(panes[0].el.classList.contains("focused")).toBe(true);
+    expect(document.querySelector<HTMLElement>(".ib-empty")!.hidden).toBe(true);
   });
 
   it("opens Settings from the gear in the dock and with Ctrl+,", () => {
