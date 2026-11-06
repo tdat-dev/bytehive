@@ -21,7 +21,7 @@ import {
 } from "./crew";
 import { type Pane, type Workspace, type AgentSpec } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
-import { basename } from "./workspaces";
+import { basename, boardPanes } from "./workspaces";
 import { DIRECTOR_LAWS } from "./laws";
 
 let onCreateAgent: (
@@ -345,7 +345,7 @@ export async function spawnAgents(
   const title = taskTitle(task);
   const raceId = count > 1 ? `race-${Date.now().toString(36)}` : null;
   // Settings → Agents: the first agent of an empty project can be its Director.
-  const director = getPref("directorFirst") && ws.panes.size === 0 && count === 1;
+  const director = getPref("directorFirst") && boardPanes(ws.panes.values()).length === 0 && count === 1;
   const boots = Array.from({ length: count }, (_, i) => {
     const name = director ? "Director" : nameForNewPane(preset.badge, taken);
     taken.push(name);

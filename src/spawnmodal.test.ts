@@ -8,7 +8,8 @@ vi.mock("./ipc", () => ({
   programsOnPath: async () => [],
 }));
 
-import { cliLookOf, configureSpawnModal, closeProject, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "./spawnmodal";
+import { cliLookOf, configureSpawnModal, closeProject, deliverTask, paneAsking, paneAtPrompt, spawnAgents, spawnPerson } from "./spawnmodal";
+import { setPref } from "./prefs";
 import type { AgentSpec, Pane, Workspace } from "./panetypes";
 
 // Claude's first screen in a folder it hasn't seen, as the terminal shows it.
@@ -177,6 +178,32 @@ describe("on a tall pane", () => {
     const { pane } = setup({ text: BOX });
     pane.spec.badge = "claude";
     expect(paneAtPrompt(pane)).toBe(true);
+  });
+});
+
+describe("spawnAgents", () => {
+  const made: AgentSpec[] = [];
+  const project = (...panes: object[]) => ({ dir: "D:\\a", repoRoot: null, isolated: false, panes: new Map(panes.map((p, i) => [`p${i}`, p])) }) as unknown as Workspace;
+  beforeEach(() => {
+    made.length = 0;
+    setPref("directorFirst", true);
+    configureSpawnModal({
+      createWorkspace: () => { throw new Error("unused"); },
+      createAgent: (_ws, spec) => { made.push(spec); return async () => {}; },
+      closeWorkspace: async () => {},
+      cliLook: () => ({ color: "#123456", mono: "C" }),
+    });
+  });
+  afterEach(() => { setPref("directorFirst", false); });
+
+  it("makes the first agent of a project with only the Founder in it the Director", async () => {
+    await spawnAgents(project({ spec: { name: "Founder", personId: "founder" } }), "claude", 1, null, false);
+    expect(made.map((s) => [s.name, s.role])).toEqual([["Director", "conductor"]]);
+  });
+
+  it("does not when someone else works there", async () => {
+    await spawnAgents(project({ spec: { name: "Ana" } }), "claude", 1, null, false);
+    expect(made[0].role).not.toBe("conductor");
   });
 });
 

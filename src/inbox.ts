@@ -8,6 +8,7 @@
 // existing focus mode, so the terminal is the real xterm you can type into.
 
 import { workspaces, activeWs } from "./appstate";
+import { boardPanes } from "./workspaces";
 import { focusPane, renamePane } from "./panelayout";
 import { revealPane } from "./agentbridge";
 import { type Area, type Tile } from "./canvas";
@@ -588,8 +589,10 @@ function ensureStage(): void {
   }
   // The task list is re-derived on its own tick, so right after a pane goes it
   // can still name it; only a pane that exists can take the stage.
-  const inWs = allTasks().filter((t) => t.wsId === activeWs!.id && activeWs!.panes.has(t.paneId));
-  const first = (inWs[0] && activeWs.panes.get(inWs[0].paneId)) ?? activeWs.panes.values().next().value;
+  // The Founder takes the stage only when asked for: alone in a project, it leaves room for New agent.
+  const free = boardPanes(activeWs.panes.values());
+  const task = allTasks().find((t) => t.wsId === activeWs!.id && free.some((p) => p.id === t.paneId));
+  const first = free.find((p) => p.id === task?.paneId) ?? free[0];
   if (first) focusPane(activeWs, first);
 }
 
@@ -834,7 +837,8 @@ const rank = (o: AskOption) => (o.always ? 0 : o.deny ? 1 : 2);
 function renderEmpty(): void {
   if (!emptyEl) return;
   const ws = activeWs;
-  const none = !!ws && ws.panes.size === 0;
+  // It shares the stage's place on screen, so it never goes over a terminal.
+  const none = !!ws && boardPanes(ws.panes.values()).length === 0 && !stagePane();
   emptyEl.hidden = !none;
   if (!none || !ws) return;
   const sig = ws.id + ws.name;
