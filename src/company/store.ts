@@ -19,6 +19,14 @@ export function companyRoot(home: string): string {
   return `${home.replace(/[\\/]+$/, "")}\\.bytehive\\company`;
 }
 
+/** Where this build keeps the company. A dev build never touches the owner's real
+ *  one unless it is told to, and only a dev build can be told. */
+export function pickRoot(home: string, o: { dev: boolean; root?: string }): string {
+  if (!o.dev) return companyRoot(home);
+  const set = o.root?.trim().replace(/[\\/]+$/, "");
+  return set || `${companyRoot(home)}-dev`;
+}
+
 /** Create each folder of `rel` under `root`; a folder already there is fine. */
 export async function ensureDirs(root: string, rel: string): Promise<void> {
   let at = "";

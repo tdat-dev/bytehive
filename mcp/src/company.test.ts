@@ -2,7 +2,18 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { floorDir, planAsFounder, queueRequest, readCompany, readRoles, sendAsMember, statusFor } from "./company.js";
+import { companyRoot, floorDir, planAsFounder, queueRequest, readCompany, readRoles, sendAsMember, statusFor } from "./company.js";
+
+describe("companyRoot", () => {
+  afterEach(() => { delete process.env.BYTEHIVE_COMPANY_ROOT; });
+  it("is the home folder's company by default", () => {
+    expect(companyRoot("C:\\h")).toBe(path.join("C:\\h", ".bytehive", "company"));
+  });
+  it("follows the app when it runs a sandbox", () => {
+    process.env.BYTEHIVE_COMPANY_ROOT = "D:\\sandbox";
+    expect(companyRoot("C:\\h")).toBe("D:\\sandbox");
+  });
+});
 
 let root: string;
 const look = { shirt: "#fff", hair: "#000", prop: "none" };

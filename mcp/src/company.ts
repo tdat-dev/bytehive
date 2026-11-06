@@ -9,7 +9,7 @@ import { parseOwned, personById, resolveTargets, validatePlan } from "../../src/
 import type { Company, CompanyRequest, Job, JobPlan, RoleDef } from "../../src/company/types";
 import { appendLine } from "./fleet.js";
 
-export const companyRoot = (home = os.homedir()) => path.join(home, ".bytehive", "company");
+export const companyRoot = (home = os.homedir()) => process.env.BYTEHIVE_COMPANY_ROOT?.trim() || path.join(home, ".bytehive", "company");
 
 export function readCompany(root: string): Company | null {
   try {

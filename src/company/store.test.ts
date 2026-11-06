@@ -23,7 +23,7 @@ vi.mock("../ipc", () => ({
 }));
 
 import { clearAlert, standingAlerts } from "./alerts";
-import { companyRoot, loadCompany, loadJobs, parseCompany, readLock, saveCompany, saveJob, writeLock } from "./store";
+import { companyRoot, pickRoot, loadCompany, loadJobs, parseCompany, readLock, saveCompany, saveJob, writeLock } from "./store";
 import { emptyCompany } from "./org";
 import { DEFAULT_LIMITS, type Job } from "./types";
 
@@ -31,6 +31,21 @@ beforeEach(() => {
   files.clear();
   readFails.clear();
   for (const a of standingAlerts()) clearAlert(a.key);
+});
+
+describe("pickRoot", () => {
+  it("is the real folder in a release build", () => {
+    expect(pickRoot("C:\\Users\\me\\", { dev: false })).toBe("C:\\Users\\me\\.bytehive\\company");
+  });
+  it("ignores an override in a release build", () => {
+    expect(pickRoot("C:\\Users\\me", { dev: false, root: "D:\\x" })).toBe("C:\\Users\\me\\.bytehive\\company");
+  });
+  it("is the sandbox in a dev build", () => {
+    expect(pickRoot("C:\\Users\\me", { dev: true })).toBe("C:\\Users\\me\\.bytehive\\company-dev");
+  });
+  it("takes an override in a dev build, without a trailing slash", () => {
+    expect(pickRoot("C:\\Users\\me", { dev: true, root: "D:\\scratch\\co\\" })).toBe("D:\\scratch\\co");
+  });
 });
 
 describe("store", () => {

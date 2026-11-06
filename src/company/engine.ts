@@ -18,7 +18,7 @@ import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
 import { LOCK_STALE_MS, lockMove, lockSilent } from "./lock";
-import { companyRoot, ensureDirs, loadCompany, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
+import { companyRoot, ensureDirs, loadCompany, pickRoot, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
 import { FOUNDER_ID, type CompanyRequest, type Floor, type Job, type Person, type PlanCard, type RoleDef } from "./types";
@@ -40,6 +40,7 @@ const NO_PROJECT = "Open a project first.";
 const FOUNDER_WAITS = "founder-no-project";
 
 let root = "";
+let sandboxed = false;
 let me = 0; // this app's pid
 /** This app runs the company. When it doesn't, state is null, and every operation
  *  stops at that: nothing here reads a request or writes a file. */
@@ -184,7 +185,7 @@ async function personSpec(p: Person, role: RoleDef, dir: string): Promise<AgentS
     name: p.name,
     badge: preset.badge,
     personId: p.id,
-    env: launch.env,
+    env: sandboxed ? [...launch.env, ["BYTEHIVE_COMPANY_ROOT", root]] : launch.env,
     title: role.title,
     ...cliLookOf(preset.badge, preset.label),
     ...(p.session ? { sessionId: p.session } : {}),
@@ -539,9 +540,13 @@ async function heartbeat(): Promise<void> {
 
 export async function initCompany(): Promise<void> {
   const home = await homeDir();
+  // vitest also runs with DEV set, and its tests expect the plain root.
+  const dev = import.meta.env.DEV && import.meta.env.MODE !== "test";
+  root = pickRoot(home, { dev, root: import.meta.env.VITE_COMPANY_ROOT });
+  sandboxed = root !== companyRoot(home);
   await fsCreateDir(home, ".bytehive").catch(() => {});
-  await fsCreateDir(home, ".bytehive\\company").catch(() => {});
-  root = companyRoot(home);
+  const cut = root.lastIndexOf("\\");
+  await fsCreateDir(root.slice(0, cut), root.slice(cut + 1)).catch(() => {});
   me = await appPid();
   lastBeat = Date.now();
   await heartbeat();
