@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, founderFolder, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { emptyCompany } from "./org";
 import { FOUNDER_LAWS, LEAD_LAWS, STAFF_LAWS } from "../laws";
 import { FOUNDER_ID, type Person, type RoleDef } from "./types";
@@ -49,6 +49,25 @@ describe("what the Founder is told about a job with nothing to do", () => {
 describe("what a Lead is told about their own cards", () => {
   it("says to pass the job to card_add", () => {
     expect(LEAD_LAWS).toMatch(/card_add.*job/);
+  });
+});
+
+describe("founderFolder", () => {
+  const a = { dir: "D:\\a" };
+  const b = { dir: "D:\\b" };
+  const loose = { dir: null };
+  it("is the active project", () => {
+    expect(founderFolder(b, [a, b])).toBe("D:\\b");
+  });
+  it("is the first open project with a folder when the active one has none", () => {
+    expect(founderFolder(loose, [loose, a, b])).toBe("D:\\a");
+  });
+  it("is the first open project with a folder when none is active", () => {
+    expect(founderFolder(null, [a, b])).toBe("D:\\a");
+  });
+  it("is nothing when no open project has a folder", () => {
+    expect(founderFolder(loose, [loose])).toBeNull();
+    expect(founderFolder(null, [])).toBeNull();
   });
 });
 

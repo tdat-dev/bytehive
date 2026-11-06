@@ -54,6 +54,8 @@ Lead chỉ xuất hiện khi tầng có từ 2 người. Tầng có 1 người t
 
 Việc giữa hai tầng luôn đi qua Lead, Founder, Lead. Mỗi người thuộc đúng một tầng vì agent chỉ làm trong một thư mục. Founder điều chuyển bằng cách dừng ở tầng cũ và mở phiên mới ở tầng mới.
 
+Founder không có thư mục riêng. Pane của nó chạy trong một dự án thật và nằm trong danh sách agent của dự án đó: dự án đang mở khi bạn giao Việc, dự án đó không có thư mục thì lấy dự án mở đầu tiên có thư mục, không có dự án nào thì app báo "Open a project first." Founder ở yên đó cho các Việc sau, dự án nào đang mở cũng vậy, vì nó chỉ làm qua tool MCP nên thư mục không giới hạn gì. Nó không có worktree và không ghi gì. Founder vẫn không thuộc tầng nào (`floor: null`): dự án có Founder ngồi không tính là tầng có người, nên Conductor vẫn chạy ở đó, và Conductor không bao giờ giao card cho Founder.
+
 Luật cũ vẫn giữ: bạn luôn có quyền cao hơn Founder và Lead. Bạn gõ vào đâu thì agent đó làm việc của bạn trước.
 
 ### Thực thi quyền
@@ -73,7 +75,6 @@ Giới hạn cần nói rõ: đây là lan can, không phải sandbox. Agent ch�
     role.json         tên, phòng ban, cấp, CLI mặc định, tool, ngoại hình mặc định
     prompt.md         mô tả nghề
     skills/<name>/SKILL.md
-  office/             thư mục làm việc của Founder
   engine.lock         pid và nhịp tim của app đang chạy công ty
 <dự án>/.bytehive/board.json   card của tầng, thêm trường job và assigneeId
 ```
@@ -144,6 +145,7 @@ Thuê thêm giữa chừng cũng tạo thẻ duyệt, không tự động.
 | Hết limit CLI | Giữ cơ chế bàn giao và tự chạy lại hiện có |
 | Agent bị dừng khi đang có card | Mở lại bằng session cũ, không được thì hỏi bạn |
 | Đóng pane hoặc dự án của một người | Lần sau mở lại đúng session, worktree, nhánh ghi trên Person. Mất session hoặc worktree thì người đó bắt đầu trắng và Needs you báo, không im lặng |
+| Đóng dự án Founder đang ngồi | Việc hoặc tin kế tiếp khởi động Founder ở dự án đang mở, phiên mới, không báo mất: file Việc giữ công việc và `company_status` liệt kê Việc đang mở. Không có dự án nào mở thì Needs you báo tin chưa tới |
 | Founder đầy context | Mở phiên mới, đọc lại `jobs/` đang chạy |
 | Đóng dự án | Theo luật hiện tại agent bị dừng. Tầng tối đèn, ghế và session được giữ |
 

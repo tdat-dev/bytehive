@@ -33,6 +33,7 @@ let onCreateAgent: (
 let onCreateWorkspace: (dir: string | null, name?: string) => Workspace = () => {
   throw new Error("spawnmodal: configureSpawnModal not called");
 };
+let onCloseWorkspace: (ws: Workspace) => Promise<void> = async () => {};
 let onCliLook: (badge: string, label: string) => { color: string; mono: string } = () => ({
   color: "#c6f135",
   mono: "?",
@@ -45,10 +46,12 @@ export function configureSpawnModal(deps: {
     attach?: { id: string; spawnedAt: number | null },
   ) => () => Promise<void>;
   createWorkspace: (dir: string | null, name?: string) => Workspace;
+  closeWorkspace: (ws: Workspace) => Promise<void>;
   cliLook: (badge: string, label: string) => { color: string; mono: string };
 }): void {
   onCreateAgent = deps.createAgent;
   onCreateWorkspace = deps.createWorkspace;
+  onCloseWorkspace = deps.closeWorkspace;
   onCliLook = deps.cliLook;
 }
 
@@ -222,6 +225,9 @@ export async function spawnPerson(dir: string, spec: AgentSpec, boot: boolean): 
   const start = onCreateAgent(ws, spec);
   if (boot) await runLimited([start], MAX_CONCURRENT_BOOT);
 }
+
+/** Stop a project's agents and close it, without asking, for code outside main.ts. */
+export const closeProject = (ws: Workspace) => onCloseWorkspace(ws);
 
 /** Type the job into each new agent once it is at its prompt. The CLI needs a
  *  few seconds to get there, and some open on a question first: Claude asks

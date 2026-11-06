@@ -153,6 +153,11 @@ export async function removeWorkspace(ws: Workspace) {
     if (!ok) return;
     if (dontAsk) localStorage.setItem(SKIP_WS_CLOSE, "1");
   }
+  await closeWorkspace(ws);
+}
+
+/** Stop a project's agents and drop it, without asking. */
+export async function closeWorkspace(ws: Workspace) {
   for (const id of [...ws.panes.keys()]) await onRemoveAgent(ws, id);
   dropWorkspace(ws);
 }

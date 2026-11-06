@@ -27,6 +27,8 @@ const io = vi.hoisted(() => ({
   alive: new Set<number>(),
   lockFails: false,
   seedFails: false,
+  made: [] as string[],
+  closed: [] as Array<string | null>,
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -34,7 +36,7 @@ vi.mock("@tauri-apps/api/path", () => ({
   resolveResource: async (rel: string) => `C:\\Program Files\\ByteHive\\${rel.replace(/\//g, "\\")}`,
 }));
 vi.mock("../ipc", () => ({
-  fsCreateDir: async () => {},
+  fsCreateDir: async (_root: string, rel: string) => { io.made.push(rel); },
   fsCreateFile: async (root: string, rel: string) => { if (!io.files.has(`${root}\\${rel}`)) io.files.set(`${root}\\${rel}`, ""); },
   fsWriteFile: async (root: string, rel: string, content: string) => {
     if (io.saveFails && rel === "company.json.tmp") throw { Failed: "access denied: company.json.tmp" };
@@ -96,6 +98,7 @@ vi.mock("../spawnmodal", () => ({
   cliLookOf: () => ({ color: "#fff", mono: "C" }),
   paneAsking: () => io.asking,
   paneAtPrompt: () => !io.starting,
+  closeProject: async (ws: Workspace) => { io.closed.push(ws.dir); workspaces.delete(ws.id); },
   deliverTask: (_ws: unknown, names: string[], text: string, delay: number, _every?: number, _giveUp?: number, settle?: number) => {
     io.told.push({ name: names[0], text, delay, settle });
   },
@@ -156,6 +159,10 @@ async function waitingJob(plan: JobPlan): Promise<void> {
   io.sent.length = 0;
 }
 
+const openProjects = () => {
+  for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
+};
+
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.resetModules();
@@ -180,7 +187,9 @@ beforeEach(async () => {
   io.alive.clear();
   io.lockFails = false;
   io.seedFails = false;
-  for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
+  io.made = [];
+  io.closed = [];
+  openProjects();
   engine = await import("./engine");
   await engine.initCompany();
   await vi.advanceTimersByTimeAsync(1500); // the first tick notes that requests.jsonl isn't there yet
@@ -398,7 +407,7 @@ describe("the queue", () => {
 });
 
 describe("delivery", () => {
-  const founderPane = (over: Partial<Pane>) => addPane(`${ROOT}\\office`, { name: "Founder", personId: "founder" }, over);
+  const founderPane = (over: Partial<Pane>) => addPane("D:\\a", { name: "Founder", personId: "founder" }, over);
 
   it("waits out the boot of someone it just started", async () => {
     await engine.giveJob("do it");
@@ -442,6 +451,160 @@ describe("delivery", () => {
     await engine.giveJob("do it");
     expect(restart).not.toHaveBeenCalled();
     expect(io.told).toEqual([expect.objectContaining({ delay: 8000 })]);
+  });
+});
+
+describe("where the Founder sits", () => {
+  const OFFICE = `${ROOT}\\office`;
+  const founderPanes = () => [...workspaces.values()].flatMap((w) => [...w.panes.values()].filter((p) => p.spec.personId === "founder").map((p) => ({ dir: w.dir, spec: p.spec })));
+  const activate = async (dir: string | null) => {
+    const { setActiveWs } = await import("../appstate");
+    setActiveWs(dir ? workspaces.get(dir)! : null);
+  };
+  const noFolder = () => workspaces.set("loose", { id: "loose", name: "Project 1", dir: null, panes: new Map() } as unknown as Workspace);
+  const alertKeys = () => engine.companyAlerts().map((a) => a.key);
+
+  it("sits in the active project, in its agent list", async () => {
+    await activate("D:\\b");
+    await engine.giveJob("do it");
+    expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\b"]);
+    expect(founderPanes()[0].spec.cwd).toBe("D:\\b");
+  });
+
+  it("opens no tab and makes no folder of its own", async () => {
+    await engine.giveJob("do it");
+    expect([...workspaces.values()].map((w) => w.dir)).toEqual(["D:\\a", "D:\\b"]);
+    expect(io.made).not.toContain("office");
+  });
+
+  it("takes the first project with a folder when the active one has none", async () => {
+    noFolder();
+    await activate("loose");
+    await engine.giveJob("do it");
+    expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\a"]);
+  });
+
+  it("takes the first project with a folder from Home", async () => {
+    await activate(null);
+    await engine.giveJob("do it");
+    expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\a"]);
+  });
+
+  it.each([["nothing is open", false], ["no project has a folder", true]])("refuses a job when %s", async (_what, loose) => {
+    workspaces.clear();
+    if (loose) noFolder();
+    await expect(engine.giveJob("do it")).rejects.toThrow("Open a project first.");
+    expect(engine.companyView()!.jobs).toEqual([]);
+    expect(io.spawned).toEqual([]);
+  });
+
+  it("stays where it is for later jobs, whichever project is active", async () => {
+    await activate("D:\\b");
+    await engine.giveJob("one");
+    await activate("D:\\a");
+    await engine.giveJob("two");
+    expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\b"]);
+    expect(io.spawned).toEqual(["Founder"]);
+  });
+
+  it("starts blank in the active project when its project closed, without calling it lost", async () => {
+    await activate("D:\\b");
+    await engine.giveJob("one");
+    engine.companyView()!.company.people[0].session = "sess-b";
+    workspaces.get("D:\\b")!.panes.clear();
+    await activate("D:\\a");
+    await engine.giveJob("two");
+    expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\a"]);
+    expect(founderPanes()[0].spec.sessionId).toBeUndefined();
+    expect(alertKeys()).not.toContain("lost-founder");
+  });
+
+  it("carries on its conversation when it comes back to the same folder", async () => {
+    await engine.giveJob("one");
+    engine.companyView()!.company.people[0].session = "sess-a";
+    workspaces.get("D:\\a")!.panes.clear();
+    io.sessions.add("D:\\a|sess-a");
+    await engine.giveJob("two");
+    expect(founderPanes()[0].spec.sessionId).toBe("sess-a");
+  });
+
+  it("does not make its project a floor with people: the Conductor keeps working there", async () => {
+    await engine.giveJob("do it");
+    expect(engine.isCompanyFloor("D:\\a")).toBe(false);
+    expect(engine.companyView()!.company.people[0]).toMatchObject({ rank: "founder", floor: null, boss: null });
+  });
+
+  it("starts in a project when a message reaches it with no pane", async () => {
+    await engine.giveJob("do it");
+    workspaces.get("D:\\a")!.panes.clear();
+    staffFloors(planFor("b"));
+    await request({ type: "message", ts: 1, from: "r-b", to: "Founder", message: "done" });
+    expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\a"]);
+    expect(io.told[io.told.length - 1]).toMatchObject({ name: "Founder", text: expect.stringContaining("done") });
+  });
+
+  it("raises an alert for a message it cannot get with no project open, and keeps reading", async () => {
+    await engine.giveJob("do it");
+    staffFloors(planFor("b"));
+    workspaces.clear();
+    await request({ type: "message", ts: 1, from: "r-b", to: "Founder", message: "done" });
+    expect(alertKeys()).toContain("founder-no-project");
+    workspaces.set("D:\\a", { id: "D:\\a", name: "a", dir: "D:\\a", panes: new Map() } as unknown as Workspace);
+    await request({ type: "message", ts: 2, from: "r-b", to: "Founder", message: "again" });
+    expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\a"]);
+    expect(alertKeys()).not.toContain("founder-no-project");
+  });
+
+  describe("after an update from 0.14.0", () => {
+    /** The app comes back with the tabs it saved: the old office tab, the Founder stopped in it. */
+    async function upgrade() {
+      vi.resetModules();
+      ({ workspaces } = await import("../appstate"));
+      openProjects();
+      addPane(OFFICE, { name: "Founder", personId: "founder", cwd: OFFICE, sessionId: "sess-office" }, {});
+      engine = await import("./engine");
+      await engine.initCompany();
+      await started();
+    }
+
+    it("closes the office tab and leaves the folder on disk", async () => {
+      io.files.set(`${OFFICE}\\.keep`, "");
+      await upgrade();
+      expect(io.closed).toEqual([OFFICE]);
+      expect([...workspaces.values()].map((w) => w.dir)).toEqual(["D:\\a", "D:\\b"]);
+      expect(founderPanes()).toEqual([]);
+      expect(io.files.has(`${OFFICE}\\.keep`)).toBe(true);
+    });
+
+    it("does not make the office a floor", async () => {
+      await upgrade();
+      expect(engine.companyView()!.company.floors.map((f) => f.dir)).not.toContain(OFFICE);
+    });
+
+    it("starts the Founder fresh in a project on the next job", async () => {
+      await engine.giveJob("one");
+      engine.companyView()!.company.people[0].session = "sess-office";
+      await engine.giveJob("two"); // saves the company with that session
+      await upgrade();
+      expect(engine.companyView()!.company.people[0].session).toBe("sess-office");
+      io.sessions.add(`${OFFICE}|sess-office`);
+      await engine.giveJob("three");
+      expect(founderPanes().map((f) => f.dir)).toEqual(["D:\\a"]);
+      expect(founderPanes()[0].spec.sessionId).toBeUndefined();
+      expect(alertKeys()).not.toContain("lost-founder");
+    });
+
+    it("leaves a running Job, its staff and its cards as they are", async () => {
+      await waitingJob({ ...planFor("a"), hires: [{ role: "developer", floor: "a" }] });
+      await engine.approve(job().id);
+      const before = { people: engine.companyView()!.company.people, jobs: engine.companyView()!.jobs, board: structuredClone(io.boards.get("D:\\a")) };
+      await upgrade();
+      const after = engine.companyView()!;
+      expect(after.jobs.map((j) => [j.id, j.status])).toEqual(before.jobs.map((j) => [j.id, j.status]));
+      expect(after.jobs[0].status).toBe("running");
+      expect(after.company.people.map((p) => p.id)).toEqual(before.people.map((p) => p.id));
+      expect(io.boards.get("D:\\a")).toEqual(before.board);
+    });
   });
 });
 
@@ -925,6 +1088,8 @@ describe("a disk that refuses to save", () => {
     const spy = quiet();
     io.saveFails = true;
     vi.resetModules();
+    ({ workspaces } = await import("../appstate"));
+    openProjects();
     engine = await import("./engine");
     await engine.initCompany();
     await started();

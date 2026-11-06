@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The Founder works in your project.** It used to run in a folder of its own,
+  which opened an extra project called office. Now its terminal sits in the
+  project you are on when you give a job, in that project's agent list, and it
+  stays there for later jobs. If that project closes, the next job starts it in
+  the active one with a new conversation. With no project open, ByteHive asks
+  you to open one first. The office tab goes away by itself after the update;
+  its folder stays on disk, and running jobs carry on.
+
 ## [0.14.0] - 2026-11-06
 
 ### Added

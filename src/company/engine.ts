@@ -4,16 +4,16 @@
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
 import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, processAlive, runCapture, sendMessage } from "../ipc";
-import { workspaces, newId } from "../appstate";
+import { activeWs, workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
-import { cliLookOf, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "../spawnmodal";
+import { cliLookOf, closeProject, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "../spawnmodal";
 import { readBoardFile, writeBoardFile } from "../boardfile";
 import { mkCard, defaultBoard } from "../board";
 import { sameFolder } from "../workspaces";
 import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
-import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, founderFolder, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
@@ -21,9 +21,10 @@ import { LOCK_STALE_MS, lockMove, lockSilent } from "./lock";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
-import type { CompanyRequest, Floor, Job, Person, PlanCard, RoleDef } from "./types";
+import { FOUNDER_ID, type CompanyRequest, type Floor, type Job, type Person, type PlanCard, type RoleDef } from "./types";
 
-const OFFICE_REL = "office";
+/** Where 0.14.0 ran the Founder: only here to close the tab left from then. The folder stays on disk. */
+const OLD_OFFICE_REL = "office";
 const REQUESTS_REL = "requests.jsonl";
 /** Where tauri.conf.json puts the MCP server, under the app's resources. */
 const MCP_RESOURCE = "mcp-server/bytehive-mcp.mjs";
@@ -35,6 +36,8 @@ const BOOT_MS = 8000;
 const NODE_WAIT_MS = 10_000;
 /** Tries at a board an agent keeps writing to. */
 const BOARD_TRIES = 3;
+const NO_PROJECT = "Open a project first.";
+const FOUNDER_WAITS = "founder-no-project";
 
 let root = "";
 let me = 0; // this app's pid
@@ -180,7 +183,8 @@ async function checkRestore(p: Person, spec: AgentSpec): Promise<void> {
     delete spec.branch;
   }
   if (spec.sessionId && !(await claudeSessionExists(spec.worktree ?? spec.cwd ?? "", spec.sessionId).catch(() => false))) {
-    gone.push("conversation");
+    // The Founder moves with the owner's projects, and the Job files carry its work: nothing was lost.
+    if (p.rank !== "founder") gone.push("conversation");
     delete spec.sessionId;
   }
   if (gone.length) raiseAlert(`lost-${p.id}`, `${p.name}'s ${gone.join(" and ")} could not be found, so they start blank.${commits}`, p.id);
@@ -197,16 +201,20 @@ function remember(): boolean {
   return state !== before;
 }
 
+/** The folder a Founder with no pane starts in. */
+const founderDir = () => founderFolder(activeWs, [...workspaces.values()]);
+
 async function ensurePerson(p: Person): Promise<void> {
   if (paneOf(p.id) || !state) return;
   const role = state.roles.find((r) => r.id === p.role);
   const floor = state.company.floors.find((f) => f.id === p.floor);
-  const dir = p.rank === "founder" ? `${root}\\${OFFICE_REL}` : floor?.dir;
+  const dir = p.rank === "founder" ? founderDir() : floor?.dir;
   if (!role) throw new Error(`no role ${p.role}`);
-  if (!dir) throw new Error(`no floor ${p.floor}`);
+  if (!dir) throw new Error(p.rank === "founder" ? NO_PROJECT : `no floor ${p.floor}`);
   const spec = await personSpec(p, role, dir);
   await checkRestore(p, spec);
   await spawnPerson(dir, spec, true);
+  if (p.rank === "founder") clearAlert(FOUNDER_WAITS);
   if (remember()) await tryPersist([]);
 }
 
@@ -217,6 +225,11 @@ async function ensurePerson(p: Person): Promise<void> {
 async function deliver(personId: string, text: string): Promise<void> {
   const p = state && personById(state.company, personId);
   if (!p) return;
+  // Starting them would throw, and take the rest of this round's effects with it.
+  if (p.rank === "founder" && !paneOf(p.id) && !founderDir()) {
+    raiseAlert(FOUNDER_WAITS, "No project is open, so a message for the Founder was not delivered. Open a project: the Founder starts there with its next job and sees the open work.");
+    return;
+  }
   await ensurePerson(p);
   const found = paneOf(personId);
   if (!found) return;
@@ -281,7 +294,7 @@ function syncFloors(): void {
   if (!state) return;
   const floors = [...state.company.floors];
   for (const ws of workspaces.values()) {
-    if (!ws.dir || sameFolder(ws.dir, `${root}\\${OFFICE_REL}`) || floors.some((f) => sameFolder(f.dir, ws.dir!))) continue;
+    if (!ws.dir || floors.some((f) => sameFolder(f.dir, ws.dir!))) continue;
     floors.push({ id: floorId(ws.name, floors.map((f) => f.id)), dir: ws.dir, name: ws.name });
   }
   if (floors.length !== state.company.floors.length) state = { ...state, company: { ...state.company, floors } };
@@ -289,6 +302,7 @@ function syncFloors(): void {
 
 export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   if (!state || !ask.trim()) return;
+  if (!paneOf(FOUNDER_ID) && !founderDir()) throw new Error(NO_PROJECT);
   // Every member's MCP server runs on it: without Node the Founder has no job_plan.
   const node = launchSpec("node", ["--version"]);
   const version = await runCapture(node.program, node.args, null, NODE_WAIT_MS).catch(() => "");
@@ -408,10 +422,18 @@ export const reject = (id: string, note: string): Promise<void> => enqueue(async
   await run(r.effects);
 });
 
+/** 0.14.0 ran the Founder in a folder of its own, which opened as a project. The
+ *  session brings that tab back, stopped: it goes, with the Founder's pane in it. */
+async function closeOldOffice(): Promise<void> {
+  for (const ws of [...workspaces.values()]) {
+    if (!sameFolder(ws.dir, `${root}\\${OLD_OFFICE_REL}`)) continue;
+    await closeProject(ws).catch((e) => console.error(`[bytehive] the old office tab could not be closed: ${reason(e)}`));
+  }
+}
+
 /** Load the company and take charge of it. Runs in the queue. */
 async function start(): Promise<void> {
   loadError = null;
-  await ensureDirs(root, OFFICE_REL);
   await ensureDirs(root, "roles");
   await seedRoles(root);
   try {
@@ -424,6 +446,7 @@ async function start(): Promise<void> {
     changed();
     return;
   }
+  await closeOldOffice();
   syncFloors();
   try {
     await saveCompany(root, state.company);

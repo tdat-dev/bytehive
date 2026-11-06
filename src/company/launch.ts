@@ -17,6 +17,12 @@ export function composePrompt(person: Person, role: RoleDef, c: Company): string
   return `${LAWS[person.rank]}\n\n${place}\n\n${role.prompt}`;
 }
 
+/** Where a Founder with no pane starts: the active project, else the first open
+ *  project with a folder. It works through MCP tools, so the folder limits nothing. */
+export function founderFolder(active: { dir: string | null } | null, open: Array<{ dir: string | null }>): string | null {
+  return active?.dir ?? open.find((w) => w.dir)?.dir ?? null;
+}
+
 /** What the MCP server needs, from mcp/package.json. `node --version` prints v22.13.0. */
 export function nodeRunsCompany(version: string): boolean {
   const v = /^v(\d+)\.(\d+)\./.exec(version.trim());

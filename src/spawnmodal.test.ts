@@ -8,7 +8,7 @@ vi.mock("./ipc", () => ({
   programsOnPath: async () => [],
 }));
 
-import { cliLookOf, configureSpawnModal, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "./spawnmodal";
+import { cliLookOf, configureSpawnModal, closeProject, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "./spawnmodal";
 import type { AgentSpec, Pane, Workspace } from "./panetypes";
 
 // Claude's first screen in a folder it hasn't seen, as the terminal shows it.
@@ -187,6 +187,7 @@ describe("spawnPerson", () => {
     configureSpawnModal({
       createWorkspace: () => ws,
       createAgent: () => async () => { atBoot.push([ws.repoRoot, ws.isolated]); },
+      closeWorkspace: async () => {},
       cliLook: () => ({ color: "#123456", mono: "C" }),
     });
     io.repo = "D:\\a";
@@ -195,10 +196,24 @@ describe("spawnPerson", () => {
     expect(ws.isolated).toBe(false);
   });
 
+  it("closes a project through main.ts, without asking", async () => {
+    const ws = { dir: "D:\\a" } as unknown as Workspace;
+    const closed: Workspace[] = [];
+    configureSpawnModal({
+      createWorkspace: () => ws,
+      createAgent: () => async () => {},
+      closeWorkspace: async (w) => { closed.push(w); },
+      cliLook: () => ({ color: "#123456", mono: "C" }),
+    });
+    await closeProject(ws);
+    expect(closed).toEqual([ws]);
+  });
+
   it("reads the CLI look main.ts set, not the placeholder", () => {
     configureSpawnModal({
       createWorkspace: () => { throw new Error("unused"); },
       createAgent: () => async () => {},
+      closeWorkspace: async () => {},
       cliLook: () => ({ color: "#123456", mono: "C" }),
     });
     expect(cliLookOf("claude", "Claude Code")).toEqual({ color: "#123456", mono: "C" });

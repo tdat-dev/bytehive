@@ -17,7 +17,7 @@ import { closeSettings, initSettingsModal } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
 import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
-import { configureWorkspace, initWorkspace, createWorkspace, activateWorkspace, bootDetached } from "./workspace";
+import { configureWorkspace, initWorkspace, createWorkspace, closeWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
 import { initInbox } from "./inbox";
 import { initCalm } from "./calm";
@@ -216,7 +216,7 @@ configureReplay({ paneToast, errMsg, closeSettings });
 initReplay();
 configureDashboard({ errMsg });
 initDashboard();
-configureSpawnModal({ createAgent, createWorkspace, cliLook });
+configureSpawnModal({ createAgent, createWorkspace, closeWorkspace, cliLook });
 void refreshCliAvailability(); // which CLIs New agent can offer
 configureSession({ createWorkspace, createAgent });
 configureScheduler({

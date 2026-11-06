@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { basename, nextWorkspaceName, pickNextActive, needsCloseConfirm, needsWorktree, trustsFolder } from "./workspaces";
+import { basename, isFounder, nextWorkspaceName, pickNextActive, needsCloseConfirm, needsWorktree, trustsFolder } from "./workspaces";
 
 describe("trustsFolder", () => {
   it("answers Claude's folder question for a member: the owner approved the hire", () => {
@@ -10,6 +10,14 @@ describe("trustsFolder", () => {
   });
   it("only Claude asks it", () => {
     expect(trustsFolder({ personId: "p1", badge: "codex" })).toBe(false);
+  });
+});
+
+describe("isFounder", () => {
+  it("tells the Founder from everyone else, so board cards never go to it", () => {
+    expect(isFounder({ personId: "founder" })).toBe(true);
+    expect(isFounder({ personId: "p1" })).toBe(false);
+    expect(isFounder({})).toBe(false);
   });
 });
 
@@ -28,6 +36,10 @@ describe("needsWorktree", () => {
   });
   it("gives nobody a second one", () => {
     expect(needsWorktree(repo, { personId: "p1", worktree: "D:\\wt" })).toBe(false);
+  });
+  it("never gives the Founder one: it writes nothing, and sits in the project itself", () => {
+    expect(needsWorktree(repo, { personId: "founder" })).toBe(false);
+    expect(needsWorktree({ ...repo, isolated: true }, { personId: "founder" })).toBe(false);
   });
 });
 

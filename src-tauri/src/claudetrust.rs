@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn a_folder_outside_git_is_its_own_key() {
-        assert_eq!(project_key("C:\\Users\\me\\.bytehive\\company\\office\\", None), "C:/Users/me/.bytehive/company/office");
+        assert_eq!(project_key("C:\\Users\\me\\notes\\", None), "C:/Users/me/notes");
     }
 
     #[test]

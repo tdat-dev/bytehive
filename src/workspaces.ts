@@ -1,3 +1,4 @@
+import { FOUNDER_ID } from "./company/types";
 import type { AgentSpec, Workspace } from "./panetypes";
 
 /** Where an agent's CLI starts: its worktree, else the project folder, else
@@ -9,11 +10,15 @@ export function runDir(spec: { worktree?: string; cwd: string | null }, home: st
   return dir.replace(/(?<=[^:\\/])[\\/]+$/, "");
 }
 
+/** Whether this agent is the company's Founder. There is one, with this id, and
+ *  it runs in a project without being a worker there. */
+export const isFounder = (spec: Pick<AgentSpec, "personId">) => spec.personId === FOUNDER_ID;
+
 /** Whether an agent gets a new worktree when it boots. A member of the company
  *  always does on a git repo, two people must not share a checkout; everyone
- *  else follows the project's setting. */
+ *  else follows the project's setting. The Founder never does: it writes nothing. */
 export function needsWorktree(ws: Pick<Workspace, "isolated" | "repoRoot">, spec: Pick<AgentSpec, "worktree" | "personId">): boolean {
-  return !!ws.repoRoot && !spec.worktree && (ws.isolated || !!spec.personId);
+  return !isFounder(spec) && !!ws.repoRoot && !spec.worktree && (ws.isolated || !!spec.personId);
 }
 
 /** Whether ByteHive says yes to Claude's "trust this folder?" for this agent. The

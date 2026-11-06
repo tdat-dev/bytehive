@@ -65,6 +65,7 @@ Press Ctrl+Shift+O and give the Founder a job. The Founder plans it, you approve
 the plan, and the people it hires work on your open projects in their own
 terminals and branches, with a Lead on any project that has more than one person.
 The panel shows what needs you, what each job has spent, and who works where.
+The Founder's terminal sits in the project you are on when you give a job.
 
 It needs Node.js 22.13 or newer and Claude Code on PATH. For every folder a member
 works in, ByteHive records that folder as trusted in Claude's `.claude.json`, so
