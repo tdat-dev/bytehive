@@ -19,6 +19,7 @@ vi.mock("./spawnmodal", () => ({ openModal: () => {}, presetAvailable: () => fal
 vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
+vi.mock("./company/engine", () => ({ companyNeeds: () => 0, onCompanyChange: () => () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
 import { setInbox } from "./inbox";

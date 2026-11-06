@@ -68,6 +68,12 @@ export function resolveTargets(c: Company, fromId: string, to: string | null): {
 
 const floorPeople = (c: Company, floor: string) => c.people.filter((p) => p.floor === floor);
 
+/** Who speaks for a floor: its Lead, else the one person there. */
+export function floorContact(c: Company, floor: string): Person | null {
+  const here = floorPeople(c, floor);
+  return here.find((p) => p.rank === "lead") ?? here[0] ?? null;
+}
+
 /** What is wrong with the roles a plan drafts. They run with skip permissions, so
  *  nothing here can be left to the Founder. */
 function draftErrors(drafts: NewRole[], roles: RoleDef[]): string[] {

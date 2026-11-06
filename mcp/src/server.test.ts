@@ -77,7 +77,7 @@ describe("a member's tools", () => {
   });
   it("send fleet_send through the company, to the boss when no one is named", async () => {
     const client = await connect("d1");
-    expect(text(await client.callTool({ name: "fleet_send", arguments: { message: "done" } }))).toBe("sent to Hai");
+    expect(text(await client.callTool({ name: "fleet_send", arguments: { message: "done" } }))).toBe("queued for Hai. If a job holds it, you will hear back.");
     expect(requests()).toEqual([expect.objectContaining({ type: "message", from: "d1", to: "Hai", message: "done" })]);
     expect(fs.existsSync(path.join(dir, ".bytehive", "outbox.jsonl"))).toBe(false);
   });

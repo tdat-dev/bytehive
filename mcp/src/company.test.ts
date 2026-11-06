@@ -49,7 +49,7 @@ describe("company MCP", () => {
     expect(readRoles(root).map((r) => r.id)).toEqual(["developer"]);
   });
   it("queues a message to the boss when no target is given", () => {
-    expect(sendAsMember(root, "d1", undefined, "done", 5)).toBe("sent to Hai");
+    expect(sendAsMember(root, "d1", undefined, "done", 5)).toBe("queued for Hai. If a job holds it, you will hear back.");
     expect(lines()[0]).toMatchObject({ type: "message", from: "d1", to: "Hai", message: "done", ts: 5 });
   });
   it("tells a person with nobody to message so, instead of saying it was sent", () => {

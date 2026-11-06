@@ -27,6 +27,7 @@ export interface Card {
   job?: string; // the company Job this card belongs to
   assigneeId?: string; // the Person working it; survives a rename
   returns?: number; // times a Lead sent it back
+  stopped?: boolean; // its Job was stopped: nobody works it any more
   done?: DoneInfo; // present once the task is marked Done (code evidence)
 }
 export interface List {
@@ -82,6 +83,7 @@ export function normalizeCard(c: Partial<Card>): Card {
   if (typeof c.job === "string" && c.job) card.job = c.job;
   if (typeof c.assigneeId === "string" && c.assigneeId) card.assigneeId = c.assigneeId;
   if (typeof c.returns === "number" && c.returns > 0) card.returns = c.returns;
+  if (c.stopped === true) card.stopped = true;
   const d = c.done;
   if (d && typeof d === "object" && Array.isArray(d.files) && typeof d.repoRoot === "string") {
     card.done = {
@@ -102,6 +104,16 @@ export function doneCardIds(board: Board): Set<string> {
     if (l.title.trim().toLowerCase() === "done")
       for (const c of l.cards) out.add(c.id);
   return out;
+}
+
+/** Mark a stopped Job's open cards. Gives back how many changed. */
+export function markJobStopped(board: Board, job: string): number {
+  let n = 0;
+  for (const l of board.lists) {
+    if (l.title.trim().toLowerCase() === "done") continue;
+    for (const c of l.cards) if (c.job === job && !c.stopped) { c.stopped = true; n += 1; }
+  }
+  return n;
 }
 
 /** Normalize a raw `{lists:[...]}` value to a Board, or null when the shape

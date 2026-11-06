@@ -28,6 +28,7 @@ export interface Card {
   job?: string; // the company Job this card belongs to
   assigneeId?: string; // the Person working it; survives a rename
   returns?: number; // times a Lead sent it back
+  stopped?: boolean; // its Job was stopped: nobody works it any more
   done?: DoneInfo;
 }
 export interface List {
@@ -83,6 +84,7 @@ function normalizeCard(c: Partial<Card>): Card {
   if (typeof c.job === "string" && c.job) card.job = c.job;
   if (typeof c.assigneeId === "string" && c.assigneeId) card.assigneeId = c.assigneeId;
   if (typeof c.returns === "number" && c.returns > 0) card.returns = c.returns;
+  if (c.stopped === true) card.stopped = true;
   const d = c.done;
   if (d && typeof d === "object" && Array.isArray(d.files) && typeof d.repoRoot === "string") {
     card.done = {

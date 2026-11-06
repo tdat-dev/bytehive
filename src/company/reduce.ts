@@ -21,7 +21,7 @@ const tellFounder = (text: string): Effect => ({ kind: "deliver", personId: FOUN
 
 /** A message ends up typed into a terminal: an escape or a carriage return in it
  *  would be a keypress there, not text. Line breaks and tabs are still text. */
-const typeable = (text: string) => text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+export const typeable = (text: string): string => text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
 
 export function newJob(s: State, ask: string, now: number): { state: State; job: Job; effects: Effect[] } {
   const job: Job = {
@@ -152,6 +152,17 @@ const GOING: Job["status"][] = ["planning", "awaiting-plan", "running", "paused"
 export function haltJob(s: State, id: string): State {
   const status = s.jobs.find((j) => j.id === id)?.status;
   return status && GOING.includes(status) ? patch(s, id, { status: "stopped" }) : s;
+}
+
+/** Whose running turn a Stop ends: people on this Job with no other Job going. The
+ *  Founder works every Job, so it counts as long as no other is going. */
+export function stopTurns(s: State, id: string): string[] {
+  const job = s.jobs.find((j) => j.id === id);
+  if (!job) return [];
+  const others = s.jobs.filter((j) => j.id !== id && GOING.includes(j.status));
+  const busy = new Set(others.flatMap((j) => j.people));
+  const people = job.people.filter((p) => !busy.has(p));
+  return others.length ? people.filter((p) => p !== FOUNDER_ID) : [...new Set([...people, FOUNDER_ID])];
 }
 
 export const stoppedNote = (id: string): Effect =>

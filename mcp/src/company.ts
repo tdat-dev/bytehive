@@ -69,7 +69,7 @@ export function sendAsMember(root: string, from: string, to: string | undefined,
   const r = resolveTargets(company(root), from, to?.trim() || null);
   if ("error" in r) throw new Error(r.error);
   for (const p of r.people) queueRequest(root, { type: "message", ts: now, from, to: p.name, message: text });
-  return `sent to ${r.people.map((p) => p.name).join(", ")}`;
+  return `queued for ${r.people.map((p) => p.name).join(", ")}. If a job holds it, you will hear back.`;
 }
 
 export function planAsFounder(root: string, from: string, job: string, plan: JobPlan, now: number): void {

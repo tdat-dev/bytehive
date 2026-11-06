@@ -61,6 +61,7 @@ vi.mock("./settingsmodal", () => ({ openSettings: () => { state.settings++; } })
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
 vi.mock("./sessionfollow", () => ({ startSessionFollow: () => {}, stopSessionFollow: () => {} }));
+vi.mock("./company/engine", () => ({ companyNeeds: () => 0, onCompanyChange: () => () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
 import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
@@ -131,6 +132,17 @@ describe("inbox helpers", () => {
     expect(headline([task("e", "Eli", "working")]).rest).toBe(" 1 is working.");
     expect(headline([task("a", "Ana", "stopped"), task("b", "Bo", "stopped"), task("h", "Hal", "idle")]).rest).toBe(" 1 is waiting for a task, 2 are stopped.");
     expect(headline([task("h", "Hal", "idle", { worked: true }), task("i", "Ivy", "idle")]).rest).toBe(" 1 is done, 1 is waiting for a task.");
+  });
+
+  it("counts what the Company needs from you", () => {
+    expect(headline([], 2)).toEqual({ lead: "2 Company items need you.", rest: "" });
+    expect(headline([], 1).lead).toBe("1 Company item needs you.");
+    expect(headline([task("a", "Ana", "needs")], 1).lead).toBe("1 agent and 1 Company item need you.");
+    expect(headline([task("e", "Eli", "working")], 1)).toEqual({ lead: "1 Company item needs you.", rest: " 1 is working." });
+  });
+  it("says what it always said with nothing from the Company", () => {
+    expect(headline([]).lead).toBe("No agents yet.");
+    expect(headline([], 0).lead).toBe("No agents yet.");
   });
 
   it("says what each agent wants on its row", () => {

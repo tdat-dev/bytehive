@@ -1,8 +1,8 @@
 // src/company/reduce.test.ts
 import { describe, it, expect } from "vitest";
-import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type State } from "./reduce";
+import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, stopTurns, type State } from "./reduce";
 import { emptyCompany } from "./org";
-import { FOUNDER_ID, type JobPlan, type Person, type RoleDef } from "./types";
+import { FOUNDER_ID, type Job, type JobPlan, type Person, type RoleDef } from "./types";
 
 const look = { shirt: "#fff", hair: "#000", prop: "none" };
 const role: RoleDef = { id: "marketing", title: "M", department: "M", rank: "staff", cli: "claude", denyTools: [], look, prompt: "p", skills: [] };
@@ -436,5 +436,24 @@ describe("closeJob", () => {
     expect(closeJob(s, "J-9999")).toBe(s);
     const done = closeJob(merging(), "J-0001");
     expect(closeJob(done, "J-0001")).toBe(done);
+  });
+});
+
+describe("stopTurns", () => {
+  const j = (id: string, status: Job["status"], people: string[]): Job =>
+    ({ id, title: id, ask: id, status, plan: null, tokenCap: 1, tokensUsed: 0, tokenBase: {}, people, createdAt: 1 });
+  const s = (jobs: Job[]): State => ({ company: emptyCompany(), jobs, roles: [] });
+
+  it("is everyone on the Job and the Founder when nothing else is going", () => {
+    expect(stopTurns(s([j("J1", "stopped", ["a", "b"])]), "J1").sort()).toEqual(["a", "b", "founder"]);
+  });
+  it("leaves out someone working another Job, and the Founder", () => {
+    expect(stopTurns(s([j("J1", "stopped", ["a", "b"]), j("J2", "running", ["b"])]), "J1")).toEqual(["a"]);
+  });
+  it("counts a finished Job as not going", () => {
+    expect(stopTurns(s([j("J1", "stopped", ["a"]), j("J2", "done", ["a"])]), "J1").sort()).toEqual(["a", "founder"]);
+  });
+  it("is nobody for an unknown Job", () => {
+    expect(stopTurns(s([]), "J9")).toEqual([]);
   });
 });

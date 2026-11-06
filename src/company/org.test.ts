@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyHires, canMessage, emptyCompany, floorId, fromDraft, personByName, planCap, reportsOf, resolveTargets, validatePlan, validRoleId } from "./org";
+import { applyHires, canMessage, emptyCompany, floorContact, floorId, fromDraft, personByName, planCap, reportsOf, resolveTargets, validatePlan, validRoleId } from "./org";
 import { DEFAULT_LIMITS, FOUNDER_ID, type Company, type JobPlan, type Person, type RoleDef } from "./types";
 
 const role = (id: string, rank: "lead" | "staff"): RoleDef => ({
@@ -184,5 +184,16 @@ describe("validRoleId", () => {
   });
   it("refuses what is not a string, even one that prints like an id", () => {
     expect(validRoleId(undefined)).toBe(false);
+  });
+});
+
+describe("floorContact", () => {
+  it("is the Lead when there is one, else the first person, else nobody", () => {
+    const lead = { id: "l", rank: "lead", floor: "a" };
+    const staff = { id: "s", rank: "staff", floor: "a" };
+    const c = { ...emptyCompany(), people: [staff, lead] } as unknown as Company;
+    expect(floorContact(c, "a")?.id).toBe("l");
+    expect(floorContact({ ...c, people: [staff] } as unknown as Company, "a")?.id).toBe("s");
+    expect(floorContact(c, "b")).toBeNull();
   });
 });

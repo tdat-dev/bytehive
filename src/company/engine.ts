@@ -3,24 +3,27 @@
  * messages into their terminals. All decisions live in reduce.ts and watch.ts. */
 import { homeDir, resolveResource } from "@tauri-apps/api/path";
 import { agentUsage } from "../agentcost";
-import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, gitExcludeBytehive, processAlive, runCaptureStatus, sendMessage } from "../ipc";
+import { appPid, claudeSessionExists, fsCreateDir, fsReadDir, gitExcludeBytehive, processAlive, runCaptureStatus, sendInput, sendMessage } from "../ipc";
 import { activeWs, workspaces, newId } from "../appstate";
 import { drainJsonl } from "../fleetbridge";
 import { CLI_PRESETS, launchSpec, nameForNewPane, effectiveArgs } from "../crew";
 import { cliLookOf, closeProject, deliverTask, paneAsking, paneAtPrompt, spawnPerson } from "../spawnmodal";
 import { readBoardFile, writeBoardFile } from "../boardfile";
-import { mkCard, defaultBoard } from "../board";
+import { mkCard, defaultBoard, markJobStopped, type Board } from "../board";
 import { sameFolder } from "../workspaces";
 import { revealPane } from "../agentbridge";
+import { WORKING_MS } from "../taskstate";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
 import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpConfig, nodeVerdict, pluginManifest } from "./launch";
-import { floorId, personById, personByName } from "./org";
-import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
+import { floorContact, floorId, personById, personByName } from "./org";
+import { needsYou } from "./needs";
+import { OP_LIMIT_MS, OpTimeout, withLimit } from "./queue";
+import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, stopTurns, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
 import { LOCK_STALE_MS, lockMove, lockSilent } from "./lock";
 import { companyRoot, ensureDirs, loadCompany, pickRoot, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
-import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
+import { cardsToWatch, watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
 import { FOUNDER_ID, type CompanyRequest, type Floor, type Job, type Person, type PlanCard, type RoleDef } from "./types";
 
 /** Where 0.14.0 ran the Founder: only here to close the tab left from then. The folder stays on disk. */
@@ -54,7 +57,7 @@ let state: State | null = null;
 let loadError: string | null = null;
 let alerts: Alert[] = [];
 let nudges = new Map<string, number>();
-/** When each card in Doing went quiet. */
+/** When each watched card went quiet, by list and id: see cardsToWatch. */
 const quiet = new Map<string, number>();
 const consumed = new Map<string, number>();
 /** Folders whose git has been told about .bytehive/ in this run. */
@@ -63,7 +66,7 @@ const excluded = new Set<string>();
 let excluding: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 
-export const onCompanyChange = (fn: () => void) => { listeners.add(fn); };
+export const onCompanyChange = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 const changed = () => listeners.forEach((fn) => fn());
 onStandingChange(changed);
 
@@ -83,10 +86,11 @@ let queue: Promise<unknown> = Promise.resolve();
 /** Run one engine operation after the ones before it. Every operation goes
  *  through here: they read, wait on files and panes, then write, and two at once
  *  would start a person twice or write an old Job over a new one. An operation
- *  must not enqueue another and wait for it. */
-export function enqueue<T>(op: () => Promise<T>): Promise<T> {
-  const done = queue.then(op);
-  queue = done.catch(() => {});
+ *  must not enqueue another and wait for it. One that passes the limit is left
+ *  behind still running, next to whatever comes after it: that is why the owner is told. */
+export function enqueue<T>(op: () => Promise<T>, label = "A company operation"): Promise<T> {
+  const done = queue.then(() => withLimit(op, OP_LIMIT_MS, label));
+  queue = done.catch((e) => { if (e instanceof OpTimeout) raiseAlert(`late-${label}`, e.message); });
   return done;
 }
 
@@ -344,14 +348,27 @@ export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   state = r.state;
   await tryPersist([r.job]);
   await run(r.effects);
-});
+}, "Giving a job");
 
-/** Put a floor's cards on its board. An agent writing the board at the same
- *  moment is a Conflict: read its copy and try again. */
-async function placeOnFloor(company: State["company"], job: Job, floor: Floor, cards: PlanCard[]): Promise<void> {
+/** Change a floor's board. An agent writing it at the same moment is a Conflict:
+ *  read its copy and try again. `change` gives back false when there is nothing to write. */
+async function changeBoard(dir: string, change: (b: Board) => boolean): Promise<void> {
   for (let tries = 1; ; tries += 1) {
-    const file = await readBoardFile(floor.dir);
+    const file = await readBoardFile(dir);
     const board = file?.board ?? defaultBoard();
+    if (!change(board)) return;
+    try {
+      await writeBoardFile(dir, board, file?.mtime ?? null);
+      return;
+    } catch (e) {
+      if ((e as { Conflict?: number })?.Conflict === undefined || tries >= BOARD_TRIES) throw e;
+    }
+  }
+}
+
+/** Put a floor's cards on its board. */
+function placeOnFloor(company: State["company"], job: Job, floor: Floor, cards: PlanCard[]): Promise<void> {
+  return changeBoard(floor.dir, (board) => {
     let todo = board.lists.find((l) => l.title.trim().toLowerCase() === "to do");
     if (!todo) {
       todo = { id: `l${newId()}`, title: "To do", cards: [] };
@@ -365,13 +382,8 @@ async function placeOnFloor(company: State["company"], job: Job, floor: Floor, c
         ...(assignee ? { assignee: assignee.name, assigneeId: assignee.id } : {}),
       });
     }
-    try {
-      await writeBoardFile(floor.dir, board, file?.mtime ?? null);
-      return;
-    } catch (e) {
-      if ((e as { Conflict?: number })?.Conflict === undefined || tries >= BOARD_TRIES) throw e;
-    }
-  }
+    return true;
+  });
 }
 
 /** Put a Job's cards on the boards. Gives back what could not be placed. */
@@ -444,7 +456,7 @@ export const approve = (id: string): Promise<void> => enqueue(async () => {
   }
   failed.push(...await saveRoles(r.saved), ...await refreshFiles(r.rewired), ...await placeCards(job), ...await startHires(r.hired));
   await run(reportFailures(r.effects, failed));
-});
+}, "Starting a plan");
 
 export const reject = (id: string, note: string): Promise<void> => enqueue(async () => {
   if (!state) return;
@@ -531,7 +543,7 @@ async function heartbeat(): Promise<void> {
   if (holding) return;
   holding = true;
   // Not awaited: start waits its turn in the queue, and this is what keeps the lock fresh meanwhile.
-  void enqueue(start).catch((e) => {
+  void enqueue(start, "Loading the company").catch((e) => {
     loadError = reason(e);
     console.error(`[bytehive] the company could not start: ${loadError}`);
     changed();
@@ -584,37 +596,34 @@ function measure(job: Job): Job {
   return moved ? { ...job, tokenBase: seen, tokensUsed: job.tokensUsed + added } : job;
 }
 
-/** The cards in Doing that belong to a running Job, and how long each has been quiet. */
-async function doingCards(): Promise<WatchedCard[]> {
+/** Every open project is a floor: only one with people on it can hold a Job's card. */
+const floorsWithPeople = () => state?.company.floors.filter((f) => state?.company.people.some((p) => p.floor === f.id)) ?? [];
+
+/** The cards that could go quiet on every floor with people. */
+async function watchedCards(): Promise<WatchedCard[]> {
   const out: WatchedCard[] = [];
-  const inDoing = new Set<string>();
+  const seen = new Set<string>();
   let readAll = true;
-  // Every open project is a floor: only one with people on it can hold a Job's card.
-  const floors = state?.company.floors.filter((f) => state?.company.people.some((p) => p.floor === f.id)) ?? [];
-  for (const floor of floors) {
+  for (const floor of floorsWithPeople()) {
     const file = await readBoardFile(floor.dir).catch(() => { readAll = false; return null; });
-    const doing = file?.board.lists.find((l) => l.title.trim().toLowerCase() === "doing");
-    for (const c of doing?.cards ?? []) {
-      inDoing.add(c.id);
-      if (!c.job || !c.assigneeId) continue;
-      // A paused Job is quiet on purpose.
-      if (state?.jobs.find((j) => j.id === c.job)?.status !== "running") { quiet.delete(c.id); continue; }
-      const pane = paneOf(c.assigneeId)?.pane;
-      const working = !!pane?.running && Date.now() - pane.lastOutputAt < 60_000;
-      if (working) quiet.delete(c.id);
-      else if (!quiet.has(c.id)) quiet.set(c.id, Date.now());
-      out.push({ id: c.id, title: c.title, job: c.job, assigneeId: c.assigneeId, quietSince: quiet.get(c.id) ?? null, returns: c.returns ?? 0 });
-    }
+    if (!file || !state) continue;
+    const r = cardsToWatch({
+      board: file.board, jobs: state.jobs, quiet, now: Date.now(),
+      contact: floorContact(state.company, floor.id)?.id ?? null,
+      isWorking: (id) => { const pane = paneOf(id)?.pane; return !!pane?.running && Date.now() - pane.lastOutputAt < 60_000; },
+    });
+    out.push(...r.cards);
+    r.seen.forEach((k) => seen.add(k));
   }
-  // A card that left Doing starts its quiet time over when it comes back.
-  if (readAll) for (const id of quiet.keys()) if (!inDoing.has(id)) quiet.delete(id);
+  // A card that left its list starts its quiet time over when it comes back.
+  if (readAll) for (const k of quiet.keys()) if (!seen.has(k)) quiet.delete(k);
   return out;
 }
 
 /** Every WATCH_MS: who has gone quiet, and how many tokens each Job has used. Runs in the queue. */
 async function watch(): Promise<void> {
   if (!state) return;
-  const cards = await doingCards();
+  const cards = await watchedCards();
   const work = watchWork({
     cards,
     nudges,
@@ -626,7 +635,7 @@ async function watch(): Promise<void> {
   const next: Alert[] = [...work.alerts];
   const before = state.jobs;
   // A plan can't name who a Lead hands a card to: they join when they pick it up.
-  state = cards.reduce((s, c) => joinJob(s, c.job, c.assigneeId), state);
+  state = cards.filter((c) => c.list === "doing").reduce((s, c) => joinJob(s, c.job, c.assigneeId), state);
   state = { ...state, jobs: state.jobs.map(measure) };
   const paused: Effect[] = [];
   for (const job of state.jobs) {
@@ -652,6 +661,9 @@ async function watch(): Promise<void> {
 export const companyAlerts = (): Alert[] => [...standingAlerts(), ...alerts];
 export const dismissAlert = clearAlert;
 
+/** How many rows Needs you has, for the Inbox header. */
+export const companyNeeds = () => (state ? needsYou(state.jobs, companyAlerts(), { floors: state.company.floors, roles: state.roles }).length : 0);
+
 /** The owner has merged what a Job made: close it. */
 export const finishJob = (id: string): Promise<void> => enqueue(async () => {
   if (!state) return;
@@ -661,6 +673,13 @@ export const finishJob = (id: string): Promise<void> => enqueue(async () => {
   await tryPersist(state.jobs.filter((j) => j.id === id));
 });
 
+/** End a person's turn, if they are in one. Quiet means they are at a prompt or a
+ *  question, where an Esc would only clear what the owner typed. */
+async function interrupt(personId: string): Promise<void> {
+  const pane = paneOf(personId)?.pane;
+  if (pane?.running && Date.now() - pane.lastOutputAt <= WORKING_MS) await sendInput(pane.id, "\u001b").catch(() => {});
+}
+
 /** The owner ends a Job that is still going, for good. */
 export const stopJob = (id: string): Promise<void> => enqueue(async () => {
   if (!state) return;
@@ -669,8 +688,13 @@ export const stopJob = (id: string): Promise<void> => enqueue(async () => {
   state = next;
   alerts = alerts.filter((a) => a.job !== id); // the watch would only drop them on its next round
   await tryPersist(state.jobs.filter((j) => j.id === id));
+  for (const p of stopTurns(state, id)) await interrupt(p);
+  for (const f of floorsWithPeople()) {
+    await changeBoard(f.dir, (b) => markJobStopped(b, id) > 0)
+      .catch((e) => console.error(`[bytehive] ${id}'s cards on ${f.id} were not marked: ${reason(e)}`));
+  }
   await run([stoppedNote(id)]);
-});
+}, "Stopping a job");
 
 /** Give a paused Job more tokens and let it carry on. */
 export const raiseCap = (id: string, extra: number): Promise<void> => enqueue(async () => {

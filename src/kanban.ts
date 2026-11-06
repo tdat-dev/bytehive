@@ -899,11 +899,13 @@ export function createKanban() {
     const assignee = card.assignee
       ? `<button class="kb-assignee" title="Focus this agent's pane">⚡ ${enc(card.assignee)}</button>`
       : "";
+    const stopped = card.stopped ? `<span class="kb-stopped">Stopped</span>` : "";
 
     node.innerHTML =
       labels +
       `<span class="kb-card-title">${enc(card.title)}</span>` +
       assignee +
+      stopped +
       (badges.length ? `<div class="kb-badges">${badges.join("")}</div>` : "") +
       doneFooter;
 

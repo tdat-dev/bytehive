@@ -1,6 +1,7 @@
 // src/company/watch.ts
 /* Agents do not report back on their own, and managers loop. These two checks
  * are what stops a Job from quietly stalling or burning tokens. */
+import type { Card } from "../board";
 import type { Effect } from "./reduce";
 import type { Job, Limits } from "./types";
 
@@ -20,6 +21,48 @@ export interface WatchedCard {
   assigneeId: string;
   quietSince: number | null; // when the person went idle, null while working
   returns: number;
+  list?: "doing" | "todo";
+}
+
+const cardsOf = (board: WatchBoard, title: string) =>
+  board.lists.find((l) => l.title.trim().toLowerCase() === title)?.cards ?? [];
+
+export interface WatchBoard { lists: Array<{ title: string; cards: Card[] }> }
+
+/** The cards of running Jobs on one board that could go quiet. A To do card is lost
+ *  when nobody has it: a Job with a card in Doing is moving, and its To do cards are
+ *  only waiting their turn. Times are kept per list, so moving on starts them over. */
+export function cardsToWatch(i: {
+  board: WatchBoard;
+  jobs: Job[];
+  contact: string | null;
+  isWorking: (personId: string) => boolean;
+  quiet: Map<string, number>;
+  now: number;
+}): { cards: WatchedCard[]; seen: string[] } {
+  const cards: WatchedCard[] = [];
+  const seen: string[] = [];
+  const running = (job: string | undefined) => !!job && i.jobs.find((j) => j.id === job)?.status === "running";
+  const doing = cardsOf(i.board, "doing");
+  for (const c of doing) {
+    const key = `doing:${c.id}`;
+    seen.push(key);
+    if (!c.job || !c.assigneeId) continue;
+    if (!running(c.job)) { i.quiet.delete(key); continue; }
+    if (i.isWorking(c.assigneeId)) i.quiet.delete(key);
+    else if (!i.quiet.has(key)) i.quiet.set(key, i.now);
+    cards.push({ id: c.id, title: c.title, job: c.job, assigneeId: c.assigneeId, quietSince: i.quiet.get(key) ?? null, returns: c.returns ?? 0, list: "doing" });
+  }
+  for (const c of cardsOf(i.board, "to do")) {
+    const key = `todo:${c.id}`;
+    seen.push(key);
+    const who = c.assigneeId ?? i.contact;
+    if (!c.job || !who) continue;
+    if (!running(c.job) || doing.some((d) => d.job === c.job)) { i.quiet.delete(key); continue; }
+    if (!i.quiet.has(key)) i.quiet.set(key, i.now);
+    cards.push({ id: c.id, title: c.title, job: c.job, assigneeId: who, quietSince: i.quiet.get(key) ?? null, returns: c.returns ?? 0, list: "todo" });
+  }
+  return { cards, seen };
 }
 
 export function watchWork(i: {
@@ -43,11 +86,14 @@ export function watchWork(i: {
     nudges.set(c.id, had);
     if (quiet < span * (had + 1)) continue;
     const boss = i.bossOf(c.assigneeId);
+    const waiting = c.list === "todo";
+    const nudge = waiting ? `"${c.title}" has waited in To do for ${i.limits.stallMinutes} minutes. Hand it out or start it.` : `"${c.title}" has gone quiet for ${i.limits.stallMinutes} minutes. Check on it.`;
+    const stuck = waiting ? `"${c.title}" has not been picked up.` : `"${c.title}" is stuck.`;
     if (had === 0 && boss) {
       nudges.set(c.id, 1);
-      effects.push({ kind: "deliver", personId: boss, text: `"${c.title}" has gone quiet for ${i.limits.stallMinutes} minutes. Check on it.` });
+      effects.push({ kind: "deliver", personId: boss, text: nudge });
     } else {
-      alerts.push({ key: `stall-${c.id}`, job: c.job, personId: c.assigneeId, level: "warn", text: `"${c.title}" is stuck.` });
+      alerts.push({ key: `stall-${c.id}`, job: c.job, personId: c.assigneeId, level: "warn", text: stuck });
     }
   }
   return { alerts, effects, nudges };

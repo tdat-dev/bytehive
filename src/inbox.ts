@@ -46,6 +46,7 @@ import type { AskOption } from "./askparse";
 import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
 import { hiddenGate } from "./hiddengate";
+import { companyNeeds, onCompanyChange } from "./company/engine";
 
 /* ---------------- pure helpers (tested) ---------------- */
 
@@ -110,12 +111,17 @@ export function listOrder(): ListOrder {
 }
 
 /** The top-bar sentence: "2 agents need you. 1 is ready to review, 3 are working." */
-export function headline(list: Task[]): { lead: string; rest: string } {
+export function headline(list: Task[], company = 0): { lead: string; rest: string } {
   const n = (s: TaskState) => list.filter((t) => t.status.state === s).length;
   const needs = n("needs"), review = n("review"), working = n("working");
   const are = (k: number) => (k === 1 ? "is" : "are");
-  if (!list.length) return { lead: "No agents yet.", rest: " Start one with New agent." };
-  const lead = needs ? `${needs} agent${needs === 1 ? " needs" : "s need"} you.` : "Nothing needs you.";
+  if (!list.length && !company) return { lead: "No agents yet.", rest: " Start one with New agent." };
+  const items = `${company} Company item${company === 1 ? "" : "s"}`;
+  const lead =
+    needs && company ? `${needs} agent${needs === 1 ? "" : "s"} and ${items} need you.`
+    : needs ? `${needs} agent${needs === 1 ? " needs" : "s need"} you.`
+    : company ? `${items} need${company === 1 ? "s" : ""} you.`
+    : "Nothing needs you.";
   // Only what is so: the clauses with nobody in them are left out.
   const parts = [
     review ? `${review} ${are(review)} ready to review` : "",
@@ -236,6 +242,7 @@ let askEl: HTMLElement | null = null;
 let emptyEl: HTMLElement | null = null;
 let timer: number | null = null;
 let offTasks: (() => void) | null = null;
+let offCompany: (() => void) | null = null;
 /** Split (the Grid): one agent's terminal with the others as cards. Only the pins in
  *  the shown project can be on screen, since each project has its own canvas. */
 let splitOn = false;
@@ -732,7 +739,7 @@ function clearMerged(ids?: string[]): void {
 
 function renderHead(list: Task[]): void {
   if (!headEl) return;
-  const h = headline(list);
+  const h = headline(list, companyNeeds());
   // A live region: only a real change is worth reading out.
   const html = `<b>${esc(h.lead)}</b>${esc(h.rest)}`;
   if (headEl.innerHTML !== html) headEl.innerHTML = html;
@@ -1273,6 +1280,7 @@ function mount(): void {
   for (const t of allTasks()) lastState.set(t.paneId, t.status.state);
   offTasks = onTasksChange(() => { onStateChanges(allTasks()); render(); });
   onAgentCost(render);
+  offCompany = onCompanyChange(render);
   startPlanMeter(render);
   startLimitGuard();
   // Resume carries on the conversation each agent was last in.
@@ -1305,6 +1313,7 @@ function unmount(): void {
   queueEl = askEl = headEl = dockEl = null; splitBtn = null; reviewer = null; historian = null;
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
+  offCompany?.(); offCompany = null;
   document.removeEventListener("keydown", onKey, true);
   document.removeEventListener("focusin", onFocusIn);
   document.getElementById("workspaces")?.removeEventListener("click", onStageButton);

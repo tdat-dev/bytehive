@@ -6,6 +6,7 @@ import {
   findCardIn,
   applyDomOrder,
   doneCardIds,
+  markJobStopped,
   mkCard,
   type Board,
   type Card,
@@ -105,5 +106,26 @@ describe("applyDomOrder", () => {
       { id: ids.done, cardIds: [] },
     ]);
     expect(b.lists.map((l) => l.title)).toEqual(["To do", "Doing", "Done", "Agent list"]);
+  });
+});
+
+describe("markJobStopped", () => {
+  const c = (id: string, job?: string) => ({ id, title: id, desc: "", labels: [], due: null, checklist: [], job });
+  const board = (): Board => ({ lists: [{ id: "a", title: "To do", cards: [c("1", "J1"), c("2", "J2")] }, { id: "b", title: "Done", cards: [c("3", "J1")] }] });
+  it("marks the Job's open cards and counts them, leaving Done and other Jobs", () => {
+    const b = board();
+    expect(markJobStopped(b, "J1")).toBe(1);
+    expect(b.lists[0].cards.map((x) => !!x.stopped)).toEqual([true, false]);
+    expect(b.lists[1].cards[0].stopped).toBeUndefined();
+  });
+  it("counts nothing the second time, so a board with no change is not written", () => {
+    const b = board();
+    markJobStopped(b, "J1");
+    expect(markJobStopped(b, "J1")).toBe(0);
+  });
+  it("survives a read of the file", () => {
+    const b = board();
+    markJobStopped(b, "J1");
+    expect(normalizeCard(JSON.parse(JSON.stringify(b.lists[0].cards[0]))).stopped).toBe(true);
   });
 });

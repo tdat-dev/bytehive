@@ -11,6 +11,7 @@ const io = vi.hoisted(() => ({
   writeFails: [] as unknown[],
   readFails: new Map<string, unknown>(),
   sent: [] as Array<[string, string]>,
+  keys: [] as Array<[string, string]>,
   told: [] as Array<{ name: string; text: string; delay: number; settle?: number }>,
   spawned: [] as string[],
   spawnFails: new Set<string>(),
@@ -90,6 +91,7 @@ vi.mock("../ipc", () => ({
     return { stdout: io.node, code: io.nodeCode };
   },
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return true; },
+  sendInput: async (id: string, text: string) => { io.keys.push([id, text]); },
 }));
 vi.mock("../agentcost", () => ({
   agentUsage: (pane: Pane) => io.usage.get(pane.spec.personId ?? "") ?? null,
@@ -178,6 +180,8 @@ const openProjects = () => {
   for (const dir of ["D:\\a", "D:\\b"]) workspaces.set(dir, { id: dir, name: dir.slice(-1), dir, panes: new Map() } as unknown as Workspace);
 };
 
+const member = () => [...workspaces.values()].flatMap((w) => [...w.panes.values()]).find((p) => p.spec.personId && p.spec.personId !== "founder")!;
+
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.resetModules();
@@ -188,6 +192,7 @@ beforeEach(async () => {
   io.spawnFails.clear();
   io.writeFails = [];
   io.sent = [];
+  io.keys = [];
   io.told = [];
   io.spawned = [];
   io.asking = false;
@@ -449,6 +454,99 @@ describe("the queue", () => {
     staffFloors(planFor("a"));
     await request({ type: "plan", ts: 2, from: "founder", job: "J-0001", plan: planFor("a") });
     expect(job().status).toBe("awaiting-plan");
+  });
+
+  it("moves on from an operation that hangs, and tells the owner", async () => {
+    void engine.enqueue(() => new Promise(() => {}), "Starting a plan").catch(() => {});
+    const next = engine.enqueue(async () => "ran");
+    await vi.advanceTimersByTimeAsync(300_000);
+    await expect(next).resolves.toBe("ran");
+    expect(engine.companyAlerts().map((a) => a.text).join(" ")).toContain("Starting a plan took over 300 s");
+  });
+});
+
+describe("Stop", () => {
+  it("ends the turn of someone working", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const pane = member();
+    pane.lastOutputAt = Date.now();
+    await engine.stopJob(job().id);
+    expect(io.keys).toContainEqual([pane.id, "\u001b"]);
+  });
+  it("sends no key to someone quiet, who may be at a prompt", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const pane = member();
+    pane.lastOutputAt = Date.now() - 60_000;
+    await engine.stopJob(job().id);
+    expect(io.keys.filter(([id]) => id === pane.id)).toEqual([]);
+  });
+  it("does not end a turn on a pause", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const pane = member();
+    pane.lastOutputAt = Date.now();
+    job().tokenCap = 1;
+    job().tokensUsed = 5;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().status).toBe("paused");
+    expect(io.keys).toEqual([]);
+  });
+  it("marks the Job's cards on the boards", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    await engine.stopJob(job().id);
+    expect(cards("D:\\a").every((c) => c.stopped)).toBe(true);
+  });
+  it("still stops when a board cannot be written", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    io.writeFails = [{ Failed: "disk full" }];
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await engine.stopJob(job().id);
+    expect(job().status).toBe("stopped");
+    spy.mockRestore();
+  });
+});
+
+describe("the watch and To do", () => {
+  it("nudges the boss about a card nobody picked up", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    io.sent.length = 0;
+    io.told.length = 0;
+    await vi.advanceTimersByTimeAsync(11 * 60_000);
+    const said = [...io.sent.map(([, t]) => t), ...io.told.map((t) => t.text)].join(" ");
+    expect(said).toContain("has waited in To do");
+  });
+  it("does not count someone named on a To do card as working the Job", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const todo = (io.boards.get("D:\\a") as Board).lists.find((l) => l.title === "To do")!;
+    todo.cards[0] = { ...todo.cards[0], assignee: "Founder", assigneeId: "founder" };
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(job().people).not.toContain("founder");
+  });
+});
+
+describe("what the Inbox header reads", () => {
+  it("is the rows of Needs you, and nothing before the company loads", async () => {
+    expect(engine.companyNeeds()).toBe(0);
+    await waitingJob(planFor("a", 1));
+    expect(engine.companyNeeds()).toBe(1);
+    await engine.approve(job().id);
+    expect(engine.companyNeeds()).toBe(0);
+  });
+  it("hears of a change until it unsubscribes", async () => {
+    const seen = vi.fn();
+    const off = engine.onCompanyChange(seen);
+    await engine.giveJob("one");
+    expect(seen).toHaveBeenCalled();
+    seen.mockClear();
+    off();
+    await engine.giveJob("two");
+    expect(seen).not.toHaveBeenCalled();
   });
 });
 
