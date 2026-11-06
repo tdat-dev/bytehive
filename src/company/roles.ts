@@ -9,15 +9,18 @@ const jsons = import.meta.glob("./roles/*/role.json", { eager: true, import: "de
 const prompts = import.meta.glob("./roles/*/prompt.md", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const skills = import.meta.glob("./roles/*/skills/*/SKILL.md", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 
+/** A Windows checkout gives these files CRLF. What ships must not depend on where it was built. */
+const lf = (text: string) => text.replace(/\r\n/g, "\n");
+
 export const DEFAULT_ROLES: RoleDef[] = Object.entries(jsons).map(([path, def]) => ({
   ...def,
-  prompt: prompts[path.replace("role.json", "prompt.md")],
+  prompt: lf(prompts[path.replace("role.json", "prompt.md")]),
 }));
 
 export function skillFiles(role: RoleDef): Array<{ name: string; text: string }> {
   return role.skills.flatMap((name) => {
     const text = skills[`./roles/${role.id}/skills/${name}/SKILL.md`];
-    return text ? [{ name, text }] : [];
+    return text ? [{ name, text: lf(text) }] : [];
   });
 }
 

@@ -59,6 +59,12 @@ describe("default roles", () => {
     expect(skillFiles(m).map((s) => s.name)).toContain("campaign-brief");
     expect(skillFiles(m)[0].text).toMatch(/^---\nname: /);
   });
+  it("reads the same on any checkout: a Windows one gives these files CRLF", () => {
+    for (const r of DEFAULT_ROLES) {
+      expect(r.prompt).not.toContain("\r");
+      for (const s of skillFiles(r)) expect(s.text).not.toContain("\r");
+    }
+  });
   it("tells every role with skills to use them", () => {
     for (const r of DEFAULT_ROLES.filter((x) => x.skills.length)) {
       for (const s of r.skills) expect(r.prompt).toContain(s);
