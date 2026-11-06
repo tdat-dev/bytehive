@@ -12,6 +12,7 @@ const io = vi.hoisted(() => ({
   readFails: new Map<string, unknown>(),
   sent: [] as Array<[string, string]>,
   keys: [] as Array<[string, string]>,
+  readHang: null as Promise<void> | null,
   told: [] as Array<{ name: string; text: string; delay: number; settle?: number }>,
   spawned: [] as string[],
   spawnFails: new Set<string>(),
@@ -69,6 +70,9 @@ vi.mock("../ipc", () => ({
     return [...new Map(names.map((n) => [n[0], { name: n[0], is_dir: n.length > 1, size: 0 }])).values()];
   },
   fsReadLinesFrom: async (root: string, rel: string, offset: number | null) => {
+    const hang = io.readHang;
+    io.readHang = null;
+    if (hang) await hang;
     const text = io.files.get(`${root}\\${rel}`);
     if (text === undefined) throw { Failed: "no such path: gone" };
     const from = offset ?? text.length;
@@ -134,7 +138,7 @@ function addPane(dir: string, spec: object, over: Partial<Pane>): Pane {
     ws = { id: dir, name: "x", dir, panes: new Map() } as unknown as Workspace;
     workspaces.set(dir, ws);
   }
-  const pane = { id: `pane-${ws.panes.size}-${(spec as { name: string }).name}`, running: false, spawnedAt: null, spec, ...over } as unknown as Pane;
+  const pane = { id: `pane-${ws.panes.size}-${(spec as { name: string }).name}`, running: false, spawnedAt: null, lastInputAt: 0, spec, ...over } as unknown as Pane;
   ws.panes.set(pane.id, pane);
   return pane;
 }
@@ -193,6 +197,7 @@ beforeEach(async () => {
   io.writeFails = [];
   io.sent = [];
   io.keys = [];
+  io.readHang = null;
   io.told = [];
   io.spawned = [];
   io.asking = false;
@@ -463,6 +468,43 @@ describe("the queue", () => {
     await expect(next).resolves.toBe("ran");
     expect(engine.companyAlerts().map((a) => a.text).join(" ")).toContain("Starting a plan took over 300 s");
   });
+
+  it("keeps going when telling the owner fails", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    engine.onCompanyChange(() => { throw new Error("the screen broke"); });
+    void engine.enqueue(() => new Promise(() => {}), "Starting a plan").catch(() => {});
+    const next = engine.enqueue(async () => "ran");
+    await vi.advanceTimersByTimeAsync(300_000);
+    await expect(next).resolves.toBe("ran");
+    spy.mockRestore();
+  });
+
+  it("reads a request once when a tick is left behind on a slow read", async () => {
+    await engine.giveJob("do it");
+    staffFloors(planFor("a"));
+    io.told.length = 0;
+    io.sent.length = 0;
+    let open = () => {};
+    io.readHang = new Promise((r) => { open = r; });
+    await request({ type: "message", ts: 1, from: "r-a", to: "Founder", message: "only once" });
+    await vi.advanceTimersByTimeAsync(303_000); // the queue gives up on that tick, and the next ones run
+    open();
+    await vi.advanceTimersByTimeAsync(3000);
+    const said = [...io.sent.map(([, t]) => t), ...io.told.map((t) => t.text)];
+    expect(said.filter((t) => t.includes("only once"))).toHaveLength(1);
+  });
+
+  it("reads on as normal once that slow read is back", async () => {
+    await engine.giveJob("do it");
+    staffFloors(planFor("a"));
+    let open = () => {};
+    io.readHang = new Promise((r) => { open = r; });
+    await vi.advanceTimersByTimeAsync(303_000);
+    open();
+    await vi.advanceTimersByTimeAsync(3000);
+    await request({ type: "message", ts: 1, from: "r-a", to: "Founder", message: "after it" });
+    expect([...io.sent.map(([, t]) => t), ...io.told.map((t) => t.text)].join(" ")).toContain("after it");
+  });
 });
 
 describe("Stop", () => {
@@ -473,6 +515,33 @@ describe("Stop", () => {
     pane.lastOutputAt = Date.now();
     await engine.stopJob(job().id);
     expect(io.keys).toContainEqual([pane.id, "\u001b"]);
+  });
+  it("sends no key when the owner's typing is all that came out", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const pane = member();
+    pane.lastInputAt = Date.now() - 100;
+    pane.lastOutputAt = Date.now() - 95; // the echo
+    await engine.stopJob(job().id);
+    expect(io.keys.filter(([id]) => id === pane.id)).toEqual([]);
+  });
+  it("still ends the turn of someone working after the owner typed", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const pane = member();
+    pane.lastInputAt = Date.now() - 2000;
+    pane.lastOutputAt = Date.now();
+    await engine.stopJob(job().id);
+    expect(io.keys).toContainEqual([pane.id, "\u001b"]);
+  });
+  it("sends no key to a question on screen: Esc would answer it no", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const pane = member();
+    pane.lastOutputAt = Date.now();
+    io.asking = true;
+    await engine.stopJob(job().id);
+    expect(io.keys.filter(([id]) => id === pane.id)).toEqual([]);
   });
   it("sends no key to someone quiet, who may be at a prompt", async () => {
     await waitingJob(planFor("a", 1));
@@ -531,6 +600,13 @@ describe("the watch and To do", () => {
 });
 
 describe("what the Inbox header reads", () => {
+  it("is nothing for someone with no Jobs, whatever the alerts say", async () => {
+    void engine.enqueue(() => new Promise(() => {}), "Loading the company").catch(() => {});
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(engine.companyView()!.jobs).toEqual([]);
+    expect(engine.companyAlerts()).toHaveLength(1);
+    expect(engine.companyNeeds()).toBe(0);
+  });
   it("is the rows of Needs you, and nothing before the company loads", async () => {
     expect(engine.companyNeeds()).toBe(0);
     await waitingJob(planFor("a", 1));

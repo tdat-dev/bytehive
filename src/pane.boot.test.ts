@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ worktreeFails: false, trustFails: false, written: [] as string[] }));
+const io = vi.hoisted(() => ({ worktreeFails: false, trustFails: false, written: [] as string[], spawns: 0, spawnFails: false, gitWaits: null as Promise<void> | null }));
 vi.mock("./terminal", () => ({
   mountTerminal: () => ({
     fit: () => ({ cols: 80, rows: 24 }), setAutoFit: () => {}, onTitleChange: () => {}, write: (b: Uint8Array) => { io.written.push(new TextDecoder().decode(b)); },
@@ -12,10 +12,10 @@ vi.mock("./ipc", () => ({
   sendInput: async () => {},
   resizePty: async () => {},
   killPty: async () => {},
-  spawnPty: async () => 1,
+  spawnPty: async () => { io.spawns += 1; if (io.spawnFails) throw new Error("no terminal"); return io.spawns; },
   claudeSessionExists: async () => false,
   claudeTrustFolder: async () => { if (io.trustFails) throw new Error("the config is locked"); },
-  worktreeAdd: async () => { if (io.worktreeFails) throw new Error("branch exists"); return "D:\\wt\\ana"; },
+  worktreeAdd: async () => { if (io.gitWaits) await io.gitWaits; if (io.worktreeFails) throw new Error("branch exists"); return "D:\\wt\\ana"; },
   worktreeLeave: async () => null,
 }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "H:\\" }));
@@ -43,6 +43,9 @@ beforeEach(() => {
   io.worktreeFails = false;
   io.trustFails = false;
   io.written = [];
+  io.spawns = 0;
+  io.spawnFails = false;
+  io.gitWaits = null;
   for (const a of standingAlerts()) clearAlert(a.key);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -66,6 +69,46 @@ describe("a member whose worktree fails", () => {
     const ws = { ...project(), isolated: true };
     await createAgent(ws, spec({ personId: undefined }))();
     expect(standingAlerts()).toEqual([]);
+  });
+});
+
+describe("a boot waiting on git", () => {
+  const paneIn = (ws: Workspace) => [...ws.panes.values()][0];
+  const turn = () => new Promise((r) => setTimeout(r));
+
+  it("counts as booting from the start, so a message does not boot it again", async () => {
+    let open = () => {};
+    io.gitWaits = new Promise((r) => { open = r; });
+    const ws = project();
+    const first = createAgent(ws, spec())();
+    await turn();
+    expect(paneIn(ws).running).toBe(false);
+    expect(paneIn(ws).spawning).toBe(true);
+    open();
+    await first;
+    expect(paneIn(ws).spawning).toBe(false);
+  });
+  it("reaches the terminal once, whatever asks for a restart meanwhile", async () => {
+    let open = () => {};
+    io.gitWaits = new Promise((r) => { open = r; });
+    const ws = project();
+    const first = createAgent(ws, spec())();
+    await turn();
+    const again = paneIn(ws).restart!();
+    await turn();
+    open();
+    await Promise.all([first, again]);
+    expect(io.spawns).toBe(1);
+  });
+  it("is over when the spawn fails, so the pane can be started again", async () => {
+    io.spawnFails = true;
+    const ws = project();
+    await createAgent(ws, spec())();
+    expect(paneIn(ws).spawning).toBe(false);
+    expect(paneIn(ws).error).toContain("no terminal");
+    io.spawnFails = false;
+    await paneIn(ws).restart!();
+    expect(paneIn(ws).running).toBe(true);
   });
 });
 

@@ -42,7 +42,7 @@ export interface Pane {
   toggleFind?: () => void; // open/close this pane's find bar (set by wirePaneSearch)
   error?: string; // why the last start failed ("The folder … doesn't exist anymore.")
   run?: number; // run number of the current process (pty_spawn); an older run's exit is ignored
-  spawning?: boolean; // a pty_spawn is in flight: an exit of a newer run is held (ptyexit.ts)
+  spawning?: boolean; // a boot is under way, worktree to pty_spawn: an exit of a newer run is held (ptyexit.ts)
   exitCode?: number; // how its last process ended, once it has (a crash tells you, finishwatch.ts)
   /** Start again in this same pane (keeps id, stage, chat, Grid spot): its own
    *  conversation again, a new one (fresh), or an earlier one (session). */

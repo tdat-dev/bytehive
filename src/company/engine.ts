@@ -37,6 +37,8 @@ const WATCH_MS = 30_000;
 const BOOT_MS = 8000;
 /** How long `node --version` gets. */
 const NODE_WAIT_MS = 30_000;
+/** How soon a terminal echoes a key back. Output later than this is the agent's own. */
+const ECHO_MS = 500;
 /** Tries at a board an agent keeps writing to. */
 const BOARD_TRIES = 3;
 const NO_PROJECT = "Open a project first.";
@@ -60,6 +62,9 @@ let nudges = new Map<string, number>();
 /** When each watched card went quiet, by list and id: see cardsToWatch. */
 const quiet = new Map<string, number>();
 const consumed = new Map<string, number>();
+/** A tick is reading requests. One the queue left behind on a slow read still moves
+ *  the offset when it comes back: a second reader would carry out the same lines. */
+let reading = false;
 /** Folders whose git has been told about .bytehive/ in this run. */
 const excluded = new Set<string>();
 /** The last of those still running. */
@@ -90,7 +95,15 @@ let queue: Promise<unknown> = Promise.resolve();
  *  behind still running, next to whatever comes after it: that is why the owner is told. */
 export function enqueue<T>(op: () => Promise<T>, label = "A company operation"): Promise<T> {
   const done = queue.then(() => withLimit(op, OP_LIMIT_MS, label));
-  queue = done.catch((e) => { if (e instanceof OpTimeout) raiseAlert(`late-${label}`, e.message); });
+  queue = done.catch((e) => {
+    if (!(e instanceof OpTimeout)) return;
+    // The listeners run in here, and a throw from one would stop everything queued behind.
+    try {
+      raiseAlert(`late-${label}`, e.message);
+    } catch (err) {
+      console.error(`[bytehive] the owner was not told that ${label} ran late: ${reason(err)}`);
+    }
+  });
   return done;
 }
 
@@ -300,9 +313,14 @@ function parseRequest(line: string): CompanyRequest | null {
 
 /** Read and carry out whatever has come in. Runs in the queue. */
 async function tick(): Promise<void> {
-  if (!state) return;
+  if (!state || reading) return;
   const lines: string[] = [];
-  await drainJsonl(root, REQUESTS_REL, consumed, (l) => { lines.push(l); });
+  reading = true;
+  try {
+    await drainJsonl(root, REQUESTS_REL, consumed, (l) => { lines.push(l); });
+  } finally {
+    reading = false;
+  }
   for (const line of lines) {
     const req = parseRequest(line);
     if (!req) continue;
@@ -661,8 +679,9 @@ async function watch(): Promise<void> {
 export const companyAlerts = (): Alert[] => [...standingAlerts(), ...alerts];
 export const dismissAlert = clearAlert;
 
-/** How many rows Needs you has, for the Inbox header. */
-export const companyNeeds = () => (state ? needsYou(state.jobs, companyAlerts(), { floors: state.company.floors, roles: state.roles }).length : 0);
+/** How many rows Needs you has, for the Inbox header. Nothing with no Jobs: the
+ *  company loads for everyone, and someone who never used it keeps their header. */
+export const companyNeeds = () => (state?.jobs.length ? needsYou(state.jobs, companyAlerts(), { floors: state.company.floors, roles: state.roles }).length : 0);
 
 /** The owner has merged what a Job made: close it. */
 export const finishJob = (id: string): Promise<void> => enqueue(async () => {
@@ -673,11 +692,14 @@ export const finishJob = (id: string): Promise<void> => enqueue(async () => {
   await tryPersist(state.jobs.filter((j) => j.id === id));
 });
 
-/** End a person's turn, if they are in one. Quiet means they are at a prompt or a
- *  question, where an Esc would only clear what the owner typed. */
+/** End a person's turn, if they are in one. Quiet means they are at a prompt, where
+ *  an Esc would only clear what the owner typed. So does output that is just the echo
+ *  of that typing, which follows it within ECHO_MS. On a question, Esc is its no. */
 async function interrupt(personId: string): Promise<void> {
   const pane = paneOf(personId)?.pane;
-  if (pane?.running && Date.now() - pane.lastOutputAt <= WORKING_MS) await sendInput(pane.id, "\u001b").catch(() => {});
+  if (!pane?.running || paneAsking(pane)) return;
+  const fresh = Date.now() - pane.lastOutputAt <= WORKING_MS;
+  if (fresh && pane.lastOutputAt > pane.lastInputAt + ECHO_MS) await sendInput(pane.id, "\u001b").catch(() => {});
 }
 
 /** The owner ends a Job that is still going, for good. */

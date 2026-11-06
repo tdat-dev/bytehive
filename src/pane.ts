@@ -292,8 +292,11 @@ export function createAgent(
   // and its spot in the Grid (see restart below).
   const boot = async () => {
     if (!ws.panes.has(id)) return; // killed before its turn to boot
+    if (pane.spawning) return; // on its way up already: two boots would share one branch and one pane
     const { cols, rows } = term.fit();
     try {
+      // From here, not from spawnPty: git can hold a boot for minutes, with the pane not running.
+      pane.spawning = true;
       // Isolated agents get their own worktree+branch; point the PTY cwd there.
       let cwd = spec.cwd;
       if (spec.resumeIn) {
@@ -360,7 +363,6 @@ export function createAgent(
       // Identity for the child process: bytehive-mcp uses BYTEHIVE_AGENT to
       // stamp who moved/finished a board card (see mcp/src/server.ts).
       const envPairs = agentEnv(spec, cwd);
-      pane.spawning = true;
       pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
         pane.lastOutputAt = Date.now();
         if (pane.attention) clearAttention(pane); // agent is producing output again
