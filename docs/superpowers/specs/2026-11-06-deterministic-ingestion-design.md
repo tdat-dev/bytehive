@@ -11,7 +11,8 @@ Tiêu chí thành công:
 - Bốn kịch bản ở mục 13 chạy offline, không tốn token, luôn xanh.
 - Tin bị chặn không tới PTY, người gửi thấy lý do và gửi lại được.
 - Tin không chắc chắn thì đi qua agent như hiện nay. Gate không bao giờ chặn vì đoán.
-- Đo được chi phí Haiku thật sau tuần đầu chạy, không dùng số ước lượng.
+- Đo được chi phí nhà cung cấp thật sau tuần đầu chạy, không dùng số ước lượng.
+- Không đụng tới quota hay đăng nhập của Claude Code, Codex, OpenCode. Hết quota CLI thì gate vẫn chạy.
 - Công tắc trong Settings, mặc định tắt. Bản phát hành không đổi hành vi cho tới khi bật.
 
 ## 2. Không làm
@@ -21,6 +22,7 @@ Tiêu chí thành công:
 - Không để LLM làm số học, quy đổi tiền hay tra bảng giá.
 - Không viết lại nội dung tin coding. Chỉ chuẩn hóa khoảng trắng.
 - Không cache kết quả của tác vụ coding.
+- Không gọi CLI của agent coding (claude, codex, opencode, ...) để phân loại, và không dùng chung đăng nhập hay quota của chúng.
 - Không thêm dependency mới. Schema hai trường thì kiểm bằng hàm tay.
 
 ## 3. Quyết định đã chốt
@@ -28,7 +30,7 @@ Tiêu chí thành công:
 | Câu hỏi | Quyết định |
 |---|---|
 | Điểm neo | Hàm mới `sendGated` trong `src/ingest/`, bọc `sendMessage` |
-| Bộ phân loại | Luật thuần trước, `claude -p --model haiku --json-schema` khi luật không quyết được |
+| Bộ phân loại | Luật thuần trước, API ngoài (OpenAI-compatible) khi luật không quyết được |
 | Tác vụ mã thuần | Số liệu ByteHive, thêm tool theo một interface chung |
 | Khi guardrail kết luận không cần xử lý | Chặn, lưu lại, có nút gửi lại |
 | Kết quả coding | Không cache, chỉ chống lặp 10 phút cho tin giữa các agent |
@@ -42,11 +44,11 @@ Tiêu chí thành công:
 ```
 fleet_send ─┐
 Kanban ─────┤
-điện thoại ─┼─> sendGated ─> hash ─> cache ─> luật ─> Haiku ─> tool ─> sendMessage
+điện thoại ─┼─> sendGated ─> hash ─> cache ─> luật ─> API ─> tool ─> sendMessage
 Founder ────┘                     │        │        │        │
                                   │        │        │        └─ kết quả: trả cho người gửi
                                   │        │        └─ is_actionable=false: chặn, lưu
-                                  │        └─ khớp luật: trả kết quả, không gọi Haiku
+                                  │        └─ khớp luật: trả kết quả, không gọi API
                                   └─ HIT: trả kết quả, 0 token
 ```
 
@@ -70,7 +72,7 @@ Thư mục mới `src/ingest/`, mỗi file một việc, phần lớn là hàm t
 | `hash.ts` | SHA-256 của nội dung đã chuẩn hóa | thuần |
 | `rules.ts` | Bắt chào hỏi, cảm ơn, xác nhận; bắt yêu cầu chi phí và quy đổi tiền | thuần |
 | `cache.ts` | Đọc, ghi, TTL, LRU, fallback bộ nhớ | I/O |
-| `haiku.ts` | Gọi CLI, ép schema, timeout, kiểm kết quả | I/O |
+| `provider.ts` | Gọi API ngoài qua Rust, ép schema, timeout, kiểm kết quả | I/O |
 | `tools.ts` | `estimate_cost`, `convert_currency` (thuần), `remaining_budget` (đọc company store) | hỗn hợp |
 | `log.ts` | Vòng đệm 2000 dòng, ghi file debounce, đếm số | I/O |
 | `gate.ts` | Ghép bốn bước, hàng đợi theo agent nhận | I/O |
@@ -113,7 +115,7 @@ function sendGated(req: Request, deps: GateDeps): Promise<Outcome>;
 
 - Khóa là SHA-256 của nội dung sau khi gộp khoảng trắng và cắt hai đầu.
 - Mỗi entry lưu `at`, `toolVersion`, `result`. Khi đọc, nếu `toolVersion` khác bản hiện tại thì coi như MISS và xóa. `toolVersion` là hash của bảng giá, danh sách tool và phiên bản prompt phân loại, nên đổi giá là kết quả cũ tự hết hiệu lực mà không phải băm lại.
-- HIT: trả kết quả, nhãn `CACHE_HIT (0 Token)`, không gọi luật, Haiku hay tool.
+- HIT: trả kết quả, nhãn `CACHE_HIT (0 Token)`, không gọi luật, API hay tool.
 - TTL mặc định 7 ngày, chỉnh trong Settings. Tối đa 500 entry, đuổi entry cũ nhất.
 - Chỉ ghi cache cho kết quả có `cacheable: true`.
 
@@ -125,10 +127,10 @@ Thứ tự cố định:
 2. Chống lặp: với nguồn `fleet` hoặc `founder`, cùng cặp người gửi, agent nhận và hash mà đã gửi trong 10 phút thì chặn với lý do `loop`. Đây là chặn, không phải trả kết quả, nên khác cache.
 3. Nếu văn bản rỗng sau chuẩn hóa thì chặn với lý do `empty`. Không ai cần gửi tin rỗng tới PTY.
 4. Luật thuần: chào hỏi, cảm ơn, xác nhận (tối đa 4 từ, không có động từ, tiếng Việt và tiếng Anh) thì chặn với lý do `smalltalk`. Yêu cầu tính chi phí hoặc quy đổi tiền thì trả payload luôn.
-5. Còn lại gọi Haiku. Prompt nói rõ: chỉ trả `is_actionable: false` khi chắc chắn tin không phải việc cần làm; không chắc thì trả `true`.
-6. Kết quả Haiku đọc từ `structured_output`; thiếu trường đó thì thử parse `result` như JSON, vẫn không được thì đường `pass`. Kết quả phải qua kiểm tra trong code: đúng hai trường, `payload` là object hoặc null, `intent` (nếu có) thuộc danh sách tool. Sai thì đường `pass`.
+5. Còn lại gọi API ngoài. Prompt nói rõ: chỉ trả `is_actionable: false` khi chắc chắn tin không phải việc cần làm; không chắc thì trả `true`.
+6. Kết quả là JSON trong `choices[0].message.content`; bỏ rào code fence nếu model thêm vào, rồi kiểm bằng hàm tay: đúng hai trường, `payload` là object hoặc null, `intent` (nếu có) thuộc danh sách tool. Sai thì đường `pass`.
 
-Schema gửi CLI:
+Schema gửi trong request:
 
 ```json
 {
@@ -142,19 +144,34 @@ Schema gửi CLI:
 }
 ```
 
+Request, giao thức OpenAI chat completions:
+
+```json
+POST <baseUrl>/chat/completions
+{
+  "model": "<model trong cấu hình>",
+  "temperature": 0,
+  "max_tokens": 300,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": { "name": "ingest", "strict": true, "schema": "<schema ở trên>" }
+  },
+  "messages": [
+    { "role": "system", "content": "<luật phân loại, tiếng Anh>" },
+    { "role": "user", "content": "<nội dung tin>" }
+  ]
+}
+```
+
 `payload` chứa `intent` cùng các trường đã bóc. `intent` lạ nghĩa là việc coding, cho đi qua nguyên văn.
 
-Lệnh gọi:
+Header: `Authorization: Bearer <apiKey>` (bỏ khi key trống) và `Content-Type: application/json`. `baseUrl` phải bắt đầu bằng `http://` hoặc `https://`; sai thì Settings từ chối lưu.
 
-```
-claude -p --model haiku --output-format json --json-schema <schema>
-  --max-turns 1 --tools "" --no-session-persistence
-  --settings {"disableAllHooks":true}
-```
+Không gọi CLI nào cả, nên gate chạy được cả khi Claude Code, Codex, OpenCode đã hết quota hoặc chưa đăng nhập. Nhà cung cấp không hỗ trợ `response_format` thì đặt `jsonMode: "prompt"` trong cấu hình: bỏ khối đó và dặn model trả JSON thuần, code vẫn kiểm như trên.
 
-Nội dung tin đưa qua stdin, không đưa qua argv: argv đọc được từ tiến trình khác cùng máy, và Windows giới hạn dòng lệnh khoảng 32k ký tự. `run_capture` hiện đặt stdin là null, nên thêm một lệnh Rust `run_capture_stdin` (mục 16).
+Nội dung tin đi trong body request tới nhà cung cấp bạn chọn. Key nằm trong file cấu hình phía Rust và không bao giờ đi qua JS hay vào log.
 
-Timeout 8 giây. Hết giờ, lỗi CLI, JSON hỏng hoặc sai schema đều dẫn tới đường `pass` và một dòng log `haiku.error`. Gate chỉ chặn khi có kết luận chắc chắn.
+Timeout 12 giây. Hết giờ, 401/403/404, 429, 5xx, JSON hỏng hoặc sai schema đều dẫn tới đường `pass` và một dòng log có lý do. Gặp 429 thì nghỉ 60 giây trước lần gọi kế, không dồn request. Gate chỉ chặn khi có kết luận chắc chắn.
 
 ### 6.3 Bước 3: thực thi bằng mã thuần
 
@@ -184,7 +201,7 @@ Hai nhánh rẽ:
 
 ## 7. Dữ liệu lưu
 
-Tất cả nằm trong `<dự án>/.bytehive/`, đã được `gitexclude.rs` loại khỏi git.
+Dữ liệu của gate nằm trong `<dự án>/.bytehive/`, đã được `gitexclude.rs` loại khỏi git.
 
 | File | Nội dung | Giới hạn |
 |---|---|---|
@@ -194,13 +211,28 @@ Tất cả nằm trong `<dự án>/.bytehive/`, đã được `gitexclude.rs` lo
 
 Ghi file theo cách của company store: ghi `.tmp` rồi `fs_rename`. Log ghi cả file sau 2 giây kể từ dòng cuối, không ghi từng dòng, vì backend chưa có lệnh append.
 
+### 7.1 Cấu hình nhà cung cấp
+
+`~/.bytehive/ingest-provider.json`, một lần cho cả máy, không nằm trong dự án và không commit:
+
+| Trường | Ý nghĩa |
+|---|---|
+| `baseUrl` | Gốc API, ví dụ `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` |
+| `model` | Model dùng để phân loại, do bạn chọn |
+| `apiKey` | Khóa API, lưu văn bản thường trong file của bạn. Để trống với Ollama hoặc LM Studio |
+| `jsonMode` | `schema` (mặc định) hoặc `prompt` cho nhà cung cấp không hỗ trợ `response_format` |
+| `timeoutMs` | Mặc định 12000 |
+
+Key chỉ đọc và ghi phía Rust. Settings nhận key lúc lưu, còn lần đọc sau chỉ trả `hasKey`, không trả lại chuỗi khóa.
+
 Settings, qua `prefs.ts` như các thiết lập khác:
 
 | Khóa | Mặc định | Ý nghĩa |
 |---|---|---|
 | `ingest.enabled` | `false` | Công tắc chính |
 | `ingest.ttlDays` | `7` | TTL cache |
-| `ingest.haikuDailyCap` | `200` | Trần số lần gọi Haiku mỗi ngày |
+| `ingest.dailyCallCap` | `500` | Trần số lần gọi API mỗi ngày |
+| `ingest.dailyTokenCap` | `200000` | Trần token mỗi ngày |
 | `ingest.loopWindowMin` | `10` | Cửa sổ chống lặp tin giữa agent |
 
 ## 8. Xử lý lỗi
@@ -210,8 +242,10 @@ Settings, qua `prefs.ts` như các thiết lập khác:
 | Đọc cache lỗi | Chuyển sang cache bộ nhớ, cảnh báo một lần, luồng vẫn chạy |
 | Ghi cache lỗi | Vẫn trả kết quả, thử lại ở tin sau, sau hai lần lỗi liên tiếp thì chỉ dùng bộ nhớ trong 60 giây |
 | File cache hỏng | Coi như rỗng, ghi lại từ đầu, không chặn ai |
-| Haiku timeout, lỗi, sai schema | Đường `pass`, ghi log, không chặn |
-| Vượt trần Haiku trong ngày | Đường `pass`, ghi log `haiku.capped` |
+| Chưa cấu hình nhà cung cấp, hoặc key sai (401/403) | Đường `pass`, log `provider.unconfigured` hoặc `provider.auth`, Settings hiện cảnh báo |
+| API timeout, 404, 5xx, JSON hỏng hoặc sai schema | Đường `pass`, ghi log lý do, không chặn |
+| 429 từ nhà cung cấp | Đường `pass`, nghỉ 60 giây trước lần gọi kế, log `provider.rate_limited` |
+| Vượt trần gọi hoặc trần token trong ngày | Đường `pass`, ghi log `provider.capped` |
 | Tool trả `status: "error"` | Trả lỗi cho người gửi, không gửi tin vào PTY, không cache |
 | PTY đã chết | `sendMessage` trả false, outcome `failed`, tin không vào danh sách chặn |
 | Ghi `ingest-blocked.json` lỗi | Vẫn chặn, cảnh báo, tin không gửi lại được cho tới khi ghi được |
@@ -223,7 +257,9 @@ Không có đường nào để một lỗi của gate làm mất tin: hoặc ti
 - Log chỉ có hash, không có nội dung.
 - Hash của tin ngắn có thể bị đoán bằng từ điển, nên file log cũng được coi là dữ liệu riêng tư: nằm trong `.bytehive/`, không commit, không gửi đi đâu.
 - `ingest-blocked.json` chứa nội dung tin để gửi lại. Cùng quy tắc trên.
-- Không gửi nội dung tin tới dịch vụ ngoài nào khác. Đường Haiku chạy qua Claude Code CLI có sẵn trên máy, dùng đăng nhập hiện tại, và nội dung tin sẽ tới Anthropic như mọi tin bạn gõ vào agent. Không thêm nhà cung cấp mới, không cần API key mới.
+- Không gửi nội dung tin tới dịch vụ nào khác ngoài nhà cung cấp bạn cấu hình. Đó là API riêng, không dùng quota hay đăng nhập của CLI coding.
+- Key API nằm trong `~/.bytehive/ingest-provider.json` dạng văn bản thường. Ai đọc được file trên máy thì đọc được key, nên đừng dùng key có quyền rộng hơn mức cần.
+- Key không vào log, không trả về JS sau khi lưu, không xuất hiện trong thông báo lỗi.
 
 ## 10. Trả kết quả cho ai
 
@@ -235,10 +271,10 @@ Không có đường nào để một lỗi của gate làm mất tin: hoặc ti
 
 Panel Ingest nằm trong dock, cùng chỗ Kanban và Pomodoro:
 
-- Hàng đầu: số tin hôm nay, số cache hit, số bị chặn, số lần gọi Haiku, USD của Haiku.
+- Hàng đầu: số tin hôm nay, số cache hit, số bị chặn, số lần gọi API, token đã dùng.
 - Danh sách tin bị chặn: nguồn, người gửi, agent nhận, lý do, thời gian, nút `Send again` và `Delete`.
-- Danh sách kết quả gần đây: intent, kết quả, đường đi (`rule`, `haiku`, `cache`).
-- Nút mở Settings cho bốn khóa ở mục 7.
+- Danh sách kết quả gần đây: intent, kết quả, đường đi (`rule`, `api`, `cache`).
+- Nút mở Settings: các khóa ở mục 7 và form nhà cung cấp gồm Base URL, Model, API key, JSON mode, nút Test gọi thử một tin mẫu.
 
 Chuỗi giao diện bằng tiếng Anh như phần còn lại của app. Bố cục chi tiết sẽ qua skill thiết kế trước khi code, không tự chế trong spec này.
 
@@ -247,13 +283,14 @@ Chuỗi giao diện bằng tiếng Anh như phần còn lại của app. Bố c�
 Mỗi dòng `ingest.jsonl`:
 
 ```json
-{"ts":1790000000000,"hash":"ab12...","source":"fleet","from":"Ana","to":"agent-13","path":"haiku","ms":{"gate":2410,"classify":2300,"execute":1,"total":2411},"haiku":{"called":true,"in":412,"out":88,"cacheRead":0,"usd":0.0009,"estimated":false},"tokensSavedEstimate":0}
+{"ts":1790000000000,"hash":"ab12...","source":"fleet","from":"Ana","to":"agent-13","path":"api","ms":{"gate":2410,"classify":2300,"execute":1,"total":2411},"llm":{"called":true,"model":"<model>","in":412,"out":88,"usd":null},"tokensSavedEstimate":0}
 ```
 
-- Số token và USD của Haiku lấy từ kết quả JSON của CLI (`usage`, `total_cost_usd`). Nếu CLI thiếu trường đó thì tính lại bằng `priceFor` và đặt `haiku.estimated: true` cho riêng dòng ấy.
+- Token của API lấy từ `usage.prompt_tokens` và `usage.completion_tokens` trong kết quả, là số thật.
+- USD chỉ ghi khi model có trong `src/pricing.ts`; nhà cung cấp khác thì để `null` và panel hiện token, không bịa giá. Bảng giá của `pricing.ts` hiện chỉ có model Claude, nên mặc định sẽ là `null`.
 - Token tiết kiệm chỉ là ước lượng (ký tự chia 4), tên trường đã nói rõ điều đó. Không dùng số này để báo cáo như số thật.
-- Trần Haiku đếm theo ngày từ log. Vượt trần thì tin đi qua, không chặn.
-- Ước tính để lên kế hoạch: Haiku 4.5 giá 1 USD mỗi triệu token vào và 5 USD mỗi triệu token ra; một lần gọi 400 vào, 80 ra khoảng 0.0008 USD. Nếu 80% tin do luật và cache xử lý, 1000 tin mỗi ngày còn khoảng 200 lần gọi, tức khoảng 0.16 USD mỗi ngày. Con số thật sẽ thay thế sau tuần đầu.
+- Trần gọi và trần token đếm theo ngày từ log. Vượt trần thì tin đi qua, không chặn.
+- Chi phí thật của tuần đầu là số do nhà cung cấp báo, đối chiếu với `in`/`out` trong log. Không đặt trước một con số USD cho nhà cung cấp chưa chọn.
 
 ## 13. Kiểm thử
 
@@ -262,9 +299,9 @@ Bộ phân loại, tool, cache và log đều nhận dependency tiêm, nên bố
 | # | Kịch bản | Tin gửi | Kỳ vọng |
 |---|---|---|---|
 | 1 | Hợp lệ lần đầu | `báo giá 120k input, 30k output, model claude-sonnet-5` | Luật bóc `120000` và `30000`; tool trả `usd` xấp xỉ `0.54`; cache có đúng một entry; PTY không nhận tin |
-| 2 | Câu tự nhiên khác | `250 nghìn token vào với 40 nghìn token ra của haiku thì hết bao nhiêu?` | Chuẩn hóa `nghìn` thành 1000, bí danh `haiku` thành `claude-haiku-4-5`; `usd` xấp xỉ `0.45`; khóa cache khác kịch bản 1 |
+| 2 | Câu tự nhiên khác | `250 nghìn token vào với 40 nghìn token ra của opus thì hết bao nhiêu?` | Chuẩn hóa `nghìn` thành 1000, bí danh `opus` thành `claude-opus-5-5`; `usd` xấp xỉ `1.80`; khóa cache khác kịch bản 1 |
 | 3 | Tin không liên quan | `cảm ơn nhé`, agent không chờ trả lời | `send` không được gọi lần nào; outcome `blocked` lý do `smalltalk`; entry nằm trong danh sách chờ gửi lại; 0 token |
-| 4 | Gửi lại y hệt kịch bản 1 | cùng chuỗi | Outcome `cache-hit`; 0 lần gọi Haiku; 0 lần gọi tool; elapsed dưới 5ms; nhãn `CACHE_HIT (0 Token)` |
+| 4 | Gửi lại y hệt kịch bản 1 | cùng chuỗi | Outcome `cache-hit`; 0 lần gọi API; 0 lần gọi tool; elapsed dưới 5ms; nhãn `CACHE_HIT (0 Token)` |
 
 So sánh số thực bằng sai số `1e-9`, không so chuỗi đã format.
 
@@ -273,21 +310,24 @@ Test biên, ngoài bốn kịch bản:
 - Khoảng trắng thừa ra cùng hash.
 - TTL hết hạn thì MISS và entry bị xóa.
 - File cache hỏng thì gate vẫn chạy, không ném lỗi.
-- Haiku timeout, JSON hỏng, sai schema, `intent` lạ đều dẫn tới `pass`.
+- Chưa cấu hình nhà cung cấp, key sai, timeout, JSON hỏng, sai schema, `intent` lạ đều dẫn tới `pass`.
+- Model bọc JSON trong code fence vẫn đọc được.
+- 429 thì tin đi qua, và lần gọi kế trong 60 giây bị bỏ qua.
 - Agent đang chờ trả lời thì tin `ok` đi qua.
 - Hai agent gửi qua lại cùng nội dung trong 10 phút: tin thứ hai bị chặn lý do `loop`.
-- Vượt trần Haiku thì `pass` và log `haiku.capped`.
+- Vượt trần gọi hoặc trần token thì `pass` và log `provider.capped`.
 - Ghi cache lỗi hai lần liên tiếp thì chuyển bộ nhớ trong 60 giây.
 
-Kiểm tra độ ổn định, chạy tay một lần trước khi phát hành: 20 tin mẫu, gọi Haiku thật 5 vòng, mọi vòng phải ra cùng `is_actionable` và cùng `intent`. Vòng nào lệch thì ghi vào log và xem lại prompt. Đây là bù cho việc không đặt được `temperature`.
+Kiểm tra độ ổn định, chạy tay một lần trước khi phát hành: 20 tin mẫu, gọi API thật 5 vòng, mọi vòng phải ra cùng `is_actionable` và cùng `intent`. Vòng nào lệch thì ghi vào log và xem lại prompt. Với `temperature: 0` thì lệch là lỗi của prompt hoặc model, không phải nhiệt độ. Chi phí cho lần chạy này chỉ vài cent.
 
 Kiểm tra trên app thật: bật công tắc, gửi một tin chi phí qua `fleet_send`, thấy kết quả trong pane người gửi; gửi lại y hệt, thấy `CACHE_HIT`; gửi một tin cảm ơn từ Kanban, thấy toast chặn và nút gửi lại hoạt động.
 
 ## 14. Giới hạn đã biết
 
-- CLI không có cờ `temperature`, nên không đặt được `temperature: 0` như prompt yêu cầu. Bù bằng luật thuần, schema, kiểm tra trong code và bài kiểm tra độ ổn định. Spec này không hứa điều mà CLI không làm được.
-- Đường Haiku thêm vài giây cho mỗi tin mơ hồ. Vì vậy luật chạy trước, timeout 8 giây, hết giờ thì cho qua.
-- Luật cần bảo trì. Cách nói lạ sẽ rơi xuống Haiku, và nếu Haiku cũng không chắc thì tin đi qua.
+- Phụ thuộc mạng và nhà cung cấp ngoài. Máy offline, provider chết hoặc key hết hạn thì mọi tin đi qua agent; gate không chặn ai.
+- Đường API thêm một chuyến mạng cho mỗi tin mơ hồ, thường dưới 2 giây nhưng có thể tới 12 giây. Vì vậy luật chạy trước, timeout 12 giây, hết giờ thì cho qua.
+- `temperature: 0` đặt được qua API. Nhà cung cấp nào bỏ qua tham số này thì kết quả vẫn được kiểm bằng schema và bài kiểm tra ổn định.
+- Luật cần bảo trì. Cách nói lạ sẽ rơi xuống API, và nếu API cũng không chắc thì tin đi qua.
 - Cache theo từng dự án, không chia sẻ giữa các máy. Remote không dùng chung cache ở giai đoạn này.
 - Chống lặp 10 phút chỉ áp dụng cho tin giữa các agent, không áp dụng cho bạn gửi.
 - Nội dung tin bị chặn nằm trên đĩa dạng văn bản thường, trong thư mục đã loại khỏi git.
@@ -298,15 +338,29 @@ Kiểm tra trên app thật: bật công tắc, gửi một tin chi phí qua `fl
 |---|---|---|
 | A | Module thuần, cache, log, test bốn kịch bản | Tắt, chưa nối |
 | B | Nối `fleet_send`, Kanban, điện thoại qua `sendGated` | Tắt mặc định |
-| C | Panel Ingest, Settings, đếm số | Tắt mặc định |
+| C | Panel Ingest, Settings và form nhà cung cấp, đếm số | Tắt mặc định |
 | D | Relay Founder, sau khi phần company của Ana xong | Tắt mặc định |
+
+Trước giai đoạn B phải cấu hình nhà cung cấp và bấm Test trong Settings. Test gọi thật một tin mẫu, hiện kết quả và số token, để biết key và model đúng trước khi bật.
 
 Bật theo bước: một tuần chỉ `fleet`, đo số lần chặn và số lần bấm gửi lại; nếu không có báo nhầm thì mở Kanban và điện thoại. Rollback là tắt công tắc, không cần gỡ code, vì mọi đường vẫn gọi `sendMessage` như cũ khi gate tắt.
 
 Tiêu chí dừng nếu sai: có một tin thật bị chặn mà người dùng phải gửi lại bằng tay vì lý do sai, thì tắt công tắc và sửa luật trước khi bật lại.
 
-## 16. Việc cần sửa ở Rust
+## 16. Backend Rust
 
-Một lệnh mới `run_capture_stdin(program, args, cwd, timeout_ms, input)`, cùng cách chạy, timeout và kill tree như `run_capture`, nhưng ghi `input` vào stdin rồi đóng. Kèm một test trong `src-tauri/src/commands.rs` xác nhận chương trình nhận đúng stdin. Thêm wrapper `runCaptureInput` trong `src/ipc.ts`.
+Ba lệnh mới trong module `src-tauri/src/ingest.rs`, đăng ký cạnh các lệnh khác:
 
-Không sửa gì khác ở backend.
+| Lệnh | Việc |
+|---|---|
+| `ingest_provider_get` | Trả `{baseUrl, model, jsonMode, hasKey, timeoutMs}`, không bao giờ trả `apiKey` |
+| `ingest_provider_save` | Ghi `~/.bytehive/ingest-provider.json` qua file tạm rồi rename. `apiKey` rỗng hoặc thiếu thì giữ key cũ |
+| `ingest_classify` | Đọc cấu hình, POST `<baseUrl>/chat/completions`, trả `{content, usage: {in, out}, model}` |
+
+- Dùng `reqwest` có sẵn, client tĩnh và khởi tạo rustls theo cách `planusage.rs:102` đang làm. Không thêm dependency.
+- Thân request do một hàm thuần dựng, có test cho: URL ghép đúng khi `baseUrl` có hoặc không có dấu `/` cuối, body có `temperature: 0` và schema khi `jsonMode: "schema"`, không có `response_format` khi `"prompt"`, và đọc đúng `choices[0].message.content` cùng `usage`.
+- Có test cho việc lưu cấu hình giữ key cũ khi form để trống key.
+- Không có test gọi mạng trong CI.
+- Lỗi trả về chỉ là mã và mô tả ngắn (`provider_unconfigured`, `http_401`, `timeout`, `bad_response`), không kèm key và không kèm nội dung tin.
+
+Thêm ba wrapper `ingestProviderGet`, `ingestProviderSave`, `ingestClassify` trong `src/ipc.ts`. Không sửa gì khác ở backend.
