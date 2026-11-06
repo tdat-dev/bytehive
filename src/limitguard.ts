@@ -73,8 +73,7 @@ function checkAgents(now: number): void {
   for (const t of allTasks()) {
     const lim = t.status.limit;
     const found = find(t.paneId);
-    // The Founder's work is the Job files, and nobody approved a stand-in for it.
-    if (!lim || !found || isFounder(found.pane.spec)) { episodes.delete(t.paneId); continue; }
+    if (!lim || !found) { episodes.delete(t.paneId); continue; }
     // one notice is one episode, and keeps the reset first seen for it: the
     // plan only knows a reset until it has passed
     let e = episodes.get(t.paneId);
@@ -84,7 +83,9 @@ function checkAgents(now: number): void {
     } else if (e.reset === null) e.reset = limitLiftsAt(t, found.pane.spec.badge, now);
     const reset = e.reset;
     const carryOn = getPref("autoResume");
-    if (!e.tried && !found.pane.handedTo && getPref("autoHandover")) {
+    // Nobody approved a stand-in for the Founder: the owner hears, and it carries on at the reset.
+    const founder = isFounder(found.pane.spec);
+    if (!e.tried && !found.pane.handedTo && getPref("autoHandover") && !founder) {
       e.tried = true;
       const to = takeoverFor(found.pane, now);
       if (to) {
@@ -100,7 +101,7 @@ function checkAgents(now: number): void {
       if (getPref("limitNotify")) {
         void notify(`${t.name} is out of usage`, reset
           ? `Its limit resets at ${clockOf(reset, now)}.${carryOn ? " ByteHive will tell it to carry on then." : ""}`
-          : "Its plan's usage limit ran out. You can hand its task to another CLI from its menu.");
+          : `Its plan's usage limit ran out.${founder ? "" : " You can hand its task to another CLI from its menu."}`);
       }
     }
     // another agent has its task: telling it to carry on too would make two

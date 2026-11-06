@@ -4,6 +4,7 @@ const io = vi.hoisted(() => ({
   tasks: [] as unknown[],
   sent: [] as Array<[string, string]>,
   notes: [] as string[],
+  bodies: [] as string[],
   prefs: { autoResume: true, limitNotify: true } as Record<string, boolean>,
   plans: [] as unknown[],
   planReset: null as number | null,
@@ -13,7 +14,7 @@ const io = vi.hoisted(() => ({
 vi.mock("./tasks", () => ({ allTasks: () => io.tasks, onTasksChange: () => () => {} }));
 vi.mock("./ipc", () => ({
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); },
-  notify: async (title: string) => { io.notes.push(title); },
+  notify: async (title: string, body: string) => { io.notes.push(title); io.bodies.push(body); },
 }));
 vi.mock("./prefs", () => ({ getPref: (k: string) => io.prefs[k] }));
 vi.mock("./planmeter", () => ({
@@ -51,7 +52,7 @@ const task = (limit: object | null, state = "idle") => ({ paneId: "p1", wsId: "w
 
 describe("Limit Guard", () => {
   beforeEach(() => {
-    io.sent = []; io.notes = []; io.plans = []; io.planReset = null; io.spawned = [];
+    io.sent = []; io.notes = []; io.bodies = []; io.plans = []; io.planReset = null; io.spawned = [];
     io.prefs = { autoResume: true, limitNotify: true };
     io.panes.clear();
     io.panes.set("p1", pane());
@@ -192,15 +193,40 @@ describe("Limit Guard", () => {
       expect((io.panes.get("p1") as { handedTo?: string }).handedTo).not.toBe("Founder");
     });
 
-    it("starts nobody for the Founder's own limit: no plan was approved for that", async () => {
-      io.panes.set("p1", pane({ spec: { name: "Founder", badge: "claude", ranIn: "D:/app", personId: "founder" } }));
-      io.tasks = [{ ...limited(), name: "Founder" }];
-      checkLimits(RESET - 3600e3);
-      await flush();
-      checkLimits(RESET + 600e3);
-      await flush();
-      expect(io.spawned).toEqual([]);
-      expect(io.sent).toEqual([]);
+    describe("when the Founder itself runs out", () => {
+      const founder = (over: object = {}) => {
+        io.panes.set("p1", pane({ spec: { name: "Founder", badge: "claude", ranIn: "D:/app", personId: "founder" } }));
+        io.panes.set("p3", { id: "p3", running: true, spec: { name: "Bo", badge: "opencode", ranIn: "D:/app" } });
+        io.tasks = [{ ...limited(), name: "Founder", ...over }, { paneId: "p3", wsId: "w1", name: "Bo", status: { state: "idle", ask: null } }];
+      };
+
+      it("tells the owner, and spawns nothing and types into nobody else", async () => {
+        founder();
+        checkLimits(RESET - 3600e3);
+        await flush();
+        expect(io.notes).toEqual(["Founder is out of usage"]);
+        expect(io.spawned).toEqual([]);
+        expect(io.sent).toEqual([]);
+      });
+
+      it("tells it to carry on at the reset, and only it", async () => {
+        founder();
+        checkLimits(RESET - 3600e3);
+        await flush();
+        checkLimits(RESET + 600e3);
+        await flush();
+        expect(io.sent).toEqual([["p1", CARRY_ON]]);
+        expect(io.spawned).toEqual([]);
+        expect((io.panes.get("p1") as { handedTo?: string }).handedTo).toBeUndefined();
+      });
+
+      it("does not suggest handing its work to another CLI when no reset is known", async () => {
+        founder({ status: { state: "idle", ask: null, limit: { what: "You've hit your limit", resetsAt: null } } });
+        checkLimits(RESET - 3600e3);
+        await flush();
+        expect(io.notes).toEqual(["Founder is out of usage"]);
+        expect(io.bodies[0]).not.toMatch(/hand/i);
+      });
     });
 
     it("starts a new agent of a CLI with room when none is open", async () => {
