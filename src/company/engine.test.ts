@@ -625,6 +625,37 @@ describe("two running apps", () => {
       await vi.advanceTimersByTimeAsync(1500);
       expect(engine.companyElsewhere()).toBe(ELSEWHERE);
     });
+    it("leaves a live app be when the clock is moved back: nobody starts twice", async () => {
+      otherApp();
+      io.alive.add(99);
+      await vi.advanceTimersByTimeAsync(1500);
+      vi.setSystemTime(Date.now() - 11 * MIN);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(engine.companyView()).toBeNull();
+      expect(lock().pid).toBe(99);
+      expect(standing()).toEqual([]);
+    });
+    it("leaves a live app be after a gap just under 10 minutes", async () => {
+      otherApp();
+      io.alive.add(99);
+      await vi.advanceTimersByTimeAsync(1500);
+      vi.setSystemTime(Date.now() + 10 * MIN - 2000);
+      await vi.advanceTimersByTimeAsync(4500);
+      expect(engine.companyView()).toBeNull();
+      expect(lock().pid).toBe(99);
+      expect(standing()).toEqual([]);
+    });
+    it("still takes over from a stuck app, once its heartbeat is 10 minutes old by the moved clock", async () => {
+      otherApp();
+      io.alive.add(99);
+      await vi.advanceTimersByTimeAsync(1500);
+      vi.setSystemTime(Date.now() - 11 * MIN);
+      await vi.advanceTimersByTimeAsync(20 * MIN);
+      expect(engine.companyView()).toBeNull();
+      await vi.advanceTimersByTimeAsync(MIN + 3000);
+      expect(engine.companyView()).not.toBeNull();
+      expect(standing()).toHaveLength(1);
+    });
     it("raises no alert when the holder is simply dead", async () => {
       await secondApp();
       await vi.advanceTimersByTimeAsync(16_500);

@@ -35,8 +35,8 @@ export const lockSilent = (lock: EngineLock, me: number, now: number): boolean =
   lock.pid !== me && Math.abs(now - lock.at) >= LOCK_STALE_MS;
 
 /** What this app does about the lock. Its own pid is a window that reloaded.
- *  `awakeSince` is when this app last woke: no heartbeat is written in a sleep, so
- *  silence only counts from there, or an hour's sleep would look like a stuck app. */
+ *  `awakeSince` is when this app last woke or saw its clock jump: silence only counts
+ *  from there, or an hour's sleep or a moved clock would look like a stuck app. */
 export function lockMove(read: LockRead, me: number, now: number, holderAlive: boolean, awakeSince = 0): LockMove {
   if (read === "unknown") return "skip";
   if (!read || read.pid === me) return "run";

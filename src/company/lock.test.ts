@@ -31,6 +31,7 @@ describe("lockMove", () => {
     expect(lockMove(held(480 * MIN), 7, NOW, true, NOW - 1500)).toBe("stay-out");
     expect(lockMove(held(480 * MIN), 7, NOW, true, NOW - LOCK_ABANDONED_MS)).toBe("take-over");
     expect(lockMove(held(480 * MIN), 7, NOW, false, NOW - 1500)).toBe("run");
+    expect(lockMove({ pid: 9, at: NOW + LOCK_ABANDONED_MS }, 7, NOW, true, NOW - 1500)).toBe("stay-out");
   });
   it("skips the beat on a lock it could not read", () => {
     expect(lockMove("unknown", 7, NOW, false)).toBe("skip");

@@ -17,7 +17,7 @@ import { buildRoleLaunch, composePrompt, mcpConfig, nodeRunsCompany, pluginManif
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
-import { LOCK_ABANDONED_MS, lockMove, lockSilent } from "./lock";
+import { LOCK_STALE_MS, lockMove, lockSilent } from "./lock";
 import { companyRoot, ensureDirs, loadCompany, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
 import { loadRoles, roleSkills, seedRoles } from "./roles";
 import { watchBudget, watchWork, type Alert, type WatchedCard } from "./watch";
@@ -43,7 +43,7 @@ let me = 0; // this app's pid
 let holding = false;
 /** Another running app does, as far as the lock says. */
 let elsewhere = false;
-/** When the last heartbeat ran, and when this app last came out of a sleep. */
+/** When the last heartbeat ran, and when this app last woke or saw its clock jump. */
 let lastBeat = 0;
 let awakeSince = 0;
 let state: State | null = null;
@@ -453,8 +453,8 @@ async function stepDown(): Promise<void> {
 async function heartbeat(): Promise<void> {
   const read = await readLock(root);
   const now = Date.now();
-  // No timer runs in a sleep: a gap this long means the holder was asleep too.
-  if (now - lastBeat >= LOCK_ABANDONED_MS) awakeSince = now;
+  // A beat comes every TICK_MS. A gap this long, either way, is a sleep or a moved clock: it says nothing about the holder.
+  if (Math.abs(now - lastBeat) >= LOCK_STALE_MS) awakeSince = now;
   lastBeat = now;
   // Asked only of a lock gone quiet. If the answer doesn't come, count them alive: staying out costs less than starting everyone twice.
   const silent = read && read !== "unknown" && lockSilent(read, me, now) ? read : null;

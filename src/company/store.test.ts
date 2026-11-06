@@ -112,6 +112,11 @@ describe("store", () => {
     readFails.set("engine.lock", e);
     expect(await readLock("R")).toBe("unknown");
   });
+  it("reads a lock a crash filled with zeros as none: no later read would ever do better", async () => {
+    files.set(key("R", "engine.lock"), "\0\0\0\0");
+    readFails.set("engine.lock", { Failed: "binary file" });
+    expect(await readLock("R")).toBeNull();
+  });
   it("does not start an empty company over one it could not read", async () => {
     readFails.set("company.json", { Failed: "no such path: Access is denied. (os error 5)" });
     await expect(loadCompany("R")).rejects.toEqual({ Failed: expect.stringContaining("os error 5") });
