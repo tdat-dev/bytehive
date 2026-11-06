@@ -17,7 +17,7 @@ import {
   renameList,
   deleteList,
 } from "./ops.js";
-import { changedFiles, evidenceDir } from "./git.js";
+import { evidenceDir, workFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
 import { companyRoot, floorDir, registerCompanyTools, sendAsMember } from "./company.js";
@@ -58,7 +58,7 @@ const BOARD_STEPS = `For any non-trivial task, plan on the board BEFORE implemen
  *  and waiting for a person who is not watching would stop the Job. */
 const MEMBER_STEPS = `Your boss gives you cards, and you do not wait for anyone's approval to start one.
 While working: card_move your card to "Doing" when you start it, and card_done
-with a one-line summary when it is finished.`;
+with a one-line summary when it is finished. Tick checklist items with card_update as you finish them. Leave a card marked stopped: its job ended.`;
 
 const instructions = (steps: string) => `ByteHive board: how to work in this workspace.
 
@@ -159,6 +159,8 @@ export function createServer(dir: string): McpServer {
         labels: labelsSchema,
         due: z.string().nullable().optional().describe("yyyy-mm-dd, or null to clear"),
         checklist: z.array(z.string()).optional(),
+        tick: z.array(z.string()).optional().describe("Checklist items now finished, by id or exact text"),
+        untick: z.array(z.string()).optional().describe("Checklist items to open again, by id or exact text"),
       },
     },
     async ({ card, ...patch }) => mutate((b) => updateCard(b, card, patch)),
@@ -196,7 +198,7 @@ export function createServer(dir: string): McpServer {
     "card_done",
     {
       description:
-        "Mark a task finished: move the card to the Done list and attach evidence (summary + files currently changed in git).",
+        "Mark a task finished: move the card to the Done list and attach evidence (summary + files changed on this branch, committed or not).",
       inputSchema: {
         card: z.string().describe("Card id or title"),
         summary: z.string().optional().describe("One line on what changed"),
@@ -204,7 +206,7 @@ export function createServer(dir: string): McpServer {
     },
     async ({ card, summary }) =>
       mutate((b) =>
-        markDone(b, card, { repoRoot: runDir, files: changedFiles(runDir), summary, by: agentName }),
+        markDone(b, card, { repoRoot: runDir, files: workFiles(runDir, dir), summary, by: agentName }),
       ),
   );
 

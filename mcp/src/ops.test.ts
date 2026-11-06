@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultBoard } from "./board.js";
-import { addCard, markDone, moveCard } from "./ops.js";
+import { addCard, markDone, moveCard, updateCard } from "./ops.js";
+import type { Board } from "./board.js";
 
 describe("a card's Job", () => {
   it("is kept when one is given", () => {
@@ -82,5 +83,31 @@ describe("returns", () => {
     const plain = addCard(b, "Done", { title: "plain" });
     moveCard(b, "plain", "Doing");
     expect(plain.returns).toBeUndefined();
+  });
+});
+
+describe("ticking a checklist", () => {
+  const board = () => {
+    const b = { lists: [{ id: "l1", title: "Doing", cards: [] }] } as unknown as Board;
+    addCard(b, "Doing", { title: "Card", checklist: ["Write it", "Test it"] });
+    return b;
+  };
+  it("ticks by text, ignoring case, and by id", () => {
+    const b = board();
+    const id = b.lists[0].cards[0].checklist[1].id;
+    const c = updateCard(b, "Card", { tick: ["write IT", id] });
+    expect(c.checklist.map((i) => i.done)).toEqual([true, true]);
+  });
+  it("unticks", () => {
+    const b = board();
+    updateCard(b, "Card", { tick: ["Write it"] });
+    expect(updateCard(b, "Card", { untick: ["Write it"] }).checklist[0].done).toBe(false);
+  });
+  it("names an item it cannot find", () => {
+    expect(() => updateCard(board(), "Card", { tick: ["Ship it"] })).toThrow('No checklist item "Ship it" on "Card"');
+  });
+  it("ticks on the list a replacement just gave", () => {
+    const c = updateCard(board(), "Card", { checklist: ["New"], tick: ["New"] });
+    expect(c.checklist).toMatchObject([{ text: "New", done: true }]);
   });
 });

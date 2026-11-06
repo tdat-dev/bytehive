@@ -104,7 +104,19 @@ export function addCard(board: Board, listRef: string, input: CardInput): Card {
   return card;
 }
 
-export function updateCard(board: Board, cardRef: string, patch: Partial<CardInput>): Card {
+function setDone(card: Card, refs: string[], done: boolean): void {
+  for (const ref of refs) {
+    const item = card.checklist.find((i) => i.id === ref) ?? card.checklist.find((i) => norm(i.text) === norm(ref));
+    if (!item) throw new BoardError(`No checklist item "${ref}" on "${card.title}": see board_get`);
+    item.done = done;
+  }
+}
+
+export function updateCard(
+  board: Board,
+  cardRef: string,
+  patch: Partial<CardInput> & { tick?: string[]; untick?: string[] },
+): Card {
   validateLabels(patch.labels);
   validateDue(patch.due);
   const { card } = resolveCard(board, cardRef);
@@ -117,6 +129,8 @@ export function updateCard(board: Board, cardRef: string, patch: Partial<CardInp
   if (patch.labels !== undefined) card.labels = patch.labels;
   if (patch.due !== undefined) card.due = patch.due;
   if (patch.checklist !== undefined) card.checklist = mkChecklist(patch.checklist);
+  setDone(card, patch.tick ?? [], true);
+  setDone(card, patch.untick ?? [], false);
   return card;
 }
 

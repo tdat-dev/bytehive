@@ -32,3 +32,26 @@ export function changedFiles(dir: string): string[] {
 export function evidenceDir(env: Record<string, string | undefined>, boardDir: string): string {
   return env.BYTEHIVE_RUN_DIR?.trim() || boardDir;
 }
+
+const run = (cwd: string, ...args: string[]) =>
+  execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+
+/** What this branch has committed since it left the project's checkout. People
+ *  commit before card_done, so git status alone shows nothing of their work. */
+export function branchFiles(runDir: string, boardDir: string): string[] {
+  try {
+    const base = run(boardDir, "rev-parse", "HEAD");
+    const fork = run(runDir, "merge-base", "HEAD", base);
+    return run(runDir, "diff", "--name-only", fork, "HEAD").split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** What the owner's hooks and ByteHive write into a working folder. */
+const NOISE = /^(\.claude|logs|\.bytehive)\//;
+
+/** Everything a worker changed: committed and not yet committed. */
+export function workFiles(runDir: string, boardDir: string): string[] {
+  return [...new Set([...branchFiles(runDir, boardDir), ...changedFiles(runDir)])].filter((f) => !NOISE.test(f));
+}
