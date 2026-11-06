@@ -7,15 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-06
+
 ### Changed
 
-- **The Founder works in your project.** It used to run in a folder of its own,
-  which opened an extra project called office. Now its terminal sits in the
-  project you are on when you give a job, in that project's agent list, and it
-  stays there for later jobs. If that project closes, the next job starts it in
-  the active one with a new conversation. With no project open, ByteHive asks
-  you to open one first. The office tab goes away by itself after the update;
-  its folder stays on disk, and running jobs carry on.
+- **The Founder sits in your project.** There is no office tab any more. The
+  Founder's terminal opens in the project you are on when you give a job, in
+  that project's agent list, and stays there for later jobs. If you close that
+  project, the next job starts the Founder in the active one with a new
+  conversation, and it picks the open work up from the job files. With no
+  project open, ByteHive asks you to open one first. After this update the old
+  office tab closes by itself, its folder stays on disk, and running jobs carry
+  on.
 - **The Company leaves nothing new in `git status`.** When a project becomes a
   floor, or the Founder starts in it, ByteHive adds `.bytehive/` to that repo's
   local `.git/info/exclude`, unless it is already ignored. Your `.gitignore` is
@@ -25,11 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **The Node check tells the truth.** Every failure used to read as "needs Node
-  22.13", even on a machine with Node 24. Now ByteHive waits up to 30 seconds,
-  names the version it found when that is too old, and says when Node was not
-  found. If the check itself fails, the job goes ahead and the reason goes to
-  the log.
+- **The Node check says what it found.** Any failure used to read as "needs
+  Node 22.13", even on a machine with Node 24. Now ByteHive waits up to 30
+  seconds, names the version it found when that is too old, and says so when
+  Node was not found. If the check itself fails, the job goes ahead and the
+  reason goes to the log.
 
 ## [0.14.0] - 2026-11-06
 
