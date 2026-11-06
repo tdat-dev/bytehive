@@ -182,6 +182,27 @@ describe("Limit Guard", () => {
       expect(io.sent.map(([id]) => id)).toEqual(["p3"]);
     });
 
+    it("never gives a task to the Founder: it has no file tools, and the task would stop there", async () => {
+      io.panes.set("p3", { id: "p3", running: true, spec: { name: "Founder", badge: "opencode", ranIn: "D:/app", personId: "founder" } });
+      io.tasks = [limited(), { paneId: "p3", wsId: "w1", name: "Founder", status: { state: "idle", ask: null } }];
+      expect(openTargets(io.panes.get("p1") as never, RESET - 3600e3)).toEqual([]);
+      checkLimits(RESET - 3600e3);
+      await flush();
+      expect(io.sent).toEqual([]);
+      expect((io.panes.get("p1") as { handedTo?: string }).handedTo).not.toBe("Founder");
+    });
+
+    it("starts nobody for the Founder's own limit: no plan was approved for that", async () => {
+      io.panes.set("p1", pane({ spec: { name: "Founder", badge: "claude", ranIn: "D:/app", personId: "founder" } }));
+      io.tasks = [{ ...limited(), name: "Founder" }];
+      checkLimits(RESET - 3600e3);
+      await flush();
+      checkLimits(RESET + 600e3);
+      await flush();
+      expect(io.spawned).toEqual([]);
+      expect(io.sent).toEqual([]);
+    });
+
     it("starts a new agent of a CLI with room when none is open", async () => {
       io.tasks = [limited()];
       checkLimits(RESET - 3600e3);

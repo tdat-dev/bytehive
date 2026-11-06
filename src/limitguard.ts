@@ -12,6 +12,7 @@
 //     happens by itself, the moment it runs out.
 //   - Before any of that: a notification when a plan passes 90% of a limit.
 
+import { isFounder } from "./workspaces";
 import { allTasks, onTasksChange, type Task } from "./tasks";
 import { notify, sendMessage } from "./ipc";
 import { getPref } from "./prefs";
@@ -72,7 +73,8 @@ function checkAgents(now: number): void {
   for (const t of allTasks()) {
     const lim = t.status.limit;
     const found = find(t.paneId);
-    if (!lim || !found) { episodes.delete(t.paneId); continue; }
+    // The Founder's work is the Job files, and nobody approved a stand-in for it.
+    if (!lim || !found || isFounder(found.pane.spec)) { episodes.delete(t.paneId); continue; }
     // one notice is one episode, and keeps the reset first seen for it: the
     // plan only knows a reset until it has passed
     let e = episodes.get(t.paneId);
@@ -163,7 +165,7 @@ const sameFolder = (a: string, b: string) => {
 export interface OpenTarget { paneId: string; name: string; cli: string; badge: string }
 
 /** Agents already open that could take over this agent's task: running, of
- *  another CLI, not a shell or the Director, free (idle, or done with its
+ *  another CLI, not a shell, the Director or the Founder, free (idle, or done with its
  *  changes waiting), and in the same folder, so they see its changes. The
  *  ones whose plan has room first. */
 export function openTargets(pane: Pane, now = Date.now()): OpenTarget[] {
@@ -173,7 +175,7 @@ export function openTargets(pane: Pane, now = Date.now()): OpenTarget[] {
   const state = new Map(allTasks().map((t) => [t.paneId, t.status.state]));
   return [...found.ws.panes.values()]
     .filter((p) => p.id !== pane.id && p.running && p.spec.badge !== pane.spec.badge && !presetOf(p.spec.badge)?.shell
-      && p.spec.role !== "conductor" && !!p.spec.ranIn && sameFolder(p.spec.ranIn, dir)
+      && p.spec.role !== "conductor" && !isFounder(p.spec) && !!p.spec.ranIn && sameFolder(p.spec.ranIn, dir)
       && (state.get(p.id) === "idle" || state.get(p.id) === "review"))
     .sort((a, b) => Number(full(a.spec.badge, now)) - Number(full(b.spec.badge, now)))
     .map((p) => ({ paneId: p.id, name: p.spec.name, cli: cliLabel(p.spec.badge), badge: p.spec.badge }));
