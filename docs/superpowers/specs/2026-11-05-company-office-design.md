@@ -140,7 +140,7 @@ Thuê thêm giữa chừng cũng tạo thẻ duyệt, không tự động.
 | Một card bị trả về 3 lần | Dừng vòng lặp, hiện trong Needs you |
 | Việc dùng 80% trần token | Cảnh báo trong Needs you |
 | Việc dùng 100% trần token | Việc chuyển `paused`, app ngừng chuyển tin mới của Việc đó và hỏi bạn. Lượt đang chạy của agent không bị cắt |
-| Việc không còn lối ra (Founder quên, hết context) | `company_status` liệt kê các Việc đang mở cho Founder. Bạn bấm Stop trên Việc đang chạy hoặc tạm dừng: Việc chuyển `stopped`, không nhận và không gửi tin, không chạy lại, Founder được báo. Tin không ghi mã Việc, nên người còn ở một Việc đang chạy vẫn nhắn được |
+| Việc không còn lối ra (Founder quên, hết context) | `company_status` liệt kê các Việc đang mở cho Founder. Bạn bấm Stop trên Việc chưa kết thúc (đang lập kế hoạch, chờ duyệt, đang chạy, tạm dừng): Việc chuyển `stopped`, không nhận và không gửi tin, không chạy lại, Founder được báo. Tin không ghi mã Việc, nên người còn ở một Việc đang chạy vẫn nhắn được. Việc không cần làm gì thì Founder gọi `job_finish` lúc còn `planning`: Việc sang `done`, không có dòng merge, bạn thấy lý do trong Needs you |
 | Hết limit CLI | Giữ cơ chế bàn giao và tự chạy lại hiện có |
 | Agent bị dừng khi đang có card | Mở lại bằng session cũ, không được thì hỏi bạn |
 | Đóng pane hoặc dự án của một người | Lần sau mở lại đúng session, worktree, nhánh ghi trên Person. Mất session hoặc worktree thì người đó bắt đầu trắng và Needs you báo, không im lặng |
