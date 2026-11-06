@@ -269,7 +269,7 @@ export function initBridges(): void {
         out.push({
           dir: ws.dir,
           name: ws.name,
-          agents: [...ws.panes.values()].map((p) => ({
+          agents: boardPanes(ws.panes.values()).map((p) => ({
             id: p.id,
             name: p.spec.name,
             status: paneStatus(
@@ -302,7 +302,7 @@ export function initBridges(): void {
       const ws = [...workspaces.values()].find((w) => w.dir === dir);
       if (!ws) return;
       const targets = deliveryTargets(
-        [...ws.panes.values()],
+        boardPanes(ws.panes.values()),
         (p) => ({ name: p.spec.name, running: p.running }),
         from,
         to,
