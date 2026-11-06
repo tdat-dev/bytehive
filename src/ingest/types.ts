@@ -1,0 +1,87 @@
+/** The message gate's vocabulary. A message is handed whole to `sendGated`;
+ *  the gate decides whether it reaches a pane, gets answered by code, or is
+ *  held back for a human. */
+
+export type Source = "fleet" | "kanban" | "phone" | "founder" | "retry";
+
+export interface Request {
+  source: Source;
+  /** Display name of the sender, when there is one (fleet, founder). */
+  from?: string;
+  /** Pane id of the agent that would receive the message. */
+  to: string;
+  text: string;
+}
+
+export interface ToolResult {
+  status: "ok" | "error";
+  values: Record<string, number | string>;
+  timestamp: number;
+  metadata: { tool: string; version: string; cacheable: boolean };
+  error?: string;
+}
+
+export interface Tool {
+  name: string;
+  version: string;
+  cacheable: boolean;
+  run(input: Record<string, unknown>): Promise<ToolResult>;
+}
+
+/** The classifier's two fields. `data` rather than `payload`: 9Router's cx
+ *  route rewrites that word, even in prose. */
+export interface Classified {
+  is_actionable: boolean;
+  data: Record<string, unknown> | null;
+}
+
+export interface LlmUsage {
+  in: number;
+  out: number;
+  model?: string;
+}
+
+export interface ClassifyReply {
+  result: Classified | null;
+  usage?: LlmUsage;
+  error?: string;
+}
+
+export type Outcome =
+  | { kind: "answered"; via: "rule" | "tool"; result: ToolResult }
+  | { kind: "sent"; via: "pass" }
+  | { kind: "cache-hit"; result: ToolResult }
+  | { kind: "blocked"; id: string; reason: string }
+  | { kind: "failed"; error: string };
+
+export interface BlockedEntry {
+  id: string;
+  hash: string;
+  source: Source;
+  from?: string;
+  to: string;
+  text: string;
+  reason: string;
+  at: number;
+}
+
+export interface LogEntry {
+  ts: number;
+  hash: string;
+  source: Source;
+  from?: string;
+  to: string;
+  path: "rule" | "api" | "cache-hit" | "blocked" | "pass" | "failed";
+  ms: { total: number; classify?: number; execute?: number };
+  llm?: LlmUsage & { called: boolean };
+  tokensSavedEstimate?: number;
+  error?: string;
+}
+
+export interface GateSettings {
+  enabled: boolean;
+  ttlDays: number;
+  dailyCallCap: number;
+  dailyTokenCap: number;
+  loopWindowMin: number;
+}
