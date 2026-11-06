@@ -421,6 +421,42 @@ export async function codexPlanUsage(): Promise<PlanUsage | null> {
   return invoke<PlanUsage | null>("codex_plan_usage");
 }
 
+/** The ingestion gate's classifier endpoint. The key is never part of this shape. */
+export interface IngestProvider {
+  baseUrl: string;
+  model: string;
+  jsonMode: "schema" | "prompt";
+  hasKey: boolean;
+  timeoutMs: number;
+}
+
+export interface IngestProviderInput {
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  jsonMode?: "schema" | "prompt";
+  timeoutMs?: number;
+}
+
+export interface IngestReply {
+  content: string;
+  usage: { in: number; out: number };
+  model: string;
+}
+
+export async function ingestProviderGet(): Promise<IngestProvider> {
+  return invoke<IngestProvider>("ingest_provider_get");
+}
+
+/** An empty or missing key keeps the stored one, since the page never sees it. */
+export async function ingestProviderSave(input: IngestProviderInput): Promise<IngestProvider> {
+  return invoke<IngestProvider>("ingest_provider_save", { input });
+}
+
+export async function ingestClassify(text: string): Promise<IngestReply> {
+  return invoke<IngestReply>("ingest_classify", { text });
+}
+
 /** What an agent of Codex, opencode, Gemini, Qwen or grok has used, from where that CLI keeps it. */
 export interface AgentUsage { usd: number | null; tokens: number | null; context_pct: number | null; model: string | null }
 export async function agentUsage(badge: string, dir: string, sinceMs: number | null): Promise<AgentUsage> {

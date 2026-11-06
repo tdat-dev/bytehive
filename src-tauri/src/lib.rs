@@ -7,6 +7,7 @@ pub mod dashauth;
 pub mod dashboard;
 pub mod error;
 pub mod gitexclude;
+pub mod ingest;
 pub mod land;
 pub mod planusage;
 pub mod agentusage;
@@ -138,6 +139,9 @@ pub fn run() {
             commands::claude_session_usage,
             planusage::claude_plan_usage,
             planusage::codex_plan_usage,
+            ingest::ingest_provider_get,
+            ingest::ingest_provider_save,
+            ingest::ingest_classify,
             agentusage::agent_usage,
             commands::claude_transcript,
             transcripts::codex::codex_transcript,

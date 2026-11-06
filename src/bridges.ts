@@ -15,6 +15,7 @@ import {
 } from "./ipc";
 import { type Pane, type Workspace } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
+import { sendGated } from "./ingest";
 import { focusPane } from "./panelayout";
 import {
   setAgentSender,
@@ -307,7 +308,21 @@ export function initBridges(): void {
         from,
         to,
       );
-      for (const p of targets) void sendMessage(p.id, message).catch(() => {});
+      const sender = from
+        ? [...ws.panes.values()].find(
+            (p) => p.spec.name.trim().toLowerCase() === from.trim().toLowerCase(),
+          )
+        : undefined;
+      for (const p of targets) {
+        void sendGated(dir, { source: "fleet", from: from ?? undefined, fromPane: sender?.id, to: p.id, text: message })
+          .then((out) => {
+            if (out.kind === "blocked" && sender) {
+              const why = out.reason === "smalltalk" ? "small talk" : out.reason;
+              void sendMessage(sender.id, `[ingest] held back (${why}): ${message.slice(0, 80)}`).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
       showDelegation(ws, from, targets);
       showDelegationToast(
         from,
@@ -315,11 +330,6 @@ export function initBridges(): void {
         message,
       );
       // The arc and the toast are gone in 2.6s; the Flow panel keeps the text.
-      const sender = from
-        ? [...ws.panes.values()].find(
-            (p) => p.spec.name.trim().toLowerCase() === from.trim().toLowerCase(),
-          )
-        : undefined;
       pushFlow({
         from,
         to,

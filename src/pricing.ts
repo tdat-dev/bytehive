@@ -49,3 +49,8 @@ export function money(usd: number): string {
   if (usd < 10) return `$${usd.toFixed(2)}`;
   return `$${Math.round(usd)}`;
 }
+
+/** Changes when the table does, so cached answers stop matching a new price. */
+export function pricesFingerprint(): string {
+  return PRICES.map((x) => `${x.match.source}:${x.p.in},${x.p.out},${x.p.cacheWrite},${x.p.cacheRead}`).join("|");
+}

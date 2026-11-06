@@ -35,6 +35,16 @@ export interface Prefs {
   autoHandover: boolean;
   /** Windows notification when a plan passes 90% of a limit, and when an agent runs out. */
   limitNotify: boolean;
+  /** Hold back small talk and answer cost questions with code before they reach a pane. */
+  ingest: boolean;
+  /** Days a tool answer stays cached. */
+  ingestTtlDays: number;
+  /** Most classifier calls in one day; past it messages go straight through. */
+  ingestDailyCalls: number;
+  /** Most classifier tokens in one day. */
+  ingestDailyTokens: number;
+  /** Minutes a repeated agent-to-agent message is held back. */
+  ingestLoopMin: number;
 }
 
 /** How many agents the Grid may hold. */
@@ -58,6 +68,11 @@ export const DEFAULTS: Prefs = {
   autoResume: true,
   autoHandover: true,
   limitNotify: true,
+  ingest: false,
+  ingestTtlDays: 7,
+  ingestDailyCalls: 500,
+  ingestDailyTokens: 500_000,
+  ingestLoopMin: 10,
 };
 
 const KEY = "maestro.prefs";
@@ -73,6 +88,10 @@ function clamp(p: Partial<Prefs>): Prefs {
   out.defaultCount = ([1, 2, 3] as const).includes(out.defaultCount) ? out.defaultCount : 1;
   out.splitMax = SPLIT_SIZES.includes(out.splitMax) ? out.splitMax : DEFAULTS.splitMax;
   out.jobDelay = Math.min(20, Math.max(1, Math.round(out.jobDelay)));
+  out.ingestTtlDays = Math.min(30, Math.max(1, Math.round(out.ingestTtlDays)));
+  out.ingestDailyCalls = Math.min(5000, Math.max(0, Math.round(out.ingestDailyCalls)));
+  out.ingestDailyTokens = Math.min(5_000_000, Math.max(0, Math.round(out.ingestDailyTokens)));
+  out.ingestLoopMin = Math.min(120, Math.max(1, Math.round(out.ingestLoopMin)));
   return out;
 }
 

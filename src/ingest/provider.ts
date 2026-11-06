@@ -1,6 +1,7 @@
 /** Turn the provider's answer into the two-field result. The model may wrap
  *  JSON in a code fence; anything else is a miss, never a guess. */
-import type { Classified } from "./types";
+import { ingestClassify } from "../ipc";
+import type { Classified, ClassifyReply } from "./types";
 
 export function parseClassified(content: string): Classified | null {
   let text = content.trim();
@@ -17,4 +18,14 @@ export function parseClassified(content: string): Classified | null {
   if (typeof o.is_actionable !== "boolean") return null;
   if (o.data !== null && (typeof o.data !== "object" || Array.isArray(o.data))) return null;
   return { is_actionable: o.is_actionable, data: (o.data as Record<string, unknown> | null) ?? null };
+}
+
+/** One call to the endpoint in Settings. Any failure is a miss, not a block. */
+export async function classifyWithProvider(text: string): Promise<ClassifyReply> {
+  try {
+    const reply = await ingestClassify(text);
+    return { result: parseClassified(reply.content), usage: reply.usage };
+  } catch (e) {
+    return { result: null, error: String(e) };
+  }
 }

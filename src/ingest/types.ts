@@ -8,6 +8,8 @@ export interface Request {
   source: Source;
   /** Display name of the sender, when there is one (fleet, founder). */
   from?: string;
+  /** Pane id of the sender, when the sender is an agent, so an answer can go back. */
+  fromPane?: string;
   /** Pane id of the agent that would receive the message. */
   to: string;
   text: string;
