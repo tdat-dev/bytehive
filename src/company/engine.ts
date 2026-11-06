@@ -58,6 +58,8 @@ const quiet = new Map<string, number>();
 const consumed = new Map<string, number>();
 /** Folders whose git has been told about .bytehive/ in this run. */
 const excluded = new Set<string>();
+/** The last of those still running. */
+let excluding: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 
 export const onCompanyChange = (fn: () => void) => { listeners.add(fn); };
@@ -135,13 +137,14 @@ async function tryPersist(jobs: Job[]): Promise<void> {
   }
 }
 
-/** Keep a project's .bytehive/ out of its git status. Not awaited by anyone: a git
- *  that fails or hangs must not hold up a job. */
-async function keepOutOfGit(dir: string): Promise<void> {
+/** Keep a project's .bytehive/ out of its git status. One folder at a time, as floors
+ *  in one repo share a file. Not awaited by anyone: a git that fails or hangs must
+ *  not hold up a job. */
+function keepOutOfGit(dir: string): void {
   const key = dir.toLowerCase();
   if (excluded.has(key)) return;
   excluded.add(key);
-  await gitExcludeBytehive(dir).catch((e) => {
+  excluding = excluding.then(() => gitExcludeBytehive(dir)).catch((e) => {
     excluded.delete(key); // the next job tries again
     console.error(`[bytehive] .bytehive/ could not be excluded in ${dir}: ${reason(e)}`);
   });
@@ -230,7 +233,7 @@ async function ensurePerson(p: Person): Promise<void> {
   const dir = p.rank === "founder" ? founderDir() : floor?.dir;
   if (!role) throw new Error(`no role ${p.role}`);
   if (!dir) throw new Error(p.rank === "founder" ? NO_PROJECT : `no floor ${p.floor}`);
-  if (p.rank === "founder") void keepOutOfGit(dir);
+  if (p.rank === "founder") keepOutOfGit(dir);
   const spec = await personSpec(p, role, dir);
   await checkRestore(p, spec);
   await spawnPerson(dir, spec, true);
@@ -323,7 +326,7 @@ function syncFloors(): void {
 /** The floors a Job can touch. Never for a launch alone: a project is a floor just
  *  by being open, and someone who has not used the Company has their repo left alone. */
 function excludeFloors(): void {
-  for (const f of state?.company.floors ?? []) void keepOutOfGit(f.dir);
+  for (const f of state?.company.floors ?? []) keepOutOfGit(f.dir);
 }
 
 export const giveJob = (ask: string): Promise<void> => enqueue(async () => {

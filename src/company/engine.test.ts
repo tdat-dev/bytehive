@@ -31,6 +31,8 @@ const io = vi.hoisted(() => ({
   closed: [] as Array<string | null>,
   excluded: [] as string[],
   excludeFails: false,
+  excluding: 0,
+  excludingAtOnce: 0,
   nodeWait: 0,
 }));
 
@@ -73,6 +75,10 @@ vi.mock("../ipc", () => ({
   fsTruncateIfSize: async () => false,
   gitExcludeBytehive: async (dir: string) => {
     if (io.excludeFails) throw { Failed: "git's exclude file: access denied" };
+    io.excluding += 1;
+    io.excludingAtOnce = Math.max(io.excludingAtOnce, io.excluding);
+    await Promise.resolve();
+    io.excluding -= 1;
     io.excluded.push(dir);
   },
   appPid: async () => 7,
@@ -199,6 +205,7 @@ beforeEach(async () => {
   io.closed = [];
   io.excluded = [];
   io.excludeFails = false;
+  io.excludingAtOnce = 0;
   openProjects();
   engine = await import("./engine");
   await engine.initCompany();
@@ -664,6 +671,13 @@ describe("keeping git status clean", () => {
     io.excluded = [];
     await relaunch();
     expect(io.excluded).toEqual(["D:\\a", "D:\\b"]);
+  });
+
+  it("takes one folder at a time: floors in one repo share a file", async () => {
+    await engine.giveJob("do it");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(io.excluded).toHaveLength(2);
+    expect(io.excludingAtOnce).toBe(1);
   });
 
   it("asks once per folder", async () => {
