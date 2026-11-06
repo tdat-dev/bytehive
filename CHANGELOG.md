@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-06
+
+### Added
+
+- **The Company.** Press Ctrl+Shift+O and give the Founder a job in plain
+  words. The Founder writes a plan: who to hire, which cards go on which
+  project, how many tokens it may use. You read all of it, new roles word for
+  word, and nothing happens until you approve. Then the people it hired start
+  in their own terminals on your open projects, on branches of their own, and
+  report up to the Founder. The panel shows what needs you, every job with
+  its tokens, and who works where. You can stop any job that is still going,
+  and a job that reaches its token cap pauses until you add more.
+- **What the Company needs.** Node.js 22.13 or newer and Claude Code, both on
+  PATH. If Node is missing or too old, ByteHive tells you when you give a job.
+- **The Company writes to Claude's config.** Claude asks whether you trust a
+  folder the first time it runs there, and a member has nobody at its terminal
+  to answer. So when you approve a hire, ByteHive records that folder as
+  trusted in Claude's `.claude.json`, the same way Claude does when you say
+  yes. It does this only for folders a member works in.
+
+### Fixed
+
+- **Agents in a worktree reach the project's board.** They used to get a board
+  of their own in the worktree, which nobody else could see.
+
 ## [0.13.1] - 2026-11-04
 
 ### Changed

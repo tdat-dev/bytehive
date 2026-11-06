@@ -59,6 +59,17 @@ tiled live terminals, one broadcast bar, one diff review.
   restore, system tray, signed auto-updates… and a mascot who lives on the
   home screen.
 
+## Company
+
+Press Ctrl+Shift+O and give the Founder a job. The Founder plans it, you approve
+the plan, and the people it hires work on your open projects in their own
+terminals and branches, with a Lead on any project that has more than one person.
+The panel shows what needs you, what each job has spent, and who works where.
+
+It needs Node.js 22.13 or newer and Claude Code on PATH. For every folder a member
+works in, ByteHive records that folder as trusted in Claude's `.claude.json`, so
+Claude does not stop to ask with nobody at the terminal.
+
 ## MCP server (agent ⇄ board)
 
 ByteHive ships a kanban board per workspace (`.bytehive/board.json`). The
