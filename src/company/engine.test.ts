@@ -31,6 +31,7 @@ const io = vi.hoisted(() => ({
   closed: [] as Array<string | null>,
   excluded: [] as string[],
   excludeFails: false,
+  nodeWait: 0,
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({
@@ -76,8 +77,9 @@ vi.mock("../ipc", () => ({
   },
   appPid: async () => 7,
   processAlive: async (pid: number) => io.alive.has(pid),
-  runCapture: async (program: string, args: string[]) => {
-    if (![program, ...args].join(" ").endsWith("node --version") || io.node === null) throw { Failed: "couldn't start node" };
+  runCapture: async (program: string, args: string[], _cwd: string | null, timeoutMs: number) => {
+    io.nodeWait = timeoutMs;
+    if (![program, ...args].join(" ").endsWith("node --version") || io.node === null) throw { Failed: "node took longer than 30 s" };
     return io.node;
   },
   sendMessage: async (id: string, text: string) => { io.sent.push([id, text]); return true; },
@@ -219,15 +221,31 @@ describe("the MCP server a member gets", () => {
 });
 
 describe("giving a job without a Node that can run the MCP server", () => {
-  const NEEDED = "ByteHive needs Node.js 22.13 or newer to run the Company. If you just installed it, restart ByteHive.";
-  it.each([[null], [""], ["v22.12.9\r\n"], ["v20.19.0\r\n"]])("says what is missing and starts nothing, given %j", async (node) => {
+  const NEEDS = "ByteHive needs Node.js 22.13 or newer to run the Company.";
+  it("gives node 30 seconds", async () => {
+    await engine.giveJob("do it");
+    expect(io.nodeWait).toBe(30_000);
+  });
+  it.each([
+    ["v22.12.9\r\n", `${NEEDS} Found v22.12.9.`],
+    ["v18.20.0\r\n", `${NEEDS} Found v18.20.0.`],
+    ["", `${NEEDS} Node.js was not found. If you just installed it, restart ByteHive.`],
+  ])("says what it found and starts nothing, given %j", async (node, said) => {
     io.node = node;
-    await expect(engine.giveJob("do it")).rejects.toThrow(NEEDED);
+    await expect(engine.giveJob("do it")).rejects.toThrow(said);
     expect(engine.companyView()!.jobs).toEqual([]);
     expect(io.spawned).toEqual([]);
   });
-  it("looks again next time: Node may have been installed since", async () => {
+  it("does not block a job when the check itself fails, and says why in the log", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     io.node = null;
+    await engine.giveJob("do it");
+    expect(engine.companyView()!.jobs).toHaveLength(1);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("node took longer than 30 s"));
+    spy.mockRestore();
+  });
+  it("looks again next time: Node may have been installed since", async () => {
+    io.node = "";
     await engine.giveJob("do it").catch(() => {});
     io.node = "v24.1.0\n";
     await engine.giveJob("do it");

@@ -148,6 +148,7 @@ Thuê thêm giữa chừng cũng tạo thẻ duyệt, không tự động.
 | Agent bị dừng khi đang có card | Mở lại bằng session cũ, không được thì hỏi bạn |
 | Đóng pane hoặc dự án của một người | Lần sau mở lại đúng session, worktree, nhánh ghi trên Person. Mất session hoặc worktree thì người đó bắt đầu trắng và Needs you báo, không im lặng |
 | Đóng dự án Founder đang ngồi | Việc hoặc tin kế tiếp khởi động Founder ở dự án đang mở, phiên mới, không báo mất: file Việc giữ công việc và `company_status` liệt kê Việc đang mở. Không có dự án nào mở thì Needs you báo tin chưa tới |
+| Giao Việc khi Node thiếu hoặc cũ | Node dưới 22.13 thì từ chối và nêu bản tìm thấy. Lệnh chạy mà không in gì thì báo không tìm thấy Node. Bản thân bước kiểm tra lỗi hoặc quá 30 giây thì không chặn, chỉ ghi lý do vào log |
 | Founder đầy context | Mở phiên mới, đọc lại `jobs/` đang chạy |
 | Đóng dự án | Theo luật hiện tại agent bị dừng. Tầng tối đèn, ghế và session được giữ |
 

@@ -219,7 +219,7 @@ describe("company panel", () => {
   });
 
   it("says in plain words when Node is missing", async () => {
-    const needed = "ByteHive needs Node.js 22.13 or newer to run the Company. If you just installed it, restart ByteHive.";
+    const needed = "ByteHive needs Node.js 22.13 or newer to run the Company. Node.js was not found. If you just installed it, restart ByteHive.";
     eng.view = state();
     eng.giveJob.mockRejectedValueOnce(new Error(needed));
     const el = mount();

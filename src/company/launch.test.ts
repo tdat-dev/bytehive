@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpConfig, nodeVerdict, pluginManifest } from "./launch";
 import { emptyCompany } from "./org";
 import { FOUNDER_LAWS, LEAD_LAWS, STAFF_LAWS } from "../laws";
 import { FOUNDER_ID, type Person, type RoleDef } from "./types";
@@ -71,12 +71,22 @@ describe("founderFolder", () => {
   });
 });
 
-describe("nodeRunsCompany", () => {
-  it.each(["v22.13.0", "v22.13.0\r\n", "v22.14.1\n", "v23.0.0", "v100.1.0"])("takes %j", (v) => {
-    expect(nodeRunsCompany(v)).toBe(true);
+describe("nodeVerdict", () => {
+  const NEEDS = "ByteHive needs Node.js 22.13 or newer to run the Company.";
+  it.each(["v22.13.0", "v22.13.0\r\n", "v22.14.1\n", "v23.0.0", "v24.6.0\r\n", "v100.1.0"])("lets %j through", (v) => {
+    expect(nodeVerdict({ printed: v })).toEqual({});
   });
-  it.each(["v22.12.9", "v22.9.0", "v20.19.0", "v9.99.0", "", "'node' is not recognized", "22"])("refuses %j", (v) => {
-    expect(nodeRunsCompany(v)).toBe(false);
+  it.each([["v22.12.9", "v22.12.9"], ["v22.9.0\r\n", "v22.9.0"], ["v20.19.0\n", "v20.19.0"], ["v18.20.0", "v18.20.0"], ["v9.99.0", "v9.99.0"]])("refuses %j, naming the version", (v, found) => {
+    expect(nodeVerdict({ printed: v })).toEqual({ refuse: `${NEEDS} Found ${found}.` });
+  });
+  it.each(["", "\r\n", "  "])("says Node was not found when the command printed nothing: %j", (v) => {
+    expect(nodeVerdict({ printed: v })).toEqual({ refuse: `${NEEDS} Node.js was not found. If you just installed it, restart ByteHive.` });
+  });
+  it("does not block when the check itself failed or timed out, and gives the reason to log", () => {
+    expect(nodeVerdict({ failed: "node took longer than 30 s" })).toEqual({ log: expect.stringContaining("node took longer than 30 s") });
+  });
+  it.each(["'node' is not recognized", "22", "Welcome to nvm"])("does not block on an answer it cannot read: %j", (v) => {
+    expect(nodeVerdict({ printed: v })).toEqual({ log: expect.stringContaining(v) });
   });
 });
 

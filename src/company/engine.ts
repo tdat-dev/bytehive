@@ -13,7 +13,7 @@ import { mkCard, defaultBoard } from "../board";
 import { sameFolder } from "../workspaces";
 import { revealPane } from "../agentbridge";
 import type { AgentSpec, Pane, Workspace } from "../panetypes";
-import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpConfig, nodeRunsCompany, pluginManifest } from "./launch";
+import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpConfig, nodeVerdict, pluginManifest } from "./launch";
 import { floorId, personById, personByName } from "./org";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, type Effect, type State } from "./reduce";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
@@ -33,7 +33,7 @@ const WATCH_MS = 30_000;
 /** How long a new CLI gets to reach its prompt. */
 const BOOT_MS = 8000;
 /** How long `node --version` gets. */
-const NODE_WAIT_MS = 10_000;
+const NODE_WAIT_MS = 30_000;
 /** Tries at a board an agent keeps writing to. */
 const BOARD_TRIES = 3;
 const NO_PROJECT = "Open a project first.";
@@ -326,8 +326,9 @@ export const giveJob = (ask: string): Promise<void> => enqueue(async () => {
   if (!paneOf(FOUNDER_ID) && !founderDir()) throw new Error(NO_PROJECT);
   // Every member's MCP server runs on it: without Node the Founder has no job_plan.
   const node = launchSpec("node", ["--version"]);
-  const version = await runCapture(node.program, node.args, null, NODE_WAIT_MS).catch(() => "");
-  if (!nodeRunsCompany(version)) throw new Error("ByteHive needs Node.js 22.13 or newer to run the Company. If you just installed it, restart ByteHive.");
+  const verdict = nodeVerdict(await runCapture(node.program, node.args, null, NODE_WAIT_MS).then((printed) => ({ printed }), (e) => ({ failed: reason(e) })));
+  if (verdict.refuse) throw new Error(verdict.refuse);
+  if (verdict.log) console.error(`[bytehive] ${verdict.log}`);
   syncFloors();
   const r = newJob(state, ask, Date.now());
   state = r.state;

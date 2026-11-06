@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write `.claude/` or `logs/` into the project it sits in. Everyone else keeps
   your hooks.
 
+### Fixed
+
+- **The Node check tells the truth.** Every failure used to read as "needs Node
+  22.13", even on a machine with Node 24. Now ByteHive waits up to 30 seconds,
+  names the version it found when that is too old, and says when Node was not
+  found. If the check itself fails, the job goes ahead and the reason goes to
+  the log.
+
 ## [0.14.0] - 2026-11-06
 
 ### Added
