@@ -31,6 +31,7 @@ Tiêu chí thành công:
 |---|---|
 | Điểm neo | Hàm mới `sendGated` trong `src/ingest/`, bọc `sendMessage` |
 | Bộ phân loại | Luật thuần trước, API ngoài (OpenAI-compatible) khi luật không quyết được |
+| Nhà cung cấp mặc định | 9Router, model `cx/gpt-6-luna`, đổi được trong Settings |
 | Tác vụ mã thuần | Số liệu ByteHive, thêm tool theo một interface chung |
 | Khi guardrail kết luận không cần xử lý | Chặn, lưu lại, có nút gửi lại |
 | Kết quả coding | Không cache, chỉ chống lặp 10 phút cho tin giữa các agent |
@@ -94,7 +95,7 @@ interface ToolResult {
 
 interface Tool {
   name: string; version: string; cacheable: boolean;
-  run(payload: Record<string, unknown>): Promise<ToolResult>;
+  run(input: Record<string, unknown>): Promise<ToolResult>;
 }
 
 type Outcome =
@@ -126,9 +127,9 @@ Thứ tự cố định:
 1. Nếu `isAwaiting(agentId)` thì bỏ qua toàn bộ gate, đường `pass`. Một tin `ok` lúc agent đang hỏi là câu trả lời thật.
 2. Chống lặp: với nguồn `fleet` hoặc `founder`, cùng cặp người gửi, agent nhận và hash mà đã gửi trong 10 phút thì chặn với lý do `loop`. Đây là chặn, không phải trả kết quả, nên khác cache.
 3. Nếu văn bản rỗng sau chuẩn hóa thì chặn với lý do `empty`. Không ai cần gửi tin rỗng tới PTY.
-4. Luật thuần: chào hỏi, cảm ơn, xác nhận (tối đa 4 từ, không có động từ, tiếng Việt và tiếng Anh) thì chặn với lý do `smalltalk`. Yêu cầu tính chi phí hoặc quy đổi tiền thì trả payload luôn.
+4. Luật thuần: chào hỏi, cảm ơn, xác nhận (tối đa 4 từ, không có động từ, tiếng Việt và tiếng Anh) thì chặn với lý do `smalltalk`. Yêu cầu tính chi phí hoặc quy đổi tiền thì trả `data` luôn.
 5. Còn lại gọi API ngoài. Prompt nói rõ: chỉ trả `is_actionable: false` khi chắc chắn tin không phải việc cần làm; không chắc thì trả `true`.
-6. Kết quả là JSON trong `choices[0].message.content`; bỏ rào code fence nếu model thêm vào, rồi kiểm bằng hàm tay: đúng hai trường, `payload` là object hoặc null, `intent` (nếu có) thuộc danh sách tool. Sai thì đường `pass`.
+6. Kết quả là JSON trong `choices[0].message.content`; bỏ rào code fence nếu model thêm vào, rồi kiểm bằng hàm tay: đúng hai trường, `data` là object hoặc null, `intent` (nếu có) thuộc danh sách tool. Sai thì đường `pass`.
 
 Schema gửi trong request:
 
@@ -137,11 +138,26 @@ Schema gửi trong request:
   "type": "object",
   "properties": {
     "is_actionable": { "type": "boolean" },
-    "payload": { "type": ["object", "null"] }
+    "data": { "type": ["object", "null"] }
   },
-  "required": ["is_actionable", "payload"],
+  "required": ["is_actionable", "data"],
   "additionalProperties": false
 }
+```
+
+System prompt đã chạy đúng với `cx/gpt-6-luna`, dùng nguyên văn khi code:
+
+```
+You classify one message for a coding-agent orchestrator. Reply with one JSON object and nothing else.
+Shape: {"is_actionable": <boolean>, "data": <object or null>}.
+Rules:
+- is_actionable is false only when the message is clearly small talk: a greeting, thanks, acknowledgement or emoji, with no task and no question.
+- is_actionable is true for anything else, including coding tasks and questions. When unsure, true.
+- If the message asks to estimate the cost of tokens for a model, set data to {"intent":"estimate_cost","model":"<model id>","inputTokens":<number>,"outputTokens":<number>}.
+- Token amounts written as 120k or "250 nghìn" mean 120000 and 250000.
+- If the message asks to convert money, set data to {"intent":"convert_currency","amount":<number>,"from":"<code>","to":"<code>"}.
+- Otherwise data is null.
+Never explain. Never use markdown.
 ```
 
 Request, giao thức OpenAI chat completions:
@@ -163,7 +179,9 @@ POST <baseUrl>/chat/completions
 }
 ```
 
-`payload` chứa `intent` cùng các trường đã bóc. `intent` lạ nghĩa là việc coding, cho đi qua nguyên văn.
+`data` chứa `intent` cùng các trường đã bóc. `intent` lạ nghĩa là việc coding, cho đi qua nguyên văn.
+
+Trường kết quả tên `data`, không phải `payload`: 9Router trên route `cx` thay chữ `payload` bằng một cụm khác trong cả câu trả lời lẫn văn bản thường, kiểm ngày 2026-11-06. Vì vậy prompt và tên trường tránh dùng chữ đó.
 
 Header: `Authorization: Bearer <apiKey>` (bỏ khi key trống) và `Content-Type: application/json`. `baseUrl` phải bắt đầu bằng `http://` hoặc `https://`; sai thì Settings từ chối lưu.
 
@@ -217,13 +235,13 @@ Ghi file theo cách của company store: ghi `.tmp` rồi `fs_rename`. Log ghi c
 
 | Trường | Ý nghĩa |
 |---|---|
-| `baseUrl` | Gốc API, ví dụ `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` |
-| `model` | Model dùng để phân loại, do bạn chọn |
+| `baseUrl` | Gốc API. Form điền sẵn `https://9router.zoldify.com/v1`; đổi được sang `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` |
+| `model` | Model dùng để phân loại. Mặc định `cx/gpt-6-luna` trên 9Router |
 | `apiKey` | Khóa API, lưu văn bản thường trong file của bạn. Để trống với Ollama hoặc LM Studio |
 | `jsonMode` | `schema` (mặc định) hoặc `prompt` cho nhà cung cấp không hỗ trợ `response_format` |
 | `timeoutMs` | Mặc định 12000 |
 
-Key chỉ đọc và ghi phía Rust. Settings nhận key lúc lưu, còn lần đọc sau chỉ trả `hasKey`, không trả lại chuỗi khóa.
+Key chỉ đọc và ghi phía Rust. Settings nhận key lúc lưu, còn lần đọc sau chỉ trả `hasKey`, không trả lại chuỗi khóa. Key 9Router không ghi trong spec và không commit; chỉ dán một lần vào Settings.
 
 Settings, qua `prefs.ts` như các thiết lập khác:
 
@@ -232,7 +250,7 @@ Settings, qua `prefs.ts` như các thiết lập khác:
 | `ingest.enabled` | `false` | Công tắc chính |
 | `ingest.ttlDays` | `7` | TTL cache |
 | `ingest.dailyCallCap` | `500` | Trần số lần gọi API mỗi ngày |
-| `ingest.dailyTokenCap` | `200000` | Trần token mỗi ngày |
+| `ingest.dailyTokenCap` | `500000` | Trần token mỗi ngày |
 | `ingest.loopWindowMin` | `10` | Cửa sổ chống lặp tin giữa agent |
 
 ## 8. Xử lý lỗi
@@ -290,6 +308,7 @@ Mỗi dòng `ingest.jsonl`:
 - USD chỉ ghi khi model có trong `src/pricing.ts`; nhà cung cấp khác thì để `null` và panel hiện token, không bịa giá. Bảng giá của `pricing.ts` hiện chỉ có model Claude, nên mặc định sẽ là `null`.
 - Token tiết kiệm chỉ là ước lượng (ký tự chia 4), tên trường đã nói rõ điều đó. Không dùng số này để báo cáo như số thật.
 - Trần gọi và trần token đếm theo ngày từ log. Vượt trần thì tin đi qua, không chặn.
+- Đo thật với `cx/gpt-6-luna` qua 9Router ngày 2026-11-06: 5 tin mẫu, mỗi lần 347 tới 367 token vào và 31 tới 76 token ra, 1.8 tới 3.9 giây, 5/5 trả đúng cấu trúc. Với nhịp 500 lần gọi mỗi ngày, khoảng 220k token tổng, nằm dưới trần 500k.
 - Chi phí thật của tuần đầu là số do nhà cung cấp báo, đối chiếu với `in`/`out` trong log. Không đặt trước một con số USD cho nhà cung cấp chưa chọn.
 
 ## 13. Kiểm thử
@@ -328,6 +347,7 @@ Kiểm tra trên app thật: bật công tắc, gửi một tin chi phí qua `fl
 - Đường API thêm một chuyến mạng cho mỗi tin mơ hồ, thường dưới 2 giây nhưng có thể tới 12 giây. Vì vậy luật chạy trước, timeout 12 giây, hết giờ thì cho qua.
 - `temperature: 0` đặt được qua API. Nhà cung cấp nào bỏ qua tham số này thì kết quả vẫn được kiểm bằng schema và bài kiểm tra ổn định.
 - Luật cần bảo trì. Cách nói lạ sẽ rơi xuống API, và nếu API cũng không chắc thì tin đi qua.
+- 9Router route `cx` viết lại chữ `payload` trong cả câu trả lời lẫn văn bản thường, nên trường kết quả tên `data`. Đổi nhà cung cấp vẫn giữ `data`.
 - Cache theo từng dự án, không chia sẻ giữa các máy. Remote không dùng chung cache ở giai đoạn này.
 - Chống lặp 10 phút chỉ áp dụng cho tin giữa các agent, không áp dụng cho bạn gửi.
 - Nội dung tin bị chặn nằm trên đĩa dạng văn bản thường, trong thư mục đã loại khỏi git.
