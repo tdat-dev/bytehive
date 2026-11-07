@@ -9,9 +9,8 @@
      app's CSS loads. The intro splash stays hidden until its real styles apply,
      so it can't render as an unstyled static frame. -->
 <style>html,body{height:100%;margin:0;background:#050506;overflow:hidden}</style>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- The terminal measures its cell once, so its font has to be here first. -->
+<link rel="preload" href="/src/assets/fonts/GeistMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <!-- App styles as a render-blocking link (not injected by JS) so the first
      paint is fully styled — kills the dev-mode flash-of-unstyled-content. -->
 <link rel="stylesheet" href="/src/styles/index.css">
