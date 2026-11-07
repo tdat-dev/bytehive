@@ -110,6 +110,11 @@ export function enhanceSelect(sel: HTMLSelectElement): HTMLButtonElement {
   return btn;
 }
 
+/** Put the keyboard on a select, on the button when it is drawn as a chip menu. */
+export function focusSelect(sel: HTMLSelectElement): void {
+  (done.get(sel) ?? sel).focus();
+}
+
 /** Enhance every select under a root; safe to call again after new markup. */
 export function enhanceSelects(root: ParentNode = document): void {
   root.querySelectorAll<HTMLSelectElement>("select:not([multiple]):not([data-native])").forEach(enhanceSelect);

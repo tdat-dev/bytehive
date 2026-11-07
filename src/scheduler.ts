@@ -4,6 +4,8 @@
 // so loading one and launching it are injected.
 
 import { type CrewState, expandCrew } from "./crew";
+import { ICON_CLOSE } from "./icons";
+import { focusSelect } from "./selectmenu";
 import {
   parseTime,
   dueSchedules,
@@ -93,12 +95,12 @@ function renderSchedList(): void {
       `<span class="sched-name">${tplName ? escHtml(tplName) : "<i>preset deleted</i>"}</span>` +
       `<span class="sched-when">${escHtml(s.time)} · ${s.repeat === "daily" ? "daily" : "once"}</span>` +
       `<span class="sched-next">${escHtml(nextLabel)}</span>` +
-      `<button class="btn quiet icon sm" aria-label="Delete schedule">✕</button>`;
+      `<button class="btn quiet icon sm" data-del aria-label="Delete schedule">${ICON_CLOSE}</button>`;
     row.querySelector<HTMLInputElement>("input")?.addEventListener("change", () => {
       saveSchedules(loadSchedules().map((x) => (x.id === s.id ? { ...x, enabled: !x.enabled } : x)));
       renderSchedList();
     });
-    row.querySelector(".sched-del")?.addEventListener("click", () => {
+    row.querySelector("[data-del]")?.addEventListener("click", () => {
       saveSchedules(loadSchedules().filter((x) => x.id !== s.id));
       renderSchedList();
     });
@@ -114,6 +116,7 @@ function openScheduler(): void {
     : `<option value="">No saved presets</option>`;
   renderSchedList();
   schedModal.classList.add("open");
+  focusSelect(schedTpl);
 }
 function closeScheduler(): void {
   schedModal?.classList.remove("open");

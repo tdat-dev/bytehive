@@ -5,6 +5,7 @@
 
 import { mountTerminal, type TerminalHandle } from "./terminal";
 import { recordRead, fsReadDir, fsDelete } from "./ipc";
+import { ICON_CLOSE } from "./icons";
 import { getTermFontSize } from "./settings";
 import { activeWs } from "./appstate";
 import { type Workspace } from "./panetypes";
@@ -198,12 +199,12 @@ async function renderReplayList(dir: string): Promise<void> {
     row.innerHTML =
       `<span class="replay-rl"><b>${escHtml(r.agent)}</b><span>${escHtml(when)}</span></span>` +
       `<span class="replay-rdur">${escHtml(fmtSize(r.size))}</span>` +
-      `<button class="btn quiet icon sm" aria-label="Delete recording">✕</button>`;
+      `<button class="btn quiet icon sm" data-del aria-label="Delete recording">${ICON_CLOSE}</button>`;
     row.addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).closest(".replay-rdel")) return;
+      if ((e.target as HTMLElement).closest("[data-del]")) return;
       void rplOpen(r.path, `${r.agent} · ${when}`);
     });
-    row.querySelector(".replay-rdel")?.addEventListener("click", async (e) => {
+    row.querySelector("[data-del]")?.addEventListener("click", async (e) => {
       e.stopPropagation();
       try {
         await fsDelete(dir, `${REC_DIR_REL}/${r.name}`);

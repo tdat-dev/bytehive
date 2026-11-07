@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { cardToAgentText, boardToMarkdown, type Card, type Board } from "./kanban";
+import { describe, it, expect, vi } from "vitest";
+import { cardToAgentText, boardToMarkdown, promptUrl, type Card, type Board } from "./kanban";
 
 const mkCard = (over: Partial<Card> = {}): Card => ({
   id: "c1",
@@ -88,5 +88,37 @@ describe("boardToMarkdown", () => {
     expect(md).toContain("- [ ] Parent");
     expect(md).toContain("  - [x] sub a");
     expect(md).toContain("  - [ ] sub b");
+  });
+});
+
+describe("the Capture web bar", () => {
+  const open = (initial = "http://localhost:5173") => {
+    document.body.innerHTML = `<div id="kb"></div>`;
+    return promptUrl(document.getElementById("kb"), initial);
+  };
+  const bar = () => document.querySelector(".kb-urlbar");
+
+  it("gives nothing back and goes away on Cancel", async () => {
+    const got = open();
+    document.querySelector<HTMLElement>('[aria-label="Cancel"]')!.click();
+    expect(await got).toBeNull();
+    expect(bar()).toBeNull();
+  });
+  it("gives the address back on Capture", async () => {
+    const got = open();
+    document.querySelector<HTMLElement>("[data-capture]")!.click();
+    expect(await got).toBe("http://localhost:5173");
+  });
+  it("takes Enter and Esc in the field", async () => {
+    let got = open();
+    document.querySelector("input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(await got).toBe("http://localhost:5173");
+    got = open();
+    const board = vi.fn();
+    document.addEventListener("keydown", board);
+    document.querySelector("input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(await got).toBeNull();
+    expect(board).not.toHaveBeenCalled(); // the Board behind it stays open
+    document.removeEventListener("keydown", board);
   });
 });

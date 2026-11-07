@@ -140,6 +140,33 @@ function fmtDue(iso: string): { label: string; overdue: boolean; soon: boolean }
   return { label, overdue: diff < 0, soon: diff >= 0 && diff <= 1 };
 }
 
+/** Ask for an address in a bar at the top of the board. Enter or Capture gives it back; Esc or Cancel gives null. */
+export function promptUrl(root: HTMLElement | null, initial: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!root) return resolve(null);
+    const bar = el("div", "kb-urlbar");
+    bar.innerHTML =
+      `<input class="kb-url" placeholder="http://localhost:5173" spellcheck="false">` +
+      `<button class="btn secondary sm" data-capture>Capture</button>` +
+      `<button class="btn quiet icon sm" data-cancel aria-label="Cancel">${ICON_CLOSE}</button>`;
+    const input = bar.querySelector("input") as HTMLInputElement;
+    input.value = initial;
+    root.prepend(bar);
+    input.focus();
+    input.select();
+    const done = (v: string | null) => {
+      bar.remove();
+      resolve(v);
+    };
+    bar.querySelector("[data-capture]")!.addEventListener("click", () => done(input.value.trim() || null));
+    bar.querySelector("[data-cancel]")!.addEventListener("click", () => done(null));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") done(input.value.trim() || null);
+      else if (e.key === "Escape") { e.stopPropagation(); done(null); }
+    });
+  });
+}
+
 export function createKanban() {
   let ctx: DockContext | null = null;
   let board: Board = defaultBoard();
@@ -460,35 +487,9 @@ export function createKanban() {
   /* ---- C: screenshot a web preview into the repo ---- */
   const urlKey = () => `maestro.kanban.previewUrl.${ctx?.key ?? ""}`;
 
-  function promptUrl(initial: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      if (!root) return resolve(null);
-      const bar = el("div", "kb-urlbar");
-      bar.innerHTML =
-        `<input class="kb-url" placeholder="http://localhost:5173" spellcheck="false">` +
-        `<button class="btn secondary sm kb-add-btn">Capture</button>` +
-        `<button class="btn quiet icon sm" aria-label="Cancel">${ICON_CLOSE}</button>`;
-      const input = bar.querySelector("input") as HTMLInputElement;
-      input.value = initial;
-      root.prepend(bar);
-      input.focus();
-      input.select();
-      const done = (v: string | null) => {
-        bar.remove();
-        resolve(v);
-      };
-      bar.querySelector(".kb-add-btn")!.addEventListener("click", () => done(input.value.trim() || null));
-      bar.querySelector(".kb-url-x")!.addEventListener("click", () => done(null));
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") done(input.value.trim() || null);
-        else if (e.key === "Escape") done(null);
-      });
-    });
-  }
-
   async function captureWeb(): Promise<void> {
     if (!dir) return;
-    const url = await promptUrl(localStorage.getItem(urlKey()) ?? "");
+    const url = await promptUrl(root, localStorage.getItem(urlKey()) ?? "");
     if (!url) return;
     localStorage.setItem(urlKey(), url);
     const name = `shot-${Date.now().toString(36)}.png`;
