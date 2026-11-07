@@ -1,10 +1,11 @@
 /* The office around the scene: where you are, what you can press, and what needs you.
  * Three levels on one axis. Nothing moves between hosts: at a Desk the layer narrows to a
  * column and the app's real stage is simply no longer covered. */
-import { CHIP_BG, OFFICE, PANEL_BG, TAG_INK } from "./palette";
+import { OFFICE } from "./palette";
 import type { OfficeFloor, OfficeModel, OfficePerson } from "./model";
 import { BUILDING, clampLevel, crumbs, deskOf, escapeGoesUp, navUp, type Crumb, type DeskLevel, type DeskTab, type Level } from "./nav";
-import { createJobBox, createRail, why } from "./rail";
+import { glyph } from "../../icons";
+import { createJobBox, createRail, sendsOnEnter, why } from "./rail";
 import type { DeskReport, ReportCard } from "./report";
 import type { Anchor, OfficeScene, SceneOptions } from "./scene";
 import type { OfficeSource } from "./source";
@@ -43,6 +44,10 @@ const HOVER_MS = 80;
 const PAINT_WAIT_MS = 100;
 /** Space between a tag and what it marks, and between a tag and the stage's edge. */
 const TAG_GAP = 8;
+/** A floor's sign hangs this far off the building, on a line. As --office-leader. */
+const LEADER = 28;
+/** How much of the job box's width the picture moves over for: the plot may run under its edge. */
+const JOB_BOX_SHARE = 0.38;
 const HEAD_GAP = 3;
 const TAG_EDGE = 6;
 const TAG_TOUCH = 2;
@@ -94,7 +99,9 @@ interface Tag { key: string; id: string; kind: Anchor["kind"]; html: string; lab
 
 function floorTag(f: OfficeFloor): Tag {
   const closed = f.open ? "" : " <span>closed</span>";
-  return { key: `floor:${f.id}`, id: f.id, kind: "floor", html: `<b>${esc(f.name)}</b> <span>${people(f.people.length)}</span>${needYou(f.needs)}${closed}`, label: f.name, needs: f.needs > 0, to: { kind: "floor", floorId: f.id } };
+  // The ring turns only while a terminal up there is really printing.
+  const live = f.people.some((p) => p.printing) ? glyph("working") : "";
+  return { key: `floor:${f.id}`, id: f.id, kind: "floor", html: `${live}<b>${esc(f.name)}</b> <span>${people(f.people.length)}</span>${needYou(f.needs)}${closed}`, label: f.name, needs: f.needs > 0, to: { kind: "floor", floorId: f.id } };
 }
 
 /** `short`: a full floor has room over each head for a name and no more. The rest stays in its label. */
@@ -146,11 +153,11 @@ const LAYOUT = `
   <header class="of-bar" data-tauri-drag-region>
     <nav class="of-crumbs" aria-label="Where you are" data-crumbs></nav>
     <div class="of-acts">
-      <button type="button" class="of-door" data-jump hidden title="Jump to an agent or run a command  ·  Ctrl+K">Jump</button>
-      <button type="button" class="of-door" data-board-door hidden title="Board  ·  Ctrl+Shift+K">Board</button>
-      <button type="button" class="of-inbox" data-new-agent hidden title="New agent  ·  Ctrl+Shift+T">New agent</button>
-      <button type="button" class="of-inbox" data-open-project hidden>Open project</button>
-      <button type="button" class="of-inbox" data-leave>Inbox</button>
+      <button type="button" class="btn" data-jump hidden title="Jump to an agent or run a command  ·  Ctrl+K">Jump</button>
+      <button type="button" class="btn" data-board-door hidden title="Board  ·  Ctrl+Shift+K">Board</button>
+      <button type="button" class="btn secondary" data-new-agent hidden title="New agent  ·  Ctrl+Shift+T">New agent</button>
+      <button type="button" class="btn secondary" data-open-project hidden>Open project</button>
+      <button type="button" class="btn secondary" data-leave>Inbox</button>
     </div>
   </header>
   <div class="of-stage" data-stage>
@@ -161,13 +168,13 @@ const LAYOUT = `
   <div class="of-job" data-job-box></div>
   <form class="of-msg" data-msg-box hidden>
     <label for="ofMsg"></label><textarea id="ofMsg" rows="2"></textarea>
-    <div class="of-msg-foot"><p class="of-sent" role="status" data-sent></p><button type="submit" class="co-send" data-send>Send</button></div>
+    <div class="of-msg-foot"><p class="of-sent" role="status" data-sent></p><button type="submit" class="btn secondary" data-send>Send</button></div>
     <p class="co-error" role="alert" data-msg-error hidden></p>
   </form>
   <aside class="of-rail" aria-label="Needs you" data-rail></aside>
   <section class="of-cover of-report" id="ofReport" role="tabpanel" aria-labelledby="ofTabReport" tabindex="0" data-report hidden></section>
   <section class="of-cover of-wake-cover" data-wake-card hidden>
-    <div class="of-wake"><p data-wake-line></p><button type="button" class="co-send" data-wake></button><p class="co-error" role="alert" data-wake-error hidden></p></div>
+    <div class="of-wake"><p data-wake-line></p><button type="button" class="btn secondary" data-wake></button><p class="co-error" role="alert" data-wake-error hidden></p></div>
   </section>`;
 
 export function createShell(source: OfficeSource, host: ShellHost) {
@@ -177,7 +184,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   el.hidden = true;
   el.innerHTML = LAYOUT;
   // The scene's own colours, so the chrome around it cannot drift from it.
-  for (const [name, value] of Object.entries({ sky: OFFICE.sky, honey: OFFICE.honey, chip: CHIP_BG, panel: PANEL_BG, ink: TAG_INK })) el.style.setProperty(`--of-${name}`, value);
+  el.style.setProperty("--of-sky", OFFICE.sky);
 
   const find = <T extends HTMLElement>(sel: string) => el.querySelector<T>(sel)!;
   const stage = find("[data-stage]");
@@ -230,7 +237,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
 
   const placed = new Map<string, { el: HTMLElement; tag: Tag }>();
 
-  const rail = createRail(source, (l) => go(l), () => level);
+  const rail = createRail(source, (l) => go(l), () => level, { face: (p) => scene?.portrait?.(p) ?? null });
   const jobBox = createJobBox(source);
   try {
     rail.mount(find("[data-rail]"));
@@ -255,6 +262,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     dpr: window.devicePixelRatio,
     onLost: () => host.contextLost?.(),
     onRestored: () => host.contextRestored?.(),
+    onFace: () => rail.draw(),
   };
 
   /* ---- what is on screen ---- */
@@ -345,7 +353,16 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     const boxes = live.map((t, i) => {
       const b = order[i];
       const a = spots.get(t.key)!;
-      if (placed.get(t.key)?.tag.html !== t.html) b.innerHTML = t.html;
+      const before = placed.get(t.key)?.tag.html;
+      if (before !== t.html) {
+        b.innerHTML = t.html;
+        // A number that changed says so once, and one that has not stays still.
+        if (before !== undefined && t.kind !== "person") {
+          b.classList.remove("is-new");
+          void b.offsetWidth;
+          b.classList.add("is-new");
+        }
+      }
       placed.set(t.key, { el: b, tag: t });
       b.classList.toggle("is-needs", t.needs);
       if (t.label) b.title = t.label;
@@ -353,7 +370,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
       b.hidden = !a.visible;
       const bw = b.offsetWidth;
       const bh = b.offsetHeight;
-      const x = t.kind === "person" ? a.x - bw / 2 : a.x + TAG_GAP;
+      const x = t.kind === "person" ? a.x - bw / 2 : a.x + (t.kind === "board" ? TAG_GAP : LEADER);
       const y = t.kind === "person" ? a.y - bh - HEAD_GAP : a.y - bh / 2;
       return { x: Math.max(TAG_EDGE, Math.min(x, w - bw - TAG_EDGE)), y: Math.max(TAG_EDGE, Math.min(y, h - bh - TAG_EDGE)), w: bw, h: bh };
     });
@@ -494,7 +511,15 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     if (fitTimer !== null) clearTimeout(fitTimer);
     fitTimer = null;
     scene?.resize(stage.clientWidth, stage.clientHeight);
+    clearForJobBox();
     place();
+  }
+
+  /** The job box stands over the left of the Building: the picture moves over for it. */
+  function clearForJobBox(): void {
+    const box = jobEl.getBoundingClientRect();
+    const over = !jobEl.hidden && box.left - stage.getBoundingClientRect().left < stage.clientWidth / 2;
+    scene?.setClear?.(over ? (box.right - stage.getBoundingClientRect().left) * JOB_BOX_SHARE : 0);
   }
 
   /* ---- the scene ---- */
@@ -533,9 +558,12 @@ export function createShell(source: OfficeSource, host: ShellHost) {
       });
       scene.resize(stage.clientWidth, stage.clientHeight);
       draw();
+      clearForJobBox();
       scene.setLevel(level, true);
       moving = false;
       place();
+      // The cards were drawn before there was anyone to paint their portraits.
+      rail.draw();
     } catch (e) {
       sceneFailed(why(e));
     } finally {
@@ -656,6 +684,11 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     sendMessage();
   });
   msgBox.addEventListener("input", () => { msgSent.textContent = ""; });
+  msgBox.addEventListener("keydown", (e) => {
+    if (!sendsOnEnter(e)) return;
+    e.preventDefault();
+    sendMessage();
+  });
   el.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && e.target instanceof HTMLTextAreaElement) e.target.blur();
   });

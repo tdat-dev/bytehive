@@ -86,6 +86,12 @@ describe("shotFor", () => {
       expect(Math.abs(at.y)).toBeLessThanOrEqual(1);
     }
   });
+  it("moves the Building over for what stands on the left, and still holds every corner", () => {
+    const s = shotFor(BUILDING, t, 1.4, 0.3);
+    expect(s.ox).toBeCloseTo(0.15);
+    for (const p of towerPoints(t)) expect(Math.abs(inFrame(s, p, 1.4 * 0.7).x)).toBeLessThanOrEqual(1);
+    expect(shotFor({ kind: "floor", floorId: "f1" }, t, 1.4, 0.3).ox).toBe(0);
+  });
   it("gives up the bottom of a very tall tower, never the top", () => {
     const eight = towerLayout(model(8));
     const twelve = towerLayout(model(12));

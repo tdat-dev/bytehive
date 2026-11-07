@@ -273,6 +273,11 @@ export function buildPerson(p: OfficePerson, kit: PeopleKit, marked = false): Ob
   return root;
 }
 
+/** Head and shoulders for a portrait: the same shape the scene draws, so the card looks like the person. */
+export const portraitShape = (p: OfficePerson, kit: PeopleKit): BufferGeometry => shapesOf(p, kit).shapes.torso;
+/** Where the face is in that shape. */
+export const PORTRAIT_FACE_Y = HEAD_UP;
+
 /** Puts a person at a desk, on a floor at height `y`. */
 export function seatPerson(obj: Object3D, d: Seat, y: number): void {
   const c = chairSpot(d);

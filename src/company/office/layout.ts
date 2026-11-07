@@ -34,7 +34,8 @@ export interface Seat { x: number; z: number; rot: number }
 export interface Desk extends Seat { personId: string }
 export interface FloorSpot { id: string; y: number; desks: Desk[] }
 export interface Tower { floors: FloorSpot[]; roofY: number; lift: { x: number; z: number; top: number }; width: number }
-export interface Shot { px: number; py: number; pz: number; tx: number; ty: number; tz: number; fov: number }
+/** `ox`: how far the picture slides right, as a share of the frame, to clear what stands on its left. */
+export interface Shot { px: number; py: number; pz: number; tx: number; ty: number; tz: number; fov: number; ox: number }
 
 /** The Founder's desk, out on the roof in front of the penthouse, facing the camera. */
 export const FOUNDER_DESK: Seat = { x: -1.6, z: 1.4, rot: Math.PI };
@@ -83,7 +84,7 @@ function shot(tx: number, ty: number, tz: number, w: number, h: number, aspect: 
   const half = Math.tan((FOV * Math.PI) / 360);
   const dist = Math.max(h / 2 / half, w / 2 / (half * aspect)) * 1.18;
   const k = dist / VIEW_LEN;
-  return { px: tx + VIEW.x * k, py: ty + VIEW.y * k, pz: tz + VIEW.z * k, tx, ty, tz, fov: FOV };
+  return { px: tx + VIEW.x * k, py: ty + VIEW.y * k, pz: tz + VIEW.z * k, tx, ty, tz, fov: FOV, ox: 0 };
 }
 
 /** The shot that holds every point, measured as the lens sees them: a corner nearer the
@@ -98,7 +99,7 @@ export function fitShot(points: Point[], aspect: number, room = 0.92): Shot {
   const dist = Math.max(...points.map((_, i) => Math.max(Math.abs(us[i] - uc) / (half * aspect), Math.abs(vs[i] - vc) / half) + ws[i] - wc));
   const along = (axis: keyof Point) => RIGHT[axis] * uc + UP[axis] * vc + AIM[axis] * wc;
   const [tx, ty, tz] = [along("x"), along("y"), along("z")];
-  return { px: tx + AIM.x * dist, py: ty + AIM.y * dist, pz: tz + AIM.z * dist, tx, ty, tz, fov: FOV };
+  return { px: tx + AIM.x * dist, py: ty + AIM.y * dist, pz: tz + AIM.z * dist, tx, ty, tz, fov: FOV, ox: 0 };
 }
 
 /** What the Building shot must hold: the top of the mast, the roof's corners and the plot.
@@ -122,7 +123,8 @@ function floorPoints(f: FloorSpot): Point[] {
   return [...side.map((c) => ({ ...c, y: f.y - 0.1 })), ...side.map((c) => ({ ...c, y: f.y + STOREY - SLAB }))];
 }
 
-export function shotFor(l: Level, t: Tower, aspect: number): Shot {
+/** `clear`: the share of the frame's width on the left that the Building shot leaves free for the job box. */
+export function shotFor(l: Level, t: Tower, aspect: number, clear = 0): Shot {
   if (l.kind === "desk" && !l.floorId) return shot(FOUNDER_DESK.x, t.roofY + 1.2, FOUNDER_DESK.z, ROOM_W * 0.7, STOREY * 1.05, aspect);
   const f = l.kind === "building" ? undefined : t.floors.find((x) => x.id === l.floorId);
   if (f && l.kind === "floor") return fitShot(floorPoints(f), aspect, 1);
@@ -130,12 +132,12 @@ export function shotFor(l: Level, t: Tower, aspect: number): Shot {
     const d = f.desks.find((x) => x.personId === l.personId);
     return shot(d?.x ?? 0, f.y + 1.1, d?.z ?? 0, ROOM_W * 0.62, STOREY * 0.86, aspect);
   }
-  return fitShot(towerPoints(t), aspect);
+  return { ...fitShot(towerPoints(t), aspect * (1 - clear)), ox: clear / 2 };
 }
 
 export const mixShots = (a: Shot, b: Shot, k: number): Shot => {
   const at = (x: number, y: number) => x + (y - x) * k;
-  return { px: at(a.px, b.px), py: at(a.py, b.py), pz: at(a.pz, b.pz), tx: at(a.tx, b.tx), ty: at(a.ty, b.ty), tz: at(a.tz, b.tz), fov: at(a.fov, b.fov) };
+  return { px: at(a.px, b.px), py: at(a.py, b.py), pz: at(a.pz, b.pz), tx: at(a.tx, b.tx), ty: at(a.ty, b.ty), tz: at(a.tz, b.tz), fov: at(a.fov, b.fov), ox: at(a.ox, b.ox) };
 };
 
 const LEG_MS = 11_000;

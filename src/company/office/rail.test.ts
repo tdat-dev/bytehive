@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NeedRow } from "../needs";
 import type { OfficeModel } from "./model";
 import { BUILDING, type Level } from "./nav";
-import { createJobBox, createRail } from "./rail";
+import { createJobBox, createRail, planSentence, sendsOnEnter, tokensShort, type RailOptions } from "./rail";
 import type { OfficeSource, Snapshot } from "./source";
 
 const planRow: NeedRow = {
@@ -26,12 +26,13 @@ function fake(snap: Partial<Snapshot> = {}) {
   };
   return s as typeof s & OfficeSource;
 }
-const mountRail = (s: OfficeSource, go = vi.fn(), where?: () => Level) => {
+const mountRail = (s: OfficeSource, go = vi.fn(), where?: () => Level, o: RailOptions = { confirm: async () => true }) => {
   const el = document.createElement("div");
   document.body.appendChild(el);
-  createRail(s, go, where).mount(el);
+  createRail(s, go, where, o).mount(el);
   return { el, go };
 };
+const founder = { id: "founder", name: "Founder", title: "Founder", shirt: "#eef0f4", floorId: null };
 const click = (el: HTMLElement, sel: string) => el.querySelector<HTMLElement>(sel)!.click();
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -76,20 +77,21 @@ describe("Needs you rail", () => {
     click(el, '[data-act="reject"]');
     expect(s.reject).toHaveBeenCalledWith("J-1", "Fewer people");
   });
-  it("asks once more before an empty note cancels the job", async () => {
+  it("opens the note box on Send back, and an empty note never reaches the job", async () => {
     const s = fake();
     const { el } = mountRail(s);
-    const button = () => el.querySelector<HTMLElement>('[data-act="reject"]')!;
-    expect(button().textContent).toBe("Send back");
-    button().focus();
-    button().click();
+    const field = () => el.querySelector<HTMLElement>(".co-field")!;
+    const note = () => el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!;
+    expect(field().hidden).toBe(true);
+    click(el, '[data-act="reject"]');
+    expect(field().hidden).toBe(false);
+    expect(document.activeElement).toBe(note());
+    click(el, '[data-act="reject"]');
+    click(el, '[data-act="reject"]');
     expect(s.reject).not.toHaveBeenCalled();
-    expect(button().textContent).toBe("Press again to cancel the job");
-    expect(document.activeElement).toBe(button());
-    button().click();
-    expect(s.reject).toHaveBeenCalledWith("J-1", "");
+    expect(el.textContent).toContain("Send back needs a note.");
     await tick();
-    expect(button().textContent).toBe("Send back");
+    expect(s.reject).not.toHaveBeenCalled();
   });
   it("takes spaces for an empty note", () => {
     const s = fake();
@@ -98,14 +100,17 @@ describe("Needs you rail", () => {
     click(el, '[data-act="reject"]');
     expect(s.reject).not.toHaveBeenCalled();
   });
-  it("stands down when the owner starts writing a note", () => {
+  it("stops saying a note is needed when the owner starts writing one", () => {
     const s = fake();
     const { el } = mountRail(s);
     click(el, '[data-act="reject"]');
+    click(el, '[data-act="reject"]');
+    expect(el.querySelector(".co-field .co-hint")).not.toBeNull();
     const note = el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!;
     note.value = "F";
     note.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(el.querySelector('[data-act="reject"]')?.textContent).toBe("Send back");
+    expect(el.querySelector(".co-field .co-hint")).toBeNull();
+    expect(el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!.value).toBe("F");
   });
   it("clears the note once the plan went back, even with the row still there", async () => {
     const s = fake();
@@ -213,14 +218,14 @@ describe("Needs you rail", () => {
   });
   it("flies to where a row points when the row is clicked", () => {
     const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };
-    const s = fake({ model: model([row], { founder: { id: "founder", name: "Founder", floorId: null } as never }) });
+    const s = fake({ model: model([row], { founder: founder as never }) });
     const { el, go } = mountRail(s);
     click(el, "[data-row]");
     expect(go).toHaveBeenCalledWith({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" });
   });
   it("opens the changes of a job waiting to be merged", () => {
     const row: NeedRow = { key: "merge-J-1", kind: "merge", jobId: "J-1", personId: "p1", title: "Review and merge: Add login", detail: "Shipped" };
-    const person = { id: "p1", name: "Ana", floorId: "a" } as never;
+    const person = { id: "p1", name: "Ana", title: "QA", shirt: "#5fd08a", floorId: "a" } as never;
     const { el, go } = mountRail(fake({ model: model([row], { floors: [{ id: "a", name: "gcare", people: [person] } as never] }) }));
     click(el, "[data-row]");
     expect(go).toHaveBeenCalledWith({ kind: "desk", personId: "p1", floorId: "a", tab: "changes" });
@@ -267,12 +272,98 @@ describe("Needs you rail", () => {
     expect(list.textContent).toContain("J-5. Planning,");
     expect(list.textContent).toContain("J-7. Waiting for your approval,");
   });
-  it("stops a Job from the Jobs list", () => {
-    const s = fake({ model: model([], { jobs: [{ id: "J-2", title: "T", status: "running", label: "Running", tokensUsed: 1, tokenCap: 2 }] }) });
+  const going = (status = "running", label = "Running") => ({ id: "J-2", title: "T", status, label, tokensUsed: 1, tokenCap: 2 });
+  it("stops a Job from its menu, once the owner says yes", async () => {
+    const s = fake({ model: model([], { jobs: [going()] as never }) });
     const { el } = mountRail(s);
     expect(el.textContent).toContain("Running");
     click(el, '[data-act="stop"]');
+    await tick();
     expect(s.stopJob).toHaveBeenCalledWith("J-2");
+  });
+  it("leaves the Job alone when the owner says no", async () => {
+    const s = fake({ model: model([], { jobs: [going()] as never }) });
+    const { el } = mountRail(s, vi.fn(), undefined, { confirm: async () => false });
+    click(el, '[data-act="stop"]');
+    await tick();
+    expect(s.stopJob).not.toHaveBeenCalled();
+  });
+  it("calls it Cancel job before anyone has started", () => {
+    const { el } = mountRail(fake({ model: model([], { jobs: [going("awaiting-plan", "Waiting for your approval")] as never }) }));
+    expect(el.querySelector('[data-act="stop"]')?.textContent).toBe("Cancel job");
+  });
+  it("keeps Stop in a menu, which opens from its button and closes on Esc with the keyboard back there", () => {
+    const { el } = mountRail(fake({ model: model([], { jobs: [going()] as never }) }));
+    const menu = () => el.querySelector<HTMLElement>(".co-menu")!;
+    const opener = () => el.querySelector<HTMLElement>("[data-menu]")!;
+    expect(menu().hidden).toBe(true);
+    opener().click();
+    expect(menu().hidden).toBe(false);
+    expect(opener().getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(el.querySelector('[data-act="stop"]'));
+    el.querySelector('[data-act="stop"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(menu().hidden).toBe(true);
+    expect(document.activeElement).toBe(opener());
+  });
+  it("draws a Job as one line with how far along it is, the tokens for whoever reads them", () => {
+    const row = { ...going(), tokensUsed: 1_200_000, tokenCap: 5_000_000 };
+    const { el } = mountRail(fake({ model: model([], { jobs: [row] as never }) }));
+    expect(el.querySelector<HTMLElement>(".co-job")!.getAttribute("style")).toContain("--done:24%");
+    expect(el.querySelector(".co-state")?.textContent).toBe("Running, 24%");
+    expect(el.querySelector(".of-sr")?.textContent).toContain("1,200,000 of 5,000,000 tokens");
+  });
+  it("has no honey and no primary button when nothing needs you", () => {
+    const { el } = mountRail(fake({ model: model([], { jobs: [going()] as never }) }));
+    expect(el.querySelector(".btn.primary")).toBeNull();
+    expect(el.querySelector(".co-n")?.textContent).toBe("");
+  });
+  it("gives the first thing that needs you the one primary button", () => {
+    const rows: NeedRow[] = [planRow, { key: "paused-J-2", kind: "paused", jobId: "J-2", personId: null, title: "Paused: B", detail: "" }, { key: "merge-J-3", kind: "merge", jobId: "J-3", personId: null, title: "Merge C", detail: "" }];
+    const { el } = mountRail(fake({ model: model(rows) }));
+    const primary = [...el.querySelectorAll<HTMLElement>(".btn.primary")];
+    expect(primary.map((b) => b.dataset.act)).toEqual(["approve"]);
+  });
+  it("reads the plan as a sentence, with the list folded under it", () => {
+    const row: NeedRow = { ...planRow, plan: { hires: ["Developer on bytehive", "Copywriter on gcare"], floors: [{ floor: "bytehive", cards: ["a", "b"] }, { floor: "gcare", cards: ["c"] }], tokenCap: 5_000_000, newRoles: [] } };
+    const { el } = mountRail(fake({ model: model([row]) }));
+    expect(el.querySelector(".co-what")?.textContent).toBe("The Founder wants to hire a Developer on bytehive and a Copywriter on gcare, 3 cards, up to 5M tokens.");
+    expect(el.querySelector<HTMLDetailsElement>("details")?.open).toBe(false);
+  });
+  it("leaves the details open when a plan writes a new role: the owner reads it word for word", () => {
+    const row: NeedRow = { ...planRow, plan: { hires: [], floors: [], tokenCap: 1, newRoles: [{ id: "a", title: "A", department: "D", prompt: "p" } as never] } };
+    const { el } = mountRail(fake({ model: model([row]) }));
+    expect(el.querySelector<HTMLDetailsElement>("details")?.open).toBe(true);
+  });
+  it("shows a person's portrait, and until there is one their initial on their colour", () => {
+    const person = { id: "p1", name: "ana", title: "QA", shirt: "#5fd08a", floorId: "a" } as never;
+    const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "p1", title: "Ana is stuck", detail: "" };
+    const s = fake({ model: model([row], { floors: [{ id: "a", name: "gcare", people: [person] } as never] }) });
+    let url: string | null = null;
+    const { el } = mountRail(s, vi.fn(), undefined, { face: () => url });
+    expect(el.querySelector("span.co-face")?.textContent).toBe("A");
+    expect(el.querySelector("span.co-face")?.getAttribute("style")).toBe("--c:#5fd08a");
+    url = "blob:face";
+    s.fire();
+    expect(el.querySelector<HTMLImageElement>("img.co-face")?.getAttribute("src")).toBe("blob:face");
+  });
+  it("lets no name or colour from a file into the page as markup", () => {
+    const person = { id: "p1", name: `<img src=x onerror=alert(1)>`, title: `<b>x</b>`, shirt: `red;"><img src=x onerror=alert(1)>`, floorId: "a" } as never;
+    const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "p1", title: `<img src=x>`, detail: "" };
+    const { el } = mountRail(fake({ model: model([row], { floors: [{ id: "a", name: `<i>`, people: [person] } as never] }) }));
+    expect(el.querySelector("img")).toBeNull();
+    expect(el.querySelector("[onerror]")).toBeNull();
+    expect(el.querySelector(".co-who b")?.textContent).toBe(`<img src=x onerror=alert(1)>`);
+    expect(el.querySelector("span.co-face")?.getAttribute("style")).toBe("--c:#252a37");
+  });
+  it("goes from an Open button too, not only the head of the card", () => {
+    const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };
+    const { el, go } = mountRail(fake({ model: model([row], { founder: founder as never }) }));
+    click(el, "[data-open]");
+    expect(go).toHaveBeenCalledWith({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" });
+  });
+  it("says what the team is doing when nothing needs you", () => {
+    const { el } = mountRail(fake({ model: model([], { counts: { people: 4, working: 3, needs: 0 } }) }));
+    expect(el.textContent).toContain("3 people are working.");
   });
   it("says when no job is running", () => {
     expect(mountRail(fake({ model: model([]) })).el.querySelector("[data-jobs]")?.textContent).toContain("No job is running.");
@@ -290,7 +381,7 @@ describe("Needs you rail", () => {
     const { el } = mountRail(fake({ model: model([row]) }));
     expect(el.querySelector("img")).toBeNull();
     expect(el.querySelector("[onerror]")).toBeNull();
-    expect(el.querySelector(".co-merge span")?.textContent).toBe(evil);
+    expect(el.querySelector(".co-merge .co-what")?.textContent).toBe(evil);
   });
   it("has BUILDING to go to for a row with nobody, from a floor", () => {
     const row: NeedRow = { key: "k", kind: "paused", jobId: "J-1", personId: null, title: "Paused", detail: "" };
@@ -306,7 +397,7 @@ describe("Needs you rail", () => {
   });
   it("draws the row of the desk you are at as plain text", () => {
     const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };
-    const s = fake({ model: model([row], { founder: { id: "founder", name: "Founder", floorId: null } as never }) });
+    const s = fake({ model: model([row], { founder: founder as never }) });
     let at: Level = BUILDING;
     const { el } = mountRail(s, vi.fn(), () => at);
     expect(el.querySelector("[data-row]")).not.toBeNull();
@@ -378,6 +469,57 @@ describe("job box", () => {
     submit(el);
     expect(s.giveJob).not.toHaveBeenCalled();
   });
+  const key = (over: KeyboardEventInit & { keyCode?: number } = {}) => {
+    const e = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...over });
+    if (over.keyCode !== undefined) Object.defineProperty(e, "keyCode", { value: over.keyCode });
+    return e;
+  };
+  const typed = (el: HTMLElement, text: string) => { const box = el.querySelector("textarea")!; box.value = text; return box; };
+  it("sends on Enter", async () => {
+    const s = fake();
+    const el = mountBox(s);
+    typed(el, "Add search").dispatchEvent(key());
+    await tick();
+    expect(s.giveJob).toHaveBeenCalledWith("Add search");
+  });
+  it("starts a new line on Shift+Enter", () => {
+    const s = fake();
+    const el = mountBox(s);
+    typed(el, "Add").dispatchEvent(key({ shiftKey: true }));
+    expect(s.giveJob).not.toHaveBeenCalled();
+  });
+  it("leaves Enter to the IME while it is composing, or Vietnamese would send half a word", () => {
+    const s = fake();
+    const el = mountBox(s);
+    typed(el, "Thêm trang gi").dispatchEvent(key({ isComposing: true }));
+    typed(el, "Thêm trang gi").dispatchEvent(key({ keyCode: 229 }));
+    expect(s.giveJob).not.toHaveBeenCalled();
+  });
+  it("knows the same rule wherever it is asked", () => {
+    expect(sendsOnEnter(key())).toBe(true);
+    expect(sendsOnEnter(key({ key: "a" }))).toBe(false);
+    expect(sendsOnEnter(key({ isComposing: true }))).toBe(false);
+  });
+  it("puts an example in the box and leaves the sending to the owner", () => {
+    const s = fake();
+    const el = mountBox(s);
+    click(el, "[data-chip]");
+    expect(el.querySelector("textarea")!.value).toBe("Add a pricing page");
+    expect(document.activeElement).toBe(el.querySelector("textarea"));
+    expect(s.giveJob).not.toHaveBeenCalled();
+    expect(el.querySelector<HTMLElement>("[data-chips]")!.hidden).toBe(true);
+  });
+  it("is honey only with something written and nothing else waiting", () => {
+    const s = fake({ model: model([]) });
+    const el = mountBox(s);
+    const send = () => el.querySelector<HTMLElement>("[data-send]")!;
+    expect(send().classList.contains("primary")).toBe(false);
+    typed(el, "Do it").dispatchEvent(new Event("input", { bubbles: true }));
+    expect(send().classList.contains("primary")).toBe(true);
+    s.snap = { model: model(), note: null, error: null };
+    s.fire();
+    expect(send().classList.contains("primary")).toBe(false);
+  });
   it("sends nothing while the Company is not running here", () => {
     const s = fake({ model: null });
     const el = mountBox(s);
@@ -385,5 +527,19 @@ describe("job box", () => {
     el.querySelector("textarea")!.value = "Do it";
     submit(el);
     expect(s.giveJob).not.toHaveBeenCalled();
+  });
+});
+
+describe("the words of a plan", () => {
+  it("says an, before a vowel", () => {
+    expect(planSentence({ hires: ["Analyst on gcare"], floors: [], tokenCap: 1000, newRoles: [] })).toBe("The Founder wants to hire an Analyst on gcare, 0 cards, up to 1K tokens.");
+  });
+  it("says so when nobody new is needed", () => {
+    expect(planSentence({ hires: [], floors: [{ floor: "a", cards: ["x"] }], tokenCap: 1_200_000, newRoles: [] })).toBe("The Founder wants to do this with the people you have, 1 card, up to 1.2M tokens.");
+  });
+  it("shortens tokens the way people say them", () => {
+    expect(tokensShort(5_000_000)).toBe("5M");
+    expect(tokensShort(1_250_000)).toBe("1.3M");
+    expect(tokensShort(900)).toBe("900");
   });
 });

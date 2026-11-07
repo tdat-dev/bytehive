@@ -304,6 +304,15 @@ describe("tags", () => {
   });
 });
 
+describe("the floor signs", () => {
+  it("turns the ring only on a floor whose terminal is really printing", async () => {
+    scene.anchors.mockReturnValue([anchor("bytehive", "floor"), anchor("scratch", "floor", 10, 60)] as never);
+    const { shell } = await shown();
+    expect(shell.el.querySelector('[data-tag="bytehive"] .g-work')).not.toBeNull();
+    expect(shell.el.querySelector('[data-tag="scratch"] .g-work')).toBeNull();
+  });
+});
+
 describe("opening", () => {
   it("puts the page on screen before it makes the scene", async () => {
     const frames: FrameRequestCallback[] = [];

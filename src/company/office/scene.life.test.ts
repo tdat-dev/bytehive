@@ -348,7 +348,7 @@ describe("a restored context", () => {
 });
 
 describe("retargeted", () => {
-  const shot = (px: number): Shot => ({ px, py: 0, pz: 0, tx: 0, ty: 0, tz: 0, fov: 15 });
+  const shot = (px: number): Shot => ({ px, py: 0, pz: 0, tx: 0, ty: 0, tz: 0, fov: 15, ox: 0 });
   it("carries on from where the camera is now, not from where the move began", () => {
     const moving = { from: shot(0), to: shot(10), at: 100 };
     expect(retargeted(moving, shot(4), shot(20))).toEqual({ from: shot(4), to: shot(20), at: null });

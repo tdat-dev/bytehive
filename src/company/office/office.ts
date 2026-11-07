@@ -16,9 +16,9 @@ export const OFFICE_3D: boolean = true;
 const USED_KEY = "maestro.office.used";
 /** How long a lost context gets before the Inbox takes over. */
 const RESTORE_MS = 2000;
-const FELL_BACK = "The 3D office could not start, so you are in the Inbox.";
+const FELL_BACK = "The office can't draw on this graphics card. Everything still works here.";
 /** The rail lives in the Inbox, and with no project open Start shows instead. */
-const FELL_BACK_NO_PROJECT = "The 3D office could not start. Open a project to see the Company.";
+const FELL_BACK_NO_PROJECT = "The office can't draw on this graphics card. Open a project to see the Company.";
 const NOT_HERE = "The Company runs in the main window.";
 
 export interface OfficeDeps {

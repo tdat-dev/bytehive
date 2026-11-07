@@ -4,6 +4,7 @@ import { demoSource, levelFrom, type DemoOptions } from "./fixtures";
 import { FLIGHT_MS } from "./layout";
 import type { DeskTab } from "./nav";
 import type { OfficeScene, SceneOptions, SceneStats } from "./scene";
+import { createJobBox, createRail } from "./rail";
 import { createShell, type ShellHost } from "./shell";
 
 declare global {
@@ -17,6 +18,13 @@ const flag = (name: string) => query.get(name) === "1";
 const floors = Number(query.get("floors"));
 const crowd = Number(query.get("crowd"));
 const options: DemoOptions = { empty: flag("empty"), quiet: flag("quiet"), flight: flag("flight"), ...(floors > 0 ? { floors } : {}), ...(crowd > 0 ? { crowd } : {}) };
+
+// The icons and the confirm dialog live in the app's page, so the demo borrows them.
+void fetch("/index.html").then((r) => r.text()).then((page) => {
+  const app = new DOMParser().parseFromString(page, "text/html");
+  const sprite = [...app.querySelectorAll("svg")].find((x) => x.querySelector("symbol"));
+  for (const part of [sprite, app.getElementById("confirmModal")]) if (part) document.body.append(document.importNode(part, true));
+});
 
 const source = demoSource(options);
 const stage = document.getElementById("demoStage")!;
@@ -100,7 +108,16 @@ const host: ShellHost = {
 
 const shell = createShell(source, host);
 document.body.append(shell.el);
-shell.show(levelFrom(query.get("level"), source.snapshot(Date.now()).model!));
+if (flag("side")) {
+  // As office.ts does it with no 3D: the rail and the job box as a column beside the app.
+  const side = document.createElement("aside");
+  side.className = "of-side";
+  side.innerHTML = `<div data-job-box></div><div data-rail></div>`;
+  document.getElementById("app")!.append(side);
+  document.body.classList.add("office-fallback");
+  createJobBox(source).mount(side.querySelector<HTMLElement>("[data-job-box]")!);
+  createRail(source, () => {}).mount(side.querySelector<HTMLElement>("[data-rail]")!);
+} else shell.show(levelFrom(query.get("level"), source.snapshot(Date.now()).model!));
 
 drawer.querySelector("button")!.addEventListener("click", () => { drawer.hidden = true; });
 message.addEventListener("click", () => {

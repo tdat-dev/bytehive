@@ -6,12 +6,12 @@ import {
   Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Object3D,
 } from "three";
 import { BOARD_EDGE, FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt, prepareFloor, prepareTop, roofKey, roomKey } from "./build";
-import { FLIGHT_MS, FOUNDER_DESK, FOV, SLAB as FOCUS_SLAB, STOREY, VIEW, liftAt, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
+import { FLIGHT_MS, FOUNDER_DESK, FOV, GROUND, SLAB as FOCUS_SLAB, STOREY, VIEW, liftAt, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
 import { sceneKey, type OfficeFloor, type OfficeModel, type OfficePerson, type OfficeState } from "./model";
 import { risingAt, risingGeometry, risingMaterial, risingMesh } from "./life";
 import { BUILDING, frameDelay, type Level } from "./nav";
 import { OFFICE } from "./palette";
-import { HOP_MS, MARK_UNITS, animate, hopAt, isPerson, planeAt, spotOf, type PlaneSpot } from "./people";
+import { HOP_MS, MARK_UNITS, PORTRAIT_FACE_Y, animate, hopAt, isPerson, planeAt, portraitShape, spotOf, type PlaneSpot } from "./people";
 import { lookOf, onQuality, readQuality, startTier, steppedDown, watchBattery, type OfficeQuality } from "./quality";
 
 export interface SceneOptions {
@@ -22,6 +22,7 @@ export interface SceneOptions {
   clock?(): number;     // what `Flight.at` is measured against. Date.now, unless a demo holds time still
   quality?: OfficeQuality; // the setting, unless the owner's stored one
   allowSoftware?: boolean; // a CPU renderer is refused, unless a demo asks for it
+  onFace?(): void;      // a portrait asked for is ready
 }
 /** CSS pixels in the canvas. `clear`: a bubble hangs this far below the point, and no tag should cover it. */
 export interface Anchor { id: string; kind: "floor" | "person" | "top" | "board"; x: number; y: number; visible: boolean; clear?: number }
@@ -32,6 +33,10 @@ export interface OfficeScene {
   resize(w: number, h: number): void;
   setVisible(on: boolean): void;
   setQuality(q: OfficeQuality): void;
+  /** Sets aside this many pixels on the left at the Building, for what stands over the picture. */
+  setClear(px: number): void;
+  /** A small picture of someone, made once. Null until it is ready: `onFace` says when. */
+  portrait(p: OfficePerson): string | null;
   /** The person under the pointer rises a little. */
   hover(personId: string | null): void;
   /** Where the pointer is on the canvas, -1 to 1: sky and town shift behind the tower. */
@@ -66,6 +71,12 @@ const HAZE_OVER = 60;
 const TAG_Y = 1.5;
 const SUN = new Vector3(0.25, 0.45, 1).normalize();
 const VIEWER = new Vector3(VIEW.x, VIEW.y, VIEW.z).normalize();
+
+/** Portraits outlive a scene: made once a session, a few KB each. By what they show. */
+const FACES = new Map<string, string>();
+const FACE_PX = 96;
+const FACE_LAYER = 2;
+const faceKey = (p: OfficePerson) => [p.id, p.shirt, p.hair, p.rank, p.prop].join(":");
 
 export const goodRenderer = (name: string): boolean => !/swiftshader|llvmpipe|basic render|software/i.test(name);
 
@@ -157,8 +168,12 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   const scene = new Scene();
   scene.background = new Color(OFFICE.skyTop);
   const camera = new PerspectiveCamera(FOV, 1, 1, 900);
-  scene.add(new HemisphereLight(0xb9c8f0, 0x4a3a34, 1.1));
+  const faceGround = new Color(OFFICE.skyLow);
+  const air = new HemisphereLight(0xb9c8f0, 0x4a3a34, 1.1);
+  air.layers.enable(FACE_LAYER);
+  scene.add(air);
   const sun = new DirectionalLight(0xffe2c0, 1.25);
+  sun.layers.enable(FACE_LAYER);
   sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.03;
@@ -186,6 +201,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   let risingKey = "";
   let liftCar: Object3D | null = null;
   let hovered: string | null = null;
+  let clearPx = 0;
+  const wanted = new Map<string, OfficePerson>();
   const hops = new Map<string, number>();
   let shownStates = new Map<string, OfficeState>();
   let gaps: number[] = [];
@@ -293,6 +310,10 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     }
     advance(t);
     draw();
+    if (wanted.size && !tween && !building) {
+      paintFace();
+      invalidate();
+    }
     if (resting) {
       resting = false;
       lastFrameAt = 0;
@@ -300,6 +321,65 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       for (const fn of [...moved]) fn();
     }
     schedule();
+  }
+
+  /** Draws one portrait into the corner of the canvas with the scene's own lights and shaders,
+   *  reads it back, and draws the picture over it in the same turn, so it is never seen.
+   *  Only what is on the face layer is drawn: a few draw calls, once for each person. */
+  function paintFace(): void {
+    const [key, p] = [...wanted][0];
+    wanted.delete(key);
+    if (typeof OffscreenCanvas === "undefined") return;
+    const size = Math.min(FACE_PX, renderer.getDrawingBufferSize(new Vector2()).x);
+    const ratio = renderer.getPixelRatio();
+    const who = new Mesh(portraitShape(p, kit), kit.indoor);
+    who.layers.set(FACE_LAYER);
+    who.rotation.y = Math.PI - 0.32;
+    who.position.y = GROUND + 0.7;
+    scene.add(who);
+    who.updateMatrixWorld();
+    const lens = new PerspectiveCamera(20, 1, 0.5, 30);
+    lens.layers.set(FACE_LAYER);
+    lens.position.set(0, who.position.y + PORTRAIT_FACE_Y - 0.1, 4);
+    lens.lookAt(0, who.position.y + PORTRAIT_FACE_Y - 0.1, 0);
+    const held = scene.background;
+    const band = kit.focus?.value.clone();
+    scene.background = faceGround;
+    kit.focus?.value.setZ(0);
+    renderer.setViewport(0, 0, size / ratio, size / ratio);
+    renderer.setScissor(0, 0, size / ratio, size / ratio);
+    renderer.setScissorTest(true);
+    renderer.render(scene, lens);
+    const gl = renderer.getContext();
+    const pixels = new Uint8ClampedArray(size * size * 4);
+    gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, width, height);
+    scene.background = held;
+    if (band) kit.focus?.value.copy(band);
+    scene.remove(who);
+    draw();
+
+    const rows = new Uint8ClampedArray(pixels.length);
+    for (let y = 0; y < size; y += 1) rows.set(pixels.subarray((size - 1 - y) * size * 4, (size - y) * size * 4), y * size * 4);
+    for (let i = 3; i < rows.length; i += 4) rows[i] = 255;
+    const picture = new OffscreenCanvas(size, size);
+    picture.getContext("2d")!.putImageData(new ImageData(rows, size, size), 0, 0);
+    void picture.convertToBlob({ type: "image/png" }).then((blob) => {
+      FACES.set(key, URL.createObjectURL(blob));
+      o.onFace?.();
+    });
+  }
+
+  function portrait(p: OfficePerson): string | null {
+    const key = faceKey(p);
+    const had = FACES.get(key);
+    if (had) return had;
+    if (!wanted.has(key)) {
+      wanted.set(key, p);
+      invalidate();
+    }
+    return null;
   }
 
   /** A level change just ended: did it hold 30 frames a second? */
@@ -335,6 +415,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     shot = s;
     camera.position.set(s.px, s.py, s.pz);
     camera.fov = s.fov;
+    if (s.ox) camera.setViewOffset(width, height, -s.ox * width, 0, width, height);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     camera.lookAt(s.tx, s.ty, s.tz);
     camera.updateMatrixWorld();
@@ -395,10 +477,22 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     });
   }
 
+  const target = (t: Tower) => shotFor(level, t, width / height, Math.min(0.6, clearPx / width));
+
+  function setClear(px: number): void {
+    if (Math.abs(px - clearPx) < 1) return;
+    clearPx = px;
+    if (!tower) return;
+    if (tween) tween = retargeted(tween, shot!, target(tower));
+    else look(target(tower));
+    resting = true;
+    invalidate();
+  }
+
   /** Point the camera where the level says. */
   function aim(instant: boolean): void {
     if (!tower) return;
-    const to = shotFor(level, tower, width / height);
+    const to = target(tower);
     const band = bandFor(level, tower);
     if (instant || o.reducedMotion || !shot || sameShot(to, shot)) {
       tween = null;
@@ -532,7 +626,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   /** The slow part of a model: rooms and roof that do not exist yet. Nearest what the camera looks at first. */
   function* slowWork(m: OfficeModel, t: Tower, rooms: Array<{ f: OfficeFloor; spot: FloorSpot; key: string }>, roof: string | null): Generator<void, void> {
-    const aimY = shotFor(level, t, width / height).ty;
+    const aimY = target(t).ty;
     for (const { f, spot, key } of [...rooms].sort((a, b) => Math.abs(a.spot.y - aimY) - Math.abs(b.spot.y - aimY))) {
       yield* prepareFloor(f, spot, kit);
       placeFloor(f, spot, key);
@@ -610,7 +704,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       building = slowWork(m, t, rooms, roof);
       pumpTimer ??= setTimeout(pump, 0);
     } else if (rebuilt) shadowsChanged(t);
-    const to = shotFor(level, t, width / height);
+    const to = target(t);
     if (!shot || !sameShot(to, tween?.to ?? shot)) aim(!shot);
     else invalidate();
   }
@@ -679,9 +773,9 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    if (tween && tower && shot) tween = retargeted(tween, shot, shotFor(level, tower, w / h));
+    if (tween && tower && shot) tween = retargeted(tween, shot, target(tower));
     else if (tower) {
-      look(shotFor(level, tower, w / h));
+      look(target(tower));
       resting = true;
     }
     invalidate();
@@ -792,7 +886,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   if (kit.hazeLight) kit.hazeLight.visible = seen.glow;
 
   return {
-    setModel, setLevel, resize, setVisible, setQuality, hover, parallax, pick, anchors, stats,
+    setModel, setLevel, resize, setVisible, setQuality, setClear, portrait, hover, parallax, pick, anchors, stats,
     onMoved(fn) {
       moved.add(fn);
       return () => { moved.delete(fn); };

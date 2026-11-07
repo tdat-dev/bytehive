@@ -1,142 +1,167 @@
 /* src/company/office/office.css
- * The Needs you rail, the job box and the office around them. Colours come from the app's
- * tokens; the --ib-* names exist only in the Inbox, so every one has the dock's token behind it. */
-.co-rail, .co-box { display: flex; flex-direction: column; gap: 10px; color: var(--ib-ink, var(--text)); }
-.co-rail h3 { margin: 0; font-size: 13px; font-weight: 600; display: flex; align-items: baseline; gap: 6px; }
-.co-rail h3:has(.co-n:not(:empty)) { color: var(--ib-needs, var(--amber)); }
-.co-rail ul { list-style: none; margin: 0; padding: 0; }
-.co-n { font-size: 12px; font-weight: 600; color: var(--ib-needs, var(--amber)); }
+ * The Needs you cards, the job box and the office around them, from the parts in
+ * parts.css and the tokens in tokens.css. The scene is the picture; this frames it. */
+.co-rail, .co-box { display: flex; flex-direction: column; gap: var(--s3); color: var(--ink); }
+.co-rail h3 { display: flex; align-items: baseline; gap: var(--s2); font: var(--t-title); }
+.co-rail ul { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
+.co-needs { gap: var(--s2); }
+.co-n { font: var(--t-title); color: var(--honey); }
 .co-n:empty { display: none; }
-.co-give { display: flex; flex-direction: column; gap: 6px; }
-.co-give label { font-size: 12px; color: var(--ib-ink-2, var(--muted)); }
-.co-give textarea, .co-note { resize: vertical; font: inherit; font-size: 12.5px; color: var(--ib-ink, var(--text)); background: var(--surface-0); border: 1px solid var(--ib-line, var(--line-strong)); border-radius: var(--r1); padding: 8px 10px; }
-.co-give textarea:focus-visible, .co-note:focus-visible { border-color: var(--ib-needs, var(--amber)); }
-.co-note { margin-top: 4px; }
-.co-note::placeholder, .co-give textarea::placeholder { color: var(--ib-ink-3, var(--muted)); opacity: 1; }
-/* Stop is not the row's main action: the dock's first-child accent is for that. */
-.co-jobs .kb-tool:first-child:not(:hover) { border-color: var(--line-strong); color: var(--text-2); }
-.co-send { align-self: flex-end; height: 28px; padding: 0 14px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 600; }
-.co-send[aria-disabled="true"], .co-row .kb-tool[aria-disabled="true"] { opacity: .5; cursor: default; }
-.co-error { margin: 0; padding: 8px 10px; border-radius: var(--r1); border: 1px solid var(--err); color: var(--err); font-size: 12px; line-height: 1.5; }
-.co-row { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--ib-line, var(--line)); }
-.co-row b { font-weight: 600; font-size: 12.5px; overflow-wrap: anywhere; }
-.co-row span { color: var(--ib-ink-2, var(--muted)); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.co-row div { display: flex; gap: 6px; margin-top: 2px; }
-.co-go { display: block; width: 100%; padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
-.co-go b::after { content: " \203A"; color: var(--ib-ink-2, var(--muted)); }
+.co-error { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--danger-soft); color: var(--danger); font: var(--t-body); }
+.co-hint { font: var(--t-meta); color: var(--ink-3); }
+
+/* A card: who, what they need, one clear action. */
+.co-card { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); border-radius: var(--r-card); background: var(--raised); box-shadow: var(--ring-line); }
+.co-go, .co-head { display: flex; align-items: center; gap: var(--s3); width: 100%; min-width: 0; text-align: left; }
+.co-go { padding: 0; border: 0; border-radius: var(--r-control); background: none; color: inherit; cursor: pointer; }
+.co-go > .i { margin-left: auto; color: var(--ink-3); transition: transform var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in); }
+.co-go:hover > .i { color: var(--ink); transform: translateX(2px); }
 .co-go:hover b { text-decoration: underline; text-underline-offset: 2px; }
-.co-go:focus-visible { outline: 2px solid var(--ib-needs, var(--amber)); outline-offset: 2px; }
-.co-plan { margin: 2px 0; font-size: 12px; line-height: 1.5; }
-.co-plan dt { color: var(--ib-ink-2, var(--muted)); margin-top: 6px; }
-.co-plan dd { margin: 0; color: var(--ib-ink, var(--text)); overflow-wrap: anywhere; }
-.co-plan .co-prompt { white-space: pre-wrap; padding: 6px 8px; border: 1px solid var(--ib-line, var(--line)); border-radius: var(--r1); background: var(--surface-0); }
-.co-none { color: var(--ib-ink-2, var(--muted)); font-size: 12px; padding: 4px 0; }
+.co-face { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--c, var(--over)); color: var(--ground); font: var(--t-title); }
+.co-face .i { color: var(--ink-2); }
+.co-who { display: flex; flex-direction: column; min-width: 0; }
+.co-who b { font: var(--t-row); overflow-wrap: anywhere; }
+.co-role { overflow: hidden; color: var(--ink-3); font: var(--t-meta); white-space: nowrap; text-overflow: ellipsis; }
+.co-what { font: var(--t-body); color: var(--ink); overflow-wrap: anywhere; }
+.co-more-line { font: var(--t-meta); color: var(--ink-2); overflow-wrap: anywhere; }
+.co-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s2); }
+.co-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s2); }
+.co-words { display: flex; flex: 1 1 150px; flex-direction: column; gap: 2px; min-width: 0; }
+.co-acts .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+
+.co-more summary { width: fit-content; border-radius: var(--r-control); color: var(--ink-2); font: var(--t-meta); cursor: pointer; }
+.co-more summary:hover { color: var(--ink); }
+.co-plan { margin: var(--s1) 0 0; font: var(--t-meta); }
+.co-plan dt { margin-top: var(--s2); color: var(--ink-3); }
+.co-plan dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.co-plan .co-prompt { padding: var(--s2); border-radius: var(--r-control); background: var(--ground); white-space: pre-wrap; }
+.co-field label { display: flex; flex-direction: column; gap: var(--s1); font: var(--t-row); color: var(--ink); }
+.co-field textarea, .co-give textarea, .of-msg textarea { width: 100%; padding: var(--s2) var(--s3); border: 0; border-radius: var(--r-control); background: var(--ground); box-shadow: var(--ring-control); color: var(--ink); font: var(--t-body); resize: vertical; }
+.co-field .co-hint { margin-top: var(--s1); color: var(--ink-2); }
+
+/* Quiet: a plain statement, with nothing asking for anything. */
+.co-none { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s1) 0; color: var(--ink-2); font: var(--t-body); }
+.co-none b { font: var(--t-lead); color: var(--ink); }
+.co-none span { color: var(--ink-3); }
+
+/* Jobs: one line each, with how far along it is under the line. */
+.co-job { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--s2); min-height: 36px; box-shadow: inset 0 -1px 0 var(--line); }
+.co-job::after { content: ""; position: absolute; bottom: 0; left: 0; width: var(--done, 0); height: 1px; background: var(--ink-3); }
+.co-job b { overflow: hidden; font: var(--t-row); white-space: nowrap; text-overflow: ellipsis; }
+.co-state { color: var(--ink-3); font: var(--t-meta); white-space: nowrap; }
+.co-menu { position: absolute; top: 100%; right: 0; z-index: 3; display: flex; flex-direction: column; min-width: 140px; padding: var(--s1); border-radius: var(--r-card); background: var(--over); box-shadow: var(--ring-line), var(--lift); }
+.co-menu .btn { justify-content: flex-start; width: 100%; }
+
+/* The job box: the first thing to do at the Building. */
+.co-give { display: flex; flex-direction: column; gap: var(--s2); }
+.co-give label { font: var(--t-title); color: var(--ink); }
+.co-give textarea { font: var(--t-lead); }
+.co-chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.co-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.co-foot .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
 
 /* The office layer. Over .topbar (100), under the hint (180), the dock panel (290), modals
- * and the window controls (300). Sky, honey, chip, panel and ink come from palette.ts,
- * set on #office by the shell. The scene is the picture; this stays quiet around it. */
-:root { --office-desk-w: clamp(340px, 34vw, 520px); --office-bar-h: 44px; --office-rail-w: 320px; --office-z: 15; }
+ * and the window controls (300). The sky comes from palette.ts, set on #office by the shell. */
+:root { --office-desk-w: clamp(340px, 34vw, 520px); --office-bar-h: 44px; --office-rail-w: 340px; --office-z: 15; --office-leader: 28px; }
 .of {
   position: fixed; top: 0; bottom: 0; left: 0; width: 100vw; z-index: var(--office-z); overflow: hidden;
   display: grid; grid-template: "bar bar" var(--office-bar-h) "stage rail" minmax(0, 1fr) / minmax(0, 1fr) var(--office-rail-w);
-  background: var(--of-sky); color: var(--of-ink); font-family: var(--sans);
-  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  background: var(--of-sky); color: var(--ink); font-family: var(--sans);
 }
 .of[hidden], .of [hidden] { display: none !important; }
 .of[data-level="desk"] { width: var(--office-desk-w); grid-template: "bar" var(--office-bar-h) "stage" minmax(160px, 38%) "rail" minmax(0, 1fr) / minmax(0, 1fr); }
-.of :focus-visible { outline: 2px solid var(--of-honey); outline-offset: 2px; }
 .of h2, .of h3, .of p { margin: 0; }
 
-.of-bar { grid-area: bar; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 0 150px 0 12px; background: var(--of-chip); border-bottom: 1px solid var(--ib-line, var(--line)); }
-.of[data-level="desk"] .of-bar { padding-right: 12px; }
+.of-bar { grid-area: bar; display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-width: 0; padding: 0 150px 0 var(--s3); background: var(--panel); box-shadow: inset 0 -1px 0 var(--line); }
+.of[data-level="desk"] .of-bar { padding-right: var(--s3); }
 .of-crumbs { min-width: 0; }
 .of-crumbs ol { display: flex; align-items: center; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .of-crumbs li { display: flex; align-items: center; min-width: 0; }
-.of-crumbs li + li::before { content: "\203A"; padding: 0 2px; color: var(--ib-ink-3, var(--muted)); }
-.of-crumbs button, .of-crumbs span { max-width: 220px; padding: 6px; border: 0; border-radius: 6px; background: none; font: 500 13px/1.2 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.of-crumbs button { color: var(--ib-ink-2, var(--muted)); cursor: pointer; }
-.of-crumbs button:hover { color: var(--of-ink); background: var(--ib-raise, var(--surface-2)); }
-.of-crumbs span { color: var(--of-honey); font-weight: 600; }
-.of-acts { display: flex; flex: none; gap: 8px; }
-.of-inbox { flex: none; height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r1); background: none; color: var(--of-ink); font: 500 12.5px/1 var(--sans); cursor: pointer; }
-.of-inbox:hover { background: var(--ib-raise, var(--surface-2)); }
-.of-door { flex: none; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r1); background: none; color: var(--ib-ink-2, var(--muted)); font: 500 12.5px/1 var(--sans); cursor: pointer; }
-.of-door:hover { background: var(--ib-raise, var(--surface-2)); color: var(--of-ink); }
+.of-crumbs li + li::before { content: "\203A"; padding: 0 2px; color: var(--ink-3); }
+.of-crumbs button, .of-crumbs span { max-width: 220px; padding: var(--s1) var(--s2); border: 0; border-radius: var(--r-control); background: none; font: var(--t-row); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.of-crumbs button { color: var(--ink-2); cursor: pointer; }
+.of-crumbs button:hover { color: var(--ink); background: var(--raised); }
+.of-crumbs span { color: var(--ink); font-weight: 600; }
+.of-acts { display: flex; flex: none; gap: var(--s2); }
 
 .of-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--of-sky); }
 .of-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .of-canvas:focus { outline: none; }
-.of-note { position: absolute; top: 16px; left: 16px; max-width: calc(100% - 32px); padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--r1); background: var(--of-chip); font-size: 13px; line-height: 1.5; }
+.of-note { position: absolute; top: var(--s4); left: var(--s4); max-width: calc(100% - 32px); padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--panel); box-shadow: var(--ring-line); font: var(--t-body); }
 
 .of-tags { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .of-tags.is-moving { visibility: hidden; }
-.of-tag { position: absolute; top: 0; left: 0; box-sizing: border-box; display: block; height: 26px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--of-chip); color: var(--of-ink); font: 500 12px/24px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
-button.of-tag { cursor: pointer; }
-button.of-tag:hover { border-color: var(--of-ink); }
+.of-tag { position: absolute; top: 0; left: 0; display: block; height: 28px; padding: 0 var(--s2); border: 0; border-radius: var(--r-control); background: var(--panel); box-shadow: var(--ring-line); color: var(--ink); font: var(--t-meta); line-height: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
+button.of-tag { cursor: pointer; transition: background-color var(--m-press) var(--ease-in); }
+button.of-tag:hover { background: var(--raised); box-shadow: var(--ring-control); }
 .of-tag b { font-weight: 600; }
+.of-tag span { margin-left: 2px; color: var(--ink-2); }
+.of-tag em { margin-left: 2px; color: var(--honey); font-style: normal; font-weight: 600; }
+.of-tag.is-new em { display: inline-block; animation: rise var(--m-swap) var(--ease-in); }
+.of-tag.is-needs { box-shadow: inset 0 0 0 1px var(--honey-line); }
+
+/* A floor's sign, hung off the building on a line. It is the width of its words. */
+.of-tag-floor, .of-tag-top { display: flex; align-items: center; gap: var(--s1); overflow: visible; }
+.of-tag-floor::before, .of-tag-top::before { content: ""; position: absolute; top: 50%; right: 100%; width: var(--office-leader); height: 1px; background: var(--line-control); }
+.of-tag-floor::after, .of-tag-top::after { content: ""; position: absolute; top: calc(50% - 2px); right: calc(100% + var(--office-leader) - 2px); width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); }
 /* A long project name gives way before what comes after it: that is what needs you. */
-.of-tag-floor b { display: inline-block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
-.of-tag span { margin-left: 2px; color: var(--ib-ink-2, var(--muted)); }
-.of-tag em { margin-left: 2px; color: var(--of-honey); font-style: normal; }
-.of-tag.is-needs { border-color: var(--of-honey); }
+.of-tag-floor b { display: inline-block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+
 .of-tag-person { overflow: visible; }
 .of-tag-person span { display: inline-block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
-.of-tag-person::after { content: ""; position: absolute; left: 50%; bottom: -4px; width: 7px; height: 7px; margin-left: -3.5px; transform: rotate(45deg); box-sizing: border-box; border: solid var(--line-strong); border-width: 0 1px 1px 0; background: var(--of-chip); }
-.of-tag-person.is-needs::after { border-color: var(--of-honey); }
-.of-tag-person.is-needs, .of-tag-person.is-needs span { color: var(--of-honey); }
+.of-tag-person::after { content: ""; position: absolute; left: 50%; bottom: -4px; width: 7px; height: 7px; margin-left: -3.5px; transform: rotate(45deg); background: var(--panel); box-shadow: 1px 1px 0 var(--line); }
+.of-tag-person.is-needs::after { box-shadow: 1px 1px 0 var(--honey-line); }
+.of-tag-person.is-needs, .of-tag-person.is-needs span { color: var(--honey); }
 
-.of-job, .of-msg { position: absolute; bottom: 16px; left: 16px; box-sizing: border-box; width: clamp(240px, calc((100vw - var(--office-rail-w)) / 2), 300px); padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--r3); background: var(--of-panel); }
-.of-msg { display: flex; flex-direction: column; gap: 6px; }
-.of-msg label { font-size: 12px; color: var(--ib-ink-2, var(--muted)); }
-.of-msg textarea { resize: vertical; font: inherit; font-size: 12.5px; color: var(--ib-ink, var(--text)); background: var(--surface-0); border: 1px solid var(--ib-line, var(--line-strong)); border-radius: var(--r1); padding: 8px 10px; }
-.of-msg-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.of-sent { font-size: 12px; color: var(--ib-ink-2, var(--muted)); }
+.of-job, .of-msg { position: absolute; bottom: var(--s4); left: var(--s4); width: clamp(300px, 31vw, 420px); padding: var(--s4); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--ring-line), var(--lift); }
+.of-msg { display: flex; flex-direction: column; gap: var(--s2); width: clamp(240px, 24vw, 300px); padding: var(--s3); }
+.of-msg label { font: var(--t-row); color: var(--ink-2); }
+.of-msg-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.of-sent { color: var(--ink-2); font: var(--t-meta); }
 
-.of-rail { grid-area: rail; box-sizing: border-box; min-height: 0; padding: 14px 16px 20px; overflow-y: auto; overscroll-behavior: contain; background: var(--of-panel); box-shadow: inset 1px 0 0 var(--ib-line, var(--line)); }
-.of[data-level="desk"] .of-rail { box-shadow: inset 0 1px 0 var(--ib-line, var(--line)), inset -1px 0 0 var(--ib-line, var(--line)); }
+.of-rail { grid-area: rail; min-height: 0; padding: var(--s4); overflow-y: auto; overscroll-behavior: contain; background: var(--panel); box-shadow: inset 1px 0 0 var(--line); }
+.of[data-level="desk"] .of-rail { box-shadow: inset 0 1px 0 var(--line), inset -1px 0 0 var(--line); }
 
 /* What stands on the app's stage at a Desk, over the terminal. */
-.of-cover { position: fixed; top: var(--office-bar-h); right: 0; bottom: 0; left: var(--office-desk-w); box-sizing: border-box; overflow-y: auto; background: var(--ib-ground, var(--bg)); }
-.of-wake-cover { display: grid; place-items: center; padding: 24px; }
-.of-wake { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; box-sizing: border-box; width: min(360px, 100%); padding: 20px; border: 1px solid var(--line-strong); border-radius: var(--r3); background: var(--of-panel); }
-.of-wake p:first-child { font-size: 14px; line-height: 1.5; }
-.of-wake .co-send { align-self: flex-start; }
-.of-wake .co-send[aria-disabled="true"] { opacity: .5; cursor: default; }
-.of-report { padding: 24px 32px 40px; font-size: 13.5px; line-height: 1.55; }
+.of-cover { position: fixed; top: var(--office-bar-h); right: 0; bottom: 0; left: var(--office-desk-w); overflow-y: auto; background: var(--ground); }
+.of-wake-cover { display: grid; place-items: center; padding: var(--s6); }
+.of-wake { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); width: min(360px, 100%); padding: var(--s4); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--ring-line); }
+.of-wake p:first-child { font: var(--t-lead); }
+.of-wake .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+.of-report { padding: var(--s6) var(--s8) 40px; font: var(--t-lead); }
 .of-report:focus { outline: none; }
-.of-report h2 { font-size: 16px; font-weight: 600; }
-.of-report code { font: 12.5px/1.5 var(--mono); color: var(--ib-ink, var(--text)); }
-.of-meta { margin-top: 2px; font-size: 12.5px; color: var(--ib-ink-2, var(--muted)); }
-.of-empty { margin-top: 12px; color: var(--ib-ink-2, var(--muted)); }
-.of-card { display: flex; flex-direction: column; gap: 4px; max-width: 72ch; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--ib-line, var(--line)); }
-.of-card h3 { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-.of-ticks, .of-files { margin: 6px 0 0; padding: 0; list-style: none; }
-.of-ticks li { display: flex; gap: 8px; color: var(--ib-ink-2, var(--muted)); }
-.of-ticks li[data-done="true"] { color: var(--ib-ink, var(--text)); }
+.of-report h2 { font: var(--t-title); }
+.of-report code { font: var(--t-mono); color: var(--ink); }
+.of-meta { margin-top: 2px; color: var(--ink-2); font: var(--t-meta); }
+.of-empty { margin-top: var(--s3); color: var(--ink-2); }
+.of-card { display: flex; flex-direction: column; gap: var(--s1); max-width: 72ch; margin-top: var(--s4); padding-top: var(--s4); box-shadow: inset 0 1px 0 var(--line); }
+.of-card h3 { font: var(--t-lead); font-weight: 600; overflow-wrap: anywhere; }
+.of-ticks, .of-files { margin: var(--s2) 0 0; padding: 0; list-style: none; }
+.of-ticks li { display: flex; gap: var(--s2); color: var(--ink-2); }
+.of-ticks li[data-done="true"] { color: var(--ink); }
 .of-ticks li > span:first-child { flex: none; width: 14px; }
-.of-files li { font: 12.5px/1.6 var(--mono); color: var(--ib-ink-2, var(--muted)); overflow-wrap: anywhere; }
+.of-files li { font: var(--t-mono); color: var(--ink-2); overflow-wrap: anywhere; }
 .of-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* A Desk: the column takes the queue's place, and the rest is the app. */
 body.inbox-ui.office-desk { --ib-q: var(--office-desk-w); --ib-dock-h: 16px; }
-body.inbox-ui.office-desk .app { grid-template-rows: var(--office-bar-h) 1fr; background: var(--ib-ground); }
+body.inbox-ui.office-desk .app { grid-template-rows: var(--office-bar-h) 1fr; background: var(--ground); }
 body.inbox-ui.office-desk .topbar { padding-left: calc(var(--office-desk-w) + 8px); }
 body.inbox-ui.office-desk .tb-left, body.inbox-ui.office-desk .inbox-queue, body.inbox-ui.office-desk .inbox-dock, body.inbox-ui.office-desk .inbox-head { display: none; }
 .of-tabs { display: flex; align-items: center; gap: 2px; }
-.of-tab { height: 30px; padding: 0 12px; border: 0; border-radius: var(--r1); background: none; color: var(--ib-ink-2, var(--muted)); font: 500 13px/1 var(--sans); cursor: pointer; }
-.of-tab:hover { color: var(--ib-ink, var(--text)); }
-.of-tab[aria-selected="true"] { background: var(--ib-raise, var(--surface-2)); color: var(--ib-ink, var(--text)); }
-.of-tab:focus-visible { outline: 2px solid var(--ib-needs, var(--amber)); outline-offset: 2px; }
+.of-tab { height: 30px; padding: 0 var(--s3); border: 0; border-radius: var(--r-control); background: none; color: var(--ink-2); font: var(--t-row); cursor: pointer; }
+.of-tab:hover { color: var(--ink); }
+.of-tab[aria-selected="true"] { background: var(--raised); color: var(--ink); }
 
 /* Over the layer by their own z-index, and out of reach under it. */
 body.office-cover .inbox-dock, body.office-cover .inbox-ask { visibility: hidden; }
 /* A note would land on the job box. */
-body.office-cover .hint { bottom: 180px; }
+body.office-cover .hint { bottom: 200px; }
 
 /* No 3D: the rail and the job box are a fourth column of the Inbox. */
-body.office-fallback.inbox-ui .app { grid-template-columns: var(--ib-q) 1fr var(--code-w, 380px) 300px; }
-body.office-fallback.inbox-ui.ib-grid-wide .app { grid-template-columns: 0px 1fr var(--code-w, 380px) 300px; }
-body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box; min-height: 0; margin: 0 16px var(--ib-dock-h) 0; padding: 12px 14px; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--r3); background: var(--ib-panel, var(--surface-1)); }
+body.office-fallback.inbox-ui .app { grid-template-columns: var(--ib-q) 1fr var(--code-w, 380px) 320px; }
+body.office-fallback.inbox-ui.ib-grid-wide .app { grid-template-columns: 0px 1fr var(--code-w, 380px) 320px; }
+body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex-direction: column; gap: var(--s4); min-height: 0; margin: 0 var(--s4) var(--ib-dock-h) 0; padding: var(--s3); overflow-y: auto; overscroll-behavior: contain; border-radius: var(--r-card); background: var(--panel); }
 
 @media (max-width: 1000px) {
   :root { --office-rail-w: 280px; }
@@ -145,7 +170,6 @@ body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex
 }
 /* No room over the scene: the box would hide the lowest floor, so it stands under the rail. */
 @media (max-width: 1000px), (max-height: 640px) {
-  .of-job, .of-msg { right: 0; bottom: 0; left: auto; width: var(--office-rail-w); border-width: 1px 0 0; border-radius: 0; }
-  .of:not([data-level="desk"]) .of-rail { padding-bottom: 176px; }
+  .of-job, .of-msg { right: 0; bottom: 0; left: auto; width: var(--office-rail-w); border-radius: 0; box-shadow: inset 0 1px 0 var(--line); }
+  .of:not([data-level="desk"]) .of-rail { padding-bottom: 200px; }
 }
-@media (prefers-reduced-motion: reduce) { .of { transition: none; } }

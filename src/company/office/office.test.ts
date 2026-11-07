@@ -170,7 +170,7 @@ describe("someone who never used the Company", () => {
     m.officeToggle();
     await settle();
     expect(document.querySelector("#app .of-side [data-send]")).not.toBeNull();
-    expect(io.notes).toEqual(["The 3D office could not start, so you are in the Inbox."]);
+    expect(io.notes).toEqual(["The office can't draw on this graphics card. Everything still works here."]);
   });
   it("can put that column away again with the key", async () => {
     io.probe = { ok: false, renderer: "" };
@@ -283,7 +283,7 @@ describe("once the Company has been used", () => {
     expect(m.officeVisible()).toBe(false);
     expect(document.body.classList.contains("office-fallback")).toBe(true);
     expect(document.querySelector("#app .of-side [data-needs]")).not.toBeNull();
-    expect(io.notes).toEqual(["The 3D office could not start, so you are in the Inbox."]);
+    expect(io.notes).toEqual(["The office can't draw on this graphics card. Everything still works here."]);
   });
   it("treats a software renderer as missing", async () => {
     io.used = true;
@@ -400,7 +400,7 @@ describe("once the Company has been used", () => {
     document.getElementById("app")!.hidden = true;
     m.officeBoot();
     await settle();
-    expect(io.notes).toEqual(["The 3D office could not start. Open a project to see the Company."]);
+    expect(io.notes).toEqual(["The office can't draw on this graphics card. Open a project to see the Company."]);
   });
   it("falls back when the source cannot load", async () => {
     io.used = true;
