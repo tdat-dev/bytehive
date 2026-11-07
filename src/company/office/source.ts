@@ -22,8 +22,8 @@ export interface OfficeSource {
   finishJob(job: string): Promise<void>;
   stopJob(job: string): Promise<void>;
   dismiss(key: string): void;
-  /** Put a person's real pane on the stage. False when they have none. */
-  showPerson(id: string): boolean;
+  /** Put a person's real pane on the stage. False when they have none. `focus` false leaves the keyboard alone. */
+  showPerson(id: string, focus?: boolean): boolean;
   wakePerson(id: string): Promise<void>;
   report(personId: string): Promise<DeskReport | null>;
   /** Tell the source the office is on screen: it reads boards only then. */

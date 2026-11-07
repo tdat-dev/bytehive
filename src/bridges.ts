@@ -223,7 +223,7 @@ export function initBridges(): void {
         });
     return out;
   });
-  setPaneRevealer((wsId, paneId) => {
+  setPaneRevealer((wsId, paneId, focus = true) => {
     const ws = workspaces.get(wsId);
     const pane = ws?.panes.get(paneId);
     if (!ws || !pane) return false;
@@ -231,9 +231,9 @@ export function initBridges(): void {
     // On a canvas in focus mode the other panes are display:none, so focusing a
     // hidden terminal does nothing visible — swap the stage to this pane instead.
     if (ws.gridEl.classList.contains("has-focus")) {
-      focusPane(ws, pane);
+      focusPane(ws, pane, undefined, focus);
     } else {
-      pane.term.focus();
+      if (focus) pane.term.focus();
       pane.el.scrollIntoView({ block: "nearest" });
     }
     return true;

@@ -21,6 +21,11 @@ const io = vi.hoisted(() => ({
   moved: null as (() => void) | null,
   sourceChanged: null as (() => void) | null,
   snapshotThrows: 0,
+  snapshotFailAt: 0,
+  snapshots: 0,
+  stageFails: false,
+  revealFails: false,
+  subscribers: 0,
 }));
 vi.mock("./live", () => ({
   liveSource: () => {
@@ -41,7 +46,11 @@ vi.mock("./scene", () => {
 });
 vi.mock("../../hint", () => ({ topNote: (t: string) => io.notes.push(t) }));
 vi.mock("../../inbox", () => ({
-  stageAgent: (id: string, focus = true) => { io.calls.push(focus ? `stage ${id}` : `stage quietly ${id}`); return true; },
+  stageAgent: (id: string, focus = true) => {
+    if (io.stageFails) return false;
+    io.calls.push(focus ? `stage ${id}` : `stage quietly ${id}`);
+    return true;
+  },
   openChanges: (id: string) => { io.pane = id; io.calls.push(`changes ${id}`); },
   closeChanges: () => { io.pane = null; io.calls.push("close changes"); },
   changesOpenFor: () => io.pane,
@@ -61,9 +70,13 @@ function mockSource() {
   return {
     snapshot: () => {
       if (io.snapshotThrows > 0) { io.snapshotThrows -= 1; throw new Error("no snapshot"); }
+      io.snapshots += 1;
+      if (io.snapshots === io.snapshotFailAt) throw new Error("no snapshot");
       return { model: (io.model as OfficeModel | null) ?? EMPTY, note: null, error: null };
     },
-    onChange: (fn: () => void) => { io.sourceChanged = fn; return () => {}; }, watching() {}, showPerson: () => true,
+    onChange: (fn: () => void) => { io.sourceChanged = fn; io.subscribers += 1; return () => { io.subscribers -= 1; }; },
+    watching() {},
+    showPerson: (id: string, focus = true) => { io.calls.push(`reveal ${id} ${focus}`); return !io.revealFails; },
   };
 }
 
@@ -105,6 +118,7 @@ const esc = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Es
 beforeEach(() => {
   io.used = false; io.probe = { ok: true, renderer: "ANGLE (Intel)" }; io.sceneThrows = false; io.notes = []; io.elsewhere = null; io.sceneLoads = 0;
   io.pane = null; io.model = null; io.options = null; io.calls = []; io.engineChanged = null; io.liveThrows = false; io.anchors = []; io.moved = null; io.snapshotThrows = 0;
+  io.snapshotFailAt = 0; io.snapshots = 0; io.stageFails = false; io.revealFails = false; io.subscribers = 0;
 });
 
 afterEach(() => {
@@ -366,6 +380,19 @@ describe("once the Company has been used", () => {
     expect(document.querySelector(".of-side")).toBeNull();
     errors.mockRestore();
   });
+  it("leaves nothing listening when the fallback fails half way", async () => {
+    io.used = true;
+    io.snapshotThrows = 1; // the shell's rail, so no shell stays to hold a subscription
+    io.snapshotFailAt = 2; // the fallback's box draws, then its rail cannot
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    expect(document.querySelector(".of-side")).toBeNull();
+    expect(document.body.classList.contains("office-fallback")).toBe(false);
+    expect(io.subscribers).toBe(0);
+    errors.mockRestore();
+  });
   it("says where the rail is when no project is open: it is in the Inbox, and Start shows", async () => {
     io.used = true;
     io.probe = { ok: false, renderer: "" };
@@ -491,6 +518,44 @@ describe("at a Desk", () => {
     await atDesk();
     expect(io.calls).toContain("stage pane-hai");
   });
+  it("falls back to a reveal that takes no keyboard, when an agent has no task yet", async () => {
+    const { m } = await atDesk();
+    document.querySelector<HTMLElement>('[data-tab="report"]')!.click();
+    m.officeToggle();
+    io.stageFails = true;
+    io.calls = [];
+    m.officeToggle();
+    await settle();
+    expect(io.calls).toContain("reveal hai false");
+    expect(io.calls).not.toContain("reveal hai true");
+  });
+  it("lets the owner's own arrival take it through that fallback", async () => {
+    io.used = true;
+    io.model = withPeople();
+    io.stageFails = true;
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    m.officeReveal("pane-hai");
+    expect(io.calls).toContain("reveal hai true");
+  });
+  it("tries again when neither could: the Desk must not keep another agent's stage", async () => {
+    io.used = true;
+    io.model = withPeople();
+    io.stageFails = true;
+    io.revealFails = true;
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    m.officeReveal("pane-hai");
+    expect(document.querySelector<HTMLElement>("#office [data-wake-card]")!.hidden).toBe(false);
+    io.stageFails = false;
+    io.revealFails = false;
+    io.calls = [];
+    io.sourceChanged?.();
+    expect(io.calls).toContain("stage quietly pane-hai");
+    expect(document.querySelector<HTMLElement>("#office [data-wake-card]")!.hidden).toBe(true);
+  });
   it("closes Changes on every level change, not only on the way up", async () => {
     await atDesk();
     document.querySelector<HTMLElement>('[data-tab="changes"]')!.click();
@@ -551,6 +616,45 @@ describe("the keyboard after closing", () => {
     document.querySelector<HTMLElement>("#office [data-leave]")!.focus();
     m.officeToggle();
     expect(io.calls.indexOf("home")).toBeLessThan(io.calls.indexOf("focus stage"));
+  });
+});
+
+describe("leaving a Desk with Changes open", () => {
+  async function inChanges() {
+    io.used = true;
+    io.model = withPeople();
+    const t = await fresh();
+    t.m.officeBoot();
+    await settle();
+    t.m.officeReveal("pane-hai");
+    document.querySelector<HTMLElement>('[data-tab="changes"]')!.click();
+    io.calls = [];
+    return t;
+  }
+
+  it("keeps the drawer from the key: a comment being typed lives there", async () => {
+    const { m } = await inChanges();
+    document.querySelector<HTMLElement>('[data-tab="changes"]')!.focus();
+    m.officeToggle();
+    expect(io.calls).not.toContain("close changes");
+    expect(io.pane).toBe("pane-hai");
+    expect(io.calls).toContain("focus stage");
+  });
+  it("keeps it from the Inbox button", async () => {
+    await inChanges();
+    const leave = document.querySelector<HTMLElement>("#office [data-leave]")!;
+    leave.focus();
+    leave.click();
+    expect(io.calls).not.toContain("close changes");
+    expect(io.pane).toBe("pane-hai");
+  });
+  it("comes back to the same drawer, with no second one", async () => {
+    const { m } = await inChanges();
+    m.officeToggle();
+    m.officeToggle();
+    await settle();
+    expect(document.querySelector('.of-tab[aria-selected="true"]')?.textContent).toBe("Changes");
+    expect(io.pane).toBe("pane-hai");
   });
 });
 

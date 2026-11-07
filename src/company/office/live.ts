@@ -55,8 +55,8 @@ export function liveSource(): OfficeSource {
     finishJob: engine.finishJob,
     stopJob: engine.stopJob,
     dismiss: engine.dismissAlert,
-    showPerson(id) {
-      for (const ws of workspaces.values()) for (const p of ws.panes.values()) if (p.spec.personId === id) return revealPane(ws.id, p.id);
+    showPerson(id, focus = true) {
+      for (const ws of workspaces.values()) for (const p of ws.panes.values()) if (p.spec.personId === id) return revealPane(ws.id, p.id, focus);
       return false;
     },
     wakePerson: engine.wakePerson,

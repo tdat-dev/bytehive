@@ -107,7 +107,12 @@ function showDesk(personId: string, tab: DeskTab, focus: boolean): boolean {
   seated = spot;
   deps?.showApp();
   const take = focus && tab === "terminal";
-  if ((arriving || tab === "terminal") && !stageAgent(paneId, take) && take) source?.showPerson(personId);
+  // A new agent has no task yet, so staging fails: reveal it. If nothing could, say so and keep
+  // nothing, or the Desk would hold another agent's stage and never ask again.
+  if ((arriving || tab === "terminal") && !stageAgent(paneId, take) && !source?.showPerson(personId, take)) {
+    seated = "";
+    return false;
+  }
   if (tab === "changes") openChanges(paneId);
   return true;
 }
@@ -180,6 +185,7 @@ async function toFallback(): Promise<void> {
   if (fallback) return;
   fallback = true;
   const el = document.createElement("aside");
+  const made: Array<{ dispose(): void }> = [];
   try {
     source ??= await sourceNow();
     const app = document.getElementById("app");
@@ -190,6 +196,7 @@ async function toFallback(): Promise<void> {
     app.append(el);
     const box = createJobBox(source);
     const rail = createRail(source, goFromSide);
+    made.push(box, rail);
     box.mount(el.querySelector<HTMLElement>("[data-job-box]")!);
     rail.mount(el.querySelector<HTMLElement>("[data-rail]")!);
     side = { el, dispose() { box.dispose(); rail.dispose(); el.remove(); } };
@@ -198,6 +205,7 @@ async function toFallback(): Promise<void> {
     noted = true;
   } catch (e) {
     // Nothing worse than the Inbox as it always was.
+    for (const part of made) part.dispose();
     el.remove();
     fallback = false;
     console.error(`[bytehive] the office could not start: ${why(e)}`);

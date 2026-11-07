@@ -343,9 +343,13 @@ export function closeChanges(): void {
 }
 export const changesOpenFor = (): string | null => reviewer?.paneId ?? null;
 
-/** Back to the agent on the stage, when the app is what shows. */
+/** Back to the agent on the stage, when the app is what shows. An open drawer stands over that
+ *  terminal, so it takes the keyboard instead, where it puts it itself on opening. */
 export function focusStage(): void {
-  if (!document.getElementById("app")?.hidden) stagePane()?.term.focus();
+  if (document.getElementById("app")?.hidden) return;
+  const drawer = document.querySelector<HTMLElement>(".inbox-review .ir-close");
+  if (drawer) drawer.focus({ preventScroll: true });
+  else stagePane()?.term.focus();
 }
 
 /** Fit the agent on the stage to the stage. The keyboard stays where it is. */

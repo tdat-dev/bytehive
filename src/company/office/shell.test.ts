@@ -891,3 +891,26 @@ describe("opening a project from the bar", () => {
     expect(button(shell.el).hidden).toBe(false);
   });
 });
+
+describe("a shell that cannot be made", () => {
+  it("leaves nothing listening: the rail is up when the job box fails", () => {
+    const source = demoSource();
+    const real = source.onChange.bind(source);
+    let live = 0;
+    vi.spyOn(source, "onChange").mockImplementation((fn) => {
+      const off = real(fn);
+      live += 1;
+      return () => { live -= 1; off(); };
+    });
+    const snapshot = source.snapshot.bind(source);
+    let calls = 0;
+    vi.spyOn(source, "snapshot").mockImplementation((now) => {
+      calls += 1;
+      if (calls === 2) throw new Error("no snapshot");
+      return snapshot(now);
+    });
+    const host = { showDesk: vi.fn(() => true), levelChanged: vi.fn(), leave: vi.fn(), failed: vi.fn(), loadScene: vi.fn() } as unknown as ShellHost;
+    expect(() => createShell(source, host)).toThrow("no snapshot");
+    expect(live).toBe(0);
+  });
+});

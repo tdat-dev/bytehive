@@ -79,7 +79,7 @@ export interface FleetPane {
 }
 
 let fleetSnapshot: (() => FleetPane[]) | null = null;
-let paneRevealer: ((wsId: string, paneId: string) => boolean) | null = null;
+let paneRevealer: ((wsId: string, paneId: string, focus: boolean) => boolean) | null = null;
 
 /** main.ts registers a snapshot of every pane in every workspace. */
 export function setFleetSnapshot(fn: () => FleetPane[]): void {
@@ -88,12 +88,12 @@ export function setFleetSnapshot(fn: () => FleetPane[]): void {
 export function fleetSnapshotNow(): FleetPane[] {
   return fleetSnapshot ? fleetSnapshot() : [];
 }
-/** main.ts registers how to switch to a workspace and focus one of its panes. */
-export function setPaneRevealer(fn: (wsId: string, paneId: string) => boolean): void {
+/** main.ts registers how to switch to a workspace and show one of its panes, focused or not. */
+export function setPaneRevealer(fn: (wsId: string, paneId: string, focus: boolean) => boolean): void {
   paneRevealer = fn;
 }
-export function revealPane(wsId: string, paneId: string): boolean {
-  return paneRevealer ? paneRevealer(wsId, paneId) : false;
+export function revealPane(wsId: string, paneId: string, focus = true): boolean {
+  return paneRevealer ? paneRevealer(wsId, paneId, focus) : false;
 }
 
 /* ---- host hooks the board uses to drive the rest of the UI ---- */

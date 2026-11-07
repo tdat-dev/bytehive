@@ -11,6 +11,8 @@ const io = vi.hoisted(() => ({
   sent: [] as string[],
   bridge: null as unknown,
   fleet: null as null | (() => Array<{ name: string }>),
+  reveal: null as null | ((ws: string, pane: string, focus?: boolean) => boolean),
+  staged: [] as unknown[],
 }));
 
 vi.mock("./ipc", () => ({
@@ -20,7 +22,7 @@ vi.mock("./ipc", () => ({
   onDragDrop: async () => {},
   onExit: async () => {},
 }));
-vi.mock("./panelayout", () => ({ focusPane: () => {} }));
+vi.mock("./panelayout", () => ({ focusPane: (_ws: unknown, _p: unknown, _ev: unknown, take = true) => { io.staged.push(take); } }));
 vi.mock("./agentbridge", () => ({
   setAgentSender: () => {},
   setPaneTargeting: () => {},
@@ -28,7 +30,7 @@ vi.mock("./agentbridge", () => ({
   setAgentSenderById: () => {},
   setPaneFocuser: () => {},
   setFleetSnapshot: () => {},
-  setPaneRevealer: () => {},
+  setPaneRevealer: (fn: typeof io.reveal) => { io.reveal = fn; },
 }));
 vi.mock("./fleetbridge", async (real) => ({
   ...(await real<typeof import("./fleetbridge")>()),
@@ -65,6 +67,36 @@ beforeEach(() => {
   workspaces.clear();
   workspaces.set("w", ws);
   setActiveWs(ws);
+});
+
+describe("revealing a pane", () => {
+  const stageWith = (focused: boolean) => {
+    const ws = workspaces.get("w")!;
+    (ws as unknown as { gridEl: HTMLElement }).gridEl = document.createElement("div");
+    if (focused) (ws as unknown as { gridEl: HTMLElement }).gridEl.classList.add("has-focus");
+    const p = ws.panes.get("a")!;
+    const focus = vi.fn();
+    (p as unknown as { term: { focus: () => void } }).term.focus = focus;
+    (p as unknown as { el: HTMLElement }).el = document.createElement("div");
+    io.staged = [];
+    return focus;
+  };
+
+  it("takes the keyboard by default", () => {
+    const focus = stageWith(false);
+    io.reveal!("w", "a");
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+  it("leaves the keyboard alone when told to, off the stage", () => {
+    const focus = stageWith(false);
+    io.reveal!("w", "a", false);
+    expect(focus).not.toHaveBeenCalled();
+  });
+  it("leaves it alone on the stage too", () => {
+    stageWith(true);
+    io.reveal!("w", "a", false);
+    expect(io.staged).toEqual([false]);
+  });
 });
 
 describe("the Founder in a project", () => {

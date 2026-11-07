@@ -242,6 +242,20 @@ describe("inbox DOM", () => {
     expect(focus).toHaveBeenCalledTimes(1);
   });
 
+  it("hands the keyboard to an open drawer, not to the terminal under it", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    setInbox(true);
+    openChanges("e");
+    const focus = vi.spyOn(panes[1].term, "focus");
+    (document.activeElement as HTMLElement | null)?.blur();
+    focusStage();
+    expect(focus).not.toHaveBeenCalled();
+    expect(document.activeElement?.classList.contains("ir-close")).toBe(true);
+    closeChanges();
+    focusStage();
+    expect(focus).toHaveBeenCalledTimes(1);
+  });
+
   it("can stage an agent and leave the keyboard alone, for a terminal that will be covered", () => {
     state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
     state.quiet = [];

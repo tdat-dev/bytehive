@@ -208,8 +208,15 @@ export function createShell(source: OfficeSource, host: ShellHost) {
 
   const rail = createRail(source, (l) => go(l), () => level);
   const jobBox = createJobBox(source);
-  rail.mount(find("[data-rail]"));
-  jobBox.mount(jobEl);
+  try {
+    rail.mount(find("[data-rail]"));
+    jobBox.mount(jobEl);
+  } catch (e) {
+    // Nobody gets this shell to dispose: what is already listening must stop here.
+    rail.dispose();
+    jobBox.dispose();
+    throw e;
+  }
 
   const tablist = document.createElement("div");
   tablist.className = "of-tabs";
