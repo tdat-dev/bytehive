@@ -19,7 +19,9 @@ export interface PaneLook {
 }
 
 export interface TerminalHandle {
-  write(data: Uint8Array): void;
+  /** `parsed` is called once the emulator has taken the bytes in: that is what
+   *  the backend waits for before it lets the program write more (ipc.ts). */
+  write(data: Uint8Array, parsed?: () => void): void;
   fit(): { cols: number; rows: number };
   reset(): void;
   dispose(): void;
@@ -359,7 +361,14 @@ export function mountTerminal(
   const bgFilter = createBgFilter(() => look.stripPlate);
   // In the background (calm.ts) output is drawn a few times a second, not on
   // every byte: an agent's spinner otherwise repaints its terminal nonstop.
-  const pacer = createPacer<Uint8Array>((chunk) => term.write(chunk));
+  let disposed = false;
+  const pacer = createPacer<{ data: Uint8Array; parsed?: () => void }>((c) => {
+    try {
+      term.write(c.data, c.parsed);
+    } catch {
+      c.parsed?.(); // refused (disposed, or far too much queued): do not leave the backend waiting
+    }
+  });
 
   const snapshot = (lines = 40): string => {
     try {
@@ -379,13 +388,17 @@ export function mountTerminal(
   };
 
   return {
-    write: (data) => pacer.push(bgFilter(data)),
+    write: (data, parsed) => {
+      if (disposed) parsed?.(); // a chunk that was already in flight when the pane went
+      else pacer.push({ data: bgFilter(data), parsed });
+    },
     fit: () => {
       fitToBox();
       return { cols: term.cols, rows: term.rows };
     },
     reset: () => { pacer.flush(); term.reset(); },
     dispose: () => {
+      disposed = true;
       pacer.dispose();
       ro.disconnect();
       term.dispose();

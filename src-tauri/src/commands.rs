@@ -3,6 +3,7 @@ use std::path::Path;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::core::coalesce::Coalescer;
 use crate::core::command_spec::CommandSpec;
 use crate::core::registry::{self, Registry};
 use crate::error::{run_blocking, CommandError};
@@ -24,6 +25,27 @@ struct ExitPayload {
 /// Numbers every spawn. An agent restarted in place keeps its id; the run
 /// tells its old process's late exit apart from the new one.
 static NEXT_RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// While a terminal streams, at most one message to its window per this long.
+const MESSAGE_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
+/// ...unless this much is waiting, which goes at once.
+const MESSAGE_BIG: usize = 64 * 1024;
+
+/// Where an agent's output goes in the window. A terminal's reads are tiny and
+/// many; each one sent alone is a script the webview compiles and runs, so they
+/// are joined (core/coalesce.rs). A pipe agent's output is whole JSON lines and
+/// stays as it is.
+fn window_sink(on_bytes: Channel<InvokeResponseBody>, pipe: bool) -> Box<dyn FnMut(&[u8]) + Send> {
+    if pipe {
+        return Box::new(move |bytes| {
+            let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
+        });
+    }
+    let joined = Coalescer::new(MESSAGE_EVERY, MESSAGE_BIG, move |batch| {
+        let _ = on_bytes.send(InvokeResponseBody::Raw(batch));
+    });
+    Box::new(move |bytes| joined.push(bytes))
+}
 
 #[tauri::command]
 pub async fn pty_spawn(
@@ -67,8 +89,10 @@ pub async fn pty_spawn(
 
     let app2 = app.clone();
     let exit_id = agent_id.clone();
+    let flow_id = agent_id.clone();
     let registry = state.registry.clone();
     let run = NEXT_RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pipe = pipe.unwrap_or(false);
 
     run_blocking(move || {
         // Not under the registry lock: ConPTY creation is slow, and every other
@@ -79,15 +103,18 @@ pub async fn pty_spawn(
             run,
             &spec,
             size,
-            pipe.unwrap_or(false),
-            move |bytes| {
-                let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
-            },
+            pipe,
+            window_sink(on_bytes, pipe),
             move |code| {
                 let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code, run });
             },
         )
         .map_err(CommandError::from)?;
+        // The window acks what it parses (pty_ack); a terminal is held back when
+        // it falls behind. A pipe agent is never held.
+        if !pipe {
+            let _ = registry::lock(&registry).enable_flow(&flow_id);
+        }
         Ok(run)
     })
     .await
@@ -105,13 +132,26 @@ pub async fn pty_attach(
     let registry = state.registry.clone();
     run_blocking(move || {
         let reg = registry::lock(&registry);
-        reg.attach(
-            &agent_id,
-            Box::new(move |bytes| {
-                let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
-            }),
-        )
-        .map_err(CommandError::from)
+        let pipe = reg.is_pipe(&agent_id);
+        reg.attach(&agent_id, window_sink(on_bytes, pipe))
+            .map_err(CommandError::from)
+    })
+    .await
+}
+
+/// The window has finished parsing `bytes` more of an agent's output. The reader
+/// of that agent is held back while the window is too far behind; this is what
+/// lets it go on. Cheap and never blocks on the agent.
+#[tauri::command]
+pub async fn pty_ack(
+    state: State<'_, AppState>,
+    agent_id: String,
+    bytes: u64,
+) -> Result<(), CommandError> {
+    let registry = state.registry.clone();
+    run_blocking(move || {
+        registry::lock(&registry).ack(&agent_id, bytes as usize);
+        Ok(())
     })
     .await
 }

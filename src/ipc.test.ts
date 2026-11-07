@@ -53,3 +53,29 @@ describe("ipc", () => {
     expect(invoke).toHaveBeenCalledWith("pty_kill", { agentId: "agent-2" });
   });
 });
+
+describe("output flow control", () => {
+  /** The channel a spawn handed the backend, so a test can play the backend's part. */
+  async function channelOf(handler: Parameters<typeof spawnPty>[7]) {
+    await spawnPty("agent-9", "powershell.exe", [], null, 80, 24, [], handler);
+    return invoke.mock.calls[0][1].onBytes as { onmessage: (m: ArrayBuffer) => void };
+  }
+
+  it("acks the bytes of a chunk once the terminal says it has parsed them", async () => {
+    let parsed: () => void = () => {};
+    const ch = await channelOf((_bytes, done) => { parsed = done; });
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(300));
+    expect(invoke).not.toHaveBeenCalledWith("pty_ack", expect.anything()); // not parsed yet
+    parsed();
+    parsed(); // a second call counts nothing
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("pty_ack", { agentId: "agent-9", bytes: 300 });
+  });
+
+  it("acks at once for a handler that does not ask for the callback", async () => {
+    const ch = await channelOf(() => {});
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(50));
+    expect(invoke).toHaveBeenCalledWith("pty_ack", { agentId: "agent-9", bytes: 50 });
+  });
+});

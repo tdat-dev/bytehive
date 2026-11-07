@@ -182,6 +182,25 @@ impl Registry {
         self.get(id)?.resize(cols, rows)
     }
 
+    /// Whether `id` talks in JSON lines on pipes. False for an unknown id.
+    pub fn is_pipe(&self, id: &str) -> bool {
+        self.get(id).is_ok_and(|a| a.is_pipe())
+    }
+
+    /// The window shows this agent and will ack what it parsed.
+    pub fn enable_flow(&self, id: &str) -> Result<()> {
+        self.get(id)?.enable_flow();
+        Ok(())
+    }
+
+    /// The window has parsed `n` more bytes of the output of `id`. A late ack for
+    /// an agent that is gone is not an error.
+    pub fn ack(&self, id: &str, n: usize) {
+        if let Ok(a) = self.get(id) {
+            a.ack(n);
+        }
+    }
+
     /// Kill (remove) one agent. No-op if absent. Drop tears the agent down.
     pub fn kill(&mut self, id: &str) {
         self.agents.remove(id);

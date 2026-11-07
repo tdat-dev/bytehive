@@ -7,11 +7,34 @@ import { open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { typeInto, serialize } from "./typing";
+import { createAcker } from "./flowack";
 
 /** Open an http(s) link in the user's default browser. */
 export async function openExternal(url: string): Promise<void> {
   if (!/^https?:\/\//i.test(url)) return; // scheme allowlist matches the capability
   await openUrl(url);
+}
+
+/** Takes a terminal's output. Call `parsed` once the terminal has finished with
+ *  the bytes (xterm's write callback): the backend holds the program back while
+ *  too much is unparsed, and this is what lets it go on. A handler that takes
+ *  no `parsed` is acked at once, so it is never held. */
+export type PtyHandler = (bytes: Uint8Array, parsed: () => void) => void;
+
+/** Turns a channel message into `onBytes(bytes, parsed)` and sends the acks. */
+function withAcks(agentId: string, onBytes: PtyHandler): (buf: ArrayBuffer) => void {
+  const acker = createAcker((bytes) => void invoke("pty_ack", { agentId, bytes }).catch(() => {}));
+  return (buf) => {
+    const bytes = new Uint8Array(buf);
+    let acked = false;
+    const parsed = () => {
+      if (acked) return;
+      acked = true;
+      acker.parsed(bytes.length);
+    };
+    onBytes(bytes, parsed);
+    if (onBytes.length < 2) parsed();
+  };
 }
 
 /**
@@ -26,13 +49,13 @@ export async function spawnPty(
   cols: number,
   rows: number,
   env: Array<[string, string]>,
-  onBytes: (bytes: Uint8Array) => void,
+  onBytes: PtyHandler,
 ): Promise<number> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
   // number[] path serialized every byte as a JSON number on both sides and
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
-  ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
+  ch.onmessage = withAcks(agentId, onBytes);
   // The run number of this start; its exit event carries the same number.
   return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe: false, onBytes: ch });
 }
@@ -42,10 +65,10 @@ export async function spawnPty(
  *  streams live output. Rejects if the agent no longer exists. */
 export async function attachPty(
   agentId: string,
-  onBytes: (bytes: Uint8Array) => void,
+  onBytes: PtyHandler,
 ): Promise<void> {
   const ch = new Channel<ArrayBuffer>();
-  ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
+  ch.onmessage = withAcks(agentId, onBytes);
   await invoke("pty_attach", { agentId, onBytes: ch });
 }
 

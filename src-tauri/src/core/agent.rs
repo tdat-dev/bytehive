@@ -16,12 +16,13 @@ use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 use portable_pty::PtySize;
 
 use crate::core::command_spec::CommandSpec;
+use crate::core::flow::{Flow, FlowConfig};
 #[cfg(windows)]
 use crate::core::job::Job;
 #[cfg(windows)]
@@ -40,6 +41,11 @@ pub type Sink = Box<dyn FnMut(&[u8]) + Send>;
 
 /// Recent output kept for replay when a new window attaches (tab detach).
 const SCROLLBACK_CAP: usize = 512 * 1024;
+
+/// After any input, how long a held reader reads freely: the answer to a
+/// keystroke (the echo, the reaction to Ctrl+C) must not queue behind output
+/// the window has not finished with.
+const INPUT_OPENS_GATE: Duration = Duration::from_millis(1500);
 
 /// An in-progress session recording: raw output frames appended to a JSONL file
 /// with a millisecond timestamp, so a player can replay the terminal with its
@@ -97,6 +103,7 @@ pub struct Agent {
     job: Job,
     session: Session,
     output: Arc<Mutex<Output>>,
+    flow: Arc<Flow>,
     #[allow(dead_code)]
     reader_thread: JoinHandle<()>,
     #[allow(dead_code)]
@@ -132,7 +139,8 @@ impl Agent {
             rec: None,
             pipe: false,
         }));
-        let reader_thread = spawn_reader(reader, output.clone());
+        let flow = Arc::new(Flow::new(FlowConfig::default()));
+        let reader_thread = spawn_reader(reader, output.clone(), flow.clone());
         let wait_thread = spawn_waiter(child, on_exit);
 
         Ok(Agent {
@@ -140,6 +148,7 @@ impl Agent {
             job,
             session: Session::Pty(session),
             output,
+            flow,
             reader_thread,
             wait_thread,
         })
@@ -168,16 +177,20 @@ impl Agent {
             rec: None,
             pipe: true,
         }));
-        let reader_thread = spawn_line_reader(Box::new(stdout), output.clone(), false);
+        // Pipe agents talk in small JSON lines and are never held back: their flow
+        // is never switched on.
+        let flow = Arc::new(Flow::new(FlowConfig::default()));
+        let reader_thread = spawn_line_reader(Box::new(stdout), output.clone(), flow.clone(), false);
         // Detached: it ends with the process, and the reader above is the one
         // the teardown waits on.
-        spawn_line_reader(Box::new(stderr), output.clone(), true);
+        spawn_line_reader(Box::new(stderr), output.clone(), flow.clone(), true);
         let wait_thread = thread::spawn(move || on_exit(child.wait()));
 
         Ok(Agent {
             job,
             session: Session::Pipe(session),
             output,
+            flow,
             reader_thread,
             wait_thread,
         })
@@ -188,14 +201,33 @@ impl Agent {
     /// the same lock the reader thread uses, so the swap loses/dupes nothing.
     pub fn attach(&self, mut sink: Sink) {
         let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
+        // A new window counts from zero, replay included.
+        self.flow.enable();
         let (a, b) = o.buf.as_slices();
         if !a.is_empty() {
             sink(a);
+            self.flow.sent(a.len());
         }
         if !b.is_empty() {
             sink(b);
+            self.flow.sent(b.len());
         }
         o.sink = sink;
+    }
+
+    /// The window shows this agent with flow control: from now on it acks what it
+    /// has parsed (`ack`) and the reader waits when it falls too far behind.
+    pub fn enable_flow(&self) {
+        self.flow.enable();
+    }
+
+    /// The window has parsed `n` more bytes of the output.
+    pub fn ack(&self, n: usize) {
+        self.flow.ack(n);
+    }
+
+    pub fn flow(&self) -> &Arc<Flow> {
+        &self.flow
     }
 
     /// Subscribe to this agent's live output. The current scrollback is replayed
@@ -262,6 +294,7 @@ impl Agent {
     }
 
     pub fn write_input(&mut self, bytes: &[u8]) -> Result<()> {
+        self.flow.open_for(INPUT_OPENS_GATE);
         match &mut self.session {
             Session::Pty(s) => s.write_input(bytes),
             #[cfg(windows)]
@@ -281,7 +314,7 @@ impl Agent {
 
 /// Hand one chunk of output to the window, the live taps, the recording, and
 /// the scrollback a newly attached window replays.
-fn emit(output: &Arc<Mutex<Output>>, bytes: &[u8]) {
+fn emit(output: &Arc<Mutex<Output>>, flow: &Flow, bytes: &[u8]) {
     let mut o = output.lock().unwrap_or_else(|p| p.into_inner());
     o.buf.extend(bytes);
     let over = o.buf.len().saturating_sub(SCROLLBACK_CAP);
@@ -289,6 +322,7 @@ fn emit(output: &Arc<Mutex<Output>>, bytes: &[u8]) {
         o.buf.drain(..over);
     }
     (o.sink)(bytes);
+    flow.sent(bytes.len());
     if o.taps.is_empty() && o.rec.is_none() {
         return;
     }
@@ -390,7 +424,7 @@ fn take_lines(pending: &mut Vec<u8>, all: bool, wrap: bool) -> Vec<u8> {
 
 /// Read until EOF and pass on whole lines only (a JSON line cut between two
 /// reads would be two broken ones); `wrap` turns each into a stderr line.
-fn spawn_line_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>, wrap: bool) -> JoinHandle<()> {
+fn spawn_line_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>, flow: Arc<Flow>, wrap: bool) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut buf = [0u8; 16384];
         let mut pending: Vec<u8> = Vec::new();
@@ -401,7 +435,7 @@ fn spawn_line_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>
                     pending.extend_from_slice(&buf[..n]);
                     let out = take_lines(&mut pending, false, wrap);
                     if !out.is_empty() {
-                        emit(&output, &out);
+                        emit(&output, &flow, &out);
                     }
                 }
             }
@@ -412,22 +446,34 @@ fn spawn_line_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>
         }
         let out = take_lines(&mut pending, true, wrap);
         if !out.is_empty() {
-            emit(&output, &out);
+            emit(&output, &flow, &out);
         }
     })
 }
 
-fn spawn_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>) -> JoinHandle<()> {
+fn spawn_reader(mut reader: Box<dyn Read + Send>, output: Arc<Mutex<Output>>, flow: Arc<Flow>) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut buf = [0u8; 16384];
         loop {
+            // The window is behind: leave the output in the pipe, so the write of
+            // the child waits there instead of the bytes piling up in the webview.
+            flow.wait_ready();
             match reader.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => emit(&output, &buf[..n]),
+                Ok(n) => emit(&output, &flow, &buf[..n]),
                 Err(_) => break,
             }
         }
     })
+}
+
+impl Drop for Agent {
+    /// Runs before the fields drop (job, then the pseudo-console): a reader held
+    /// back by flow control is woken first, so it drains the pipe to EOF and
+    /// closing the console cannot wait on it.
+    fn drop(&mut self) {
+        self.flow.close();
+    }
 }
 
 fn spawn_waiter(
@@ -473,5 +519,92 @@ mod line_tests {
         let mut p = b"Error: \"bad\"\r\n\n".to_vec();
         let out = String::from_utf8(take_lines(&mut p, false, true)).unwrap();
         assert_eq!(out, "{\"text\":\"Error: \\\"bad\\\"\",\"type\":\"bytehive_stderr\"}\n");
+    }
+}
+
+#[cfg(test)]
+mod flow_tests {
+    use super::*;
+    use crate::core::flow::{Flow, FlowConfig};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// A child that never stops writing: `total` bytes in reads of 16 KB, as fast as it is read.
+    struct Flooding {
+        left: usize,
+    }
+
+    impl Read for Flooding {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = buf.len().min(self.left);
+            buf[..n].fill(b'x');
+            self.left -= n;
+            Ok(n)
+        }
+    }
+
+    const HIGH: usize = 64 * 1024;
+
+    /// A reader thread on a flooding child with the flow switched on, and the bytes its sink has been given.
+    fn running(total: usize) -> (Arc<Flow>, Arc<AtomicUsize>, JoinHandle<()>) {
+        let count = Arc::new(AtomicUsize::new(0));
+        let c = count.clone();
+        let output = Arc::new(Mutex::new(Output {
+            buf: VecDeque::new(),
+            sink: Box::new(move |b| {
+                c.fetch_add(b.len(), Ordering::SeqCst);
+            }),
+            taps: Vec::new(),
+            rec: None,
+            pipe: false,
+        }));
+        let flow = Arc::new(Flow::new(FlowConfig { high: HIGH, low: HIGH / 4, stall: Duration::from_secs(60), trickle: 4096 }));
+        flow.enable();
+        let reader = spawn_reader(Box::new(Flooding { left: total }), output, flow.clone());
+        (flow, count, reader)
+    }
+
+    fn settle() {
+        thread::sleep(Duration::from_millis(250));
+    }
+
+    #[test]
+    fn a_reader_is_held_at_the_high_mark_until_the_window_has_parsed_what_it_got() {
+        let (flow, count, reader) = running(10 * 1024 * 1024);
+        settle();
+        let held = count.load(Ordering::SeqCst);
+        assert!(held >= HIGH && held <= HIGH + 16384, "held after about {HIGH} bytes, got {held}");
+        settle();
+        assert_eq!(count.load(Ordering::SeqCst), held, "nothing more while the window is behind");
+
+        flow.ack(held); // the window parsed it all
+        settle();
+        let again = count.load(Ordering::SeqCst);
+        assert!(again >= held + HIGH && again <= held + HIGH + 16384, "one more window, got {} more", again - held);
+        flow.close();
+        reader.join().unwrap();
+    }
+
+    #[test]
+    fn input_lets_a_held_reader_run_for_a_moment() {
+        let (flow, count, reader) = running(10 * 1024 * 1024);
+        settle();
+        let held = count.load(Ordering::SeqCst);
+        flow.open_for(Duration::from_millis(300));
+        thread::sleep(Duration::from_millis(150));
+        assert!(count.load(Ordering::SeqCst) > held + HIGH, "reads go on right after a keystroke");
+        flow.close();
+        reader.join().unwrap();
+    }
+
+    #[test]
+    fn a_held_reader_ends_when_the_agent_goes_so_closing_the_console_cannot_wait_on_it() {
+        let (flow, count, reader) = running(2 * 1024 * 1024);
+        settle();
+        assert!(count.load(Ordering::SeqCst) < 2 * 1024 * 1024, "held, not finished");
+        let t = Instant::now();
+        flow.close(); // what dropping the agent does first
+        reader.join().unwrap(); // drains the rest of the pipe to EOF and ends
+        assert!(t.elapsed() < Duration::from_secs(2), "took {:?}", t.elapsed());
+        assert_eq!(count.load(Ordering::SeqCst), 2 * 1024 * 1024, "everything still reached the sink");
     }
 }

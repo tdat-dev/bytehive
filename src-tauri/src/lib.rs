@@ -121,6 +121,7 @@ pub fn run() {
             adopt::adopt_old_folder,
             commands::pty_spawn,
             commands::pty_attach,
+            commands::pty_ack,
             commands::pty_input,
             commands::pty_resize,
             commands::pty_kill,
