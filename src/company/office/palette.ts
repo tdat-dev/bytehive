@@ -11,24 +11,34 @@ export const OFFICE = {
   skyTop: "#0d1018", skyHigh: "#131722", skyMid: "#1a2030", skyLow: "#283044", skyGlow: "#4e5266", haze: "#3e4458", moon: "#aeb1b8",
 } as const;
 
+/** The app's colours, the same values as tokens.css: the test reads that file, so the
+ *  office and the app cannot drift. Honey means it is your turn and nothing else. */
+export const APP = {
+  ground: "#0F1117", panel: "#151821", raised: "#1C202B", over: "#252A37",
+  ink: "#ECEAE4", ink2: "#B9BBC4", ink3: "#9095A3", inkOff: "#6B7080",
+  honey: "#F5B83D", honeyInk: "#17130A",
+  work: "#6FD6A0", review: "#8FB8F2", stop: "#A7ABB8", danger: "#F2857A",
+} as const;
+
 /** A project's colour, for rugs, cushions and art. None of them is honey: that means your turn. */
 export const ACCENTS = ["#3f8f8a", "#c4605a", "#7a5fa8", "#5d8a4e", "#4f7fc0", "#b0587f", "#3b6f96", "#a8664a"] as const;
 /** Skin, for a toy: warm beads, light to deep. */
 export const BEADS = ["#f3cfa0", "#efc48a", "#e0a873", "#c98a5b", "#a8693f"] as const;
 
 export const CHIP_BG = "#14161c";
-export const PANEL_BG = "#15161a";
-export const TAG_INK = "#eceae4";
+export const PANEL_BG = APP.panel;
+export const TAG_INK = APP.ink;
 
 export const TEXT_PAIRS: Array<[string, string, string, number]> = [
   ["tag text on a chip", TAG_INK, CHIP_BG, 4.5],
-  ["tag detail on a chip", "#b4b4bc", CHIP_BG, 4.5],
+  ["tag detail on a chip", APP.ink2, CHIP_BG, 4.5],
   ["needs tag on a chip", OFFICE.honey, CHIP_BG, 4.5],
-  ["rail text on the panel", "#f4f4f5", PANEL_BG, 4.5],
-  ["rail detail on the panel", "#b4b4bc", PANEL_BG, 4.5],
+  ["rail text on the panel", APP.ink, PANEL_BG, 4.5],
+  ["rail detail on the panel", APP.ink2, PANEL_BG, 4.5],
   ["breadcrumb on the sky", TAG_INK, OFFICE.sky, 4.5],
   ["bubble mark on honey", "#14161c", OFFICE.honey, 4.5],
-  ["focus ring on the sky", OFFICE.honey, OFFICE.sky, 3],
+  ["focus ring on the sky", APP.ink, OFFICE.sky, 3],
+  ["focus halo on a lit wall", APP.ground, OFFICE.wallLit, 3],
 ];
 
 const channel = (v: number) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };

@@ -1,23 +1,22 @@
-/* Agent Inbox, ByteHive's interface. Direction D · Cinema: black stage,
-   floating panels, colour only for state (amber = needs you, blue = ready to
-   review, green = working). body.inbox-ui is always on; the base tokens in
-   tokens.css carry the same palette for the older surfaces. */
+/* Agent Inbox, ByteHive's interface: the office's dusk behind everything, and
+   honey only on what waits for you (blue = ready to review, green = working).
+   body.inbox-ui is always on. The --ib-* names are the tokens in tokens.css. */
 
 body.inbox-ui {
-  --ib-ground: #050506;
-  --ib-panel: #0e0f11;
-  --ib-raise: #15161a;
-  --ib-line: rgba(255, 255, 255, 0.07);
-  --ib-ink: #f4f4f5;
-  --ib-ink-2: #b4b4bc;
-  --ib-ink-3: #8c8c96;
-  --ib-needs: oklch(0.83 0.13 75);
-  --ib-needs-bg: oklch(0.83 0.13 75 / 0.12);
-  --ib-needs-line: oklch(0.83 0.13 75 / 0.3);
-  --ib-review: oklch(0.79 0.09 250);
-  --ib-work: oklch(0.8 0.13 155);
-  --ib-del: oklch(0.72 0.15 25);
-  --ib-float: 0 18px 40px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --ib-ground: var(--ground);
+  --ib-panel: var(--panel);
+  --ib-raise: var(--raised);
+  --ib-line: var(--line);
+  --ib-ink: var(--ink);
+  --ib-ink-2: var(--ink-2);
+  --ib-ink-3: var(--ink-3);
+  --ib-needs: var(--honey);
+  --ib-needs-bg: var(--honey-soft);
+  --ib-needs-line: var(--honey-line);
+  --ib-review: var(--review);
+  --ib-work: var(--work);
+  --ib-del: var(--danger);
+  --ib-float: var(--lift);
   --ib-q: 320px;
   --ib-dock-h: 84px;
   --rail-w: 0px;

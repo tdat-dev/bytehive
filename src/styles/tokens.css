@@ -1,34 +1,66 @@
-/* Design tokens + global reset/base. Loaded first. */
+/* Design tokens + global reset/base. Loaded first.
+   One idea: honey means it is your turn. The office's dusk sits behind every
+   screen and honey goes only on what waits for you, so any screen says from
+   across the room whether you have something to do. palette.ts carries the same
+   values for the office, and palette.test.ts holds the two and the contrast
+   table together. */
 :root{
-  /* Cinema: near-black ground, floating panels, white for the primary action,
-     colour only for state (green working, blue ready to review, amber needs
-     you, red stop/deny). The inbox's --ib-* names map onto the same values. */
-  --bg:#050506; --surface-0:#0a0a0c; --surface-1:#0e0f11; --surface-2:#15161a; --surface-3:#1d1e23;
-  --line:rgba(255,255,255,.07); --line-strong:rgba(255,255,255,.12);
-  --text:#f4f4f5; --text-2:#b4b4bc; --muted:#8c8c96; --muted-2:#83838c;
-  --accent:#f4f4f5; --accent-dim:rgba(255,255,255,.45); --accent-ink:#050506; --accent-glow:rgba(255,255,255,.08);
-  --teal:#6fd6a0; --grad:linear-gradient(#f4f4f5,#f4f4f5); --line-2:rgba(255,255,255,.12);
-  --info:#9ab8ee; --run:#6fd6a0; --idle:#76767f; --err:#f2766b;
-  --live:#6fd6a0; --amber:#f0bf6a; --faint:#5c5c66;
-  --r1:8px; --r2:10px; --r3:12px; --r4:16px;
-  /* type system: sans for UI chrome, mono for technical values, display for the wordmark */
+  /* surfaces, darkest first */
+  --ground:#0F1117; --panel:#151821; --raised:#1C202B; --over:#252A37;
+  /* text. --ink-off marks disabled controls and nothing else: 3.6 on panel */
+  --ink:#ECEAE4; --ink-2:#B9BBC4; --ink-3:#9095A3; --ink-off:#6B7080;
+  /* your turn: the primary button, the needs-you mark, its count */
+  --honey:#F5B83D; --honey-hover:#FFC85C; --honey-ink:#17130A; --honey-soft:rgb(245 184 61 / .14); --honey-line:rgb(245 184 61 / .3);
+  /* state. Never the only sign: every state also has a glyph and a word */
+  --work:#6FD6A0; --review:#8FB8F2; --stop:#A7ABB8; --danger:#F2857A;
+  --work-soft:rgb(111 214 160 / .1); --review-soft:rgb(143 184 242 / .14); --danger-soft:rgb(242 133 122 / .12);
+  --line:rgb(236 234 228 / .1); --line-control:rgb(236 234 228 / .38);
+  /* three levels: flat (a --line), lifted, scrim */
+  --lift:0 8px 24px rgb(0 0 0 / .4); --scrim:rgb(8 10 14 / .6);
+  --ring-line:inset 0 0 0 1px var(--line); --ring-control:inset 0 0 0 1px var(--line-control);
+  /* keyboard focus: ink with a ground halo, so it holds on a lit wall. Never honey */
+  --ring:0 0 0 2px var(--ink),0 0 0 4px var(--ground);
+  /* space, radius */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s6:24px; --s8:32px; --s12:48px;
+  --r-control:6px; --r-card:10px; --r-dialog:14px; --r-word:999px;
+  /* one scale, whole pixels */
   --sans:'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono:'Geist Mono', ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
-  --display:'Geist', system-ui, -apple-system, sans-serif;
+  --t-meta:400 12px/16px var(--sans); --t-body:400 13px/20px var(--sans); --t-row:500 13px/20px var(--sans);
+  --t-lead:400 14px/22px var(--sans); --t-title:600 16px/24px var(--sans); --t-page:600 20px/28px var(--sans);
+  --t-home:600 28px/36px var(--sans); --t-mono:400 12px/18px var(--mono); --t-diff:400 13px/20px var(--mono);
+  --fs-meta:12px; --fs-body:13px; --fs-lead:14px; --fs-title:16px; --fs-page:20px; --fs-home:28px;
+  /* Windows' own timings and curves, so the app moves like the desktop it lives on */
+  --m-press:83ms; --m-swap:167ms; --m-panel:250ms; --m-level:333ms;
+  --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(1,0,1,1);
+  /* the whole stacking order; anything finer stays inside its own component */
+  --z-rail:10; --z-sheet:20; --z-popover:30; --z-scrim:40; --z-dialog:50; --z-toast:60;
+
+  /* old names, until the files have moved */
+  --bg:var(--ground); --surface-0:var(--ground); --surface-1:var(--panel); --surface-2:var(--raised); --surface-3:var(--over);
+  --line-strong:var(--line); --line-2:var(--line);
+  --text:var(--ink); --text-2:var(--ink-2); --muted:var(--ink-3); --muted-2:var(--ink-3); --faint:var(--ink-3);
+  --accent:var(--ink); --accent-dim:var(--line-control); --accent-ink:var(--ground); --accent-glow:var(--over);
+  --teal:var(--work); --grad:linear-gradient(var(--ink),var(--ink));
+  --info:var(--review); --run:var(--work); --idle:var(--stop); --err:var(--danger);
+  --live:var(--work); --amber:var(--honey);
+  --r1:var(--r-control); --r2:var(--r-card); --r3:var(--r-card); --r4:var(--r-dialog);
+  --display:var(--sans);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13.5px;font-feature-settings:"cv01","ss01";text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow:hidden}
+body{background:var(--ground);color:var(--ink);font:var(--t-body);font-feature-settings:"cv01","ss01";font-variant-numeric:tabular-nums;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow:hidden}
 code,pre,kbd,[class*="mono"]{letter-spacing:0}
 button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
 svg{display:block;flex:none}
 [hidden]{display:none !important}
 /* Freeze running animations while the window is hidden/unfocused (set from JS) to save GPU. */
 body.anim-paused *,body.anim-paused *::before,body.anim-paused *::after{animation-play-state:paused !important}
-:focus-visible{outline:2px solid #fff;outline-offset:2px}
+/* the two-layer ring lands in parts.css */
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 *::-webkit-scrollbar{width:9px;height:9px}
-*::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
-*::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:padding-box}
+*::-webkit-scrollbar-thumb{background:var(--line);border-radius:var(--r-control);border:2px solid transparent;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:var(--line-control);background-clip:padding-box}
 *::-webkit-scrollbar-track,*::-webkit-scrollbar-corner{background:transparent}
-::selection{background:rgba(255,255,255,.22);color:#fff}
-input,textarea{caret-color:#fff}
+::selection{background:rgb(236 234 228 / .22);color:var(--ink)}
+input,textarea{caret-color:var(--ink)}
