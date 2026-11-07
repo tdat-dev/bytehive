@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { stickies } from "./build";
 import { OFFICE } from "./palette";
-import { cssPoint, easeEnter, goodRenderer, pickFrom } from "./scene";
+import { cssPoint, cubicBezier, easeLevel, goodRenderer, pickFrom } from "./scene";
 
 describe("goodRenderer", () => {
   it.each([
@@ -23,17 +23,23 @@ describe("the scene can move to a Worker", () => {
   });
 });
 
-describe("easeEnter", () => {
-  it("is the app's entrance curve, cubic-bezier(0, 0, 0, 1)", () => {
-    expect(easeEnter(0)).toBe(0);
-    expect(easeEnter(1)).toBe(1);
-    expect(easeEnter(0.125)).toBeCloseTo(0.5);
+describe("cubicBezier", () => {
+  it("is the same curve CSS draws", () => {
+    const ease = cubicBezier(0, 0, 0, 1);
+    expect(ease(0)).toBe(0);
+    expect(ease(1)).toBe(1);
+    expect(ease(0.125)).toBeCloseTo(0.5, 3);
   });
-  it("is quick away and settles, with no overshoot", () => {
-    expect(easeEnter(0.1)).toBeGreaterThan(0.1);
+});
+
+describe("easeLevel", () => {
+  it("starts gently, so a long move does not jump in its first frame", () => {
+    expect(easeLevel(16.7 / 560)).toBeLessThan(0.02);
+  });
+  it("settles with no overshoot", () => {
     for (let k = 0; k < 1; k += 0.01) {
-      expect(easeEnter(k)).toBeLessThanOrEqual(1);
-      expect(easeEnter(k + 0.01)).toBeGreaterThanOrEqual(easeEnter(k));
+      expect(easeLevel(k)).toBeLessThanOrEqual(1);
+      expect(easeLevel(k + 0.01)).toBeGreaterThanOrEqual(easeLevel(k) - 1e-9);
     }
   });
 });

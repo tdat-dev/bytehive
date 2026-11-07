@@ -12,8 +12,11 @@ import type { OfficeSource } from "./source";
 /** How often the wall boards are read while the office is on screen. */
 const BOARDS_MS = 5000;
 
-const panesNow = (): OfficePane[] => [...workspaces.values()].flatMap((ws) => [...ws.panes.values()].flatMap((p) =>
-  (p.spec.personId ? [{ personId: p.spec.personId, wsId: ws.id, paneId: p.id, task: taskOf(p.id) ?? null }] : [])));
+/** How long after its last output a terminal counts as printing. */
+const PRINTING_MS = 2500;
+
+const panesNow = (now: number): OfficePane[] => [...workspaces.values()].flatMap((ws) => [...ws.panes.values()].flatMap((p) =>
+  (p.spec.personId ? [{ personId: p.spec.personId, wsId: ws.id, paneId: p.id, task: taskOf(p.id) ?? null, printing: now - p.lastOutputAt < PRINTING_MS }] : [])));
 
 const count = (lists: Array<{ title: string; cards: unknown[] }>, title: string) =>
   lists.find((l) => l.title.trim().toLowerCase() === title)?.cards.length ?? 0;
@@ -35,7 +38,7 @@ export function liveSource(): OfficeSource {
       const s = engine.companyView();
       if (!s) return { model: null, note: engine.companyElsewhere(), error: engine.companyError() };
       const openDirs = [...workspaces.values()].flatMap((w) => (w.dir ? [w.dir] : []));
-      return { model: officeModel(s.company, s.jobs, engine.companyAlerts(), panesNow(), { roles: s.roles, boards, openDirs, flights: engine.companyFlights(now) }), note: null, error: null };
+      return { model: officeModel(s.company, s.jobs, engine.companyAlerts(), panesNow(now), { roles: s.roles, boards, openDirs, flights: engine.companyFlights(now) }), note: null, error: null };
     },
     onChange(fn) {
       const off = engine.onCompanyChange(fn);

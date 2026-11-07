@@ -98,13 +98,15 @@ function personTag(p: OfficePerson, wanted: boolean, short: boolean): Tag {
   return { key: `person:${p.id}`, id: p.id, kind: "person", html: short ? esc(p.name) : `${esc(p.name)} <span>${esc(detail)}</span>`, label: `${p.name}, ${detail}`, needs: wanted, to: deskOf(p) };
 }
 
-function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean): Tag[] {
+function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean, hovered: string | null): Tag[] {
   if (l.kind === "building") {
+    const under = hovered ? personIn(m, hovered) : undefined;
     // A plan or a paused Job is nobody's on a floor: without this the tags would not add up to the rail.
     const here = new Set(m.floors.flatMap((f) => f.people.map((p) => p.id)));
     const loose = m.needs.filter((r) => !r.personId || !here.has(r.personId)).length;
     const top: Tag[] = m.founder ? [{ key: "top:top", id: "top", kind: "top", html: `Founder${needYou(loose)}`, label: "", needs: loose > 0, to: deskOf(m.founder) }] : [];
-    return [...top, ...m.floors.map(floorTag)];
+    const named = under ? [personTag(under, m.needs.some((r) => r.personId === under.id) || under.state === "needs", false)] : [];
+    return [...top, ...m.floors.map(floorTag), ...named];
   }
   if (l.kind === "desk") return [];
   const f = m.floors.find((x) => x.id === l.floorId);
@@ -205,6 +207,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   let timer: number | null = null;
   let fitTimer: ReturnType<typeof setTimeout> | null = null;
   let lastHover = -Infinity;
+  let hovered: string | null = null;
   let trail: Crumb[] = [];
   let trailHtml = "";
 
@@ -301,11 +304,19 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     return b;
   }
 
+  /** The person under the pointer rises a little, and at the Building says who they are. */
+  function hoverOver(id: string | null): void {
+    if (id === hovered) return;
+    hovered = id;
+    scene?.hover(id);
+    place();
+  }
+
   function place(): void {
     tagsEl.classList.toggle("is-moving", moving);
     if (!scene || moving) return;
     const m = model;
-    const tags = m ? wantedTags(level, m, !!host.openBoard) : [];
+    const tags = m ? wantedTags(level, m, !!host.openBoard, hovered) : [];
     const spots = new Map(scene.anchors().map((a) => [`${a.kind}:${a.id}`, a]));
     const live = tags.filter((t) => spots.has(t.key)).sort((a, b) => spots.get(a.key)!.y - spots.get(b.key)!.y);
 
@@ -623,8 +634,14 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     if (e.target !== canvas || !scene || moving || now - lastHover < HOVER_MS) return;
     lastHover = now;
     const r = canvas.getBoundingClientRect();
-    canvas.style.cursor = scene.pick(e.clientX - r.left, e.clientY - r.top) ? "pointer" : "";
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    const hit = scene.pick(x, y);
+    canvas.style.cursor = hit ? "pointer" : "";
+    scene.parallax((x / r.width) * 2 - 1, (y / r.height) * 2 - 1);
+    hoverOver(hit?.personId ?? null);
   });
+  stage.addEventListener("pointerleave", () => hoverOver(null));
   msgEl.addEventListener("submit", (e) => {
     e.preventDefault();
     sendMessage();

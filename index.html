@@ -250,6 +250,10 @@
         <section class="sec" data-sec="system">
           <h3>System</h3>
           <label class="toggle"><input type="checkbox" id="prefRestore"><span class="tg"></span><span class="sr-txt"><b>Reopen my projects on start</b><span>ByteHive brings back last session's projects and agents, stopped, so nothing heavy launches by itself. Resume the ones you need.</span></span></label>
+          <div class="srow">
+            <div class="sr-txt"><b>Office quality</b><span>Auto draws less if the picture gets slow, and on battery. Low looks plainer and uses the least.</span></div>
+            <select class="input" id="setOfficeQuality" aria-label="Office quality"><option value="auto">Auto</option><option value="low">Low</option><option value="high">High</option></select>
+          </div>
           <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks ByteHive into the system tray; agents keep running.</span></span></label>
           <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">ByteHive</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
           <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>

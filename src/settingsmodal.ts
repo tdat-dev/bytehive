@@ -20,12 +20,14 @@ import { getVersion } from "@tauri-apps/api/app";
 import { workspaces } from "./appstate";
 import { initPrefsView, resetPrefsView, syncPrefsView } from "./prefsview";
 import { initBrowserPrefs, refreshBrowserPrefs } from "./browserprefs";
+import { readQuality, saveQuality, type OfficeQuality } from "./company/office/quality";
 
 /* ---------------- settings modal ---------------- */
 const settingsModal = document.getElementById("settingsModal") as HTMLElement | null;
 const setHideTray = document.getElementById("setHideTray") as HTMLInputElement | null;
 const setVersion = document.getElementById("setVersion");
 const setCheckUpdate = document.getElementById("setCheckUpdate") as HTMLButtonElement | null;
+const setOfficeQuality = document.getElementById("setOfficeQuality") as HTMLSelectElement | null;
 
 /* ---- terminal font size stepper ---- */
 const setFontN = document.getElementById("setFontN");
@@ -70,6 +72,7 @@ function navToSection(sec: string, scroll = true): void {
 
 export function openSettings() {
   if (setHideTray) setHideTray.checked = getHideToTray();
+  if (setOfficeQuality) setOfficeQuality.value = readQuality();
   syncFontLabel();
   syncPrefsView();
   void refreshBrowserPrefs();
@@ -125,6 +128,8 @@ export function initSettingsModal(): void {
     void setTrayVisible(on).catch((e) => console.warn("set tray visibility failed:", e));
   });
 
+  setOfficeQuality?.addEventListener("change", () => saveQuality(setOfficeQuality.value as OfficeQuality));
+
   // Reset: everything this page sets, after asking.
   document.getElementById("prefReset")?.addEventListener("click", async () => {
     const r = await confirmModal({
@@ -136,6 +141,8 @@ export function initSettingsModal(): void {
     if (!r.ok) return;
     resetPrefsView();
     applyTermFontSize(TERM_FONT_DEFAULT);
+    saveQuality("auto");
+    if (setOfficeQuality) setOfficeQuality.value = "auto";
     if (setHideTray?.checked) { setHideTray.checked = false; setHideTray.dispatchEvent(new Event("change")); }
     topNote("Settings are back to how ByteHive ships");
   });

@@ -44,10 +44,19 @@ export function readQuality(): OfficeQuality {
   }
 }
 
+const listeners = new Set<(q: OfficeQuality) => void>();
+
+/** Tells a running scene the setting changed. Gives back the way to stop. */
+export function onQuality(fn: (q: OfficeQuality) => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
 export function saveQuality(q: OfficeQuality): void {
   try {
     localStorage.setItem(KEY, q);
   } catch { /* the setting just does not stick */ }
+  for (const fn of [...listeners]) fn(q);
 }
 
 interface Battery extends EventTarget { charging: boolean }

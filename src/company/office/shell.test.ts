@@ -5,7 +5,7 @@ import { BUILDING } from "./nav";
 import { createShell, settleTags, type ShellHost } from "./shell";
 
 const scene = vi.hoisted(() => ({
-  setModel: vi.fn(), setLevel: vi.fn(), resize: vi.fn(), setVisible: vi.fn(), pick: vi.fn(() => null),
+  setModel: vi.fn(), setLevel: vi.fn(), resize: vi.fn(), setVisible: vi.fn(), hover: vi.fn(), parallax: vi.fn(), pick: vi.fn(() => null),
   anchors: vi.fn(() => []), onMoved: vi.fn(), stats: vi.fn(), dispose: vi.fn(),
 }));
 const sceneModule = { createScene: vi.fn(() => scene), webglProbe: () => ({ ok: true, renderer: "test" }) };
@@ -419,6 +419,23 @@ describe("clicking the scene", () => {
       vi.advanceTimersByTime(81);
       move();
       expect(scene.pick).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
+  it("lifts the person under the pointer, names them at the Building, and lets go when it leaves", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance"] });
+    try {
+      const { shell } = await shownWithRealTick();
+      const canvas = shell.el.querySelector<HTMLElement>("canvas")!;
+      scene.anchors.mockReturnValue([{ id: "linh", kind: "person", x: 100, y: 100, visible: true }] as never);
+      scene.pick.mockReturnValue({ personId: "linh", floorId: "bytehive" } as never);
+      canvas.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 5, clientY: 5 }));
+      expect(scene.hover).toHaveBeenLastCalledWith("linh");
+      expect(scene.parallax).toHaveBeenCalled();
+      expect(shell.el.querySelector('[data-tag="linh"]')?.textContent).toContain("Linh");
+      canvas.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }));
+      canvas.parentElement!.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }));
+      expect(scene.hover).toHaveBeenLastCalledWith(null);
+      expect(shell.el.querySelector('[data-tag="linh"]')).toBeNull();
     } finally { vi.useRealTimers(); }
   });
 });

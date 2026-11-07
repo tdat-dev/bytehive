@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LOW_TIER, lookOf, readQuality, saveQuality, startTier, steppedDown } from "./quality";
+import { LOW_TIER, lookOf, onQuality, readQuality, saveQuality, startTier, steppedDown } from "./quality";
 
 const frames = (ms: number, n = 12) => Array<number>(n).fill(ms);
 
@@ -63,6 +63,14 @@ describe("the setting", () => {
   it("keeps what the owner chose", () => {
     saveQuality("low");
     expect(readQuality()).toBe("low");
+  });
+  it("tells a running scene when it changes, until it stops listening", () => {
+    const heard: string[] = [];
+    const off = onQuality((q) => heard.push(q));
+    saveQuality("high");
+    off();
+    saveQuality("low");
+    expect(heard).toEqual(["high"]);
   });
   it("reads anything else on disk as Auto", () => {
     localStorage.setItem("bytehive.officeQuality", "ultra");

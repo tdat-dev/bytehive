@@ -12,7 +12,7 @@ import { risingAt, risingGeometry, risingMaterial, risingMesh } from "./life";
 import { BUILDING, frameDelay, type Level } from "./nav";
 import { OFFICE } from "./palette";
 import { HOP_MS, MARK_UNITS, animate, hopAt, isPerson, planeAt, spotOf, type PlaneSpot } from "./people";
-import { lookOf, readQuality, startTier, steppedDown, watchBattery, type OfficeQuality } from "./quality";
+import { lookOf, onQuality, readQuality, startTier, steppedDown, watchBattery, type OfficeQuality } from "./quality";
 
 export interface SceneOptions {
   reducedMotion: boolean; // read at every use: the owner can change it while the scene runs
@@ -42,8 +42,9 @@ export interface OfficeScene {
   dispose(): void;
 }
 
-/** A level change: the app's --m-level, on its entrance curve. */
-const MOVE_MS = 333;
+/** A level change. Longer than --m-level, and it starts gently: on the app's own curve a fifth of
+ *  the whole move, 262 px at 1280x800, lands in the first frame, and the picture jumps. */
+const MOVE_MS = 560;
 /** How long the scene keeps its GPU memory once nobody can see it. */
 const AWAY_MS = 120_000;
 const HOVER_RISE = 0.14;
@@ -76,11 +77,23 @@ export function webglProbe(allowSoftware = false): { ok: boolean; renderer: stri
   return { ok: allowSoftware || goodRenderer(renderer), renderer };
 }
 
-/** cubic-bezier(0, 0, 0, 1). Its x is s cubed, so it needs no solving. */
-export const easeEnter = (k: number): number => {
-  const s = Math.cbrt(k);
-  return s * s * (3 - 2 * s);
-};
+/** A CSS cubic-bezier as a function of time. */
+export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (k: number) => number {
+  const at = (a: number, b: number, s: number) => 3 * (1 - s) ** 2 * s * a + 3 * (1 - s) * s * s * b + s ** 3;
+  return (k) => {
+    if (k <= 0 || k >= 1) return k <= 0 ? 0 : 1;
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 24; i += 1) {
+      const s = (lo + hi) / 2;
+      if (at(x1, x2, s) < k) lo = s;
+      else hi = s;
+    }
+    return at(y1, y2, (lo + hi) / 2);
+  };
+}
+
+export const easeLevel = cubicBezier(0.2, 0, 0, 1);
 
 /** From normalised device coordinates to CSS pixels. Past z = 1 is behind the camera. */
 export function cssPoint(p: { x: number; y: number; z: number }, w: number, h: number): { x: number; y: number; visible: boolean } {
@@ -343,7 +356,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     if (!tween) return;
     tween.at ??= t;
     const k = Math.min(1, (t - tween.at) / MOVE_MS);
-    const eased = easeEnter(k);
+    const eased = easeLevel(k);
     look(mixShots(tween.from, tween.to, eased));
     if (tween.band) kit.focus?.value.lerpVectors(tween.band.from, tween.band.to, eased);
     if (k === 1) {
@@ -488,7 +501,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     placeRising(m, t);
     placeProxies(m, t);
     kit.groundLight.visible = m.floors.some((f) => f.lit);
-    anyoneWorking = [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].some((p) => p.state === "working");
+    anyoneWorking = [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].some((p) => p.state === "working" || p.printing);
     if (rebuilt) {
       fitSun(t);
       renderer.shadowMap.needsUpdate = true;
@@ -509,9 +522,11 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   /** Steam and bytes, over the desks where someone works. One mesh, rebuilt only when that changes. */
   function placeRising(m: OfficeModel, t: Tower): void {
+    const who = new Map([...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].map((p) => [p.id, p]));
+    const active = (id: string) => who.get(id)?.state === "working" || !!who.get(id)?.printing;
     const seats = [
-      ...t.floors.flatMap((spot) => spot.desks.filter((d) => stateOf(d.personId) === "working").map((d) => ({ d: d as Seat, y: spot.y, id: d.personId }))),
-      ...(m.founder?.state === "working" ? [{ d: FOUNDER_DESK, y: t.roofY, id: m.founder.id }] : []),
+      ...t.floors.flatMap((spot) => spot.desks.filter((d) => active(d.personId)).map((d) => ({ d: d as Seat, y: spot.y, printing: !!who.get(d.personId)?.printing }))),
+      ...(m.founder && active(m.founder.id) ? [{ d: FOUNDER_DESK, y: t.roofY, printing: !!m.founder.printing }] : []),
     ];
     const key = JSON.stringify(seats);
     if (key === risingKey) return;
@@ -522,7 +537,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       rising = null;
     }
     if (!seats.length) return;
-    rising = risingMesh(risingGeometry(seats.flatMap((s, i) => risingAt(s.d, s.y, (i + 1) * 0.173))), risingLook);
+    rising = risingMesh(risingGeometry(seats.flatMap((s, i) => risingAt(s.d, s.y, (i + 1) * 0.173, s.printing))), risingLook);
     scene.add(rising);
   }
 
@@ -661,6 +676,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     battery = on;
     applyTier(startTier(setting, battery));
   });
+  const offQuality = onQuality(setQuality);
   if (kit.deskLight) kit.deskLight.visible = seen.glow;
   if (kit.hazeLight) kit.hazeLight.visible = seen.glow;
 
@@ -676,6 +692,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       halt();
       if (awayTimer !== null) clearTimeout(awayTimer);
       offBattery();
+      offQuality();
       moved.clear();
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);

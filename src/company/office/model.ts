@@ -10,7 +10,8 @@ import type { Alert } from "../watch";
 export type OfficeState = "needs" | "working" | "review" | "idle" | "stopped";
 export type OfficeTask = Pick<Task, "status" | "title">;
 
-export interface OfficePane { personId: string; wsId: string; paneId: string; task: OfficeTask | null }
+/** `printing`: its terminal really put something out in the last moments. */
+export interface OfficePane { personId: string; wsId: string; paneId: string; task: OfficeTask | null; printing?: boolean }
 export interface BoardCounts { todo: number; doing: number; done: number }
 /** A message on its way, for the paper plane. `at` is when it left. */
 export interface Flight { id: string; from: string; to: string; at: number }
@@ -33,6 +34,8 @@ export interface OfficePerson {
   hair: string;
   prop: string;
   state: OfficeState;
+  /** Their terminal is putting something out right now. Only that makes marks rise from a desk. */
+  printing?: boolean;
   doing: string | null;
   floorId: string | null;
   seat: number;
@@ -105,7 +108,7 @@ const titleCase = (id: string) => id.replace(/(^|-)([a-z])/g, (_, a: string, b: 
 function toPerson(p: Person, role: RoleDef | undefined, pane: OfficePane | undefined, seat: number): OfficePerson {
   return {
     id: p.id, name: p.name, rank: p.rank, title: role?.title ?? titleCase(p.role), department: role?.department ?? "",
-    cli: p.cli, ...lookOf(p, role), state: officeState(pane?.task), doing: pane?.task?.title ?? null,
+    cli: p.cli, ...lookOf(p, role), state: officeState(pane?.task), printing: !!pane?.printing, doing: pane?.task?.title ?? null,
     floorId: p.floor, seat, paneId: pane?.paneId ?? null, wsId: pane?.wsId ?? null,
   };
 }
@@ -151,6 +154,6 @@ export function officeModel(company: Company, jobs: Job[], alerts: Alert[], pane
 
 /** What the scene draws, as one string: the same string means nothing to redraw. */
 export function sceneKey(m: OfficeModel): string {
-  const who = (p: OfficePerson) => [p.id, p.state, p.shirt, p.hair, p.prop, p.cli, p.seat, p.rank].join(":");
+  const who = (p: OfficePerson) => [p.id, p.state, p.shirt, p.hair, p.prop, p.cli, p.seat, p.rank, !!p.printing].join(":");
   return JSON.stringify([m.founder && who(m.founder), m.floors.map((f) => [f.id, f.name, f.open, f.lit, f.needs, f.papers, f.board, f.people.map(who)]), m.flights.map((x) => x.id)]);
 }

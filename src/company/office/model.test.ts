@@ -38,6 +38,21 @@ describe("companyUsed", () => {
   });
 });
 
+describe("printing", () => {
+  const company = { ...emptyCompany(), floors: [{ id: "f", dir: "D:\\f", name: "f" }], people: [...emptyCompany().people, { id: "linh", name: "Linh", role: "developer", rank: "staff", floor: "f", boss: "founder", cli: "claude", look: { shirt: "#123456", hair: "#123456", prop: "none" } }] } as unknown as Company;
+  const pane = (printing: boolean): OfficePane => ({ personId: "linh", wsId: "w", paneId: "p", task: { title: "x", status: { state: "working", ask: null } } as OfficePane["task"], printing });
+  const linh = (printing: boolean) => officeModel(company, [], [], [pane(printing)]).floors[0].people[0];
+  it("comes from the pane, not from the state", () => {
+    expect(linh(true).state).toBe("working");
+    expect(linh(true).printing).toBe(true);
+    expect(linh(false).state).toBe("working");
+    expect(linh(false).printing).toBe(false);
+  });
+  it("changes what the scene must draw", () => {
+    expect(sceneKey(officeModel(company, [], [], [pane(true)]))).not.toBe(sceneKey(officeModel(company, [], [], [pane(false)])));
+  });
+});
+
 describe("looks", () => {
   it("dresses a department alike", () => {
     expect(departmentShirt("Engineering")).toBe(departmentShirt("Engineering"));

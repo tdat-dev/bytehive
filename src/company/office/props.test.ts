@@ -104,6 +104,9 @@ describe("what rises from a desk", () => {
     expect(new Set(marks.map((m) => m.kind)).size).toBe(2);
     expect(new Set(marks.map((m) => m.seed)).size).toBeGreaterThan(3);
   });
+  it("has no bytes unless the terminal is printing", () => {
+    expect(risingAt({ x: 0, z: 0, rot: 0 }, 0, 0.3, false).every((m) => m.kind === 0)).toBe(true);
+  });
   it("is two triangles a mark, in one geometry", () => {
     const marks = risingAt({ x: 0, z: 0, rot: 0 }, 0, 0.3);
     expect(risingGeometry(marks).getAttribute("position").count).toBe(marks.length * 6);

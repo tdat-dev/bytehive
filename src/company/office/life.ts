@@ -20,11 +20,11 @@ const inWorld = (d: Seat, floorY: number, at: { x: number; y: number; z: number 
   z: d.z - at.x * Math.sin(d.rot) + at.z * Math.cos(d.rot),
 });
 
-/** What rises from one working desk. */
-export function risingAt(d: Seat, floorY: number, seed: number): Rising[] {
+/** What rises from a desk: steam from the mug of someone working, and bytes only while their terminal prints. */
+export function risingAt(d: Seat, floorY: number, seed: number, printing = true): Rising[] {
   const out: Rising[] = [];
   for (let i = 0; i < STEAM.count; i += 1) out.push({ ...inWorld(d, floorY, STEAM), kind: 0, seed: (seed * 0.37 + i / STEAM.count) % 1 });
-  for (let i = 0; i < BYTES.count; i += 1) out.push({ ...inWorld(d, floorY, { ...BYTES, x: (i - 1.5) * 0.14 }), kind: 1, seed: (seed * 0.61 + (i * 2) / (BYTES.count * 2 + 1)) % 1 });
+  if (printing) for (let i = 0; i < BYTES.count; i += 1) out.push({ ...inWorld(d, floorY, { ...BYTES, x: (i - 1.5) * 0.14 }), kind: 1, seed: (seed * 0.61 + (i * 2) / (BYTES.count * 2 + 1)) % 1 });
   return out;
 }
 

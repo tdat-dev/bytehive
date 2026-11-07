@@ -41,7 +41,8 @@ function hire(name: string, roleId: string, floor: string, over: Partial<Person>
 }
 
 const task = (state: string, title: string, extra: object = {}): OfficeTask => ({ title, status: { state, ask: null, ...extra } }) as OfficeTask;
-const pane = (personId: string, t: OfficeTask): OfficePane => ({ personId, wsId: "demo", paneId: `pane-${personId}`, task: t });
+/** Working, and for all but one of them the terminal is printing: a working person can sit and think. */
+const pane = (personId: string, t: OfficeTask): OfficePane => ({ personId, wsId: "demo", paneId: `pane-${personId}`, task: t, printing: t.status.state === "working" && personId !== "an" });
 const asking = (title: string): OfficeTask => task("needs", title, { ask: { kind: "run", detail: "npm publish", prompt: "", options: [] } });
 
 const job = (over: Partial<Job> & Pick<Job, "id" | "title" | "status">): Job =>
