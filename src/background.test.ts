@@ -4,7 +4,8 @@
 // exactly like "the setting didn't save".
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { initBackground, backdropRgb, paneTone } from "./background";
+import { initBackground, backdropRgb, paneTone } from "./background";
+import { APP } from "./company/office/palette";
 
 const KEY = "maestro.canvasBg";
 const LOOK_KEY = "maestro.paneLook";
@@ -67,5 +68,12 @@ describe("app-wide background", () => {
     localStorage.setItem(KEY, spec("color", "#ffffff"));
     expect(backdropRgb()).toEqual([255, 255, 255]);
     expect(paneTone()).toBe("dark"); // dark ink on a white wallpaper
+  });
+});
+
+describe("the ground behind a pane", () => {
+  it("is --ground, for the tone decision too", async () => {
+    const { GROUND } = await import("./background");
+    expect(`#${GROUND.map((c) => c.toString(16).padStart(2, "0")).join("")}`).toBe(APP.ground.toLowerCase());
   });
 });

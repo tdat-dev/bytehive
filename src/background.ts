@@ -34,16 +34,18 @@ import { type PaneLook } from "./terminal";
 // `base` is the flat colour a see-through pane ends up sitting on — the radial
 // tints are too faint to move the tone decision, so the base is enough.
 interface BgPreset { bg: string; grid: boolean; base: Rgb }
+/** --ground, as numbers: the tone decision reads it, and palette.test.ts holds it to the token. */
+export const GROUND: Rgb = [15, 17, 23];
 const PRESETS: Record<string, BgPreset> = {
   glow: {
     bg:
       "radial-gradient(1100px 700px at 88% -8%,rgba(198,241,53,.15),transparent 62%)," +
       "radial-gradient(900px 650px at -8% 108%,rgba(56,189,248,.12),transparent 60%),var(--bg)",
     grid: true,
-    base: [9, 10, 12],
+    base: GROUND,
   },
-  dark: { bg: "var(--bg)", grid: false, base: [9, 10, 12] },
-  grid: { bg: "var(--bg)", grid: true, base: [9, 10, 12] },
+  dark: { bg: "var(--bg)", grid: false, base: GROUND },
+  grid: { bg: "var(--bg)", grid: true, base: GROUND },
   violet: {
     bg:
       "radial-gradient(1000px 700px at 85% -10%,rgba(139,92,246,.18),transparent 60%)," +
@@ -63,7 +65,7 @@ const PRESETS: Record<string, BgPreset> = {
 /** The scrim applied over an uploaded photo (see applyBackground) — the tone
  *  decision has to account for it, or a bright photo reads as light when what
  *  the pane actually sits on is the darkened version. */
-const IMG_SCRIM: Rgb = [9, 10, 12];
+const IMG_SCRIM: Rgb = GROUND;
 const IMG_SCRIM_ALPHA = 0.585; // the .55 → .62 gradient, averaged
 const DEFAULT_KIND = "glow"; // mockup opens with "glow" marked active
 
@@ -251,7 +253,7 @@ export function applyBackground(ws: Workspace): void {
     } else {
       // Uploaded image: a dark scrim over cover art keeps the panes legible.
       ws.gridEl.style.background =
-        `linear-gradient(rgba(9,10,12,.55),rgba(9,10,12,.62)),url("${spec.value}") center / cover no-repeat`;
+        `linear-gradient(rgb(${GROUND.join(" ")} / .55),rgb(${GROUND.join(" ")} / .62)),url("${spec.value}") center / cover no-repeat`;
     }
   }
   applyPanePlate(ws);
