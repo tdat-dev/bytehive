@@ -234,5 +234,6 @@ export function openMemory(o: MemoryViewOpts): void {
     }
   });
 
-  void refresh().then(() => addBox.focus());
+  addBox.focus();
+  void refresh();
 }

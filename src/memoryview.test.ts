@@ -35,6 +35,11 @@ describe("project memory panel", () => {
     disk.files.clear();
   });
 
+  it("puts the keyboard in the first field at once, without waiting for the file", () => {
+    openMemory({ dir: "D:/p", project: "zoldify", agents: () => [], send: async () => {} } as never);
+    expect((document.activeElement as HTMLElement | null)?.id).toBe("mmNew");
+  });
+
   it("adds, edits, deletes and puts back a fact", async () => {
     const sent: [string, string][] = [];
     openMemory({ dir: "D:/p", project: "zoldify", agents: () => [], send: async (id, t) => { sent.push([id, t]); return true; } });
