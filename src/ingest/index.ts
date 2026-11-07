@@ -92,7 +92,9 @@ function gateFor(dir: string): Gate {
   const gate = new Gate({
     send: (to, text) => sendMessage(to, text),
     sendResult: (req, result) => {
-      if (req.fromPane) void sendMessage(req.fromPane, resultLine(result)).catch(() => {});
+      if (!req.fromPane) return false;
+      void sendMessage(req.fromPane, resultLine(result)).catch(() => {});
+      return true;
     },
     classify: classifyWithProvider,
     isAwaiting: (to) => !!taskOf(to)?.status.ask,

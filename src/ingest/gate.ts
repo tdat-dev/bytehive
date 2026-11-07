@@ -18,7 +18,8 @@ import type {
 
 export interface GateDeps {
   send(to: string, text: string): Promise<boolean>;
-  sendResult(req: Request, result: ToolResult): void;
+  /** False when nobody can receive the answer; the message then goes on to the agent. */
+  sendResult(req: Request, result: ToolResult): boolean;
   classify(text: string): Promise<ClassifyReply>;
   isAwaiting(to: string): boolean;
   settings(): GateSettings;
@@ -40,13 +41,25 @@ const llmOf = (usage: LlmUsage | undefined, called: boolean): LogEntry["llm"] =>
 
 export class Gate {
   private readonly seen = new Map<string, number>();
+  /** The last message in flight per agent, so one waiting on the provider is not overtaken. */
+  private readonly tails = new Map<string, Promise<unknown>>();
   private readonly now: () => number;
 
   constructor(private readonly deps: GateDeps) {
     this.now = deps.now ?? Date.now;
   }
 
-  async send(req: Request): Promise<Outcome> {
+  send(req: Request): Promise<Outcome> {
+    const before = this.tails.get(req.to) ?? Promise.resolve();
+    const run = before.then(() => this.run(req));
+    const tail: Promise<unknown> = run.catch(() => {}).finally(() => {
+      if (this.tails.get(req.to) === tail) this.tails.delete(req.to);
+    });
+    this.tails.set(req.to, tail);
+    return run;
+  }
+
+  private async run(req: Request): Promise<Outcome> {
     const started = this.now();
     const settings = this.deps.settings();
     if (!settings.enabled) return this.pass(req, started);
@@ -57,7 +70,7 @@ export class Gate {
 
     const hit = await this.deps.cache.get(hash);
     if (hit) {
-      this.resultTo(req, hit);
+      if (!this.resultTo(req, hit)) return this.pass(req, started, hash);
       this.log(req, hash, "cache-hit", started, { tokensSavedEstimate: tokensOf(req.text) });
       return { kind: "cache-hit", result: hit };
     }
@@ -126,11 +139,9 @@ export class Gate {
           /* the answer is still correct; the next one just runs the tool again */
         }
       }
-      this.resultTo(req, result);
-      this.log(req, hash, fromRules ? "rule" : "api", started, {
-        llm: llmOf(usage, !fromRules),
-        ms: { total: this.now() - started, classify: classifyMs, execute: executeMs },
-      });
+      const ms = { total: this.now() - started, classify: classifyMs, execute: executeMs };
+      if (!this.resultTo(req, result)) return this.pass(req, started, hash, { llm: llmOf(usage, !fromRules), ms });
+      this.log(req, hash, fromRules ? "rule" : "api", started, { llm: llmOf(usage, !fromRules), ms });
       return result.status === "ok" ? { kind: "answered", via: fromRules ? "rule" : "tool", result } : { kind: "failed", error: result.error ?? "tool" };
     }
 
@@ -167,11 +178,12 @@ export class Gate {
     return { kind: "blocked", id, reason };
   }
 
-  private resultTo(req: Request, result: ToolResult): void {
+  private resultTo(req: Request, result: ToolResult): boolean {
     try {
-      this.deps.sendResult(req, result);
+      return this.deps.sendResult(req, result);
     } catch (e) {
       this.warn("could not deliver the result: " + String(e));
+      return false;
     }
   }
 

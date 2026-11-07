@@ -127,7 +127,7 @@ Thứ tự cố định:
 1. Nếu `isAwaiting(agentId)` thì bỏ qua toàn bộ gate, đường `pass`. Một tin `ok` lúc agent đang hỏi là câu trả lời thật.
 2. Chống lặp: với nguồn `fleet` hoặc `founder`, cùng cặp người gửi, agent nhận và hash mà đã gửi trong 10 phút thì chặn với lý do `loop`. Đây là chặn, không phải trả kết quả, nên khác cache.
 3. Nếu văn bản rỗng sau chuẩn hóa thì chặn với lý do `empty`. Không ai cần gửi tin rỗng tới PTY.
-4. Luật thuần: chào hỏi, cảm ơn, xác nhận (tối đa 4 từ, không có động từ, tiếng Việt và tiếng Anh) thì chặn với lý do `smalltalk`. Yêu cầu tính chi phí hoặc quy đổi tiền thì trả `data` luôn.
+4. Luật thuần: chào hỏi và cảm ơn (tối đa 4 từ, tiếng Việt và tiếng Anh) thì chặn với lý do `smalltalk`. Từ trả lời (`ok`, `yes`, `no`, `done`, `rồi`, `vâng`, ...) thì đi thẳng tới agent, không gọi API, vì chúng có thể là câu trả lời cho một câu hỏi viết thường (không bật trạng thái chờ) hoặc báo xong việc. Câu hỏi chỉ về chi phí thì trả `data` luôn; tin có dấu hiệu việc coding (động từ sửa, viết, thêm, tên file) hoặc dài quá 200 ký tự thì để bộ phân loại xem.
 5. Còn lại gọi API ngoài. Prompt nói rõ: chỉ trả `is_actionable: false` khi chắc chắn tin không phải việc cần làm; không chắc thì trả `true`.
 6. Kết quả là JSON trong `choices[0].message.content`; bỏ rào code fence nếu model thêm vào, rồi kiểm bằng hàm tay: đúng hai trường, `data` là object hoặc null, `intent` (nếu có) thuộc danh sách tool. Sai thì đường `pass`.
 
@@ -268,7 +268,7 @@ Settings, qua `prefs.ts` như các thiết lập khác:
 | PTY đã chết | `sendMessage` trả false, outcome `failed`, tin không vào danh sách chặn |
 | Ghi `ingest-blocked.json` lỗi | Vẫn chặn, cảnh báo, tin không gửi lại được cho tới khi ghi được |
 
-Không có đường nào để một lỗi của gate làm mất tin: hoặc tin tới PTY, hoặc tin nằm trong danh sách chờ gửi lại, hoặc người gửi nhận `failed` ngay.
+Không có đường nào để một lỗi của gate làm mất tin: hoặc tin tới PTY, hoặc tin nằm trong danh sách chờ gửi lại, hoặc người gửi nhận `failed` ngay. Kết quả tính được mà không có ai nhận thì tin đi tiếp tới agent.
 
 ## 9. Riêng tư
 

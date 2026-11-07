@@ -23,6 +23,7 @@ function setup(over: Partial<GateDeps> = {}) {
     },
     sendResult: (_req, result) => {
       results.push(result);
+      return true;
     },
     classify: async () => {
       classifyCalls += 1;
@@ -153,6 +154,72 @@ describe("the gate's edges", () => {
     const out = await t.gate.send({ source: "kanban", to: "a1", text: "hello world, just chatting" });
     expect(out.kind).toBe("sent");
     expect(t.logs[t.logs.length - 1]?.error).toBe("bad_response");
+  });
+
+  it("keeps the order of messages to one agent while the first waits on the provider", async () => {
+    let release = (): void => {};
+    const held = new Promise<void>((r) => (release = r));
+    const t = setup({
+      classify: async () => {
+        await held;
+        return { result: { is_actionable: true, data: null } };
+      },
+    });
+    const first = t.gate.send({ source: "kanban", to: "a1", text: "sửa lỗi test" });
+    const second = t.gate.send({ source: "kanban", to: "a1", text: "yes" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(t.sent).toHaveLength(0);
+    release();
+    await Promise.all([first, second]);
+    expect(t.sent.map((m) => m.text)).toEqual(["sửa lỗi test", "yes"]);
+  });
+
+  it("does not hold one agent's message behind another agent's", async () => {
+    let release = (): void => {};
+    const held = new Promise<void>((r) => (release = r));
+    const t = setup({
+      classify: async () => {
+        await held;
+        return { result: { is_actionable: true, data: null } };
+      },
+    });
+    const first = t.gate.send({ source: "kanban", to: "a1", text: "sửa lỗi test" });
+    await t.gate.send({ source: "kanban", to: "a2", text: "yes" });
+    expect(t.sent.map((m) => m.to)).toEqual(["a2"]);
+    release();
+    await first;
+  });
+
+  it("a failed send does not stop the next message to that agent", async () => {
+    let n = 0;
+    const t = setup({
+      send: async () => {
+        n += 1;
+        if (n === 1) throw new Error("pane gone");
+        return true;
+      },
+    });
+    const a = await t.gate.send({ source: "kanban", to: "a1", text: "yes" });
+    const b = await t.gate.send({ source: "kanban", to: "a1", text: "no" });
+    expect(a.kind).toBe("failed");
+    expect(b.kind).toBe("sent");
+  });
+
+  it("sends the message on when nobody can receive a computed answer", async () => {
+    const t = setup({ sendResult: () => false });
+    const out = await t.gate.send({ source: "fleet", to: "a1", text: CASE_1 });
+    expect(out.kind).toBe("sent");
+    expect(t.sent[0].text).toBe(CASE_1);
+  });
+
+  it("sends the message on when nobody can receive a cached answer", async () => {
+    let open = true;
+    const t = setup({ sendResult: () => open });
+    await t.gate.send({ source: "kanban", to: "a1", text: CASE_1 });
+    open = false;
+    const out = await t.gate.send({ source: "fleet", to: "a1", text: CASE_1 });
+    expect(out.kind).toBe("sent");
+    expect(t.sent[0].text).toBe(CASE_1);
   });
 
   it("changes nothing while the switch is off", async () => {
