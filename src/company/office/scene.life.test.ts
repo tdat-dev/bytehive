@@ -9,6 +9,13 @@ import { buildFloor, buildTop } from "./build";
 import type { Shot } from "./layout";
 
 const calls: string[] = [];
+const gpu = { name: "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)", lost: false, noContext: false };
+const glStub = {
+  RENDERER: 1,
+  getExtension: () => ({ UNMASKED_RENDERER_WEBGL: 2 }),
+  getParameter: () => gpu.name,
+  isContextLost: () => gpu.lost,
+};
 const lights: Array<{ shadow: { dispose(): void } }> = [];
 
 vi.mock("three", async (real) => {
@@ -16,6 +23,11 @@ vi.mock("three", async (real) => {
   class WebGLRenderer {
     shadowMap = { enabled: false, type: 0, autoUpdate: true, needsUpdate: false };
     debug = { checkShaderErrors: true };
+    constructor() {
+      calls.push("context");
+      if (gpu.noContext) throw new Error("Error creating WebGL context.");
+    }
+    getContext() { return glStub; }
     info = { render: { calls: 0, triangles: 0 } };
     getDrawingBufferSize(v: { x: number; y: number }) { return v; }
     setSize(w: number, h: number) { calls.push(`size ${w}x${h}`); }
@@ -70,6 +82,7 @@ const settle = (s: OfficeScene) => {
 beforeEach(() => {
   vi.useFakeTimers();
   calls.length = 0;
+  Object.assign(gpu, { name: "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)", lost: false, noContext: false });
   lights.length = 0;
   queued = [];
   vi.mocked(buildFloor).mockClear();
@@ -142,6 +155,39 @@ describe("going away", () => {
     canvas.dispatchEvent(new Event("webglcontextrestored"));
     expect(onLost).not.toHaveBeenCalled();
     expect(onRestored).not.toHaveBeenCalled();
+  });
+});
+
+describe("the one context", () => {
+  const make = (over: object = {}) => createScene(document.createElement("canvas"), { reducedMotion: true, dpr: 1, onLost: () => {}, onRestored: () => {}, ...over });
+
+  it("is made once, and is the one the scene draws with", () => {
+    make();
+    expect(calls.filter((c) => c === "context")).toHaveLength(1);
+  });
+  it("fails as it always did with no WebGL at all", () => {
+    gpu.noContext = true;
+    expect(() => make()).toThrow(/WebGL/);
+  });
+  it.each(["Google SwiftShader", "ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11)", "llvmpipe (LLVM 15.0.7)"])("refuses %s, and gives its context back", (name) => {
+    gpu.name = name;
+    expect(() => make()).toThrow(`No usable WebGL (${name}).`);
+    expect(calls).toContain("dispose");
+    expect(calls).toContain("contextLoss");
+  });
+  it("takes a software renderer when told to", () => {
+    gpu.name = "Google SwiftShader";
+    expect(() => make({ allowSoftware: true })).not.toThrow();
+    expect(calls).not.toContain("contextLoss");
+  });
+  it("refuses a context that was lost as it was made, even a software one that is allowed", () => {
+    gpu.lost = true;
+    expect(() => make({ allowSoftware: true })).toThrow("No usable WebGL (context lost).");
+  });
+  it("builds nothing when it refuses", () => {
+    gpu.name = "Google SwiftShader";
+    expect(() => make()).toThrow();
+    expect(calls).not.toContain("kit");
   });
 });
 

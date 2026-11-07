@@ -21,6 +21,7 @@ export interface SceneOptions {
   onRestored(): void;   // context back, picture drawn unless the scene is hidden
   clock?(): number;     // what `Flight.at` is measured against. Date.now, unless a demo holds time still
   quality?: OfficeQuality; // the setting, unless the owner's stored one
+  allowSoftware?: boolean; // a CPU renderer is refused, unless a demo asks for it
 }
 /** CSS pixels in the canvas. `clear`: a bubble hangs this far below the point, and no tag should cover it. */
 export interface Anchor { id: string; kind: "floor" | "person" | "top" | "board"; x: number; y: number; visible: boolean; clear?: number }
@@ -68,15 +69,17 @@ const VIEWER = new Vector3(VIEW.x, VIEW.y, VIEW.z).normalize();
 
 export const goodRenderer = (name: string): boolean => !/swiftshader|llvmpipe|basic render|software/i.test(name);
 
-/** Can this machine draw the office? A throwaway context, given back at once. */
-export function webglProbe(allowSoftware = false): { ok: boolean; renderer: string } {
-  if (typeof OffscreenCanvas === "undefined") return { ok: false, renderer: "" };
-  const gl = new OffscreenCanvas(1, 1).getContext("webgl2");
-  if (!gl) return { ok: false, renderer: "" };
+/** Can this machine draw the office? Asked of the context the scene will use, so only one is
+ *  ever made. A refused context goes straight back, and the throw takes the shell's fallback. */
+function checkContext(renderer: WebGLRenderer, allowSoftware: boolean): void {
+  const gl = renderer.getContext();
+  const lost = gl.isContextLost();
   const info = gl.getExtension("WEBGL_debug_renderer_info");
-  const renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
-  gl.getExtension("WEBGL_lose_context")?.loseContext();
-  return { ok: allowSoftware || goodRenderer(renderer), renderer };
+  const name = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+  if (!lost && (allowSoftware || goodRenderer(name))) return;
+  renderer.dispose();
+  renderer.forceContextLoss();
+  throw new Error(`No usable WebGL (${lost ? "context lost" : name}).`);
 }
 
 /** A CSS cubic-bezier as a function of time. */
@@ -137,6 +140,7 @@ const markedIn = (m: OfficeModel): Set<string> => new Set([
 
 export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeScene {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "low-power", preserveDrawingBuffer: false });
+  checkContext(renderer, !!o.allowSoftware);
   let setting: OfficeQuality = o.quality ?? readQuality();
   let battery = false;
   let tier = startTier(setting, battery);

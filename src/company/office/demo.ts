@@ -34,6 +34,7 @@ const stopped = air > 0 || flag("still") ? leftAt + (air || 0.5) * FLIGHT_MS : n
 /** The options object stays the shell's: it writes reduced motion there when the setting changes. */
 const demoOptions = (o: SceneOptions): SceneOptions => {
   if (flag("still") && !air) o.reducedMotion = true;
+  o.allowSoftware = flag("software");
   const quality = query.get("quality");
   if (quality === "low" || quality === "high" || quality === "auto") o.quality = quality;
   if (stopped !== null) o.clock = () => stopped;
@@ -74,7 +75,7 @@ const host: ShellHost = {
   },
   failed(why) {
     message.hidden = false;
-    message.textContent = why;
+    message.textContent = `${why} Add ?software=1 to allow a software renderer.`;
     shell.hide();
   },
   changesOpenFor: () => (drawer.hidden ? null : "demo"),
@@ -86,8 +87,6 @@ const host: ShellHost = {
   contextRestored: () => console.info("office: context restored"),
   async loadScene() {
     const real = await import("./scene");
-    const probe = real.webglProbe(flag("software"));
-    if (!probe.ok) throw new Error(`No usable WebGL here (${probe.renderer || "no context"}). Add ?software=1 to allow a software renderer.`);
     return {
       ...real,
       createScene(canvas: HTMLCanvasElement, o: SceneOptions) {

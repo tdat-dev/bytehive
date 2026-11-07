@@ -8,7 +8,7 @@ const scene = vi.hoisted(() => ({
   setModel: vi.fn(), setLevel: vi.fn(), resize: vi.fn(), setVisible: vi.fn(), hover: vi.fn(), parallax: vi.fn(), pick: vi.fn(() => null),
   anchors: vi.fn(() => []), onMoved: vi.fn(), stats: vi.fn(), dispose: vi.fn(),
 }));
-const sceneModule = { createScene: vi.fn(() => scene), webglProbe: () => ({ ok: true, renderer: "test" }) };
+const sceneModule = { createScene: vi.fn(() => scene) };
 
 const made: Array<ReturnType<typeof createShell>> = [];
 
@@ -24,10 +24,18 @@ function setup(over: Partial<ShellHost> = {}) {
   return { host, source, shell };
 }
 const calm = { terminal: false, dialog: false, dock: false, typing: false };
-const tick = () => new Promise((r) => setTimeout(r, 0));
+/** The scene waits for a frame and a turn after that, so the page paints before its context is made. */
+const tick = async () => { for (let i = 0; i < 3; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 
-beforeEach(() => { document.body.innerHTML = ""; vi.clearAllMocks(); });
-afterEach(() => { for (const shell of made.splice(0)) shell.dispose(); });
+beforeEach(() => {
+  document.body.innerHTML = "";
+  vi.clearAllMocks();
+  vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => { fn(0); return 0; });
+});
+afterEach(() => {
+  for (const shell of made.splice(0)) shell.dispose();
+  vi.unstubAllGlobals();
+});
 
 describe("the office shell", () => {
   it("does not load the scene until it is shown", async () => {
@@ -293,6 +301,29 @@ describe("tags", () => {
     rest();
     expect(shell.el.querySelector("button[data-board]")).toBeNull();
     expect(shell.el.querySelector("[data-board]")?.textContent).toBe("To do 2, Doing 2, Done 5");
+  });
+});
+
+describe("opening", () => {
+  it("puts the page on screen before it makes the scene", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => frames.push(fn));
+    sceneModule.createScene.mockClear();
+    const { shell } = setup();
+    shell.show();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sceneModule.createScene).not.toHaveBeenCalled();
+    for (const fn of frames.splice(0)) fn(0);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(sceneModule.createScene).toHaveBeenCalled();
+  });
+  it("does not wait for a frame a hidden page will never get", async () => {
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    sceneModule.createScene.mockClear();
+    const { shell } = setup();
+    shell.show();
+    await new Promise((r) => setTimeout(r, 130));
+    expect(sceneModule.createScene).toHaveBeenCalled();
   });
 });
 

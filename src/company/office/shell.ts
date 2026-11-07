@@ -40,6 +40,7 @@ export interface ShellHost {
 const TICK_MS = 1000;
 const RESIZE_MS = 120;
 const HOVER_MS = 80;
+const PAINT_WAIT_MS = 100;
 /** Space between a tag and what it marks, and between a tag and the stage's edge. */
 const TAG_GAP = 8;
 const HEAD_GAP = 3;
@@ -59,6 +60,12 @@ const needYou = (n: number) => (n ? ` <em>${n === 1 ? "1 needs you" : `${n} need
 const contactOf = (f: OfficeFloor): OfficePerson | null => f.people.find((p) => p.id === f.lead) ?? f.people[0] ?? null;
 const personIn = (m: OfficeModel | null, id: string): OfficePerson | undefined =>
   (m?.founder?.id === id ? m.founder : m?.floors.flatMap((f) => f.people).find((p) => p.id === id)) ?? undefined;
+
+/** Once what is on the page has reached the screen. A hidden page has no frames, so it does not wait for one. */
+const painted = () => new Promise<void>((done) => {
+  requestAnimationFrame(() => setTimeout(done, 0));
+  setTimeout(done, PAINT_WAIT_MS);
+});
 
 export interface Box { x: number; y: number; w: number; h: number }
 const hits = (a: Box, b: Box) => a.x < b.x + b.w + TAG_TOUCH && b.x < a.x + a.w + TAG_TOUCH && a.y < b.y + b.h + TAG_TOUCH && b.y < a.y + a.h + TAG_TOUCH;
@@ -516,6 +523,8 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     loading = true;
     try {
       const mod = await host.loadScene();
+      // The first context in a page holds the thread while the GPU is set up: the page goes on screen first.
+      await painted();
       if (disposed || !shown) return;
       scene = mod.createScene(canvas, sceneOptions);
       offMoved = scene.onMoved(() => {

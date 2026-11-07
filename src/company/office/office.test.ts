@@ -36,9 +36,9 @@ vi.mock("./live", () => ({
 vi.mock("./scene", () => {
   io.sceneLoads += 1;
   return {
-    webglProbe: () => io.probe,
     createScene: (_canvas: unknown, options: unknown) => {
       if (io.sceneThrows) throw new Error("no context");
+      if (!io.probe.ok) throw new Error(`No usable WebGL (${io.probe.renderer || "no context"}).`);
       io.options = options;
       return { setModel() {}, setLevel() {}, resize() {}, setVisible() {}, pick: () => null, anchors: () => io.anchors, onMoved: (fn: () => void) => { io.moved = fn; return () => {}; }, stats: () => ({}), dispose() {} };
     },

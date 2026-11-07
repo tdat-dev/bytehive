@@ -146,12 +146,7 @@ const host: ShellHost = {
   refit: () => refitStage(),
   leave: () => close(),
   failed,
-  async loadScene() {
-    const mod = await import("./scene");
-    const probe = mod.webglProbe();
-    if (!probe.ok) throw new Error(`No usable WebGL (${probe.renderer || "no context"}).`);
-    return mod;
-  },
+  loadScene: () => import("./scene"),
   changesOpenFor: () => changesOpenFor(),
   openBoard,
   contextLost() {
