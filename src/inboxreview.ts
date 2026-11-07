@@ -91,14 +91,14 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
   let anchor: number | null = null;
   let lnFocus = 0;
 
-  function close(): void {
+  function close(refocus = true): void {
     el?.remove();
     el = null;
     gen++;
     const was = current;
     current = null;
     onClose();
-    if (was) was.term.focus();
+    if (was && refocus) was.term.focus();
   }
 
   function open(pane: Pane): void {

@@ -312,24 +312,34 @@ export function openTask(t: Task): void {
   render();
 }
 
-/** Put an agent on the stage, full size. For the office's Desk. */
-export function stageAgent(paneId: string): boolean {
+/** Put an agent on the stage, full size. For the office's Desk. With `focus` false the keyboard
+ *  stays where it is: that terminal is about to be covered, and keys there would go in unseen. */
+export function stageAgent(paneId: string, focus = true): boolean {
   const t = taskOf(paneId);
   if (!t) return false;
   if (splitOn) setSplit(false);
-  openTask(t);
+  if (focus) {
+    openTask(t);
+    return true;
+  }
+  const ws = workspaces.get(t.wsId);
+  const pane = ws?.panes.get(t.paneId);
+  if (!ws || !pane) return false;
+  if (ws !== activeWs) activateWorkspace(ws);
+  focusPane(ws, pane, undefined, false);
+  render();
   return true;
 }
 
 /** An agent's changes, on the stage. */
 export function openChanges(paneId: string): void {
-  if (stagePane()?.id !== paneId && !stageAgent(paneId)) return;
+  if (stagePane()?.id !== paneId && !stageAgent(paneId, false)) return;
   if (reviewer?.paneId !== paneId) openReview();
 }
-/** Both drawers: neither can be reached under the office. */
+/** Both drawers: neither can be reached under the office. The keyboard is the office's to place. */
 export function closeChanges(): void {
-  if (reviewer?.paneId) reviewer.close();
-  if (historian?.paneId) historian.close();
+  if (reviewer?.paneId) reviewer.close(false);
+  if (historian?.paneId) historian.close(false);
 }
 export const changesOpenFor = (): string | null => reviewer?.paneId ?? null;
 

@@ -37,14 +37,14 @@ export function createHistoryDrawer(host: HTMLElement, onClose: () => void) {
   let current: Pane | null = null;
   let drawn = -1;
 
-  function close(): void {
+  function close(refocus = true): void {
     el?.remove();
     el = null;
     const was = current;
     current = null;
     drawn = -1;
     onClose();
-    if (was) was.term.focus();
+    if (was && refocus) was.term.focus();
   }
 
   /** Redraw when new events arrived (cheap to call every tick). */
@@ -76,7 +76,7 @@ export function createHistoryDrawer(host: HTMLElement, onClose: () => void) {
       </header>
       <div class="ih-body" tabindex="0"></div>`;
     host.appendChild(el);
-    el.querySelector(".ir-close")!.addEventListener("click", close);
+    el.querySelector(".ir-close")!.addEventListener("click", () => close());
     el.querySelector<HTMLElement>(".ir-close")!.focus({ preventScroll: true });
     el.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
     refresh();

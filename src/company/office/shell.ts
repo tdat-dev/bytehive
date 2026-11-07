@@ -10,8 +10,9 @@ import type { Anchor, OfficeScene, SceneOptions } from "./scene";
 import type { OfficeSource } from "./source";
 
 export interface ShellHost {
-  /** Put a person's real pane on the stage and open a tab there. */
-  showDesk(personId: string, tab: DeskTab): boolean;
+  /** Put a person's real pane on the stage and open a tab there. `focus` says the owner came
+   *  here: false when the Desk changed by itself, and the keyboard must stay where it is. */
+  showDesk(personId: string, tab: DeskTab, focus: boolean): boolean;
   /** Fit the terminal to the stage again. Takes no focus: this runs on any resize at a Desk. */
   refit?(): void;
   /** Called when the level changes: the app shows or hides what sits under the layer. */
@@ -367,26 +368,28 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   }
 
   /** The app under the layer, and what stands in for it. */
-  function sit(l: DeskLevel): void {
-    noPane = !host.showDesk(l.personId, l.tab);
+  function sit(l: DeskLevel, focus: boolean): void {
+    noPane = !host.showDesk(l.personId, l.tab, focus);
     if (l.tab === "report") void openReport(l.personId);
     else closeReport();
   }
 
-  /** Where the keyboard lands. A Desk's pane takes it for itself, through focusPane. */
+  /** Where the keyboard lands. A pane on show takes it for itself, through focusPane. Off the
+   *  Terminal tab the pane is covered, so the tab takes it, or a terminal would keep it unseen. */
   function focusHere(): void {
     if (level.kind !== "desk") crumbsEl.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
     else if (noPane) wakeBtn.focus();
+    else if (level.tab !== "terminal") tabButtons.find((b) => b.getAttribute("aria-selected") === "true")?.focus();
   }
 
-  function arrive(l: Level, how: { instant: boolean; focus: boolean }): void {
+  function arrive(l: Level, how: { instant: boolean; focus: boolean; quiet?: boolean }): void {
     level = l;
     moving = !!scene && !how.instant;
     el.dataset.level = l.kind;
     scene?.setLevel(l, how.instant);
     document.body.classList.toggle("office-desk", l.kind === "desk");
     host.levelChanged(l);
-    if (l.kind === "desk") sit(l);
+    if (l.kind === "desk") sit(l, !how.quiet);
     else {
       noPane = false;
       closeReport();
@@ -426,12 +429,12 @@ export function createShell(source: OfficeSource, host: ShellHost) {
       const at = document.activeElement as HTMLElement | null;
       const blind = clamped.kind !== "desk" && !!at?.closest(".xterm");
       if (blind) at?.blur();
-      arrive(clamped, { instant: false, focus: blind });
+      arrive(clamped, { instant: false, focus: blind, quiet: true });
     }
     if (level.kind === "desk") {
       const at = level;
-      if (at.tab === "changes" && !noPane && host.changesOpenFor && !host.changesOpenFor()) arrive({ ...at, tab: "terminal" }, { instant: false, focus: false });
-      else if (noPane && personIn(model, at.personId)?.paneId) noPane = !host.showDesk(at.personId, at.tab);
+      if (at.tab === "changes" && !noPane && host.changesOpenFor && !host.changesOpenFor()) arrive({ ...at, tab: "terminal" }, { instant: false, focus: false, quiet: true });
+      else if (noPane && personIn(model, at.personId)?.paneId) noPane = !host.showDesk(at.personId, at.tab, false);
     }
     paint();
   }
@@ -521,7 +524,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     drawWake();
     source.wakePerson(at.personId).then(
       () => {
-        if (shown && !disposed && level.kind === "desk" && level.personId === at.personId) noPane = !host.showDesk(at.personId, level.tab);
+        if (shown && !disposed && level.kind === "desk" && level.personId === at.personId) noPane = !host.showDesk(at.personId, level.tab, true);
       },
       (e) => { wakeFailure = why(e); },
     ).finally(() => {

@@ -87,7 +87,7 @@ describe("the office shell", () => {
     shell.show();
     await tick();
     shell.go({ kind: "desk", personId: "linh", floorId: "bytehive", tab: "terminal" });
-    expect(host.showDesk).toHaveBeenCalledWith("linh", "terminal");
+    expect(host.showDesk).toHaveBeenCalledWith("linh", "terminal", true);
     expect(host.levelChanged).toHaveBeenLastCalledWith({ kind: "desk", personId: "linh", floorId: "bytehive", tab: "terminal" });
   });
   it("offers to start someone with no pane", async () => {
@@ -490,7 +490,7 @@ describe("the Desk", () => {
     const { shell, host } = await shown();
     shell.go(desk("linh", "bytehive"));
     tabs()[1].click();
-    expect(host.showDesk).toHaveBeenLastCalledWith("linh", "changes");
+    expect(host.showDesk).toHaveBeenLastCalledWith("linh", "changes", true);
     expect(shell.level()).toEqual(desk("linh", "bytehive", "changes"));
     expect(selected()).toEqual(["Changes"]);
     expect(tabs().map((t) => t.tabIndex)).toEqual([-1, 0, -1]);
@@ -604,7 +604,7 @@ describe("its life", () => {
     const { shell, host } = await shown();
     shell.hide();
     shell.show(desk("linh", "bytehive"));
-    expect(host.showDesk).toHaveBeenLastCalledWith("linh", "terminal");
+    expect(host.showDesk).toHaveBeenLastCalledWith("linh", "terminal", true);
     expect(scene.setLevel).toHaveBeenLastCalledWith(desk("linh", "bytehive"), true);
     expect(document.body.classList.contains("office-desk")).toBe(true);
   });
@@ -764,5 +764,70 @@ describe("what a review of the shell found", () => {
     expect(shell.level().kind).toBe("floor");
     expect((document.activeElement as HTMLElement).closest(".xterm")).toBeNull();
     expect((document.activeElement as HTMLElement).closest("#office")).not.toBeNull();
+  });
+});
+
+describe("who may take the keyboard at a Desk", () => {
+  beforeEach(() => { scene.anchors.mockReturnValue([] as never); scene.pick.mockReturnValue(null); });
+
+  const terminal = () => {
+    const box = document.createElement("div");
+    box.className = "xterm";
+    box.innerHTML = "<textarea></textarea>";
+    document.body.append(box);
+    return box.querySelector("textarea")!;
+  };
+
+  it("takes it off a terminal when the office comes back at a Report that covers it", async () => {
+    const { shell } = await shown();
+    shell.go(desk("linh", "bytehive", "report"));
+    shell.hide();
+    terminal().focus();
+    shell.show();
+    expect((document.activeElement as HTMLElement).closest(".xterm")).toBeNull();
+    expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
+  });
+  it("leaves a terminal the Desk shows", async () => {
+    const { shell } = await shown();
+    shell.go(desk("linh", "bytehive"));
+    shell.hide();
+    const t = terminal();
+    t.focus();
+    shell.show();
+    expect(document.activeElement).toBe(t);
+  });
+  it("says the owner did not ask when the drawer closed by itself", async () => {
+    let open: string | null = "linh";
+    const { shell, host, source } = await shown({ changesOpenFor: () => open });
+    shell.go(desk("linh", "bytehive", "changes"));
+    open = null;
+    source.dismiss("nothing");
+    expect(shell.level()).toEqual(desk("linh", "bytehive"));
+    expect(host.showDesk).toHaveBeenLastCalledWith("linh", "terminal", false);
+  });
+  it("says the owner did not ask when a person turns up on a Desk that had no pane", async () => {
+    let up = false;
+    const showDesk = vi.fn(() => up);
+    const { shell, source } = await shown({ showDesk });
+    shell.go(desk("bao", "oldsite"));
+    up = true;
+    const real = source.snapshot.bind(source);
+    vi.spyOn(source, "snapshot").mockImplementation((now) => {
+      const s = real(now);
+      return { ...s, model: s.model && { ...s.model, floors: s.model.floors.map((f) => ({ ...f, people: f.people.map((p) => (p.id === "bao" ? { ...p, paneId: "p9" } : p)) })) } };
+    });
+    source.dismiss("nothing");
+    expect(showDesk).toHaveBeenLastCalledWith("bao", "terminal", false);
+  });
+  it("lets a started person take it: the owner pressed Start", async () => {
+    let up = false;
+    const showDesk = vi.fn(() => up);
+    const { shell, source } = await shown({ showDesk });
+    vi.spyOn(source, "wakePerson").mockImplementation(async () => { up = true; });
+    shell.go(desk("bao", "oldsite"));
+    shell.el.querySelector<HTMLElement>("[data-wake]")!.click();
+    await tick();
+    await tick();
+    expect(showDesk).toHaveBeenLastCalledWith("bao", "terminal", true);
   });
 });

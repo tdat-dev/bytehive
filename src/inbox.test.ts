@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   tasks: [] as Task[],
   answered: [] as Array<[string, string]>,
   texts: [] as Array<[string, string]>,
-  focused: [] as string[],
+  focused: [] as string[], quiet: [] as string[],
   listeners: [] as Array<() => void>,
   reviewed: [] as Array<string | null>,
   settings: 0,
@@ -32,11 +32,12 @@ vi.mock("./tasks", () => ({
   answerText: async (id: string, t: string) => { state.texts.push([id, t]); },
 }));
 vi.mock("./panelayout", () => ({
-  focusPane: (_ws: unknown, pane: { id: string; el: HTMLElement }) => {
+  focusPane: (_ws: unknown, pane: { id: string; el: HTMLElement }, _ev?: unknown, take = true) => {
     document.querySelectorAll(".focused").forEach((e) => e.classList.remove("focused"));
     pane.el.classList.add("focused");
     pane.el.parentElement?.classList.add("has-focus");
     state.focused.push(pane.id);
+    if (!take) state.quiet.push(pane.id);
   },
   renamePane: (pane: { id: string; spec: { name: string } }, name: string) => { pane.spec.name = name; state.renamed.push([pane.id, name]); },
 }));
@@ -226,6 +227,35 @@ describe("inbox DOM", () => {
     expect(panes[1].el.classList.contains("focused")).toBe(true);
     expect(document.querySelector('[data-dock="split"]')?.getAttribute("aria-pressed") ?? "false").toBe("false");
     expect(stageAgent("gone")).toBe(false);
+  });
+
+  it("can stage an agent and leave the keyboard alone, for a terminal that will be covered", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    state.quiet = [];
+    setInbox(true);
+    const focus = vi.spyOn(panes[1].term, "focus");
+    expect(stageAgent("e", false)).toBe(true);
+    expect(panes[1].el.classList.contains("focused")).toBe(true);
+    expect(state.quiet).toEqual(["e"]);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("gives the drawers' terminal no keyboard when the office closes them", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    setInbox(true);
+    openChanges("e");
+    const focus = vi.spyOn(panes[1].term, "focus");
+    closeChanges();
+    expect(changesOpenFor()).toBeNull();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("stages for Changes without the keyboard: the drawer stands over that terminal", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    state.quiet = [];
+    setInbox(true);
+    openChanges("e");
+    expect(state.quiet).toEqual(["e"]);
   });
 
   it("opens an agent's changes for the office, and says whose are open", () => {

@@ -71,8 +71,9 @@ function clearLost(): void {
   lostTimer = null;
 }
 
-/** Safe to ask again: the same pane and tab move nothing, so the keyboard stays where it is. */
-function showDesk(personId: string, tab: DeskTab): boolean {
+/** Safe to ask again: the same pane and tab move nothing, so the keyboard stays where it is.
+ *  A terminal takes the keyboard only when it can be seen, and only if the owner came for it. */
+function showDesk(personId: string, tab: DeskTab, focus: boolean): boolean {
   const paneId = everyone(modelNow()).find((p) => p.id === personId)?.paneId;
   if (!paneId) {
     seated = "";
@@ -83,7 +84,8 @@ function showDesk(personId: string, tab: DeskTab): boolean {
   const arriving = !seated.startsWith(`${paneId}:`);
   seated = spot;
   deps?.showApp();
-  if ((arriving || tab === "terminal") && !stageAgent(paneId)) source?.showPerson(personId);
+  const take = focus && tab === "terminal";
+  if ((arriving || tab === "terminal") && !stageAgent(paneId, take) && take) source?.showPerson(personId);
   if (tab === "changes") openChanges(paneId);
   return true;
 }

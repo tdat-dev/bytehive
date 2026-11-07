@@ -55,7 +55,7 @@ export function applyLayout(ws: Workspace): void {
 /* ---------------- pane focus (stage + avatar rail) ---------------- */
 // Focus one pane: it fills the stage; the others collapse into a right-edge
 // avatar rail (replaces the old maximize that hid every other pane).
-export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
+export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent, take = true): void {
   for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
   pane.el.style.setProperty("--stg", pane.color); // tints the stage's hue ring
   // Identity subtitle on the stage header: workspace · where it works. Only
@@ -78,7 +78,7 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent): void {
     pane.term.setFontSize(paneFont(ws, 2)); // bigger on the stage, still zoomed
     const s = pane.term.fit();
     if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
-    pane.term.focus();
+    if (take) pane.term.focus();
   });
 }
 export function exitFocus(ws: Workspace): void {

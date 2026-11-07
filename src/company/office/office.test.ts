@@ -40,7 +40,7 @@ vi.mock("./scene", () => {
 });
 vi.mock("../../hint", () => ({ topNote: (t: string) => io.notes.push(t) }));
 vi.mock("../../inbox", () => ({
-  stageAgent: (id: string) => { io.calls.push(`stage ${id}`); return true; },
+  stageAgent: (id: string, focus = true) => { io.calls.push(focus ? `stage ${id}` : `stage quietly ${id}`); return true; },
   openChanges: (id: string) => { io.pane = id; io.calls.push(`changes ${id}`); },
   closeChanges: () => { io.pane = null; io.calls.push("close changes"); },
   changesOpenFor: () => io.pane,
@@ -428,6 +428,30 @@ describe("at a Desk", () => {
     io.sourceChanged?.();
     expect(document.getElementById("office")?.dataset.level).toBe("desk");
     expect(io.calls.filter((c) => c.startsWith("stage"))).toEqual([]);
+  });
+  it("gives the terminal no keyboard when the Report covers it", async () => {
+    const { m } = await atDesk();
+    document.querySelector<HTMLElement>('[data-tab="report"]')!.click();
+    m.officeToggle();
+    io.calls = [];
+    m.officeToggle();
+    await settle();
+    expect(io.calls).toContain("stage quietly pane-hai");
+    expect(io.calls).not.toContain("stage pane-hai");
+  });
+  it("gives it none behind the Changes drawer either", async () => {
+    io.used = true;
+    io.model = { ...withPeople(), needs: [{ key: "done", kind: "merge", title: "done", detail: "", jobId: "j1", personId: "hai", standing: false }] };
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    document.querySelector<HTMLElement>('#office [data-row="done"]')!.click();
+    expect(io.calls).toContain("stage quietly pane-hai");
+    expect(io.calls).toContain("changes pane-hai");
+  });
+  it("lets a terminal the owner went to take it", async () => {
+    await atDesk();
+    expect(io.calls).toContain("stage pane-hai");
   });
   it("closes Changes on every level change, not only on the way up", async () => {
     await atDesk();
