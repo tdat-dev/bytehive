@@ -898,7 +898,7 @@ export function createKanban() {
       : "";
 
     const assignee = card.assignee
-      ? `<button class="kb-assignee" title="Focus this agent's pane">⚡ ${enc(card.assignee)}</button>`
+      ? `<button class="kb-assignee" title="Focus this agent's pane">${enc(card.assignee)}</button>`
       : "";
     const stopped = card.stopped ? `<span class="kb-stopped">Stopped</span>` : "";
 
@@ -1146,7 +1146,7 @@ export function createKanban() {
     agentSec.innerHTML = `<span class="kb-sec-l">Agent</span>`;
     const agentRow = el("div", "kb-agent-row");
     if (card.assignee) {
-      const chip = el("button", "kb-assignee big", `⚡ ${enc(card.assignee)}`);
+      const chip = el("button", "kb-assignee big", `${enc(card.assignee)}`);
       chip.title = "Focus this agent's pane";
       chip.addEventListener("click", () => {
         const a = listAgents().find((x) => x.name === card.assignee);

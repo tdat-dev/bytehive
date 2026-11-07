@@ -411,7 +411,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
       if (kind === "file") await fsCreateFile(root, rel);
       else await fsCreateDir(root, rel);
     } catch (e) {
-      toast(`Could not create “${name}” — ${errText(e)}`);
+      toast(`Could not create “${name}”: ${errText(e)}`);
       return;
     }
     await load(parentRel);
@@ -437,7 +437,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
     try {
       await fsRename(root, rel, to);
     } catch (e) {
-      toast(`Could not rename — ${errText(e)}`);
+      toast(`Could not rename: ${errText(e)}`);
       return;
     }
     afterMove(rel, to);
@@ -499,7 +499,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
         const to = cut ? await fsMove(root, rel, dir) : await fsCopy(root, rel, dir);
         if (cut) afterMove(rel, to);
       } catch (e) {
-        toast(`Could not paste “${rel}” — ${errText(e)}`);
+        toast(`Could not paste “${rel}”: ${errText(e)}`);
         continue;
       }
       if (cut) touched.add(parentOf(rel));
@@ -516,7 +516,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
       try {
         await fsCopy(root, rel, parentOf(rel));
       } catch (e) {
-        toast(`Could not duplicate “${rel}” — ${errText(e)}`);
+        toast(`Could not duplicate “${rel}”: ${errText(e)}`);
       }
     }
     await reload(parentsOf(rels));
@@ -812,7 +812,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
             touched.add(parentOf(rel));
           }
         } catch (err) {
-          toast(`Could not move “${rel}” — ${errText(err)}`);
+          toast(`Could not move “${rel}”: ${errText(err)}`);
         }
       }
       await reload([...touched]);

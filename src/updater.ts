@@ -105,7 +105,7 @@ function showUpdateToast(update: Update): void {
       await relaunch();
     } catch (err) {
       console.warn("update install failed:", err);
-      title.textContent = "Update failed — try again";
+      title.textContent = "Update failed. Try again";
       bar.hidden = true;
       sizeText.hidden = true;
       laterBtn.hidden = false;

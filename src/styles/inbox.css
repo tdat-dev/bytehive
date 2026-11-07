@@ -400,7 +400,7 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 /* ---------- Review drawer: the agent's diff, commit / merge / discard, send back ---------- */
 .inbox-review {
   position: fixed;
-  top: 60px;
+  top: 54px;
   right: 16px;
   bottom: var(--ib-dock-h);
   width: min(620px, 48vw);
@@ -659,7 +659,8 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
   box-shadow: var(--ring-line);
 }
 .im-choice input:checked + span { background: var(--ink); color: var(--ground); box-shadow: none; font-weight: 600; }
-.im-choice.missing { opacity: 0.4; cursor: not-allowed; }
+.im-choice.missing { cursor: not-allowed; }
+.im-choice.missing span { color: var(--ink-off); box-shadow: none; }
 /* New agent: the free-text command box, shown while Custom is picked. */
 .im-custom {
   width: 100%;
@@ -997,6 +998,7 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
 /* ---------- What ByteHive can do (inboxhelp.ts) ---------- */
 .hp-back { place-items: start center; padding-top: 8vh; }
 .inbox-modal.hp { width: min(760px, 100%); max-height: 84vh; }
+.hp .im-sub { white-space: normal; }
 .hp-body { overflow-y: auto; margin: 0 -22px; padding: 0 var(--s6) var(--s1); display: flex; flex-direction: column; gap: var(--s6); scrollbar-width: thin; }
 .hp-sec h3 { margin: 0 0 var(--s2); font-size: var(--fs-body); font-weight: 500; color: var(--ib-ink-3); }
 .hp-sec dl { margin: 0; display: flex; flex-direction: column; }
@@ -1027,8 +1029,8 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
    current row, and while the row has keyboard focus. */
 .iq-row { position: relative; }
 .iq-more {
-  position: absolute; top: 8px; right: 8px;
-  width: 26px; height: 26px; border-radius: var(--r-control);
+  position: absolute; top: 2px; right: var(--s1);
+  width: 24px; height: 24px; border-radius: var(--r-control);
   display: grid; place-items: center;
   color: var(--ib-ink-2); background: var(--raised);
   box-shadow: var(--ring-line);
@@ -1079,7 +1081,7 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
 }
 
 /* a new agent: how much of its CLI's plan is left, when little */
-.st-room { margin: var(--s2) var(--s1) 0; font-size: var(--fs-meta); color: var(--ink-2); }
+.st-room { margin: 0; padding: 0 var(--s4) var(--s3); font-size: var(--fs-meta); color: var(--ink-2); }
 .im-room { margin: var(--s1) 0 var(--s3); color: var(--ink-2); }
 
 /* ---------- project memory (memoryview.ts): what a project's agents share ---------- */

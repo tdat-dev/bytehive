@@ -5,6 +5,8 @@
    values for the office, and palette.test.ts holds the two and the contrast
    table together. */
 :root{
+  /* native controls (a date, a select, a checkbox) draw dark too */
+  color-scheme:dark;
   /* surfaces, darkest first */
   --ground:#0F1117; --panel:#151821; --raised:#1C202B; --over:#252A37;
   /* text. --ink-off marks disabled controls and nothing else: 3.6 on panel */

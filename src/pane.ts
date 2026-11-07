@@ -558,13 +558,13 @@ export async function stopRecording(p: Pane): Promise<string | null> {
 export async function toggleRecord(ws: Workspace, p: Pane): Promise<void> {
   if (p.recording) {
     const path = await stopRecording(p);
-    paneToast("Recording saved — click to replay", () => {
+    paneToast("Recording saved. Click to replay", () => {
       if (path) openReplays(ws, path);
     });
     return;
   }
   if (!p.running) {
-    paneToast("Agent isn't running — nothing to record");
+    paneToast("Agent isn't running, so there's nothing to record");
     return;
   }
   const dir = ws.dir ?? p.spec.cwd;

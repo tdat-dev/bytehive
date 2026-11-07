@@ -398,7 +398,7 @@ export function initEditor(opts: EditorOpts): EditorApi {
   function pathsGone(rels: string[]): void {
     if (!openRel) return;
     if (!rels.some((r) => under(openRel!, r))) return;
-    closeFile(isDirty() ? "The open file was deleted — its unsaved text is gone" : "File deleted");
+    closeFile(isDirty() ? "The open file was deleted, and its unsaved text is gone" : "File deleted");
   }
 
   return { open, pathChanged, pathsGone };

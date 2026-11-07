@@ -95,7 +95,7 @@ function paintDash(info: { running: boolean; lan: boolean; urls: string[] }): vo
   if (dashUrl)
     dashUrl.textContent = info.running
       ? "Open on any device on your network: " + (info.urls.join("  ·  ") || `http://127.0.0.1:${DASH_PORT}`)
-      : "Off — turn on to view the fleet from your phone.";
+      : "Off. Turn it on to see the fleet from your phone.";
 }
 
 /* ---- the dashboard's password (Settings > Remote) ---- */

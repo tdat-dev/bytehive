@@ -273,7 +273,7 @@ function setSpec(spec: BgSpec): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(spec));
   } catch {
-    onToast("Couldn't save the background — the image may be too large.");
+    onToast("Couldn't save the background. The image may be too large.");
     return;
   }
   applyEverywhere(); // a brighter wallpaper can flip the glyphs to dark

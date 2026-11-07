@@ -96,7 +96,7 @@ export function createFleet() {
       const row = document.createElement("button");
       row.className = `fleet-row st-${r.status}`;
       row.title = "Jump to this agent";
-      const uptime = r.spawnedAt && r.running ? fmtUptime(now - r.spawnedAt) : "—";
+      const uptime = r.spawnedAt && r.running ? fmtUptime(now - r.spawnedAt) : "";
       row.innerHTML =
         `<span class="fleet-dot" style="--dot:${r.color}"></span>` +
         `<span class="fleet-name">${enc(r.name)}</span>` +

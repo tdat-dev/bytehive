@@ -76,3 +76,4 @@ input:focus-visible + .tg,input:focus-visible + .pt-sw,input:focus-visible + .cf
 /* Cards: raised, a hairline, 10 and 12. A card never holds a card. */
 :is(.st-proj,.st-steps li,.cmp-col,.hp-tool){border-radius:var(--r-card);background:var(--raised);box-shadow:var(--ring-line);padding:var(--s3)}
 :is(.st-proj,.hp-tool):hover{background:var(--over)}
+input[type=checkbox],input[type=radio],input[type=range]{accent-color:var(--ink)}
