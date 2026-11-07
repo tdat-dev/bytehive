@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   reviewed: [] as Array<string | null>,
   scoped: [] as Array<[string | null, string[] | null]>,
   markedReviewed: [] as string[],
+  leftOut: [] as string[],
   settings: 0,
   killed: [] as string[],
   renamed: [] as Array<[string, string]>,
@@ -52,6 +53,7 @@ vi.mock("./ipc", () => ({
   killPty: async (id: string) => { state.killed.push(id); },
   sendMessage: async (id: string, text: string) => { state.sent.push([id, text]); },
   reviewBranchDiff: async (wt: string) => { state.reviewed.push(wt); return state.diff; },
+  agentLeftOut: async () => state.leftOut,
   agentDiff: async (dir: string, from: string | null, paths: string[] | null) => { state.reviewed.push(dir); state.scoped.push([from, paths]); return state.diff; },
   reposUnder: async (dir: string) => [{ path: dir, name: "bytehive" }],
   reviewLand: async (wt: string, o: { dryRun?: boolean; title?: string | null }) => {
@@ -218,7 +220,7 @@ describe("inbox DOM", () => {
     document.body.innerHTML = `<div id="app"><header class="topbar"><div class="tb-center"></div></header></div>
 `;
     localStorage.clear();
-    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = []; state.scoped = []; state.markedReviewed = [];
+    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = []; state.scoped = []; state.markedReviewed = []; state.leftOut = [];
     state.sent = []; state.lands = []; state.discarded = []; state.merged = []; state.killed = [];
     state.diff = DIFF;
     state.land = { dry: { kind: "ok", base: "main", branch: "bytehive/e", sha: "", removed: false, note: null }, real: { kind: "ok", base: "main", branch: "bytehive/e", sha: "abc", removed: true, note: null } };
@@ -608,6 +610,15 @@ describe("inbox DOM", () => {
     expect(state.discarded).toEqual(["D:/wt/e"]);
     expect(panes[1].spec.branch).toBeUndefined();
     expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("names what the diff and the merge leave out of a worktree", async () => {
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    state.leftOut = [".claude/settings.local.json"];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review")!.textContent).toContain("1 file left out: .claude/settings.local.json");
   });
 
   it("offers no Merge to an agent working in the project folder", async () => {

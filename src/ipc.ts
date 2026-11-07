@@ -574,6 +574,11 @@ export async function agentChanges(dir: string, from: string | null, paths: stri
   return invoke<ChangedFile[]>("agent_changes", { dir, from, paths });
 }
 
+/** Machine files lying in an agent's worktree, which Review and a merge leave out. */
+export async function agentLeftOut(dir: string): Promise<string[]> {
+  return invoke<string[]>("agent_left_out", { dir });
+}
+
 /** The same changes as a unified diff, for Review. */
 export async function agentDiff(dir: string, from: string | null, paths: string[] | null): Promise<string> {
   return invoke<string>("agent_diff", { dir, from, paths });

@@ -168,6 +168,7 @@ pub fn run() {
             review::git_changed_files,
             review::agent_changes,
             review::agent_diff,
+            review::agent_left_out,
             review::folder_state,
             review::review_repo_info,
             review::review_commit,

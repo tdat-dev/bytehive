@@ -10,7 +10,7 @@
 import { parseDiff, type DiffFile } from "./diff";
 import { confirmModal } from "./confirmmodal";
 import { topNote } from "./hint";
-import { agentDiff, killPty, reposUnder, reviewBranchDiff, reviewDiscardBranch, reviewLand, sendMessage, type LandResult } from "./ipc";
+import { agentDiff, agentLeftOut, killPty, reposUnder, reviewBranchDiff, reviewDiscardBranch, reviewLand, sendMessage, type LandResult } from "./ipc";
 import { changeScope, markMerged, markReviewed, taskOf } from "./tasks";
 import { promptShown } from "./working";
 import { clearComments, commentWhere, commentsOf, diffTotals, dropComment, numberHunk, putComment, sendBackText, type Conflict, type LineComment } from "./reviewtext";
@@ -82,6 +82,8 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
   /** The dry run's answer: merges cleanly, conflicts, or can't merge (why). */
   let check: LandResult | null = null;
   let conflict: Conflict | null = null;
+  /** Machine files in its worktree that neither this diff nor a merge takes. */
+  let leftOut: string[] = [];
   let busy = false;
   let msg: { text: string; kind: "" | "err" | "busy" } = { text: "", kind: "" };
   /** The lines of the file on screen, by the index their number button carries. */
@@ -107,7 +109,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const my = ++gen;
     files = null; loadError = ""; fileIdx = 0; showAll = false;
     own = !!pane.spec.worktree; base = ""; branch = pane.spec.branch ?? "";
-    check = null; conflict = null; busy = false; msg = { text: "", kind: "" };
+    check = null; conflict = null; leftOut = []; busy = false; msg = { text: "", kind: "" };
     rows = []; editing = null; anchor = null; lnFocus = 0;
     el = document.createElement("aside");
     el.className = "inbox-review";
@@ -130,12 +132,14 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       let raw: string;
       if (wt) {
         // Everything on its branch (its commits too), and whether it would merge.
-        const [diff, dry] = await Promise.all([
+        const [diff, dry, left] = await Promise.all([
           reviewBranchDiff(wt).catch(() => null),
           reviewLand(wt, { title, dryRun: true }).catch((e) => ({ kind: "error", message: String(e) }) as LandResult),
+          agentLeftOut(wt).catch(() => []),
         ]);
         if (my !== gen) return;
         check = dry;
+        leftOut = left;
         if (dry.kind !== "error") { base = dry.base; branch = dry.branch; }
         if (dry.kind === "conflict") conflict = { base: dry.base, branch: dry.branch, files: dry.files };
         // No branch of its own after all (or git can't tell): its folder's plain diff.
@@ -252,6 +256,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       const shared = t?.shared ? ` ${t.shared} of these changed while another agent was working too, so they may be its.` : "";
       line = `<p class="ir-msg" role="status">${name} works in the project folder, not on a branch of its own, so there is nothing to merge.${esc(shared)}</p>`;
     }
+    if (leftOut.length) line += `<p class="ir-msg" role="status">${leftOut.length} file${leftOut.length === 1 ? "" : "s"} left out: ${esc(leftOut.join(", "))}</p>`;
     const off = busy ? " disabled" : "";
     const n = commentsOf(pane.id).length;
     const back = `<button type="button" class="btn" data-act="back"${off}${n ? ` aria-label="Send back with ${n} comment${n === 1 ? "" : "s"}"` : ""}>Send back${n ? ` <span class="rc-n" aria-hidden="true">${n}</span>` : ""}</button>`;
@@ -336,7 +341,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     viewed.delete(pane.id);
     busy = false;
     if (pane === current) close();
-    topNote(r.removed ? `Merged <b>${esc(r.branch)}</b> into <b>${esc(r.base)}</b>. Worktree removed.` : `Merged <b>${esc(r.branch)}</b> into <b>${esc(r.base)}</b>. ${esc(r.note ?? "")}`, 4200);
+    topNote(r.removed ? `Merged <b>${esc(r.branch)}</b> into <b>${esc(r.base)}</b>. Worktree removed.${r.note ? ` ${esc(r.note)}.` : ""}` : `Merged <b>${esc(r.branch)}</b> into <b>${esc(r.base)}</b>. ${esc(r.note ?? "")}`, 4200);
   }
 
   /** Type the note (and what to resolve, after a conflict) into the agent. */

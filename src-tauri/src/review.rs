@@ -121,15 +121,78 @@ fn repo_diff_impl(repo_root: String) -> Result<String, CommandError> {
     Ok(diff.trim().to_string())
 }
 
-/// Untracked paths that are never an agent's work: its CLI's settings, ByteHive's
-/// own folder, logs. As pathspecs, for what `add` and `ls-files` look at. Files
-/// git already tracks are left to count, and ignored ones never come up.
-pub(crate) const UNTRACKED_JUNK: [&str; 4] = [
-    ":(exclude,top).claude",
-    ":(exclude,top).bytehive",
-    ":(exclude,top)logs",
-    ":(exclude,glob)**/*.log",
+/// The only untracked paths that are not an agent's work: files a machine wrote
+/// for itself, named one by one. Everything else counts, however it looks: a
+/// pattern here once hid `.claude/commands/ship.md` from Review and then deleted
+/// it with the worktree. Files git tracks count wherever they are, and ignored
+/// ones never come up.
+pub(crate) const MACHINE_FILES: [&str; 6] = [
+    ".claude/settings.local.json",
+    ".claude/worktrees",
+    ".bytehive/board.json",
+    ".bytehive/fleet.json",
+    ".bytehive/outbox.jsonl",
+    ".bytehive/spawn-requests.jsonl",
 ];
+
+fn is_machine_file(path: &str) -> bool {
+    MACHINE_FILES.iter().any(|m| path == *m || path.strip_prefix(m).is_some_and(|rest| rest.starts_with('/')))
+}
+
+/// Untracked files that are work: not ignored, not the machine's.
+pub(crate) fn new_work(dir: &str) -> Result<Vec<String>, CommandError> {
+    let out = git_env(&["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"], dir, &READ_ONLY)?;
+    Ok(out.split('\0').filter(|p| !p.is_empty() && !is_machine_file(p)).map(str::to_string).collect())
+}
+
+/// `git add <flag>` the new work in `dir`. By name from a file, not by a pathspec
+/// that leaves the machine files out: git refuses such a pathspec when one of them
+/// is ignored, and a list can be longer than a command line.
+pub(crate) fn add_new_work(dir: &str, flag: &str, envs: &[(&str, &str)]) -> Result<(), CommandError> {
+    let files = new_work(dir)?;
+    if files.is_empty() {
+        return Ok(());
+    }
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let list = std::env::temp_dir().join(format!("bytehive-paths-{}-{n}", std::process::id()));
+    std::fs::write(&list, files.join("\0")).map_err(|e| CommandError::Failed(e.to_string()))?;
+    let from = format!("--pathspec-from-file={}", list.display());
+    let done = git_env(&["--literal-pathspecs", "add", flag, "--pathspec-file-nul", &from], dir, envs);
+    let _ = std::fs::remove_file(&list);
+    done.map(|_| ())
+}
+
+/// The machine files lying untracked in `dir`: what Review and a merge leave out.
+/// An agent's worktrees under `.claude/worktrees` count as the one folder.
+pub(crate) fn left_out_of(dir: &str) -> Result<Vec<String>, CommandError> {
+    let mut args = vec!["--literal-pathspecs", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z", "--"];
+    args.extend(MACHINE_FILES);
+    let out = git_env(&args, dir, &READ_ONLY)?;
+    let mut names: Vec<String> = out
+        .split('\0')
+        .filter(|p| !p.is_empty())
+        .map(|p| MACHINE_FILES.iter().find(|m| p.starts_with(&format!("{m}/"))).map_or(p, |m| m).to_string())
+        .collect();
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+/// "2 files left out: a, b", or None with nothing left out.
+pub(crate) fn left_out_words(names: &[String]) -> Option<String> {
+    match names.len() {
+        0 => None,
+        1 => Some(format!("1 file left out: {}", names[0])),
+        n => Some(format!("{n} files left out: {}", names.join(", "))),
+    }
+}
+
+/// What Review says was left out of an agent's own worktree.
+#[tauri::command]
+pub async fn agent_left_out(dir: String) -> Result<Vec<String>, CommandError> {
+    run_blocking(move || left_out_of(&repo_of(&dir)?)).await
+}
 
 /// The repo of a folder an agent works in: the folder's own, or the first one
 /// under it, the same one Review has always shown for a parent of repos.
@@ -157,9 +220,7 @@ pub(crate) fn diff_of(dir: &str, from: Option<&str>, paths: Option<&[String]>, v
     let scratch = ScratchIndex::copy_of(&repo);
     let index = scratch.path.to_string_lossy().to_string();
     let with_index = [("GIT_INDEX_FILE", index.as_str()), READ_ONLY[0]];
-    let mut add = vec!["add", "-N", "--", "."];
-    add.extend(UNTRACKED_JUNK);
-    let _ = git_env(&add, &repo, &with_index[..1]);
+    add_new_work(&repo, "-N", &with_index[..1])?;
     // File names, not patterns: `[id].tsx` is a real name.
     let mut args = vec!["--literal-pathspecs", "-c", "core.quotepath=false", "diff"];
     args.extend(view);
@@ -233,9 +294,7 @@ fn folder_state_impl(dir: &str, since: Option<&str>) -> Result<FolderState, Comm
         &READ_ONLY,
     )
     .unwrap_or_default());
-    let mut others = vec!["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z", "--", "."];
-    others.extend(UNTRACKED_JUNK);
-    dirty.extend(names(git_env(&others, &repo, &READ_ONLY)?));
+    dirty.extend(new_work(&repo)?);
     let files = dirty
         .into_iter()
         .map(|p| {
@@ -644,6 +703,8 @@ mod tests {
     fn repo_at(tmp: &Path) -> String {
         init_repo(tmp);
         git(&["config", "core.autocrlf", "false"], tmp.to_str().unwrap()).unwrap();
+        // whatever this machine's own global ignore list says
+        git(&["config", "core.excludesFile", "no-such-file"], tmp.to_str().unwrap()).unwrap();
         tmp.to_string_lossy().to_string()
     }
 
@@ -660,7 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn an_agent_s_changes_count_commits_and_real_new_files_but_not_junk() {
+    fn an_agent_s_changes_count_commits_and_new_files_but_not_machine_files() {
         let tmp = tempfile::tempdir().unwrap();
         let root = repo_at(tmp.path());
         let from = git(&["rev-parse", "HEAD"], &root).unwrap();
@@ -668,14 +729,58 @@ mod tests {
         git(&["commit", "-qam", "agent work"], &root).unwrap();
         write(tmp.path(), "new.txt", "fresh\n");
         write(tmp.path(), ".claude/settings.local.json", "{}\n");
-        write(tmp.path(), "logs/run.txt", "noise\n");
-        write(tmp.path(), "src/debug.log", "noise\n");
+        write(tmp.path(), ".claude/worktrees/a/x.txt", "noise\n");
+        write(tmp.path(), ".bytehive/fleet.json", "{}\n");
         write(tmp.path(), ".gitignore", "built/\n");
         write(tmp.path(), "built/x.js", "noise\n");
         let files = agent_changes_impl(&root, Some(&from), None).unwrap();
         assert_eq!(sorted(&files), vec![".gitignore", "a.txt", "new.txt"]);
+        assert_eq!(
+            left_out_of(&root).unwrap(),
+            vec![".bytehive/fleet.json", ".claude/settings.local.json", ".claude/worktrees"]
+        );
         let a = files.iter().find(|f| f.path == "a.txt").unwrap();
         assert_eq!((a.added, a.removed), (Some(1), Some(0)));
+    }
+
+    #[test]
+    fn work_in_a_folder_that_looks_like_junk_still_counts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        let work = [".claude/agents/x.md", ".claude/commands/ship.md", "logs/analysis.md", "notes.log"];
+        for f in work {
+            write(tmp.path(), f, "real work\n");
+        }
+        assert_eq!(sorted(&agent_changes_impl(&root, None, None).unwrap()), work);
+        assert_eq!(agent_diff_impl(&root, None, None).unwrap().matches("+real work").count(), 4);
+        assert_eq!(folder_state_impl(&root, None).unwrap().files.len(), 4);
+        assert!(left_out_of(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_ignored_machine_file_breaks_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        write(tmp.path(), ".gitignore", ".claude/settings.local.json\n");
+        write(tmp.path(), ".claude/settings.local.json", "{}\n");
+        write(tmp.path(), "new.txt", "fresh\n");
+        assert_eq!(sorted(&agent_changes_impl(&root, None, None).unwrap()), vec![".gitignore", "new.txt"]);
+        assert!(left_out_of(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_name_is_only_the_machine_s_when_it_is_exactly_one_of_them() {
+        assert!(is_machine_file(".claude/settings.local.json") && is_machine_file(".claude/worktrees/a/b.txt"));
+        for f in [".claude/settings.local.json.bak", ".claude/worktrees2/a", "x/.claude/settings.local.json", ".bytehive/memory.json"] {
+            assert!(!is_machine_file(f), "{f}");
+        }
+    }
+
+    #[test]
+    fn left_out_files_are_told_by_name() {
+        assert_eq!(left_out_words(&[]), None);
+        assert_eq!(left_out_words(&["a".into()]).unwrap(), "1 file left out: a");
+        assert_eq!(left_out_words(&["a".into(), "b".into()]).unwrap(), "2 files left out: a, b");
     }
 
     #[test]
@@ -686,7 +791,7 @@ mod tests {
         write(tmp.path(), "a.txt", "one\ntwo\n");
         git(&["commit", "-qam", "agent work"], &root).unwrap();
         write(tmp.path(), "new.txt", "fresh\n");
-        write(tmp.path(), "logs/run.txt", "noise\n");
+        write(tmp.path(), ".claude/settings.local.json", "noise\n");
         let files = agent_changes_impl(&root, Some(&from), None).unwrap();
         let text = agent_diff_impl(&root, Some(&from), None).unwrap();
         assert_eq!(text.matches("diff --git").count(), files.len());
@@ -697,11 +802,11 @@ mod tests {
     fn a_tracked_file_in_a_junk_folder_still_counts() {
         let tmp = tempfile::tempdir().unwrap();
         let root = repo_at(tmp.path());
-        write(tmp.path(), ".claude/rules.md", "one\n");
+        write(tmp.path(), ".claude/settings.local.json", "one\n");
         git(&["add", "-A"], &root).unwrap();
-        git(&["commit", "-qm", "rules"], &root).unwrap();
-        write(tmp.path(), ".claude/rules.md", "two\n");
-        assert_eq!(sorted(&agent_changes_impl(&root, None, None).unwrap()), vec![".claude/rules.md"]);
+        git(&["commit", "-qm", "settings"], &root).unwrap();
+        write(tmp.path(), ".claude/settings.local.json", "two\n");
+        assert_eq!(sorted(&agent_changes_impl(&root, None, None).unwrap()), vec![".claude/settings.local.json"]);
     }
 
     #[test]
@@ -739,7 +844,7 @@ mod tests {
         let head = clean.head.clone().unwrap();
         write(tmp.path(), "a.txt", "one\ntwo\n");
         write(tmp.path(), "new.txt", "fresh\n");
-        write(tmp.path(), "logs/run.txt", "noise\n");
+        write(tmp.path(), ".claude/settings.local.json", "noise\n");
         let dirty = folder_state_impl(&root, Some(&head)).unwrap();
         let mut names: Vec<&String> = dirty.files.keys().collect();
         names.sort();
