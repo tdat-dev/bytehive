@@ -404,7 +404,7 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
   right: 16px;
   bottom: var(--ib-dock-h);
   width: min(620px, 48vw);
-  z-index: var(--z-sheet);
+  z-index: calc(var(--z-sheet) + 2);
   display: flex;
   flex-direction: column;
   border-radius: var(--r-dialog);

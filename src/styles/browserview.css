@@ -31,7 +31,7 @@
 .bv.folded .bv-frame,.bv.folded .bv-foot{display:none}
 
 /* A click held for your OK: top right, above everything but dialogs. */
-.bv-asks{position:fixed;top:64px;right:24px;z-index:var(--z-sheet);display:flex;flex-direction:column;gap:var(--s2);width:min(380px,calc(100vw - 48px))}
+.bv-asks{position:fixed;top:64px;right:24px;z-index:var(--z-popover);display:flex;flex-direction:column;gap:var(--s2);width:min(380px,calc(100vw - 48px))}
 .bv-asks:empty{display:none}
 .bv-ask{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s3) var(--s3) var(--s3);border-radius:var(--r-card);
   background:var(--surface-1);border:1px solid color-mix(in oklab,var(--amber) 45%,transparent);

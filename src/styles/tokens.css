@@ -35,7 +35,8 @@
   /* Windows' own timings and curves, so the app moves like the desktop it lives on */
   --m-press:83ms; --m-swap:167ms; --m-panel:250ms; --m-level:333ms;
   --ease-in:cubic-bezier(0,0,0,1); --ease-out:cubic-bezier(1,0,1,1);
-  /* the whole stacking order; anything finer stays inside its own component */
+  /* the whole stacking order; anything finer stays inside its own component. Sheets
+     overlap, so the browser view, the dock panel and Review take sheet, +1 and +2 */
   --z-rail:10; --z-sheet:20; --z-popover:30; --z-scrim:40; --z-dialog:50; --z-toast:60;
 
   /* old names, until the files have moved */

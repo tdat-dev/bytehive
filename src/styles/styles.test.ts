@@ -32,7 +32,7 @@ describe("shape", () => {
     expect(hits(/backdrop-filter/g)).toEqual([]);
   });
   it("stacks by the named scale, and small numbers stay inside a component", () => {
-    const off = hits(/z-index:\s*[^;}]+/g).filter((h) => !/z-index:\s*(var\(--z-(rail|sheet|popover|scrim|dialog|toast)\)|-1|[0-3])\s*$/.test(h));
+    const off = hits(/z-index:\s*[^;}]+/g).filter((h) => !/z-index:\s*(var\(--z-(rail|sheet|popover|scrim|dialog|toast)\)|calc\(var\(--z-sheet\) \+ [12]\)|-1|[0-3])\s*$/.test(h));
     expect(off).toEqual([]);
   });
 });
@@ -60,3 +60,42 @@ describe("space", () => {
     expect(off).toEqual([]);
   });
 });
+
+describe("layers", () => {
+  const scale = Object.fromEntries([...readFileSync(`${here}/tokens.css`, "utf8").matchAll(/--z-(\w+):(\d+)/g)].map((m) => [m[1], Number(m[2])]));
+  const layer = (file: string, selector: string) => {
+    const s = bare(readFileSync(`${here}/${file}`, "utf8"));
+    const rules = [...s.matchAll(new RegExp(`(?:^|[}\\s])${selector.replace(/[.]/g, "\\.")}\\s*\\{([^}]*)\\}`, "g"))];
+    const v = rules.map((r) => /z-index:\s*([^;}]+)/.exec(r[1])?.[1].trim()).find(Boolean) ?? "";
+    const m = /var\(--z-(\w+)\)(?:\s*\+\s*(\d+))?/.exec(v);
+    return m ? scale[m[1]] + Number(m[2] ?? 0) : NaN;
+  };
+  it("keeps the order the sheets always had, with consent over them all", () => {
+    const bv = layer("browserview.css", ".bv");
+    const dock = layer("dock.css", ".dock-panel");
+    const review = layer("inbox.css", ".inbox-review");
+    const asks = layer("browserview.css", ".bv-asks");
+    expect([bv, dock, review, asks]).toEqual([bv, bv + 1, bv + 2, scale.popover]);
+    expect(review).toBeLessThan(asks);
+    expect(asks).toBeLessThan(scale.dialog);
+  });
+  it("stays under the popover and over the office, whose layer sits at 15", () => {
+    expect(scale.sheet).toBeGreaterThan(15);
+    expect(scale.sheet + 2).toBeLessThan(scale.popover);
+  });
+});
+
+describe("CSS kept in TS strings", () => {
+  const sources = readdirSync("src").filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")).map((f) => [f, readFileSync(`src/${f}`, "utf8")] as const);
+  const inTs = (re: RegExp) => sources.flatMap(([f, s]) => [...s.matchAll(re)].map((m) => `${f}: ${m[0]}`));
+  it("stacks by the scale too", () => {
+    expect(inTs(/z-index:\s*\d+/g)).toEqual([]);
+  });
+  it("adds no second loop", () => {
+    expect(inTs(/animation:[^;}`]*\binfinite\b/g)).toEqual([]);
+  });
+  it("has no size under the floor", () => {
+    expect(inTs(/font-size:\s*(?:\d|1[01])(?:\.\d+)?px/g)).toEqual([]);
+  });
+});
+

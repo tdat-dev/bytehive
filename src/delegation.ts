@@ -27,24 +27,21 @@ function ensureStyle(): void {
   styleInjected = true;
   const style = document.createElement("style");
   style.textContent = `
-.deleg-overlay{position:absolute;inset:0;z-index:20;overflow:visible;pointer-events:none}
+.deleg-overlay{position:absolute;inset:0;z-index:var(--z-rail);overflow:visible;pointer-events:none}
 .deleg-link{opacity:0;animation:deleg-fade ${LIFETIME_MS}ms ease-out forwards}
-.deleg-path{fill:none;stroke-width:2;stroke-linecap:round;stroke-dasharray:7 7;
-  animation:deleg-flow .5s linear infinite}
-@keyframes deleg-flow{to{stroke-dashoffset:-14}}
+.deleg-path{fill:none;stroke-width:2;stroke-linecap:round;stroke-dasharray:7 7}
 @keyframes deleg-fade{0%{opacity:0}12%{opacity:1}75%{opacity:1}100%{opacity:0}}
-@media (prefers-reduced-motion:reduce){.deleg-path{animation:none}.deleg-dot{display:none}}
-.deleg-toast{position:fixed;right:16px;bottom:100px;z-index:250;display:flex;align-items:center;gap:10px;
-  max-width:380px;padding:11px 16px;border-radius:14px;background:var(--surface-2);
-  border:0;box-shadow:0 24px 60px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.1);
-  font-size:13px;color:var(--text);opacity:0;transform:translateY(8px);pointer-events:none;
-  transition:opacity .28s,transform .28s}
+@media (prefers-reduced-motion:reduce){.deleg-dot{display:none}}
+.deleg-toast{position:fixed;right:var(--s4);bottom:100px;z-index:var(--z-toast);display:flex;align-items:center;gap:var(--s2);
+  max-width:380px;padding:var(--s3) var(--s4);border-radius:var(--r-dialog);background:var(--raised);
+  border:0;box-shadow:var(--lift),var(--ring-line);
+  font:var(--t-body);color:var(--ink);opacity:0;transform:translateY(8px);pointer-events:none;
+  transition:opacity var(--m-swap) var(--ease-in),transform var(--m-swap) var(--ease-in)}
 .deleg-toast.on{opacity:1;transform:translateY(0)}
-.deleg-toast-av{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;
-  font-size:11px;font-weight:700;color:var(--accent-ink);background:var(--muted-2)}
-.deleg-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
-.deleg-toast-arw{font-family:var(--mono);color:var(--muted)}
-@media (prefers-reduced-motion:reduce){.deleg-toast{transition:none}}
+.deleg-toast-av{width:24px;height:24px;border-radius:var(--r-control);flex:none;display:grid;place-items:center;
+  font:var(--t-meta);font-weight:600;color:var(--ground);background:var(--ink-3)}
+.deleg-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.deleg-toast-arw{font-family:var(--mono);color:var(--ink-3)}
 `;
   document.head.appendChild(style);
 }

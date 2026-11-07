@@ -38,7 +38,7 @@
    stage and clears the bottom dock. */
 .dock-panel{
   position:fixed;top:54px;right:16px;bottom:var(--ib-dock-h,84px);
-  width:min(560px,82vw);display:none;flex-direction:column;z-index:var(--z-sheet);
+  width:min(560px,82vw);display:none;flex-direction:column;z-index:calc(var(--z-sheet) + 1);
   background:var(--surface-1);border:0;border-radius:var(--r-dialog);overflow:hidden;
   box-shadow:var(--lift), var(--ring-line);
 }
