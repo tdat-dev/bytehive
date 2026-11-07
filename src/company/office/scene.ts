@@ -15,7 +15,7 @@ export interface SceneOptions {
   reducedMotion: boolean;
   dpr: number;
   onLost(): void;       // context lost
-  onRestored(): void;   // context back, picture drawn
+  onRestored(): void;   // context back, picture drawn unless the scene is hidden
 }
 export interface Anchor { id: string; kind: "floor" | "person" | "top"; x: number; y: number; visible: boolean } // CSS pixels in the canvas
 export interface SceneStats { calls: number; triangles: number; frames: number; lost: number; restored: number; lastRestoreMs: number | null; drawW: number; drawH: number }
@@ -26,7 +26,7 @@ export interface OfficeScene {
   setVisible(on: boolean): void;
   pick(x: number, y: number): { personId?: string; floorId?: string } | null;
   anchors(): Anchor[];
-  onMoved(fn: () => void): void;  // the camera came to rest: labels may be placed
+  onMoved(fn: () => void): () => void;  // the camera came to rest: labels may be placed. Gives back the way to stop hearing it
   stats(): SceneStats;
   dispose(): void;
 }
@@ -71,6 +71,11 @@ export function pickFrom(hits: PickHit[]): { personId?: string; floorId?: string
   const person = near.find((h) => h.personId && h.floorId === first.floorId);
   return person ? { personId: person.personId, floorId: person.floorId } : { floorId: first.floorId };
 }
+
+interface Tween { from: Shot; to: Shot; at: number | null }
+
+/** A move given a new end: it goes on from where the camera is, so nothing jumps. */
+export const retargeted = (t: Tween, now: Shot, to: Shot): Tween => ({ ...t, from: now, to, at: null });
 
 const sameShot = (a: Shot, b: Shot) => (Object.keys(a) as Array<keyof Shot>).every((k) => Math.abs(a[k] - b[k]) < 1e-6);
 
@@ -117,10 +122,11 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   let width = 1;
   let height = 1;
   let shot: Shot | null = null;
-  let tween: { from: Shot; to: Shot; at: number | null } | null = null;
+  let tween: Tween | null = null;
   let anyoneWorking = false;
 
   let visible = true;
+  let disposed = false;
   let dirty = false;
   let lost = false;
   let lostAt = 0;
@@ -138,7 +144,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   /* The whole of the on-demand rule: a frame only when something asks for one. */
   function schedule(): void {
-    if (timer !== null || raf !== null || !visible || lost) return;
+    if (disposed || timer !== null || raf !== null || !visible || lost) return;
     const delay = frameDelay({ visible, moving: moving(), ambient: anyoneWorking, reduced: o.reducedMotion });
     if (delay === null && !dirty) return;
     const wait = Math.max(0, (delay ?? 0) - (performance.now() - lastDraw));
@@ -175,6 +181,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   }
 
   function invalidate(): void {
+    if (disposed) return;
     dirty = true;
     schedule();
   }
@@ -263,7 +270,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   function setModel(m: OfficeModel): void {
     const key = sceneKey(m);
-    if (key === lastKey) return;
+    if (disposed || key === lastKey) return;
     lastKey = key;
     model = m;
     const t = towerLayout(m);
@@ -313,13 +320,13 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   }
 
   function resize(w: number, h: number): void {
-    if (w <= 0 || h <= 0) return;
+    if (disposed || w <= 0 || h <= 0) return;
     width = w;
     height = h;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    if (tween && tower) tween.to = shotFor(level, tower, w / h);
+    if (tween && tower && shot) tween = retargeted(tween, shot, shotFor(level, tower, w / h));
     else if (tower) {
       look(shotFor(level, tower, w / h));
       resting = true;
@@ -374,7 +381,9 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   function onContextRestored(): void {
     lost = false;
     renderer.shadowMap.needsUpdate = true;
-    draw();
+    renderer.setSize(width, height, false);
+    // Hidden, the picture waits: setVisible asks for it.
+    if (visible) draw();
     restored += 1;
     lastRestoreMs = performance.now() - lostAt;
     o.onRestored();
@@ -386,9 +395,15 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   return {
     setModel, setLevel, resize, setVisible, pick, anchors, stats,
-    onMoved: (fn) => { moved.add(fn); },
+    onMoved(fn) {
+      moved.add(fn);
+      return () => { moved.delete(fn); };
+    },
     dispose() {
+      if (disposed) return;
+      disposed = true;
       halt();
+      moved.clear();
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
       for (const { group } of floors.values()) disposeBuilt(group);
@@ -397,7 +412,10 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       proxyBox.dispose();
       proxyMaterial.dispose();
       kit.dispose();
+      sun.shadow.dispose();
       renderer.dispose();
+      // dispose leaves the context alive, and Chrome drops the oldest past about 16.
+      renderer.forceContextLoss();
     },
   };
 }
