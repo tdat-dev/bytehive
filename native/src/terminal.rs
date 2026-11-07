@@ -24,13 +24,13 @@ use portable_pty::PtySize;
 use crate::{boxdraw, keys};
 
 const FONT_FAMILY: &str = "Geist Mono";
-const FONT_SIZE: f32 = 13.0;
-const LINE_HEIGHT: f32 = 1.2;
+const FONT_SIZE: f32 = 19.0;
+const LINE_HEIGHT: f32 = 1.6;
 const SCROLLBACK: usize = 10_000;
 /// Output arriving faster than this waits for the next frame.
 const FRAME: Duration = Duration::from_millis(8);
 
-const BACKGROUND: Rgb = Rgb { r: 0x0b, g: 0x0d, b: 0x12 };
+const BACKGROUND: Rgb = Rgb { r: 0x0e, g: 0x0f, b: 0x11 };
 const FOREGROUND: Rgb = Rgb { r: 0xe2, g: 0xe8, b: 0xf0 };
 const CURSOR: Rgb = Rgb { r: 0xf4, g: 0xf4, b: 0xf5 };
 

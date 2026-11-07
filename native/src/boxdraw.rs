@@ -111,7 +111,15 @@ fn rounded_corner(c: char) -> Option<Corners<bool>> {
 /// Paint `c` filling the cell at `origin`.
 pub fn paint(c: char, origin: Point<Pixels>, cell: Size<Pixels>, color: Hsla, window: &mut Window) {
     let (w, h) = (f32::from(cell.width), f32::from(cell.height));
-    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| Bounds::new(origin + point(px(x0), px(y0)), size(px(x1 - x0), px(y1 - y0)));
+    // Cells are a fractional width wide: every edge snaps to a device pixel, so
+    // two neighbours share one edge and a line has no seam between them.
+    let scale = window.scale_factor();
+    let snap = |v: f32| (v * scale).round() / scale;
+    let (ox, oy) = (f32::from(origin.x), f32::from(origin.y));
+    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        let (l, t, r, b) = (snap(ox + x0), snap(oy + y0), snap(ox + x1), snap(oy + y1));
+        Bounds::new(point(px(l), px(t)), size(px(r - l), px(b - t)))
+    };
 
     if let Some(parts) = block(c) {
         for [x0, y0, x1, y1, alpha] in parts {
