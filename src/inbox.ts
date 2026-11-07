@@ -152,7 +152,7 @@ export function rowLine(t: Task): string {
       if (a.kind === "run") return a.detail ? `Wants to run ${a.detail}` : "Wants to run a command";
       if (a.kind === "edit") return a.detail ? `Wants to edit ${a.detail}` : "Wants to edit a file";
       return `Asks: ${a.prompt}`;
-    case "review": return `${t.changedFiles ?? 0} file${t.changedFiles === 1 ? "" : "s"} changed`;
+    case "review": return `${t.changedFiles ?? 0} file${t.changedFiles === 1 ? "" : "s"} changed${t.shared ? `, ${t.shared} maybe another agent's` : ""}`;
     case "working": return "Working";
     case "stopped": return "Stopped";
     case "merged": return `Merged into ${t.mergedInto ?? "the base branch"}`;

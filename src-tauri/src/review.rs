@@ -121,6 +121,150 @@ fn repo_diff_impl(repo_root: String) -> Result<String, CommandError> {
     Ok(diff.trim().to_string())
 }
 
+/// Untracked paths that are never an agent's work: its CLI's settings, ByteHive's
+/// own folder, logs. As pathspecs, for what `add` and `ls-files` look at. Files
+/// git already tracks are left to count, and ignored ones never come up.
+pub(crate) const UNTRACKED_JUNK: [&str; 4] = [
+    ":(exclude,top).claude",
+    ":(exclude,top).bytehive",
+    ":(exclude,top)logs",
+    ":(exclude,glob)**/*.log",
+];
+
+/// The repo of a folder an agent works in: the folder's own, or the first one
+/// under it, the same one Review has always shown for a parent of repos.
+fn repo_of(dir: &str) -> Result<String, CommandError> {
+    git_repos_under_impl(dir.to_string())
+        .into_iter()
+        .next()
+        .map(|r| r.path)
+        .ok_or_else(|| CommandError::Failed(format!("Not a git repository: {dir}")))
+}
+
+/// The one answer to "what did this agent change?". `git diff` from `from` to
+/// the files on disk: commits since then, uncommitted edits, and new files that
+/// are not junk. `view` picks the shape (numbers or text), so the row, the
+/// Ready to review state and Review cannot disagree. `from` None is where the
+/// agent's own branch left its base, or HEAD for a folder with no such branch;
+/// `paths` narrows it to the files a shared folder's agent changed.
+pub(crate) fn diff_of(dir: &str, from: Option<&str>, paths: Option<&[String]>, view: &[&str]) -> Result<String, CommandError> {
+    let repo = repo_of(dir)?;
+    let fork = match from {
+        Some(f) => f.to_string(),
+        None => crate::land::fork_point(&repo).unwrap_or_else(|_| "HEAD".into()),
+    };
+    // The throwaway index again: see repo_diff_impl.
+    let scratch = ScratchIndex::copy_of(&repo);
+    let index = scratch.path.to_string_lossy().to_string();
+    let with_index = [("GIT_INDEX_FILE", index.as_str()), READ_ONLY[0]];
+    let mut add = vec!["add", "-N", "--", "."];
+    add.extend(UNTRACKED_JUNK);
+    let _ = git_env(&add, &repo, &with_index[..1]);
+    // File names, not patterns: `[id].tsx` is a real name.
+    let mut args = vec!["--literal-pathspecs", "-c", "core.quotepath=false", "diff"];
+    args.extend(view);
+    args.push(&fork);
+    if let Some(p) = paths {
+        args.push("--");
+        args.extend(p.iter().map(String::as_str));
+    }
+    git_env(&args, &repo, &with_index)
+}
+
+/// What an agent changed, file by file with its line counts. See `diff_of`.
+#[tauri::command]
+pub async fn agent_changes(dir: String, from: Option<String>, paths: Option<Vec<String>>) -> Result<Vec<ChangedFile>, CommandError> {
+    run_blocking(move || agent_changes_impl(&dir, from.as_deref(), paths.as_deref())).await
+}
+
+fn agent_changes_impl(dir: &str, from: Option<&str>, paths: Option<&[String]>) -> Result<Vec<ChangedFile>, CommandError> {
+    if paths.is_some_and(|p| p.is_empty()) {
+        return Ok(Vec::new());
+    }
+    let out = diff_of(dir, from, paths, &["--numstat", "-z"])?;
+    Ok(parse_numstat(&out)
+        .into_iter()
+        .map(|(path, (added, removed))| ChangedFile {
+            path: path.replace('/', "\\"),
+            status: "M".into(),
+            added: Some(added),
+            removed: Some(removed),
+        })
+        .collect())
+}
+
+/// The same changes as text, for Review.
+#[tauri::command]
+pub async fn agent_diff(dir: String, from: Option<String>, paths: Option<Vec<String>>) -> Result<String, CommandError> {
+    run_blocking(move || agent_diff_impl(&dir, from.as_deref(), paths.as_deref())).await
+}
+
+pub(crate) fn agent_diff_impl(dir: &str, from: Option<&str>, paths: Option<&[String]>) -> Result<String, CommandError> {
+    if paths.is_some_and(|p| p.is_empty()) {
+        return Ok(String::new());
+    }
+    Ok(diff_of(dir, from, paths, &["--no-color"])?.trim().to_string())
+}
+
+#[derive(Serialize)]
+pub struct FolderState {
+    /// HEAD now; None in a repo with no commit yet.
+    pub head: Option<String>,
+    /// Every uncommitted path that is not junk, with a stamp that changes when
+    /// the file does.
+    pub files: std::collections::HashMap<String, String>,
+    /// Paths commits changed between `since` and HEAD.
+    pub committed: Vec<String>,
+}
+
+/// How a folder several agents may share stands right now: tasks.ts compares two
+/// of these to see which files moved, and who was working when they did.
+#[tauri::command]
+pub async fn folder_state(dir: String, since: Option<String>) -> Result<FolderState, CommandError> {
+    run_blocking(move || folder_state_impl(&dir, since.as_deref())).await
+}
+
+fn folder_state_impl(dir: &str, since: Option<&str>) -> Result<FolderState, CommandError> {
+    let repo = repo_of(dir)?;
+    let names = |out: String| -> Vec<String> { out.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect() };
+    let mut dirty = names(git_env(
+        &["-c", "core.quotepath=false", "diff", "--name-only", "-z", "HEAD"],
+        &repo,
+        &READ_ONLY,
+    )
+    .unwrap_or_default());
+    let mut others = vec!["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z", "--", "."];
+    others.extend(UNTRACKED_JUNK);
+    dirty.extend(names(git_env(&others, &repo, &READ_ONLY)?));
+    let files = dirty
+        .into_iter()
+        .map(|p| {
+            let stamp = stamp_of(&Path::new(&repo).join(&p));
+            (p, stamp)
+        })
+        .collect();
+    let head = git(&["rev-parse", "--verify", "-q", "HEAD"], &repo).ok().filter(|h| !h.is_empty());
+    let committed = match (since, head.as_deref()) {
+        (Some(from), Some(to)) if from != to => {
+            let range = format!("{from}..{to}");
+            names(git_env(&["-c", "core.quotepath=false", "diff", "--name-only", "-z", &range], &repo, &READ_ONLY).unwrap_or_default())
+        }
+        _ => Vec::new(),
+    };
+    Ok(FolderState { head, files, committed })
+}
+
+/// Size and modified time, or "gone" for a deleted file.
+fn stamp_of(path: &Path) -> String {
+    let Ok(m) = std::fs::metadata(path) else { return "gone".into() };
+    let at = m
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_millis());
+    format!("{}:{at}", m.len())
+}
+
 /// A temporary copy of a work tree's index, deleted on drop. Named per process
 /// and per call, so two checks at once never share one (or its .lock).
 pub(crate) struct ScratchIndex {
@@ -227,6 +371,11 @@ fn numstat(repo_root: &str) -> Option<std::collections::HashMap<String, (u64, u6
         &READ_ONLY,
     )
     .ok()?;
+    Some(parse_numstat(&out))
+}
+
+/// `git diff --numstat -z` as path → (added, removed).
+fn parse_numstat(out: &str) -> std::collections::HashMap<String, (u64, u64)> {
     let mut map = std::collections::HashMap::new();
     let mut tokens = out.split('\0');
     while let Some(entry) = tokens.next() {
@@ -248,7 +397,7 @@ fn numstat(repo_root: &str) -> Option<std::collections::HashMap<String, (u64, u6
         let n = |s: &str| s.parse::<u64>().unwrap_or(0);
         map.insert(path.to_string(), (n(a), n(d)));
     }
-    Some(map)
+    map
 }
 
 /// Lines in a new file, the way `git diff` counts them (a last line without a
@@ -490,6 +639,127 @@ mod tests {
         let got = git_repos_under_impl(parent.to_string_lossy().to_string());
         let names: Vec<_> = got.iter().map(|r| r.name.clone()).collect();
         assert_eq!(names, vec!["repoA".to_string(), "repoB".to_string()]);
+    }
+
+    fn repo_at(tmp: &Path) -> String {
+        init_repo(tmp);
+        git(&["config", "core.autocrlf", "false"], tmp.to_str().unwrap()).unwrap();
+        tmp.to_string_lossy().to_string()
+    }
+
+    fn write(dir: &Path, rel: &str, text: &str) {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+
+    fn sorted(files: &[ChangedFile]) -> Vec<String> {
+        let mut v: Vec<String> = files.iter().map(|f| f.path.replace('\\', "/")).collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn an_agent_s_changes_count_commits_and_real_new_files_but_not_junk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        let from = git(&["rev-parse", "HEAD"], &root).unwrap();
+        write(tmp.path(), "a.txt", "one\ncommitted\n");
+        git(&["commit", "-qam", "agent work"], &root).unwrap();
+        write(tmp.path(), "new.txt", "fresh\n");
+        write(tmp.path(), ".claude/settings.local.json", "{}\n");
+        write(tmp.path(), "logs/run.txt", "noise\n");
+        write(tmp.path(), "src/debug.log", "noise\n");
+        write(tmp.path(), ".gitignore", "built/\n");
+        write(tmp.path(), "built/x.js", "noise\n");
+        let files = agent_changes_impl(&root, Some(&from), None).unwrap();
+        assert_eq!(sorted(&files), vec![".gitignore", "a.txt", "new.txt"]);
+        let a = files.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!((a.added, a.removed), (Some(1), Some(0)));
+    }
+
+    #[test]
+    fn the_row_and_review_read_the_same_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        let from = git(&["rev-parse", "HEAD"], &root).unwrap();
+        write(tmp.path(), "a.txt", "one\ntwo\n");
+        git(&["commit", "-qam", "agent work"], &root).unwrap();
+        write(tmp.path(), "new.txt", "fresh\n");
+        write(tmp.path(), "logs/run.txt", "noise\n");
+        let files = agent_changes_impl(&root, Some(&from), None).unwrap();
+        let text = agent_diff_impl(&root, Some(&from), None).unwrap();
+        assert_eq!(text.matches("diff --git").count(), files.len());
+        assert!(text.contains("+two") && text.contains("+fresh") && !text.contains("noise"), "{text}");
+    }
+
+    #[test]
+    fn a_tracked_file_in_a_junk_folder_still_counts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        write(tmp.path(), ".claude/rules.md", "one\n");
+        git(&["add", "-A"], &root).unwrap();
+        git(&["commit", "-qm", "rules"], &root).unwrap();
+        write(tmp.path(), ".claude/rules.md", "two\n");
+        assert_eq!(sorted(&agent_changes_impl(&root, None, None).unwrap()), vec![".claude/rules.md"]);
+    }
+
+    #[test]
+    fn paths_narrow_the_answer_to_one_agent_s_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        write(tmp.path(), "a.txt", "mine\n");
+        write(tmp.path(), "[id].txt", "mine too\n");
+        write(tmp.path(), "i.txt", "someone else's\n");
+        let mine = vec!["a.txt".to_string(), "[id].txt".to_string()];
+        assert_eq!(sorted(&agent_changes_impl(&root, None, Some(&mine)).unwrap()), vec!["[id].txt", "a.txt"]);
+        assert!(agent_changes_impl(&root, None, Some(&[])).unwrap().is_empty());
+        assert_eq!(agent_diff_impl(&root, None, Some(&[])).unwrap(), "");
+    }
+
+    #[test]
+    fn looking_at_an_agent_s_changes_leaves_the_index_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        write(tmp.path(), "new.txt", "fresh\n");
+        let index = tmp.path().join(".git").join("index");
+        let before = std::fs::read(&index).unwrap();
+        agent_changes_impl(&root, None, None).unwrap();
+        agent_diff_impl(&root, None, None).unwrap();
+        folder_state_impl(&root, None).unwrap();
+        assert_eq!(std::fs::read(&index).unwrap(), before);
+    }
+
+    #[test]
+    fn a_folder_s_state_shows_what_moved_and_leaves_junk_out() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        let clean = folder_state_impl(&root, None).unwrap();
+        assert!(clean.files.is_empty());
+        let head = clean.head.clone().unwrap();
+        write(tmp.path(), "a.txt", "one\ntwo\n");
+        write(tmp.path(), "new.txt", "fresh\n");
+        write(tmp.path(), "logs/run.txt", "noise\n");
+        let dirty = folder_state_impl(&root, Some(&head)).unwrap();
+        let mut names: Vec<&String> = dirty.files.keys().collect();
+        names.sort();
+        assert_eq!(names, vec!["a.txt", "new.txt"]);
+        assert!(dirty.committed.is_empty());
+        write(tmp.path(), "new.txt", "fresher and longer\n");
+        let again = folder_state_impl(&root, Some(&head)).unwrap();
+        assert_ne!(again.files["new.txt"], dirty.files["new.txt"]);
+        assert_eq!(again.files["a.txt"], dirty.files["a.txt"]);
+        git(&["commit", "-qam", "agent work"], &root).unwrap();
+        let after = folder_state_impl(&root, Some(&head)).unwrap();
+        assert_eq!(after.committed, vec!["a.txt"]);
+        assert!(!after.files.contains_key("a.txt"));
+        assert_ne!(after.head, clean.head);
+    }
+
+    #[test]
+    fn a_folder_with_no_repo_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(folder_state_impl(&tmp.path().to_string_lossy(), None).is_err());
     }
 
     #[test]

@@ -184,11 +184,31 @@ fn snapshot(s: &Sides) -> Result<String, String> {
     let tmp_s = scratch.path.to_string_lossy().into_owned();
     let env = [("GIT_INDEX_FILE", tmp_s.as_str())];
     let made = (|| {
-        git_env(&["add", "-A", "--", "."], &s.worktree, &env)?;
+        stage_work(&s.worktree, &env)?;
         let tree = git_env(&["write-tree"], &s.worktree, &env)?;
+        if tree == git(&["rev-parse", "HEAD^{tree}"], &s.worktree)? {
+            return Ok(head.clone()); // only junk is dirty
+        }
         git(&["commit-tree", &tree, "-p", &head, "-m", "bytehive: merge check"], &s.worktree)
     })();
     made
+}
+
+/// Stage the agent's work: every change to a tracked file, and new files that
+/// are not junk. Review counts the same, so what it shows is what merges.
+fn stage_work(dir: &str, env: &[(&str, &str)]) -> Result<(), String> {
+    git_env(&["add", "-u", "--", "."], dir, env)?;
+    let mut add = vec!["add", "-A", "--", "."];
+    add.extend(crate::review::UNTRACKED_JUNK);
+    git_env(&add, dir, env).map(|_| ())
+}
+
+/// Nothing but untracked junk is left in the worktree, so it can go.
+fn only_junk_left(dir: &str) -> bool {
+    let mut others = vec!["ls-files", "--others", "--exclude-standard", "--", "."];
+    others.extend(crate::review::UNTRACKED_JUNK);
+    let clean = run(&["diff", "--quiet", "HEAD"], dir, &[]).is_ok_and(|o| o.ok);
+    clean && git(&others, dir).is_ok_and(|o| o.is_empty())
 }
 
 /// Files the branch (as `tip`) changed since it left `base`.
@@ -353,7 +373,12 @@ fn land_impl(worktree: &str, message: Option<&str>, title: Option<&str>, dry_run
     match dirty_paths(&s.worktree) {
         Ok(d) if !d.is_empty() => {
             let msg = commit_message(message, title, &s.branch);
-            if let Err(e) = git(&["add", "-A", "--", "."], &s.worktree).and_then(|_| git(&["commit", "-q", "-m", &msg], &s.worktree)) {
+            let done = stage_work(&s.worktree, &[]).and_then(|_| {
+                // Only junk was dirty: nothing to commit.
+                let staged = run(&["diff", "--cached", "--quiet"], &s.worktree, &[]).is_ok_and(|o| o.code == 1);
+                if staged { git(&["commit", "-q", "-m", &msg], &s.worktree).map(|_| ()) } else { Ok(()) }
+            });
+            if let Err(e) = done {
                 return err(format!("Couldn't commit the agent's changes: {e}"));
             }
         }
@@ -388,7 +413,9 @@ fn land_impl(worktree: &str, message: Option<&str>, title: Option<&str>, dry_run
     }
     let sha = git(&["rev-parse", "HEAD"], &s.main).unwrap_or_default();
     // 4. The work is in; its worktree and branch have done their job.
-    let (removed, note) = match remove(&s, false) {
+    // Junk stays out of the merge, and `worktree remove` won't take a folder with
+    // untracked files unless forced. Anything else there still stops it.
+    let (removed, note) = match remove(&s, only_junk_left(&s.worktree)) {
         Ok(()) => (true, None),
         Err(e) => (false, Some(format!("Merged, but the worktree was kept: {e}"))),
     };
@@ -411,10 +438,14 @@ pub async fn review_branch_diff(worktree_path: String) -> Result<String, Command
 }
 
 fn branch_diff_impl(worktree: &str) -> Result<String, String> {
+    let fork = fork_point(worktree)?;
+    crate::review::agent_diff_impl(worktree, Some(&fork), None).map_err(|e| e.to_string())
+}
+
+/// Where an agent's branch left its base: what its work is measured from.
+pub(crate) fn fork_point(worktree: &str) -> Result<String, String> {
     let s = sides(worktree)?;
-    let tip = snapshot(&s)?;
-    let range = format!("{}...{}", s.base, tip);
-    git(&["-c", "core.quotepath=false", "diff", "--no-color", &range], &s.main)
+    git(&["merge-base", &s.base, "HEAD"], &s.worktree)
 }
 
 /// Throw an agent's branch away: remove its worktree, uncommitted work and
@@ -642,6 +673,36 @@ two
         assert!(!wt.exists());
         assert!(g(&["branch", "--list", "agent"], &main).is_empty());
         assert_eq!(std::fs::read_to_string(main.join("a.txt")).unwrap(), "one\n");
+    }
+
+    #[test]
+    fn junk_is_not_reviewed_and_not_merged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        std::fs::write(wt.join("new.txt"), "fresh\n").unwrap();
+        std::fs::create_dir(wt.join("logs")).unwrap();
+        std::fs::write(wt.join("logs").join("run.txt"), "noise\n").unwrap();
+        std::fs::create_dir(wt.join(".claude")).unwrap();
+        std::fs::write(wt.join(".claude").join("settings.local.json"), "{}\n").unwrap();
+        let d = branch_diff_impl(&s(&wt)).unwrap();
+        assert!(d.contains("+fresh") && !d.contains("noise") && !d.contains("settings"), "{d}");
+        match land_impl(&s(&wt), None, Some("work"), false) {
+            LandResult::Ok { removed, note, .. } => assert!(removed, "{note:?}"),
+            other => panic!("{other:?}"),
+        }
+        assert!(main.join("new.txt").exists());
+        assert!(!main.join("logs").exists() && !main.join(".claude").exists());
+        assert!(!wt.exists());
+    }
+
+    #[test]
+    fn a_worktree_with_only_junk_has_nothing_to_merge() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_main, wt) = setup(tmp.path());
+        std::fs::create_dir(wt.join("logs")).unwrap();
+        std::fs::write(wt.join("logs").join("run.txt"), "noise\n").unwrap();
+        assert!(matches!(land_impl(&s(&wt), None, None, true), LandResult::Error { .. }));
+        assert!(matches!(land_impl(&s(&wt), None, None, false), LandResult::Error { .. }));
     }
 
     #[test]

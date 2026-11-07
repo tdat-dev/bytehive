@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   focused: [] as string[], quiet: [] as string[],
   listeners: [] as Array<() => void>,
   reviewed: [] as Array<string | null>,
+  scoped: [] as Array<[string | null, string[] | null]>,
+  markedReviewed: [] as string[],
   settings: 0,
   killed: [] as string[],
   renamed: [] as Array<[string, string]>,
@@ -27,6 +29,8 @@ vi.mock("./tasks", () => ({
   allTasks: () => state.tasks,
   taskOf: (id: string) => state.tasks.find((t) => t.paneId === id),
   markMerged: (id: string, base: string, branch: string) => { state.merged.push([id, base, branch]); },
+  markReviewed: (id: string) => { state.markedReviewed.push(id); },
+  changeScope: () => ({ dir: "D:/bytehive", from: "h1", paths: ["src/a.ts"], shared: 0 }),
   onTasksChange: (cb: () => void) => { state.listeners.push(cb); return () => {}; },
   answerOption: async (id: string, o: { key: string }) => { state.answered.push([id, o.key]); },
   answerText: async (id: string, t: string) => { state.texts.push([id, t]); },
@@ -48,7 +52,7 @@ vi.mock("./ipc", () => ({
   killPty: async (id: string) => { state.killed.push(id); },
   sendMessage: async (id: string, text: string) => { state.sent.push([id, text]); },
   reviewBranchDiff: async (wt: string) => { state.reviewed.push(wt); return state.diff; },
-  repoDiff: async (dir: string) => { state.reviewed.push(dir); return state.diff; },
+  agentDiff: async (dir: string, from: string | null, paths: string[] | null) => { state.reviewed.push(dir); state.scoped.push([from, paths]); return state.diff; },
   reposUnder: async (dir: string) => [{ path: dir, name: "bytehive" }],
   reviewLand: async (wt: string, o: { dryRun?: boolean; title?: string | null }) => {
     state.lands.push({ wt, dryRun: !!o.dryRun, title: o.title ?? null });
@@ -214,7 +218,7 @@ describe("inbox DOM", () => {
     document.body.innerHTML = `<div id="app"><header class="topbar"><div class="tb-center"></div></header></div>
 `;
     localStorage.clear();
-    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = [];
+    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = []; state.scoped = []; state.markedReviewed = [];
     state.sent = []; state.lands = []; state.discarded = []; state.merged = []; state.killed = [];
     state.diff = DIFF;
     state.land = { dry: { kind: "ok", base: "main", branch: "bytehive/e", sha: "", removed: false, note: null }, real: { kind: "ok", base: "main", branch: "bytehive/e", sha: "abc", removed: true, note: null } };
@@ -613,13 +617,28 @@ describe("inbox DOM", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
     await flush();
     const drawer = document.querySelector(".inbox-review")!;
+    // the files the row counted, not the whole folder
     expect(state.reviewed).toEqual(["D:/bytehive"]);
+    expect(state.scoped).toEqual([["h1", ["src/a.ts"]]]);
     expect(state.lands).toEqual([]);
-    expect([...drawer.querySelectorAll(".row2 button")].map((b) => b.textContent!.trim())).toEqual(["Send back"]);
+    expect([...drawer.querySelectorAll(".row2 button")].map((b) => b.textContent!.trim())).toEqual(["Mark as reviewed", "Send back"]);
     expect(drawer.querySelector(".ir-msg")!.textContent).toContain("works in the project folder");
     drawer.querySelector(".diff")!.dispatchEvent(new KeyboardEvent("keydown", { key: "m", bubbles: true }));
     await flush();
     expect(state.lands).toEqual([]);
+    drawer.querySelector<HTMLElement>('[data-act="reviewed"]')!.click();
+    expect(state.markedReviewed).toEqual(["e"]);
+    expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("says when a change in a shared folder may be another agent's", async () => {
+    delete (panes[1].spec as { worktree?: string }).worktree;
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 2, shared: 1 })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review .ir-msg")!.textContent).toContain("1 of these changed while another agent was working too");
+    expect(rowLine(state.tasks[0])).toBe("2 files changed, 1 maybe another agent's");
   });
 
   it("comments on diff lines, keeps them per agent, and sends them all back in one message", async () => {

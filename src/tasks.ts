@@ -1,15 +1,17 @@
 // Live task list: one entry per agent pane, with its derived state.
 //
 // Runs next to the existing pane bookkeeping without changing it: every tick it
-// reads each running pane's screen, asks git (throttled) whether the agent's
-// branch has changes, and derives needs / review / working / idle / stopped.
+// reads each running pane's screen, asks git (throttled) what the agent changed,
+// and derives needs / review / working / idle / stopped. An agent with a worktree
+// has its branch to go by; the rest share a folder (folderwork.ts).
 // The new Queue UI renders from here; for now the old UI only borrows the
 // status line for notifications.
 
 import { workspaces } from "./appstate";
-import { gitChangedFiles, sendInput } from "./ipc";
+import { agentChanges, folderState, sendInput } from "./ipc";
+import { createFolderWork, type FolderWork } from "./folderwork";
 import { freeTextKeys, type AskOption } from "./askparse";
-import { deriveTaskState, statusLine, type TaskState, type TaskStatus } from "./taskstate";
+import { deriveTaskState, statusLine, WORKING_MS, type TaskState, type TaskStatus } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
 
 export interface Task {
@@ -28,6 +30,8 @@ export interface Task {
   /** Lines added and removed on its branch, when it has changes. */
   added: number | null;
   removed: number | null;
+  /** Of its changed files, how many another agent in its folder may have changed instead. */
+  shared?: number;
   /** The branch its work was merged into, once Review merged it. */
   mergedInto?: string | null;
   /** ms the current state began, for "waiting 4m" and queue order. */
@@ -70,19 +74,86 @@ export function mergedInfo(paneId: string): { base: string; branch: string } | n
   return merged.get(paneId) ?? null;
 }
 
-/** Changed files can only be pinned on one agent when it has its own worktree;
- *  agents sharing a checkout share one diff, so for them it stays unknown.
+/** Folders agents without a worktree work in, by the project's folder. */
+const folders = new Map<string, { work: FolderWork; at: number; pending: boolean; wasRunning: boolean }>();
+
+/** The folder this agent shares, when it has no worktree. A plain shell is you
+ *  at a prompt, so it neither claims nor counts. */
+function sharedFolder(ws: Workspace, pane: Pane): string | null {
+  if (pane.spec.worktree || pane.spec.badge === "shell" || pane.spec.badge === "cmd") return null;
+  return ws.dir ?? pane.spec.cwd ?? null;
+}
+
+/** Look at each shared folder (throttled) and credit what moved since the last
+ *  look to the agents that printed in between. */
+function lookAtFolders(now: number): void {
+  const live = new Map<string, Pane[]>();
+  for (const ws of workspaces.values())
+    for (const p of ws.panes.values()) {
+      const dir = sharedFolder(ws, p);
+      if (dir) live.set(dir, [...(live.get(dir) ?? []), p]);
+    }
+  for (const dir of folders.keys()) if (!live.has(dir)) folders.delete(dir);
+  for (const [dir, panes] of live) {
+    const f = folders.get(dir) ?? { work: createFolderWork(), at: 0, pending: false, wasRunning: false };
+    folders.set(dir, f);
+    const running = panes.some((p) => p.running);
+    if (!(running || f.wasRunning) || f.pending || (f.at !== 0 && now - f.at < DIFF_EVERY_MS)) continue;
+    const since = f.at;
+    f.pending = true;
+    f.at = now;
+    f.wasRunning = running;
+    folderState(dir, f.work.head())
+      .then((state) => f.work.see(state, panes.filter((p) => p.lastOutputAt >= since - WORKING_MS).map((p) => p.id)))
+      .catch(() => {}) // not a repo: nothing can be said, and changes stay unknown
+      .finally(() => { f.pending = false; });
+  }
+}
+
+/** Where an agent's changes are read from. */
+export interface ChangeScope {
+  dir: string;
+  from: string | null;
+  /** Only these files; null for everything in its own worktree. */
+  paths: string[] | null;
+  shared: number;
+}
+
+function scopeOf(ws: Workspace, pane: Pane): ChangeScope | null {
+  const wt = pane.spec.worktree;
+  if (wt) return { dir: wt, from: null, paths: null, shared: 0 };
+  const dir = sharedFolder(ws, pane);
+  const f = dir ? folders.get(dir) : undefined;
+  return dir && f?.work.seen() ? { dir, ...f.work.of(pane.id) } : null;
+}
+
+/** What Review reads, the same as the row and the state; null while unknown. */
+export function changeScope(pane: Pane): ChangeScope | null {
+  for (const ws of workspaces.values()) if (ws.panes.get(pane.id) === pane) return scopeOf(ws, pane);
+  return null;
+}
+
+/** You have read this agent's changes in a shared folder: it is done with them,
+ *  and no merge is coming to say so. */
+export function markReviewed(paneId: string, at: number = Date.now()): void {
+  for (const f of folders.values()) f.work.settle(paneId);
+  diffs.delete(paneId);
+  log(paneId, { at, kind: "idle", text: "You reviewed its changes" });
+}
+
+/** What the agent changed, by `agentChanges`, the same call for a worktree and a
+ *  shared folder; unknown until there is something to compare.
  *  A stopped agent's tree doesn't change on its own: it is looked at once
  *  (first sight, or once more right after it stops), not every tick. */
-function changesFor(pane: Pane, now: number): { n: number | null; add: number | null; del: number | null } {
-  const wt = pane.spec.worktree;
-  if (!wt) return { n: null, add: null, del: null };
+function changesFor(ws: Workspace, pane: Pane, now: number): { n: number | null; add: number | null; del: number | null; shared: number } {
+  const scope = scopeOf(ws, pane);
+  if (!scope) return { n: null, add: null, del: null, shared: 0 };
   const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, at: 0, pending: false, wasRunning: false };
   const due = pane.running || d.at === 0 || d.wasRunning;
   if (due && !d.pending && now - d.at >= DIFF_EVERY_MS) {
     d.pending = true;
     d.wasRunning = pane.running;
-    gitChangedFiles(wt)
+    agentChanges(scope.dir, scope.from, scope.paths)
       .then((files) => {
         d.n = files.length;
         let add = 0, del = 0;
@@ -93,7 +164,7 @@ function changesFor(pane: Pane, now: number): { n: number | null; add: number | 
       .finally(() => { d.at = Date.now(); d.pending = false; });
   }
   diffs.set(pane.id, d);
-  return d;
+  return { ...d, shared: scope.shared };
 }
 
 function toTask(ws: Workspace, pane: Pane, now: number): Task {
@@ -101,7 +172,7 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
   const m = merged.get(pane.id);
   if (m && pane.spawnedAt != null && pane.spawnedAt > m.at) merged.delete(pane.id);
   const done = merged.get(pane.id);
-  const changes = changesFor(pane, now);
+  const changes = changesFor(ws, pane, now);
   const changedFiles = changes.n;
   const status = deriveTaskState(
     {
@@ -130,6 +201,7 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
     changedFiles,
     added: changes.add,
     removed: changes.del,
+    shared: changes.shared,
     mergedInto: done?.base ?? null,
     since: prev && prev.status.state === status.state ? prev.since : now,
     worked: !!prev?.worked || status.state === "working" || (history.get(pane.id) ?? []).some((e) => e.kind === "working"),
@@ -178,6 +250,7 @@ export function historyOf(paneId: string): HistoryEvent[] {
 export function updateTasks(now: number = Date.now()): void {
   let changed = false;
   const seen = new Set<string>();
+  lookAtFolders(now);
   for (const ws of workspaces.values())
     for (const pane of ws.panes.values()) {
       seen.add(pane.id);
@@ -193,7 +266,10 @@ export function updateTasks(now: number = Date.now()): void {
       tasks.set(pane.id, next);
     }
   for (const id of [...tasks.keys()])
-    if (!seen.has(id)) { tasks.delete(id); diffs.delete(id); history.delete(id); merged.delete(id); changed = true; }
+    if (!seen.has(id)) {
+      tasks.delete(id); diffs.delete(id); history.delete(id); merged.delete(id); changed = true;
+      for (const f of folders.values()) f.work.settle(id);
+    }
   if (changed && listeners.size) {
     const list = allTasks();
     for (const cb of listeners) cb(list);

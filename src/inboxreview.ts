@@ -10,8 +10,8 @@
 import { parseDiff, type DiffFile } from "./diff";
 import { confirmModal } from "./confirmmodal";
 import { topNote } from "./hint";
-import { killPty, repoDiff, reposUnder, reviewBranchDiff, reviewDiscardBranch, reviewLand, sendMessage, type LandResult } from "./ipc";
-import { markMerged, taskOf } from "./tasks";
+import { agentDiff, killPty, reposUnder, reviewBranchDiff, reviewDiscardBranch, reviewLand, sendMessage, type LandResult } from "./ipc";
+import { changeScope, markMerged, markReviewed, taskOf } from "./tasks";
 import { promptShown } from "./working";
 import { clearComments, commentWhere, commentsOf, diffTotals, dropComment, numberHunk, putComment, sendBackText, type Conflict, type LineComment } from "./reviewtext";
 import type { Pane } from "./panetypes";
@@ -140,11 +140,13 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
         if (dry.kind === "conflict") conflict = { base: dry.base, branch: dry.branch, files: dry.files };
         // No branch of its own after all (or git can't tell): its folder's plain diff.
         if (diff === null) own = false;
-        raw = diff ?? (await repoDiff(wt));
+        raw = diff ?? (await agentDiff(wt, null, null));
       } else {
+        // The files the row counted, not the whole folder: it may be shared.
         const dir = reviewDir(pane);
         const repo = dir ? (await reposUnder(dir))[0] : undefined;
-        raw = repo ? await repoDiff(repo.path) : "";
+        const scope = changeScope(pane);
+        raw = repo && scope ? await agentDiff(scope.dir, scope.from, scope.paths) : "";
         if (!repo) loadError = dir ? "This folder is not a git repository, so there is no diff to show." : "This agent has no folder.";
       }
       if (my !== gen) return;
@@ -169,7 +171,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     else if (own && conflict) chip = `<span class="check"><span class="d" aria-hidden="true">!</span>Conflicts with ${esc(conflict.base)} in ${conflict.files.length} file${conflict.files.length === 1 ? "" : "s"}</span>`;
     return `<div class="rhead">
       <button class="hbtn ir-close" type="button" data-act="close" title="Close (Esc)">Close</button>
-      <p class="lbl">${own ? "Changes on this branch" : "Changes in the project folder"}</p>
+      <p class="lbl">${own ? "Changes on this branch" : `${esc(pane.spec.name)}'s changes in the project folder`}</p>
       <h2>${esc(count)}${files?.length ? ` <span class="num a">+${t.add}</span><span class="num d">−${t.del}</span>` : ""}</h2>
       ${where ? `<p class="br" title="${esc(where)}">${esc(where)}</p>` : ""}
       ${chip ? `<div class="checks">${chip}</div>` : ""}
@@ -240,13 +242,15 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const name = esc(pane.spec.name);
     const into = esc(base || "main");
     const note = notes.get(pane.id) ?? "";
+    const t = taskOf(pane.id);
     let line = msg.text ? `<p class="ir-msg ${msg.kind}" role="status">${esc(msg.text)}</p>` : "";
     if (!msg.text && conflict) {
       line = `<p class="ir-msg warn" role="status">Merging into ${esc(conflict.base)} would conflict in ${esc(fileList(conflict.files))}. Nothing was merged. Send back asks ${name} to merge ${esc(conflict.base)} in and resolve them.</p>`;
     } else if (!msg.text && own && check?.kind === "error") {
       line = `<p class="ir-msg" role="status">${esc(check.message)}</p>`;
     } else if (!msg.text && !own) {
-      line = `<p class="ir-msg" role="status">${name} works in the project folder, not on a branch of its own, so there is nothing to merge.</p>`;
+      const shared = t?.shared ? ` ${t.shared} of these changed while another agent was working too, so they may be its.` : "";
+      line = `<p class="ir-msg" role="status">${name} works in the project folder, not on a branch of its own, so there is nothing to merge.${esc(shared)}</p>`;
     }
     const off = busy ? " disabled" : "";
     const n = commentsOf(pane.id).length;
@@ -255,7 +259,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       ? `<button type="button" class="btn primary" data-act="merge"${off}>Merge into ${into} <kbd>M</kbd></button>
          ${back}
          <button type="button" class="btn danger" data-act="discard"${off}>Discard branch</button>`
-      : back;
+      : `<button type="button" class="btn primary" data-act="reviewed"${off}>Mark as reviewed</button> ${back}`;
     return `<div class="rfoot">${line}
       <label class="ia-sr" for="irNote">Note for ${name}</label>
       <textarea class="note" id="irNote" placeholder="What should ${name} change? Needed only for Send back.">${esc(note)}</textarea>
@@ -281,7 +285,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       body = `<div class="rempty" role="status">Reading the changes…</div>`;
     } else if (!files.length) {
       const working = t?.status.state === "working";
-      body = `<div class="rempty"><strong>${working ? "Still working" : "Nothing to review"}</strong>${esc(loadError || (working ? `The diff lands here when ${pane.spec.name} stops.` : own ? "No changes on this branch." : "No uncommitted changes in this folder."))}</div>` +
+      body = `<div class="rempty"><strong>${working ? "Still working" : "Nothing to review"}</strong>${esc(loadError || (working ? `The diff lands here when ${pane.spec.name} stops.` : own ? "No changes on this branch." : `${pane.spec.name} has changed nothing here that ByteHive saw.`))}</div>` +
         (conflict ? footHtml(pane) : "");
     } else {
       body = filesHtml(pane) + diffHtml(pane) + footHtml(pane);
@@ -480,6 +484,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       case "close": close(); break;
       case "merge": void merge(); break;
       case "back": void sendBack(); break;
+      case "reviewed": { const p = current; if (p) markReviewed(p.id); close(); break; }
       case "discard": void discard(); break;
       case "all": showAll = true; render(); break;
       case "clear": { const p = current; close(); p?.el.querySelector<HTMLElement>("[data-kill]")?.click(); break; }

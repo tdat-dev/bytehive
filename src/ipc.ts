@@ -558,6 +558,30 @@ export async function gitChangedFiles(repoRoot: string): Promise<ChangedFile[]> 
   return invoke<ChangedFile[]>("git_changed_files", { repoRoot });
 }
 
+/** The one answer to what an agent changed (review.rs `diff_of`): from `from`
+ *  (null: where its branch left the base, or HEAD) to the files on disk, junk
+ *  left out. `paths` narrows it to one agent's files in a shared folder. */
+export async function agentChanges(dir: string, from: string | null, paths: string[] | null): Promise<ChangedFile[]> {
+  return invoke<ChangedFile[]>("agent_changes", { dir, from, paths });
+}
+
+/** The same changes as a unified diff, for Review. */
+export async function agentDiff(dir: string, from: string | null, paths: string[] | null): Promise<string> {
+  return invoke<string>("agent_diff", { dir, from, paths });
+}
+
+/** How a folder stands now; compare two to see which files moved. */
+export interface FolderState {
+  head: string | null;
+  /** Uncommitted paths, each with a stamp that changes when the file does. */
+  files: Record<string, string>;
+  /** Paths commits changed since `since`. */
+  committed: string[];
+}
+export async function folderState(dir: string, since: string | null): Promise<FolderState> {
+  return invoke<FolderState>("folder_state", { dir, since });
+}
+
 /* ---- AI Code Slice 2: write side (commit / merge / discard) ---- */
 
 export interface RepoInfo {
