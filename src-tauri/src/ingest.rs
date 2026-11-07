@@ -99,28 +99,35 @@ pub fn ingest_provider_save(input: SaveInput) -> Result<ProviderView, CommandErr
 
 #[tauri::command]
 pub async fn ingest_classify(text: String) -> Result<ClassifyReply, CommandError> {
-    let mut cfg = read_config()?;
+    let cfg = read_config()?;
     if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
         return Err(CommandError::Failed("provider_unconfigured".into()));
     }
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let mut res = post(&cfg, &text).await?;
+    let (reply, learned) = classify(cfg, &text).await?;
+    if let Some(next) = learned {
+        let _ = write_config(&next);
+    }
+    Ok(reply)
+}
+
+/// The call itself. The second value is a config worth keeping: it comes back
+/// only once the plain form worked, so one bad request can't change the mode.
+async fn classify(mut cfg: ProviderConfig, text: &str) -> Result<(ClassifyReply, Option<ProviderConfig>), CommandError> {
+    let mut res = post(&cfg, text).await?;
     let mut learned = false;
     if refuses_schema(&cfg.json_mode, res.status().as_u16()) {
         cfg.json_mode = "prompt".into();
-        res = post(&cfg, &text).await?;
-        learned = res.status().is_success();
+        res = post(&cfg, text).await?;
+        learned = true;
     }
     let status = res.status();
     if !status.is_success() {
         return Err(CommandError::Failed(format!("http_{}", status.as_u16())));
     }
-    if learned {
-        // Remembered only once it worked, so one bad request can't change the mode.
-        let _ = write_config(&cfg);
-    }
     let value: Value = res.json().await.map_err(|_| CommandError::Failed("bad_response".into()))?;
-    reply_from(&value, &cfg.model)
+    let reply = reply_from(&value, &cfg.model)?;
+    Ok((reply, learned.then_some(cfg)))
 }
 
 async fn post(cfg: &ProviderConfig, text: &str) -> Result<reqwest::Response, CommandError> {
@@ -322,6 +329,72 @@ mod tests {
         assert!(!refuses_schema("prompt", 400));
         assert!(!refuses_schema("schema", 401));
         assert!(!refuses_schema("schema", 500));
+    }
+
+    /// A local endpoint that answers every request by looking at its text.
+    fn stub(answer: fn(&str) -> u16) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let (mut got, mut chunk) = (Vec::new(), [0u8; 4096]);
+                loop {
+                    let n = stream.read(&mut chunk).unwrap();
+                    got.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&got).to_lowercase();
+                    let Some(head) = text.find("\r\n\r\n") else { continue };
+                    let length = text
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if n == 0 || got.len() >= head + 4 + length {
+                        break;
+                    }
+                }
+                let status = answer(&String::from_utf8_lossy(&got));
+                let body = r#"{"choices":[{"message":{"content":"{}"}}]}"#;
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        format!("http://127.0.0.1:{port}/v1")
+    }
+
+    fn ask(base_url: String) -> Result<(ClassifyReply, Option<ProviderConfig>), CommandError> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        tauri::async_runtime::block_on(classify(ProviderConfig { base_url, ..cfg() }, "x"))
+    }
+
+    #[test]
+    fn a_provider_without_schema_support_is_asked_again_and_remembered() {
+        let url = stub(|req| if req.contains("response_format") { 400 } else { 200 });
+        let (reply, learned) = ask(url).unwrap();
+        assert_eq!(reply.content, "{}");
+        assert_eq!(learned.unwrap().json_mode, "prompt");
+    }
+
+    #[test]
+    fn a_provider_that_takes_the_schema_changes_nothing() {
+        let (_, learned) = ask(stub(|_| 200)).unwrap();
+        assert!(learned.is_none());
+    }
+
+    #[test]
+    fn a_request_that_fails_both_ways_learns_nothing() {
+        let err = ask(stub(|_| 400)).err().unwrap();
+        assert_eq!(err.to_string(), "http_400");
+    }
+
+    #[test]
+    fn a_refused_key_is_not_retried_as_a_format_problem() {
+        let err = ask(stub(|req| if req.contains("response_format") { 401 } else { 200 })).err().unwrap();
+        assert_eq!(err.to_string(), "http_401");
     }
 
     #[test]
