@@ -8,6 +8,7 @@ import { paletteFor, backgroundAlpha, type TermPalette } from "./termtheme";
 import { createBgFilter } from "./ansibg";
 import { openMenu } from "./ctxmenu";
 import { createPacer } from "./calm";
+import { localTermKey } from "./termkeys";
 
 /** How a pane paints: which palette, and whether the CLI's own background
  *  plate is stripped out of the byte stream on the way in. */
@@ -152,7 +153,7 @@ export function mountTerminal(
   container: HTMLElement,
   onInput: (data: string) => void,
   onResize: (cols: number, rows: number) => void,
-  opts: { webgl?: boolean; openLink?: (url: string) => void; fontSize?: number; look?: PaneLook } = {},
+  opts: { webgl?: boolean; openLink?: (url: string) => void; fontSize?: number; look?: PaneLook; onFind?: () => void } = {},
 ): TerminalHandle {
   // Default to the fully opaque palette ByteHive shipped before see-through
   // panes existed, so a caller that passes no look is unchanged.
@@ -266,32 +267,23 @@ export function mountTerminal(
   // default action then fires `paste` on xterm's textarea, which xterm's own
   // paste listener turns into exactly one paste. (Do NOT also read the
   // clipboard manually — that's the old double-paste bug.)
+  // Every other key is the CLI's, except what Windows Terminal keeps too.
   term.attachCustomKeyEventHandler((e) => {
-    if (e.type === "keydown" && e.ctrlKey && !e.altKey && e.key.toLowerCase() === "v") {
-      return false;
+    const local = localTermKey(e, term.hasSelection());
+    if (!local) return true;
+    if (local === "paste") return false;
+    e.preventDefault();
+    if (local === "find") opts.onFind?.();
+    else {
+      const sel = term.getSelection();
+      if (sel) void navigator.clipboard.writeText(sel).catch(() => {});
+      // Ctrl+C over a selection copies and lets go of it, so the next one interrupts.
+      if (!e.shiftKey) term.clearSelection();
     }
-    // Let the app's global shortcuts win: return false so xterm skips the key
-    // WITHOUT cancelling it, and the document-level keydown handler fires.
-    //   Alt+1..9           pane focus
-    //   Ctrl+Tab / +Shift  workspace cycling
-    //   Ctrl+Shift+T/F/B   new workspace / find / broadcast
-    if (e.type === "keydown") {
-      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
-        return false;
-      }
-      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "Tab") {
-        return false;
-      }
-      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && ["t", "f", "b"].includes(e.key.toLowerCase())) {
-        return false;
-      }
-    }
-    return true;
+    return false;
   });
 
-  // Copy is copy-on-select: highlighting text writes it straight to the OS
-  // clipboard, so there's no Ctrl+C step. That also leaves Ctrl+C free to send
-  // the interrupt (SIGINT) even when a selection is present, like a real shell.
+  // Copy-on-select too: highlighting text writes it straight to the OS clipboard.
   term.onSelectionChange(() => {
     const sel = term.getSelection();
     if (sel) void navigator.clipboard.writeText(sel).catch(() => {});

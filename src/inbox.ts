@@ -46,6 +46,7 @@ import type { AskOption } from "./askparse";
 import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
 import { hiddenGate } from "./hiddengate";
+import { onAppKey } from "./appkeys";
 import { companyNeeds, onCompanyChange } from "./company/engine";
 import { officeReveal } from "./company/office/office";
 
@@ -1112,8 +1113,10 @@ function mergeItem(): PaletteItem[] {
   return [{ group: "Actions", label: `Merge ${p.spec.name}'s branch`, keys: "M", sub: "From Changes: its worktree is removed after", run: () => { openReview(); void reviewer?.merge(); } }];
 }
 
-/** Ctrl K opens this palette instead of the classic switcher while the new
- *  interface is on. Window capture runs before the switcher's document one. */
+/** Stops listening for the keys below (appkeys.ts). */
+let offKeys: Array<() => void> = [];
+
+/** Ctrl K opens the palette, outside a terminal like every app key. */
 function onCtrlK(e: KeyboardEvent): void {
   if (!document.body.classList.contains("inbox-ui")) return;
   // ? or Ctrl+/ shows everything ByteHive can do.
@@ -1321,9 +1324,8 @@ function mount(): void {
     if (!b || !askEl) return;
     if (b.dataset.act === "review") openReview();
   });
-  document.addEventListener("keydown", onKey, true);
+  offKeys = [onAppKey(onCtrlK), onAppKey(onKey)];
   document.addEventListener("focusin", onFocusIn);
-  window.addEventListener("keydown", onCtrlK, true);
   window.addEventListener("resize", render);
   // Remember where everyone stands now, so only later changes count.
   for (const t of allTasks()) lastState.set(t.paneId, t.status.state);
@@ -1363,11 +1365,11 @@ function unmount(): void {
   if (timer !== null) { clearInterval(timer); timer = null; }
   offTasks?.(); offTasks = null;
   offCompany?.(); offCompany = null;
-  document.removeEventListener("keydown", onKey, true);
+  for (const off of offKeys) off();
+  offKeys = [];
   document.removeEventListener("focusin", onFocusIn);
   document.getElementById("workspaces")?.removeEventListener("click", onStageButton);
   document.getElementById("workspaces")?.removeEventListener("click", onKillClick, true);
-  window.removeEventListener("keydown", onCtrlK, true);
   closePalette();
   window.removeEventListener("resize", render);
   lastState.clear();

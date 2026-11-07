@@ -35,6 +35,7 @@ import {
   type SelectMode,
 } from "./codepanel";
 import { highlightPaneAt, dropPathsAtPoint, clearPaneHighlight } from "./bridges";
+import { terminalHasKeys } from "./appkeys";
 
 interface FileTreeOpts {
   host: HTMLElement;
@@ -190,7 +191,7 @@ export function initFileTree(opts: FileTreeOpts): FileTreeApi {
     if (menuEl && !menuEl.contains(e.target as Node)) closeMenu();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeMenu();
+    if (e.key === "Escape" && !terminalHasKeys()) closeMenu();
   });
 
   /* ---------------- loading + rendering ---------------- */

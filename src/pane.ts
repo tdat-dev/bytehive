@@ -226,6 +226,7 @@ export function createAgent(
       openLink: (url) => void openExternal(url).catch(() => {}),
       fontSize: paneFont(ws),
       look: paneLook(),
+      onFind: () => pane.toggleFind?.(),
     },
   );
   // Keep a tiled pane readable: an agent CLI spends ~7 rows on its prompt box

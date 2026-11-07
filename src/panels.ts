@@ -2,6 +2,8 @@
 // persistence of their widths. Uses pointer events (setPointerCapture) — NOT
 // HTML5 drag — so dragging never interacts with the OS file-drop machinery.
 
+import { onAppKey } from "./appkeys";
+
 interface SplitCfg {
   key: string;
   varName: string;
@@ -83,9 +85,8 @@ export function initPanels(): void {
   // The code panel's own "›‹" header button mirrors the topbar toggle.
   document.getElementById("cpClose")?.addEventListener("click", () => codeBtn?.click());
 
-  // Keyboard: Ctrl+Shift+B → sidebar, Ctrl+Shift+E → code panel (matches the
-  // dock's Ctrl+Shift+* convention; avoids clashing with xterm key handling).
-  document.addEventListener("keydown", (e) => {
+  // Keyboard: Ctrl+Shift+E → code panel (the dock's Ctrl+Shift+* convention).
+  onAppKey((e) => {
     if (!e.ctrlKey || !e.shiftKey) return;
     const k = e.key.toLowerCase();
     if (k === "e") {

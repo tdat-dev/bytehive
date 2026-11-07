@@ -38,6 +38,7 @@ import { checkForUpdates } from "./updater";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { initDock, dockSetContext, dockToggle, dockOpen } from "./dock";
+import { onAppKey } from "./appkeys";
 import { initOffice, officeBoot, officeGoHome, officeToggle } from "./company/office/office";
 import { chooseFolder } from "./inboxstart";
 import { initPanels } from "./panels";
@@ -347,15 +348,12 @@ initIdleAnimationPause(repaintAfterResume);
 // The broadcast console lives in broadcast.ts; wired up in the startup block.
 
 /* ---------------- keyboard shortcuts ---------------- */
-// Windows-Terminal-ish chords, chosen to avoid keys the CLIs themselves use
-// (no bare Ctrl+letter). All shortcuts are inert while a modal is open.
-//   Alt+1..9            focus the nth pane (DOM order) of the active workspace
+// These work with focus outside a terminal (appkeys.ts); a focused terminal
+// keeps every key. All shortcuts are inert while a modal is open.
 //   Ctrl+Tab            next workspace tab (cycles)
 //   Ctrl+Shift+Tab      previous workspace tab (cycles)
 //   Ctrl+Shift+T        New agent
-//   Ctrl+Shift+F        toggle the find bar of the focused pane
-//   Ctrl+Shift+B        focus the broadcast input
-//   Ctrl+K              open the fleet switcher (jump to any agent) — see switcher.ts
+//   Ctrl+Shift+F        toggle the find bar of the pane it is open on
 
 /** Cycle the active workspace tab by ±1 (wraps). Only meaningful in app view. */
 function cycleWorkspace(dir: 1 | -1) {
@@ -377,24 +375,9 @@ function focusedPane(): Pane | null {
   return activeWs.panes.values().next().value ?? null;
 }
 
-document.addEventListener("keydown", (e) => {
+onAppKey((e) => {
   // Any open backdrop (confirm / settings / …) swallows shortcuts.
   if (document.querySelector(".backdrop.open")) return;
-
-  // Alt+1..9 → focus that pane (no other modifiers). The Inbox has no row of
-  // panes, so there they do nothing.
-  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code.startsWith("Digit")) {
-    if (document.body.classList.contains("inbox-ui")) return;
-    const n = Number(e.code.slice(5));
-    if (n >= 1 && n <= 9 && activeWs) {
-      const pane = [...activeWs.panes.values()][n - 1];
-      if (pane) {
-        e.preventDefault();
-        pane.term.focus();
-      }
-    }
-    return;
-  }
 
   if (!e.ctrlKey || e.metaKey || e.altKey) return;
 

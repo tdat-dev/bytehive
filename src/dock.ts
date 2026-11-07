@@ -10,6 +10,7 @@ import { createKanban } from "./kanban";
 import { createPomodoro } from "./pomodoro";
 import { createDiffView } from "./diffview";
 import { createFleet } from "./fleet";
+import { terminalHasKeys } from "./appkeys";
 import { createFlow } from "./flow";
 import type { DockContext } from "./dockstore";
 
@@ -158,7 +159,7 @@ export function initDock() {
   // Esc closes the panel — but not while typing in one of its fields (let the
   // field handle Esc), and not when a modal backdrop is up (those own Esc).
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || active === null) return;
+    if (e.key !== "Escape" || active === null || terminalHasKeys()) return;
     if (document.querySelector(".backdrop.open")) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && panel?.contains(ae)) return;

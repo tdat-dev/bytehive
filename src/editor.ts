@@ -17,6 +17,7 @@ import { yaml } from "@codemirror/lang-yaml";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { fsReadFile, fsWriteFile, fsStat, fsReadDataUrl } from "./ipc";
+import { terminalHasKeys } from "./appkeys";
 import { langForFile, resolveConflict, isImageFile } from "./codepanel";
 
 interface EditorOpts {
@@ -180,7 +181,7 @@ export function initEditor(opts: EditorOpts): EditorApi {
   }
   maxBtn.addEventListener("click", () => setMax(!appEl()?.classList.contains("editor-max")));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && appEl()?.classList.contains("editor-max")) setMax(false);
+    if (e.key === "Escape" && !terminalHasKeys() && appEl()?.classList.contains("editor-max")) setMax(false);
   });
 
   const current = () => view?.state.doc.toString() ?? "";
