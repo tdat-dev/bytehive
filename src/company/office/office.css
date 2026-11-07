@@ -79,7 +79,10 @@ button.of-tag:hover { border-color: var(--of-ink); }
 .of-tag span { margin-left: 2px; color: var(--ib-ink-2, var(--muted)); }
 .of-tag em { margin-left: 2px; color: var(--of-honey); font-style: normal; }
 .of-tag.is-needs { border-color: var(--of-honey); }
-.of-tag-person { max-width: calc(18ch + 18px); }
+.of-tag-person { overflow: visible; }
+.of-tag-person span { display: inline-block; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.of-tag-person::after { content: ""; position: absolute; left: 50%; bottom: -4px; width: 7px; height: 7px; margin-left: -3.5px; transform: rotate(45deg); box-sizing: border-box; border: solid var(--line-strong); border-width: 0 1px 1px 0; background: var(--of-chip); }
+.of-tag-person.is-needs::after { border-color: var(--of-honey); }
 .of-tag-person.is-needs, .of-tag-person.is-needs span { color: var(--of-honey); }
 
 .of-job, .of-msg { position: absolute; bottom: 16px; left: 16px; box-sizing: border-box; width: clamp(240px, calc((100vw - var(--office-rail-w)) / 2), 300px); padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--r3); background: var(--of-panel); }

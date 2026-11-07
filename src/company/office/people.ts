@@ -52,9 +52,11 @@ export function pose(state: OfficeState, t: number, seat: number): Pose {
 
 const SIT_HIP = 0.6;
 const STAND_HIP = 0.7;
-const HEAD_UP = 0.98;
-const HEAD_R = 0.41;
-const SHOULDER = { x: 0.3, y: 0.56 };
+const HEAD_UP = 1.06;
+const HEAD_R = 0.49;
+/** The head is modelled at this size and scaled up to `HEAD_R`. */
+const HEAD_MODEL = 0.41;
+const SHOULDER = { x: 0.34, y: 0.58 };
 const HAND = -0.54;
 /** Arms reach for the desk sitting down, and hang on their feet. */
 const ARM_SIT = 1.02;
@@ -64,7 +66,7 @@ const ARM_REST = 2.2;
 /** Out of the chair toward the viewer. Looking down on the low floors, the slab above cuts a
  *  back row head off, and the next row hides anyone who steps the other way. At a desk turned
  *  to face the viewer they step round its end: straight ahead is the desk. */
-const STEP = { back: { x: 0.72, z: 0.85 }, front: { x: 1.15, z: 0.58 } };
+const STEP = { back: { x: 0.72, z: 0.85 }, front: { x: 1.1, z: 0.05 } };
 const stepOf = (rot: number) => (Math.cos(rot) > 0 ? STEP.back : STEP.front);
 /** The fixed view's bearing, for what turns to face it. */
 const VIEW_YAW = Math.atan2(1, 0.84);
@@ -74,7 +76,7 @@ const BUBBLE_GAP = 0.12;
 const INK = "#14161c";
 const CARD = "#f6f3ec";
 const TROUSERS = "#2b2f3a";
-const BADGE = { y: 0.46, z: 0.25 };
+const BADGE = { y: 0.46, z: 0.285 };
 
 const hipAt = (sit: number) => STAND_HIP + (SIT_HIP - STAND_HIP) * sit;
 const bubbleAt = (sit: number) => hipAt(sit) + HEAD_UP + HEAD_R + BUBBLE_GAP;
@@ -92,7 +94,7 @@ export function spotOf(d: Seat, state: OfficeState): { x: number; z: number; hea
 /** A person's look that comes from no setting, the same every time for the same id. */
 const beadOf = (id: string): string => BEADS[hashOf(id) % BEADS.length];
 
-const dome = (hex: string, tip = 0.32) => tint(new SphereGeometry(HEAD_R + 0.018, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2), hex).rotateX(tip);
+const dome = (hex: string, tip = 0.32) => tint(new SphereGeometry(HEAD_MODEL + 0.018, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2), hex).rotateX(tip);
 
 /** Six kinds of hair. All of them keep clear of the face, which is on -z. */
 const HAIR: Array<(hex: string) => BufferGeometry[]> = [
@@ -100,8 +102,8 @@ const HAIR: Array<(hex: string) => BufferGeometry[]> = [
   (hex) => [dome(hex), moved(tint(new SphereGeometry(0.19, 12, 8), hex).scale(1.5, 0.6, 1), -0.13, 0.31, -0.25)],
   (hex) => [dome(hex), moved(tint(new SphereGeometry(0.17, 12, 9), hex), 0, 0.42, 0.24)],
   (hex) => [dome(hex, 0.36), moved(tint(new SphereGeometry(0.2, 12, 9), hex), -0.3, 0.05, 0.1), moved(tint(new SphereGeometry(0.2, 12, 9), hex), 0.3, 0.05, 0.1), moved(tint(new SphereGeometry(0.22, 12, 9), hex), 0, 0.26, 0.26)],
-  (hex) => [dome(hex, 0.5), tint(new SphereGeometry(HEAD_R + 0.03, 20, 9, 0, Math.PI * 2, Math.PI / 2 - 0.1, Math.PI / 2.6), hex).rotateX(0.46)],
-  (hex) => [dome(hex, 0.68), tint(new SphereGeometry(HEAD_R + 0.014, 18, 7, 0, Math.PI * 2, Math.PI * 0.68, Math.PI * 0.32), hex).rotateX(0.2)],
+  (hex) => [dome(hex, 0.5), tint(new SphereGeometry(HEAD_MODEL + 0.03, 20, 9, -0.35, Math.PI + 0.7, Math.PI / 2 - 0.3, Math.PI / 2.4), hex)],
+  (hex) => [dome(hex, 0.68), tint(new SphereGeometry(HEAD_MODEL + 0.014, 18, 5, 0, Math.PI * 2, Math.PI * 0.8, Math.PI * 0.2), hex).rotateX(0.62)],
 ];
 
 function torsoGeometry(p: OfficePerson): BufferGeometry {
@@ -109,19 +111,22 @@ function torsoGeometry(p: OfficePerson): BufferGeometry {
   const hash = hashOf(p.id);
   const smile = tint(new TorusGeometry(0.075, 0.014, 6, 10, Math.PI), INK).rotateZ(Math.PI);
   const cheek = () => tint(new SphereGeometry(0.06, 8, 6), "#e88f7a").scale(1, 0.7, 0.4);
-  const face = HEAD_R + 0.002;
+  const face = HEAD_MODEL + 0.002;
   const collar = p.rank === "staff" ? new Color(p.shirt).lerp(new Color("#ffffff"), 0.4) : new Color("#f4efe6");
+  const head = merged([
+    tint(new SphereGeometry(HEAD_MODEL, 22, 16), skin),
+    ...HAIR[hash % HAIR.length](p.hair),
+    moved(tint(new SphereGeometry(0.048, 8, 6), INK), -0.14, 0.06, -face + 0.04),
+    moved(tint(new SphereGeometry(0.048, 8, 6), INK), 0.14, 0.06, -face + 0.04),
+    moved(smile, 0, -0.06, -face + 0.014),
+    moved(cheek(), -0.23, -0.04, -face + 0.09),
+    moved(cheek(), 0.23, -0.04, -face + 0.09),
+  ]).scale(HEAD_R / HEAD_MODEL, HEAD_R / HEAD_MODEL, HEAD_R / HEAD_MODEL);
   return merged([
-    moved(tint(new CapsuleGeometry(0.255, 0.22, 6, 14), p.shirt), 0, 0.32, 0),
-    moved(soft(0.3, 0.09, 0.24, 0.04, `#${collar.getHexString()}`), 0, 0.57, -0.03),
-    ...(p.rank !== "staff" ? [moved(box(0.07, 0.3, 0.02, "#3a4670"), 0, 0.38, -0.255)] : []),
-    moved(tint(new SphereGeometry(HEAD_R, 22, 16), skin), 0, HEAD_UP, 0),
-    ...HAIR[hash % HAIR.length](p.hair).map((g) => moved(g, 0, HEAD_UP, 0)),
-    moved(tint(new SphereGeometry(0.048, 8, 6), INK), -0.14, HEAD_UP + 0.06, -face + 0.04),
-    moved(tint(new SphereGeometry(0.048, 8, 6), INK), 0.14, HEAD_UP + 0.06, -face + 0.04),
-    moved(smile, 0, HEAD_UP - 0.06, -face + 0.014),
-    moved(cheek(), -0.23, HEAD_UP - 0.04, -face + 0.09),
-    moved(cheek(), 0.23, HEAD_UP - 0.04, -face + 0.09),
+    moved(tint(new CapsuleGeometry(0.29, 0.24, 6, 14), p.shirt), 0, 0.34, 0),
+    moved(soft(0.32, 0.09, 0.26, 0.04, `#${collar.getHexString()}`), 0, 0.6, -0.03),
+    ...(p.rank !== "staff" ? [moved(box(0.08, 0.32, 0.02, "#3a4670"), 0, 0.4, -0.29)] : []),
+    moved(head, 0, HEAD_UP, 0),
     moved(box(0.22, 0.24, 0.015, CARD), 0.0, BADGE.y, -BADGE.z + 0.012),
   ]);
 }
@@ -174,8 +179,8 @@ const IN_HAND = new Map<string, { hand: "L" | "R"; make: () => BufferGeometry }>
 
 function armGeometry(p: OfficePerson, hand: "L" | "R"): BufferGeometry {
   const parts = [
-    moved(tint(new CapsuleGeometry(0.085, 0.34, 4, 10), p.shirt), 0, -0.26, 0),
-    moved(tint(new SphereGeometry(0.098, 10, 8), beadOf(p.id)), 0, HAND + 0.02, 0),
+    moved(tint(new CapsuleGeometry(0.1, 0.34, 4, 10), p.shirt), 0, -0.26, 0),
+    moved(tint(new SphereGeometry(0.115, 10, 8), beadOf(p.id)), 0, HAND + 0.02, 0),
   ];
   if (hand === "L" && p.rank === "lead") parts.push(moved(tint(new CylinderGeometry(0.1, 0.1, 0.07, 14), OFFICE.paper), 0, -0.17, 0));
   const held = IN_HAND.get(p.prop);

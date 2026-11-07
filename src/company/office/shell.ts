@@ -47,6 +47,8 @@ const TAG_EDGE = 6;
 const TAG_TOUCH = 2;
 /** A bubble is a little wider than it is tall. */
 const BUBBLE_WIDE = 1.2;
+/** How many people a floor has before the tags over their heads run out of width. */
+const FULL_TAGS = 4;
 const TABS: Array<{ id: DeskTab; label: string }> = [{ id: "terminal", label: "Terminal" }, { id: "changes", label: "Changes" }, { id: "report", label: "Report" }];
 const MOOD: Partial<Record<OfficePerson["state"], string>> = { needs: "needs you", review: "to review", idle: "idle", stopped: "stopped" };
 
@@ -88,11 +90,12 @@ function floorTag(f: OfficeFloor): Tag {
   return { key: `floor:${f.id}`, id: f.id, kind: "floor", html: `<b>${esc(f.name)}</b> <span>${people(f.people.length)}</span>${needYou(f.needs)}${closed}`, label: f.name, needs: f.needs > 0, to: { kind: "floor", floorId: f.id } };
 }
 
-function personTag(p: OfficePerson): Tag {
+/** `short`: a full floor has room over each head for a name and no more. The rest stays in its label. */
+function personTag(p: OfficePerson, wanted: boolean, short: boolean): Tag {
   const who = p.rank === "lead" ? "Lead" : p.title;
-  const mood = MOOD[p.state];
+  const mood = wanted ? MOOD.needs : MOOD[p.state];
   const detail = mood ? `${who}, ${mood}` : who;
-  return { key: `person:${p.id}`, id: p.id, kind: "person", html: `${esc(p.name)} <span>${esc(detail)}</span>`, label: `${p.name}, ${detail}`, needs: p.state === "needs", to: deskOf(p) };
+  return { key: `person:${p.id}`, id: p.id, kind: "person", html: short ? esc(p.name) : `${esc(p.name)} <span>${esc(detail)}</span>`, label: `${p.name}, ${detail}`, needs: wanted, to: deskOf(p) };
 }
 
 function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean): Tag[] {
@@ -106,7 +109,8 @@ function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean): Tag[] {
   if (l.kind === "desk") return [];
   const f = m.floors.find((x) => x.id === l.floorId);
   if (!f) return [];
-  const tags = f.people.map(personTag);
+  const wanted = new Set(m.needs.map((r) => r.personId));
+  const tags = f.people.map((p) => personTag(p, p.state === "needs" || wanted.has(p.id), f.people.length > FULL_TAGS));
   if (f.board) {
     const b = f.board;
     tags.push({ key: `board:${f.id}`, id: f.id, kind: "board", html: `To do ${b.todo}, Doing ${b.doing}, Done ${b.done}`, label: canOpenBoard ? `Open the board. To do ${b.todo}, Doing ${b.doing}, Done ${b.done}` : "", needs: false, ...(canOpenBoard ? { floor: f.id } : {}) });

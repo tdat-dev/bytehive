@@ -1,14 +1,14 @@
 /* The office's colours. Mesh colours from the approved look (style-a.webp), and the
  * text pairs on screen, which the test holds to WCAG AA. */
 export const OFFICE = {
-  sky: "#191d27", ground: "#23262e", shellOut: "#3d4152", shellEdge: "#2f3241", slabTop: "#505566",
-  wallLit: "#efb877", wallDim: "#6d4632", wallDark: "#4c5c94", wallNightLow: "#2a3358", floorLit: "#8a6e52", floorDark: "#3f4a78", grout: "#65493a", groutNight: "#242c4e",
+  sky: "#191d27", ground: "#23262e", shellOut: "#3a3e4a", shellEdge: "#2d303a", slabTop: "#4c505c",
+  wallLit: "#efb877", wallDim: "#6d4632", wallDark: "#465270", wallNightLow: "#272d40", floorLit: "#8a6e52", floorDark: "#3a4360", grout: "#65493a", groutNight: "#232838",
   honey: "#f5b83d", glow: "#ffe2ae", glass: "#9fc3d8", steel: "#6a7180",
   deskTop: "#b07a45", deskBody: "#2f3240", chair: "#262935", screenOn: "#7cc4ff", screenOff: "#1b1e24", lampNeeds: "#f5b83d",
   bead: "#efc48a", plant: "#4f8f4a", plantDeep: "#2f6a4a", pot: "#b5734a", paper: "#f2ece0",
   cork: "#b98d58", noteTodo: "#f2d15e", noteDoing: "#8fc7f2", noteDone: "#8fd9a4",
   grass: "#2f5048", grassLit: "#4a6a4e", stone: "#4a4f5e", kerb: "#3a3e4d", leaf: "#2f5e57", leafDeep: "#1f4347", bark: "#3a2f33",
-  skyTop: "#0a0e24", skyHigh: "#141a3e", skyMid: "#2a2f63", skyLow: "#5a4a85", skyGlow: "#b0708a", haze: "#6c5a8c", moon: "#d9d4c8",
+  skyTop: "#0d1018", skyHigh: "#131722", skyMid: "#1a2030", skyLow: "#283044", skyGlow: "#4e5266", haze: "#3e4458", moon: "#aeb1b8",
 } as const;
 
 /** A project's colour, for rugs, cushions and art. None of them is honey: that means your turn. */

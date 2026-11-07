@@ -3,28 +3,32 @@
 import type { OfficeModel } from "./model";
 import type { Level } from "./nav";
 
-export const STOREY = 4.4;
-export const SLAB = 0.58;
-export const ROOM_W = 11;
-export const ROOM_D = 7.4;
+export const STOREY = 4;
+export const SLAB = 0.56;
+export const ROOM_W = 10.4;
+export const ROOM_D = 6.8;
 export const LIFT_W = 1.7;
 export const GROUND = 0.5;
 /** A long lens, as in style-a.webp: the walls stay upright, and every floor is seen from the same height. */
 export const FOV = 15;
 /** How long a message is in the air, for the paper plane. */
 export const FLIGHT_MS = 2400;
-const COLS = 3;
-const DESK_W = 3.45;
-/** The two desks of a pair stand this far either side of its middle, backs together. */
-const PAIR_Z = 0.44;
-const PAIR_ROWS = 3.6;
+/** People stand in one line across the screen, in two rows of the room: the near row on the
+ *  left, the far one on the right. Heads never line up, so nobody hides anyone. */
+const SEATS = { near: 1.75, far: -1.6, reach: 3.95, widest: 2.4, most: 10 };
 /** Past this many floors the Building shot keeps the top of the tower and lets the bottom go. */
 const MAX_FRAMED = 8;
 /** The plot round the tower. */
-export const PLOT = { w: 27, d: 23, x: 0.85, z: 0.6 };
+export const PLOT = { w: 21, d: 17, x: 0.85, z: 0.4 };
 /** Measured off style-a.webp: about 50 degrees round from the front, and low. */
 export const VIEW = { x: 1, y: 0.2, z: 0.84 };
 const VIEW_LEN = Math.hypot(VIEW.x, VIEW.y, VIEW.z);
+
+/** Toward the camera, and the screen's right and up, in the world: the view never turns. */
+const AIM = { x: VIEW.x / VIEW_LEN, y: VIEW.y / VIEW_LEN, z: VIEW.z / VIEW_LEN };
+const FLAT = Math.hypot(AIM.x, AIM.z);
+export const RIGHT = { x: AIM.z / FLAT, y: 0, z: -AIM.x / FLAT };
+const UP = { x: (-AIM.x * AIM.y) / FLAT, y: FLAT, z: (-AIM.z * AIM.y) / FLAT };
 
 export interface Seat { x: number; z: number; rot: number }
 export interface Desk extends Seat { personId: string }
@@ -40,17 +44,24 @@ const CHAIR_BACK = 0.78;
  *  rows fill from the back, so most screens can be seen, beside the back of a head. */
 export const chairSpot = (d: Seat): { x: number; z: number } => ({ x: d.x + Math.sin(d.rot) * CHAIR_BACK, z: d.z + Math.cos(d.rot) * CHAIR_BACK });
 
-/** The middle pair fills first, so a small team sits where the eye lands. */
-const PAIR_COLS = [0, -1, 1];
+/** How many places a floor of this many is laid out for: a floor keeps its plan while it fills. */
+const placesFor = (count: number) => (count <= 4 ? 4 : count <= 6 ? 6 : count <= 8 ? 8 : SEATS.most);
 
-/** Desks stand in pairs, back to back: one person faces the viewer, the other their screen.
- *  Three pairs in the usual floor. A Lead with more people, by hand, gets a second row of pairs. */
+/** From the middle of the line outward, so a small team sits where the eye lands. */
+function middleOut(places: number, seat: number): number {
+  const half = Math.floor(places / 2);
+  return seat % 2 ? half + (seat - 1) / 2 : half - 1 - seat / 2;
+}
+
+/** Everyone faces the viewer from behind their desk. Past ten, by hand, a third row in the middle. */
 export function seatSpot(seat: number, count: number): Seat {
-  const pair = Math.floor(seat / 2);
-  const rows = Math.max(1, Math.ceil(Math.ceil(count / 2) / COLS));
-  const middle = (Math.floor(pair / COLS) - (rows - 1) / 2) * PAIR_ROWS;
-  const front = seat % 2 === 1;
-  return { x: PAIR_COLS[pair % COLS] * DESK_W, z: middle + (front ? PAIR_Z : -PAIR_Z), rot: front ? 0 : Math.PI };
+  const places = placesFor(count);
+  if (seat >= SEATS.most) return { x: (((seat - SEATS.most) % 5) - 2) * 2, z: CHAIR_BACK + Math.floor((seat - SEATS.most) / 5) * 0.2, rot: Math.PI };
+  const i = middleOut(places, seat);
+  const gap = Math.min(SEATS.widest, (2 * SEATS.reach) / (places - 1));
+  const across = (i - (places - 1) / 2) * gap;
+  const chairZ = i < places / 2 ? SEATS.near : SEATS.far;
+  return { x: (across - RIGHT.z * chairZ) / RIGHT.x, z: chairZ + CHAIR_BACK, rot: Math.PI };
 }
 
 export function towerLayout(m: OfficeModel): Tower {
@@ -65,11 +76,6 @@ export function towerLayout(m: OfficeModel): Tower {
 
 export interface Point { x: number; y: number; z: number }
 
-/** Toward the camera, and the screen's right and up, in the world: the view never turns. */
-const AIM: Point = { x: VIEW.x / VIEW_LEN, y: VIEW.y / VIEW_LEN, z: VIEW.z / VIEW_LEN };
-const FLAT = Math.hypot(AIM.x, AIM.z);
-const RIGHT: Point = { x: AIM.z / FLAT, y: 0, z: -AIM.x / FLAT };
-const UP: Point = { x: (-AIM.x * AIM.y) / FLAT, y: FLAT, z: (-AIM.z * AIM.y) / FLAT };
 const dot = (a: Point, b: Point) => a.x * b.x + a.y * b.y + a.z * b.z;
 
 /** A shot from the fixed viewing angle, far enough to hold a box of this size. */
@@ -101,7 +107,7 @@ export function towerPoints(t: Tower): Point[] {
   const tall = t.floors.length > MAX_FRAMED;
   const floor = tall ? t.roofY - MAX_FRAMED * STOREY : -0.4;
   const slab = { l: -ROOM_W / 2 - 0.3, r: ROOM_W / 2 + LIFT_W + 0.3, f: ROOM_D / 2 + 0.3, b: -ROOM_D / 2 - 0.3 };
-  const plot = { l: slab.l - 2.4, r: slab.r + 2.4, f: slab.f + 2.4, b: slab.b - 2.4 };
+  const plot = { l: PLOT.x - PLOT.w / 2, r: PLOT.x + PLOT.w / 2, f: PLOT.z + PLOT.d / 2, b: PLOT.z - PLOT.d / 2 };
   const corners = (b: { l: number; r: number; f: number; b: number }) => [{ x: b.l, z: b.f }, { x: b.r, z: b.f }, { x: b.l, z: b.b }, { x: b.r, z: b.b }];
   return [
     ...corners(slab).map((c) => ({ x: c.x, y: t.roofY, z: c.z })),
@@ -110,10 +116,16 @@ export function towerPoints(t: Tower): Point[] {
   ];
 }
 
+/** A floor's own corners, for the Floor shot: that room, and only as much of its neighbours as the frame leaves over. */
+function floorPoints(f: FloorSpot): Point[] {
+  const side = [{ x: -ROOM_W / 2, z: ROOM_D / 2 + 0.2 }, { x: ROOM_W / 2 + LIFT_W, z: ROOM_D / 2 + 0.2 }, { x: ROOM_W / 2 + LIFT_W, z: -ROOM_D / 2 }, { x: -ROOM_W / 2, z: -ROOM_D / 2 }];
+  return [...side.map((c) => ({ ...c, y: f.y - 0.1 })), ...side.map((c) => ({ ...c, y: f.y + STOREY - SLAB }))];
+}
+
 export function shotFor(l: Level, t: Tower, aspect: number): Shot {
   if (l.kind === "desk" && !l.floorId) return shot(FOUNDER_DESK.x, t.roofY + 1.2, FOUNDER_DESK.z, ROOM_W * 0.7, STOREY * 1.05, aspect);
   const f = l.kind === "building" ? undefined : t.floors.find((x) => x.id === l.floorId);
-  if (f && l.kind === "floor") return shot(LIFT_W / 2, f.y + 1.5, 0, t.width + 1.4, STOREY * 1.14, aspect);
+  if (f && l.kind === "floor") return fitShot(floorPoints(f), aspect, 1);
   if (f && l.kind === "desk") {
     const d = f.desks.find((x) => x.personId === l.personId);
     return shot(d?.x ?? 0, f.y + 1.1, d?.z ?? 0, ROOM_W * 0.62, STOREY * 0.86, aspect);

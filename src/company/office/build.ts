@@ -8,6 +8,7 @@ import {
   PlaneGeometry, SphereGeometry, SRGBColorSpace, Vector3, type Material, type Object3D, type Texture,
 } from "three";
 import { clay } from "./clay";
+import { fallsBack, focusBand, type FocusBand } from "./focus";
 import { DESK_TOP, box, flare, hashOf, merged, moved, paint, pool, ramp, roundedSlab, seeded, soft, tint } from "./geometry";
 import { FOUNDER_DESK, GROUND, LIFT_W, ROOM_D, ROOM_W, SLAB, STOREY, chairSpot, type FloorSpot, type Seat, type Tower } from "./layout";
 import { bake, deskBlockers, lightAt, rgb, shadeAt, type Lamp, type RGB, type RoomLight } from "./light";
@@ -26,12 +27,12 @@ const SLAB_X = LIFT_W / 2;
 /** The ground plate's top: the lowest slab stands on it. */
 const PLATE_TOP = GROUND - SLAB;
 const MAX_STICKIES = 12;
-const BOARD_X = 3.3;
+const BOARD_X = 2.9;
 const BOARD_Y = 1.9;
 /** Where the board's counts go, off its right edge, on the wall. */
 export const BOARD_EDGE = { x: BOARD_X + 1.35, y: BOARD_Y, z: -ROOM_D / 2 + WALL };
 /** The roof sign. `logo` sizes the picture to the plate: the cell's radius is 11.2 of the logo's 24. */
-const SIGN = { x: 2.6, z: -2, r: 1.05, thick: 0.34, post: 0.5, turn: 0.42, logo: (0.94 * 24) / 11.2 };
+const SIGN = { x: 2.6, z: -2, r: 0.78, thick: 0.28, post: 0.36, turn: 0.42, logo: (0.94 * 24) / 11.2 };
 
 /** The right edge of a floor, where its tag goes. */
 export const FLOOR_EDGE = { x: SLAB_X + SLAB_W / 2, z: -ROOM_D / 2 };
@@ -116,6 +117,8 @@ export interface Kit {
   groundLight: Group;
   /** Sky and town, for the small shift a moving mouse gives them. */
   far: Group;
+  /** What stays lit at a Floor. */
+  focus: FocusBand;
   dispose(): void;
 }
 
@@ -165,6 +168,7 @@ export function createKit(loaded: () => void = () => {}): Kit {
   const pictures = createTextures(loaded);
   const deskLightMap = painted(128, 128, poolPaint);
 
+  const focus = focusBand();
   const matte = clay({ self: "#8fa0d8", selfLevel: 0.2, rim: "#7f92d8", rimLevel: 0.08, foot: 0 });
   const indoor = clay({ self: "#ffcf9a", selfLevel: 0.34, rim: "#9fb4e6", rimLevel: 0.2, foot: 0.3 });
   indoor.color.set("#fff1d8");
@@ -172,17 +176,19 @@ export function createKit(loaded: () => void = () => {}): Kit {
   const glow = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, dithering: true });
   const glass = new MeshStandardMaterial({ color: OFFICE.glass, transparent: true, opacity: 0.13, roughness: 0.15, metalness: 0, depthWrite: false });
   const deskLight = new MeshBasicMaterial({ map: deskLightMap, vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, dithering: true });
+  for (const m of [matte, indoor, night, glow, glass]) fallsBack(m, focus);
   const hazeLight = deskLight.clone();
   hazeLight.depthTest = false;
+  fallsBack(deskLight, focus);
   const haze = flare(LIFT_W / 2, ROOM_H / 2, 0.8, 17, "#ffb070", 0.1);
   const paper = new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, toneMapped: false });
   const bubble = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, depthTest: false, depthWrite: false });
-  const logo = new MeshBasicMaterial({ map: pictures.logoTexture(), transparent: true, toneMapped: false });
+  const logo = fallsBack(new MeshBasicMaterial({ map: pictures.logoTexture(), transparent: true, toneMapped: false }), focus);
   const badges = new Map<string, MeshBasicMaterial>();
   const badge = (cli: string): Material => {
     let m = badges.get(cli);
     if (!m) {
-      m = new MeshBasicMaterial({ map: pictures.badgeTexture(cli), color: badgeInk(cli), transparent: true, toneMapped: false });
+      m = fallsBack(new MeshBasicMaterial({ map: pictures.badgeTexture(cli), color: badgeInk(cli), transparent: true, toneMapped: false }), focus);
       badges.set(cli, m);
     }
     return m;
@@ -205,7 +211,7 @@ export function createKit(loaded: () => void = () => {}): Kit {
   const materials: Material[] = [matte, indoor, night, glow, glass, deskLight, hazeLight, paper, bubble, logo];
   return {
     matte, indoor, night, glow, glass, shell, slab, desk, chair, chairBack, boardFrame, lamp, deskLight, hazeLight, haze, glowWork, glowLamp, plane, paper, bubble, logo, logoPlate, badge, shapes,
-    ground: setting.group, groundLight: setting.light, far: setting.far,
+    ground: setting.group, groundLight: setting.light, far: setting.far, focus,
     dispose() {
       for (const g of geometries) g.dispose();
       for (const s of shapes.values()) for (const g of Object.values(s)) g.dispose();
@@ -306,7 +312,7 @@ function hexFloor(room: RoomLight, lit: boolean, accent: string, seed: number): 
 function screen(d: Seat, state: Pose["screen"]): BufferGeometry {
   const colour = `#${screenLight(state).getHexString()}`;
   const parts = [tint(new PlaneGeometry(0.58, 0.36), colour).translate(0, DESK_TOP + 0.33, -0.2 + 0.03)];
-  if (state === "work") parts.push(tint(new PlaneGeometry(0.34, 0.22), colour).rotateY(Math.PI).translate(0, DESK_TOP + 0.33, -0.2 - 0.03));
+  if (state === "work") parts.push(tint(new PlaneGeometry(0.46, 0.28), colour).rotateY(Math.PI).translate(0, DESK_TOP + 0.33, -0.2 - 0.03));
   return moved(merged(parts), d.x, 0, d.z, d.rot);
 }
 
@@ -520,7 +526,7 @@ function buildRoof(t: Tower, kit: Kit): Group {
   spanZ(t.lift.z + LIFT_W / 2 + 0.1, edge.f, edge.r);
 
   // Penthouse: a box, a flat overhanging roof, a lit door and one lit window.
-  const house = { x: 0.8, z: -1.75, w: 6.4, d: 3.4, h: 2.9 };
+  const house = { x: 0.7, z: -1.6, w: 6, d: 3.2, h: 2.7 };
   solid.push(moved(tint(roundedSlab(house.w, house.d, house.h, 0.18), OFFICE.shellOut), house.x, y + house.h, house.z));
   solid.push(moved(tint(roundedSlab(house.w + 0.8, house.d + 0.8, 0.42, 0.28), OFFICE.shellOut, OFFICE.slabTop), house.x, y + house.h + 0.38, house.z));
   const front = house.z + house.d / 2;
@@ -592,8 +598,8 @@ function buildRoof(t: Tower, kit: Kit): Group {
   }
   clear.push(moved(tint(new BoxGeometry(half * 2, height, half * 2), OFFICE.glass), x, bottom + height / 2, z));
   for (const f of t.floors) {
-    lit.push(moved(box(0.34, 0.1, 0.16, OFFICE.glow), x - half + 0.4, f.y + 3.3, z + half - 0.02));
-    thrown.push(flare(x - half + 0.4, f.y + 3.3, z + half, 1.3, "#ffd8a0", 0.36));
+    lit.push(moved(box(0.34, 0.1, 0.16, OFFICE.glow), x - half + 0.4, f.y + 3, z + half - 0.02));
+    thrown.push(flare(x - half + 0.4, f.y + 3, z + half, 1.3, "#ffd8a0", 0.36));
   }
   const mast = top - shaftTop;
   solid.push(moved(tint(new CylinderGeometry(0.07, 0.1, mast, 8), OFFICE.steel), x + 0.25, shaftTop + mast / 2, z - 0.25));

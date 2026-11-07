@@ -6,7 +6,7 @@ import {
   Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Object3D,
 } from "three";
 import { BOARD_EDGE, FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt } from "./build";
-import { FLIGHT_MS, FOUNDER_DESK, FOV, VIEW, liftAt, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
+import { FLIGHT_MS, FOUNDER_DESK, FOV, SLAB as FOCUS_SLAB, STOREY, VIEW, liftAt, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
 import { sceneKey, type OfficeFloor, type OfficeModel, type OfficePerson, type OfficeState } from "./model";
 import { risingAt, risingGeometry, risingMaterial, risingMesh } from "./life";
 import { BUILDING, frameDelay, type Level } from "./nav";
@@ -103,7 +103,7 @@ export function pickFrom(hits: PickHit[]): { personId?: string; floorId?: string
   return person ? { personId: person.personId, floorId: person.floorId } : { floorId: first.floorId };
 }
 
-interface Tween { from: Shot; to: Shot; at: number | null }
+interface Tween { from: Shot; to: Shot; at: number | null; band?: { from: Vector3; to: Vector3 } }
 
 /** A move given a new end: it goes on from where the camera is, so nothing jumps. */
 export const retargeted = (t: Tween, now: Shot, to: Shot): Tween => ({ ...t, from: now, to, at: null });
@@ -343,7 +343,9 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     if (!tween) return;
     tween.at ??= t;
     const k = Math.min(1, (t - tween.at) / MOVE_MS);
-    look(mixShots(tween.from, tween.to, easeEnter(k)));
+    const eased = easeEnter(k);
+    look(mixShots(tween.from, tween.to, eased));
+    if (tween.band) kit.focus?.value.lerpVectors(tween.band.from, tween.band.to, eased);
     if (k === 1) {
       tween = null;
       resting = true;
@@ -371,14 +373,24 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   function aim(instant: boolean): void {
     if (!tower) return;
     const to = shotFor(level, tower, width / height);
+    const band = bandFor(level, tower);
     if (instant || o.reducedMotion || !shot || sameShot(to, shot)) {
       tween = null;
       look(to);
+      kit.focus?.value.copy(band);
       resting = true;
     } else {
-      tween = { from: shot, to, at: null };
+      tween = { from: shot, to, at: null, band: kit.focus ? { from: kit.focus.value.clone(), to: band } : undefined };
     }
     invalidate();
+  }
+
+  /** What stays lit: all of it at the Building, the one floor or the roof below that. */
+  function bandFor(l: Level, t: Tower): Vector3 {
+    if (l.kind === "building") return new Vector3(-1000, 1000, 0);
+    const spot = t.floors.find((f) => f.id === l.floorId);
+    if (!spot) return new Vector3(t.roofY - FOCUS_SLAB, 1000, 1);
+    return new Vector3(spot === t.floors[0] ? -1000 : spot.y - FOCUS_SLAB, spot.y + STOREY - FOCUS_SLAB, 1);
   }
 
   /** Low, from the camera's left: any higher and the slabs keep the light out of the rooms. */
@@ -587,15 +599,15 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   }
 
   /** A name goes over the head, and over the bubble when there is one: that is what says it needs you. */
-  const tagHeight = (s: { head: number; bubble: number }, id: string) => (marked.has(id) ? s.bubble + BUBBLE_BOX.h : s.head + HEAD_ROOM);
+  const tagHeight = (s: { head: number; bubble: number }, id: string) => (marked.has(id) ? s.bubble : s.head + HEAD_ROOM);
 
   function anchors(): Anchor[] {
     if (!tower || !model) return [];
     const at = (id: string, kind: Anchor["kind"], x: number, y: number, z: number): Anchor => ({ id, kind, ...cssPoint(new Vector3(x, y, z).project(camera), width, height) });
     const someone = (id: string, s: { x: number; z: number; head: number; bubble: number }, y: number): Anchor => {
       const a = at(id, "person", s.x, y + tagHeight(s, id), s.z);
-      if (!marked.has(id)) return a;
-      return { ...a, clear: at(id, "person", s.x, y + s.head + HEAD_ROOM, s.z).y - a.y };
+      // A mark is the same size on screen at every level, so what clears it is counted in pixels.
+      return marked.has(id) ? { ...a, y: a.y - MARK_PX, clear: MARK_PX } : a;
     };
     const out = tower.floors.flatMap((spot) => [
       at(spot.id, "floor", FLOOR_EDGE.x, spot.y + TAG_Y, FLOOR_EDGE.z),

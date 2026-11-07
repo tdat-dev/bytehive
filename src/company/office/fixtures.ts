@@ -10,7 +10,7 @@ import { BUILDING, clampLevel, rowTarget, type Level } from "./nav";
 import { deskReport } from "./report";
 import type { OfficeSource } from "./source";
 
-export interface DemoOptions { empty?: boolean; quiet?: boolean; flight?: boolean; floors?: number; now?: number }
+export interface DemoOptions { empty?: boolean; quiet?: boolean; flight?: boolean; floors?: number; now?: number; crowd?: number }
 
 const role = (id: string, title: string, department: string, shirt: string, prop: string, rank: RoleDef["rank"] = "staff", cli = "claude"): RoleDef =>
   ({ id, title, department, rank, cli, denyTools: [], look: { shirt, hair: "#2a2e3a", prop }, prompt: "", skills: [] });
@@ -117,6 +117,7 @@ function demoState(o: DemoOptions): Demo {
     hire("Sol", "researcher", "vanta", { cli: "opencode" }),
     hire("Bao", "marketing", "oldsite"),
   ];
+  for (let i = 4; i < (o.crowd ?? 0); i += 1) staff.push(hire(EXTRAS[i], EXTRA_ROLES[i % EXTRA_ROLES.length], "bytehive"));
   const kept = FLOORS.slice(0, wanted);
   const here = staff.filter((p) => kept.includes(p.floor!));
   const extra = extraFloors(FLOORS.length, wanted, here.length + 1, base.limits.peopleTotal);
@@ -133,6 +134,7 @@ function demoState(o: DemoOptions): Demo {
     pane("mai", task("idle", "")),
     pane("tuan", task("working", "Launch post")),
     pane("sol", task("stopped", "")),
+    ...staff.slice(8).map((p) => pane(p.id, task("working", "Project work"))),
     ...extra.people.map((p, i) => pane(p.id, task(i % 3 === 2 ? "idle" : "working", "Project work"))),
   ].filter((p) => present(p.personId));
 

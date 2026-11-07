@@ -224,7 +224,7 @@ describe("tags", () => {
     expect(shell.el.querySelector('[data-tag="bytehive"]')).toBeNull();
     expect(shell.el.querySelector('[data-tag="mai"]')).toBeNull();
     expect(shell.el.querySelector('[data-tag="hai"]')?.textContent).toBe("Hai Lead, needs you");
-    expect(shell.el.querySelector('[data-tag="linh"]')?.textContent).toBe("Linh Developer");
+    expect(shell.el.querySelector('[data-tag="linh"]')?.textContent).toBe("Linh Developer, needs you");
     shell.el.querySelector<HTMLElement>('[data-tag="linh"]')!.click();
     expect(shell.level()).toEqual(desk("linh", "bytehive"));
   });

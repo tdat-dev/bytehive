@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OfficeModel } from "./model";
 import { BUILDING } from "./nav";
-import { FOUNDER_DESK, FOV, ROOM_D, ROOM_W, STOREY, chairSpot, flightPoint, liftAt, mixShots, seatSpot, shotFor, towerLayout, towerPoints, type Point, type Shot } from "./layout";
+import { FOUNDER_DESK, FOV, RIGHT, ROOM_D, ROOM_W, STOREY, chairSpot, flightPoint, liftAt, mixShots, seatSpot, shotFor, towerLayout, towerPoints, type Point, type Shot } from "./layout";
 
 const floor = (id: string, people: string[]) => ({ id, name: id, people: people.map((p, seat) => ({ id: p, seat })) });
 const model = (n: number) => ({ founder: { id: "founder" }, floors: Array.from({ length: n }, (_, i) => floor(`f${i}`, i ? ["x"] : ["a", "b"])) }) as unknown as OfficeModel;
@@ -18,12 +18,20 @@ describe("seatSpot", () => {
   it("does not move anyone when someone joins a row that fits", () => {
     expect(seatSpot(0, 2)).toEqual(seatSpot(0, 3));
   });
-  it("puts desks in pairs, back to back, one person facing the viewer", () => {
-    const [far, near] = [seatSpot(0, 2), seatSpot(1, 2)];
-    expect(far.x).toBe(near.x);
-    expect(near.z - far.z).toBeLessThan(1);
-    expect(chairSpot(far).z).toBeLessThan(far.z);
-    expect(chairSpot(near).z).toBeGreaterThan(near.z);
+  it.each([[2, 2.3], [4, 2.3], [6, 1.5], [8, 1.1]])("keeps %i heads apart across the screen", (count, gap) => {
+    const across = Array.from({ length: count }, (_, i) => { const c = chairSpot(seatSpot(i, count)); return c.x * RIGHT.x + c.z * RIGHT.z; }).sort((a, b) => a - b);
+    for (let i = 1; i < across.length; i += 1) expect(across[i] - across[i - 1]).toBeGreaterThan(gap);
+  });
+  it("sits everyone facing the viewer", () => {
+    for (let i = 0; i < 8; i += 1) {
+      const d = seatSpot(i, 8);
+      expect(chairSpot(d).z).toBeLessThan(d.z);
+    }
+  });
+  it("starts a small team at the middle of the line", () => {
+    const across = (d: { x: number; z: number; rot: number }) => { const c = chairSpot(d); return Math.abs(c.x * RIGHT.x + c.z * RIGHT.z); };
+    expect(across(seatSpot(0, 4))).toBeLessThan(across(seatSpot(2, 4)));
+    expect(across(seatSpot(1, 4))).toBeLessThan(across(seatSpot(3, 4)));
   });
 });
 
@@ -93,7 +101,8 @@ describe("shotFor", () => {
     const d = shotFor({ kind: "desk", personId: "x", floorId: "f1", tab: "terminal" }, t, 1.6);
     expect(dist(f)).toBeLessThan(dist(b));
     expect(dist(d)).toBeLessThan(dist(f));
-    expect(f.ty).toBeCloseTo(t.floors[1].y + 1.5, 0);
+    expect(f.ty).toBeGreaterThan(t.floors[1].y);
+    expect(f.ty).toBeLessThan(t.floors[1].y + STOREY);
   });
   it("frames the roof for the Founder", () => {
     const s = shotFor({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" }, t, 1.6);

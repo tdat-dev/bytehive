@@ -55,8 +55,12 @@ describe("furnish", () => {
       }
     }
   });
+  it("keeps a working floor quieter than an empty one, so the people lead", () => {
+    const count = (lit: boolean) => NAMES.reduce((n, name, i) => n + room(name, i, lit).blockers.length, 0);
+    expect(count(true)).toBeLessThan(count(false) / 2);
+  });
   it("leaves the wall to the board when there is one", () => {
-    expect(shapeOf(room("bytehive", 0, true, true).solid)).not.toBe(shapeOf(room("bytehive", 0, true, false).solid));
+    expect(shapeOf(room("bytehive", 0, false, true).solid)).not.toBe(shapeOf(room("bytehive", 0, false, false).solid));
   });
 });
 

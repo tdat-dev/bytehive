@@ -15,7 +15,7 @@ export const ROOM_H = STOREY - SLAB;
 const BACK_Z = -ROOM_D / 2 + WALL / 2;
 const LEFT_X = -ROOM_W / 2 + WALL / 2;
 const WARM_LAMP = "#ffe0bd";
-const PENDANT_Y = ROOM_H - 1.02;
+const PENDANT_Y = ROOM_H - 0.74;
 
 const dim = (hex: string, k: number) => `#${new Color(hex).multiplyScalar(k).getHexString()}`;
 const shift = (hex: string, to: string, k: number) => `#${new Color(hex).lerp(new Color(to), k).getHexString()}`;
@@ -271,7 +271,7 @@ function cat(hex: string): Prop {
 function clock(): Prop {
   const face = tint(new CylinderGeometry(0.34, 0.34, 0.06, 24), "#efe9dc").rotateX(Math.PI / 2);
   const ring = tint(new TorusGeometry(0.34, 0.03, 8, 24), "#2a2730");
-  return { solid: [moved(face, 0, 2.9, 0.04), moved(ring, 0, 2.9, 0.06), moved(box(0.03, 0.22, 0.01, "#2a2730"), 0, 2.99, 0.08), moved(box(0.15, 0.03, 0.01, "#2a2730"), 0.06, 2.9, 0.08)] };
+  return { solid: [moved(face, 0, 2.6, 0.04), moved(ring, 0, 2.6, 0.06), moved(box(0.03, 0.22, 0.01, "#2a2730"), 0, 2.69, 0.08), moved(box(0.15, 0.03, 0.01, "#2a2730"), 0.06, 2.6, 0.08)] };
 }
 
 /** A window out on the dusk, lit by the sky, not by the room: the coolest thing on a warm wall. */
@@ -391,28 +391,35 @@ export function furnish(room: RoomPlan): Furnished {
   // there stays low, or it fights them for the eye. Anything tall goes on the far right.
   const low = shuffled<() => Prop>([() => sofa(accent), () => beanbags(accent), coffeeCounter, () => meetingTable(accent), () => plantCabinet(rand)], rand);
   const tall = shuffled<() => Prop>([() => bookshelf(rand, 2.5, 2.7, 4), rack, () => arcade(accent)], rand);
-  const slots = [-3.25 + rand() * 0.3, 0.2 + rand() * 0.3, 3.45];
   const hung: Array<() => Prop> = shuffled([() => wallArt(accent, rand), clock, () => wallArt(accent, rand)], rand);
-  put(low[0](), slots[0], BACK_Z);
-  put(hung[0](), slots[0], BACK_Z);
-  put(low[1](), slots[1], BACK_Z);
-  put(hung[1](), slots[1], BACK_Z);
-  if (!room.board) put(tall[0](), slots[2], BACK_Z);
-
-  // The left wall: something to look out of or write on, and something tall or green.
   const onWall: Array<() => Prop> = shuffled([() => windowBay(rand), () => whiteboard(accent, rand), () => windowBay(rand)], rand);
-  put(onWall[0](), LEFT_X, -1.75, Math.PI / 2);
-  const standing: Array<() => Prop> = shuffled([() => bookshelf(rand, 1.9, 2.3, 3), () => plant(rand, 2.1), () => arcade(accent), coatRack], rand);
-  put(standing[0](), LEFT_X, 1.75, Math.PI / 2);
-  put(rand() < 0.5 ? snakePlant() : plant(rand, 1.7), LEFT_X + 0.1, -3.1, Math.PI / 2);
+  const slots = [-3 + rand() * 0.3, 0.2 + rand() * 0.3, 3.1];
 
-  out.solid.push(...hexRug(shift(accent, "#8a7566", 0.38), 0, 0.06, 2.9));
-  if (rand() < 0.45) put(rand() < 0.5 ? plant(rand, 1.5) : snakePlant(), -4.6, 3.05);
-  if (rand() < 0.6) put(cat(["#3a3d4a", "#d8d2c8", "#8a8f9c"][hash % 3]), 2.9, 2.75, 0.6);
+  if (room.lit) {
+    // People are working here, and they are the picture: one quiet corner, one thing on the wall, one plant.
+    const quiet = shuffled<() => Prop>([() => sofa(accent), coffeeCounter, () => plantCabinet(rand)], rand);
+    put(quiet[0](), slots[0], BACK_Z);
+    put(room.index % 2 ? windowBay(rand) : hung[0](), LEFT_X, -1.5, Math.PI / 2);
+    put(rand() < 0.5 ? plant(rand, 1.7) : snakePlant(), LEFT_X + 0.1, 2.5, Math.PI / 2);
+  } else {
+    // Nobody is in, and the room can be a room.
+    put(low[0](), slots[0], BACK_Z);
+    put(hung[0](), slots[0], BACK_Z);
+    put(low[1](), slots[1], BACK_Z);
+    put(hung[1](), slots[1], BACK_Z);
+    if (!room.board) put(tall[0](), slots[2], BACK_Z);
+    put(onWall[0](), LEFT_X, -1.5, Math.PI / 2);
+    const standing: Array<() => Prop> = shuffled([() => bookshelf(rand, 1.9, 2.3, 3), () => plant(rand, 2.1), () => arcade(accent), coatRack], rand);
+    put(standing[0](), LEFT_X, 1.6, Math.PI / 2);
+    put(rand() < 0.5 ? snakePlant() : plant(rand, 1.7), LEFT_X + 0.1, -2.75, Math.PI / 2);
+    out.solid.push(...hexRug(shift(accent, "#6a6a72", 0.42), 0, 0.06, 2.7));
+    if (rand() < 0.45) put(rand() < 0.5 ? plant(rand, 1.5) : snakePlant(), -4.2, 2.75);
+  }
+  if (rand() < 0.5) put(cat(["#3a3d4a", "#d8d2c8", "#8a8f9c"][hash % 3]), 3.2, 2.7, 0.6);
 
   // The lamps. Nobody in, and it is the sky that lights the room, and one lamp left on.
   const kind = (["dome", "globe", "cone"] as PendantKind[])[hash % 3];
-  for (const x of [-3.45, 0, 3.45]) {
+  for (const x of [-3.1, 0, 3.1]) {
     const p = pendant(kind, accent, x, 0.1, room.lit);
     out.solid.push(...p.solid);
     out.lit.push(...p.lit);
@@ -420,7 +427,7 @@ export function furnish(room: RoomPlan): Furnished {
     if (room.lit) out.thrown.push(pool(x, 0.03, 0.1, 5.4, 4.6, "#ffcf9e", 0.09));
     if (room.lit) out.lamps.push({ x, y: PENDANT_Y - 0.1, z: 0.1, colour: rgb(WARM_LAMP), power: 1.05, reach: 2.2 });
   }
-  if (!room.lit) put(floorLamp(true), -1.45, BACK_Z);
+  if (!room.lit) put(floorLamp(true), -1.25, BACK_Z);
   return out;
 }
 

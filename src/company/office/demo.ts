@@ -15,7 +15,8 @@ declare global {
 const query = new URLSearchParams(location.search);
 const flag = (name: string) => query.get(name) === "1";
 const floors = Number(query.get("floors"));
-const options: DemoOptions = { empty: flag("empty"), quiet: flag("quiet"), flight: flag("flight"), ...(floors > 0 ? { floors } : {}) };
+const crowd = Number(query.get("crowd"));
+const options: DemoOptions = { empty: flag("empty"), quiet: flag("quiet"), flight: flag("flight"), ...(floors > 0 ? { floors } : {}), ...(crowd > 0 ? { crowd } : {}) };
 
 const source = demoSource(options);
 const stage = document.getElementById("demoStage")!;
