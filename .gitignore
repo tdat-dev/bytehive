@@ -41,3 +41,4 @@ crates/*/target/
 # tauri build outputs
 src-tauri/target/
 src-tauri/gen/
+native/target/

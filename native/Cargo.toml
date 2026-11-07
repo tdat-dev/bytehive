@@ -1,0 +1,32 @@
+[package]
+name = "bytehive-native"
+version = "0.1.0"
+description = "ByteHive drawn by itself: Rust + GPUI, no WebView."
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "bytehive-native"
+path = "src/main.rs"
+
+[dependencies]
+agent-core = { path = "../crates/agent-core" }
+alacritty_terminal = "0.26.0"
+anyhow = "1"
+# gpui-pre has no semver promise: exact pin, upgrades are deliberate.
+gpui-kit = "=0.9.0"
+
+[workspace]
+
+[profile.dev]
+# Full debug info for this dependency tree is what filled the disk last time.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 1
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
