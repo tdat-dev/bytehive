@@ -18,6 +18,8 @@ export interface Request {
   /** What a person wrote, when `text` wraps it in instructions (a Kanban
    *  dispatch). The gate judges this and delivers `text`. */
   gist?: string;
+  /** The board card this delivers, so Send anyway can finish the dispatch. */
+  card?: CardRef;
 }
 
 export interface ToolResult {
@@ -54,6 +56,18 @@ export interface ClassifyReply {
   error?: string;
 }
 
+/** A board card on its way to an agent. `stage` is the list it belongs in once
+ *  the agent has it; without one that is Doing. */
+export interface CardRef {
+  id: string;
+  stage?: string;
+}
+
+/** What became of a board dispatch. `stopped` means the agent did not get it and
+ *  sending it again would change nothing: the gate held or answered it, or
+ *  delivery failed. `no-agent` means the pane is gone, so another may take it. */
+export type Delivery = "sent" | "stopped" | "no-agent";
+
 export type Outcome =
   | { kind: "answered"; via: "rule" | "tool"; result: ToolResult }
   | { kind: "sent"; via: "pass" }
@@ -70,6 +84,7 @@ export interface BlockedEntry {
   toName?: string;
   text: string;
   gist?: string;
+  card?: CardRef;
   reason: string;
   at: number;
 }

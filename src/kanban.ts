@@ -49,10 +49,11 @@ import {
   dropTextIntoPaneAt,
   listAgents,
   sendToAgentById,
+  setCardDelivered,
   focusPane,
 } from "./agentbridge";
 import { cardGist, dispatchPrompt } from "./dispatch";
-import { planConductor, type ConductorMode } from "./conductor";
+import { planConductor, stoppedCards, type ConductorMode } from "./conductor";
 import {
   planPipeline,
   pipelinePrompt,
@@ -158,6 +159,10 @@ export function createKanban() {
   // Pipeline in-flight memory: card id → the stage it was dispatched into, so a
   // stage change (agent moved the card on) is detected and the assignee cleared.
   const assignedStage = new Map<string, string>();
+  // Cards the gate stopped, by what they said then. The conductor leaves them
+  // alone until they change, or it would send them again on every tick.
+  const stopped = new Map<string, string>();
+  let ticking = false; // a dispatch waits for the gate, which can outlast a tick
   // Reassigned by mount() to also persist + repaint the button; the default
   // just updates the mode so setContext can restore before mount runs.
   let setConductorMode: (m: ConductorMode) => void = (m) => {
@@ -390,10 +395,20 @@ export function createKanban() {
   /** Conductor tick: when enabled, pair free agents with approved To-do cards
    *  (auto also tops up To do from Proposed), dispatch, and move to Doing. */
   async function conductorTick(): Promise<void> {
+    if (ticking) return;
+    ticking = true;
+    try {
+      await conduct();
+    } finally {
+      ticking = false;
+    }
+  }
+
+  async function conduct(): Promise<void> {
     if (conductorMode === "off" || !ctx || isCompanyFloor(ctx.dir)) return;
     const agents = listAgents().map((a) => ({ id: a.id, name: a.name, running: a.running }));
     if (conductorMode === "pipeline") return pipelineTick(agents);
-    const plan = planConductor(conductorMode, board, agents);
+    const plan = planConductor(conductorMode, board, agents, stoppedCards(board, stopped));
     if (!plan.approvals.length && !plan.dispatches.length) return;
     // Auto-approve: pull the planned Proposed cards into To do in one write.
     if (plan.approvals.length) {
@@ -412,12 +427,29 @@ export function createKanban() {
     for (const d of plan.dispatches) {
       const found = findCard(d.cardId);
       if (!found) continue;
-      if (sendToAgentById(d.agentId, dispatchPrompt(found.card), true, cardGist(found.card)))
+      if (await dispatchCard(found.card, d.agentId, dispatchPrompt(found.card)))
         assignCard(d.cardId, d.agentName, true);
     }
   }
 
   const lc = (s: string) => s.trim().toLowerCase();
+
+  /** Type a card's prompt into an agent. True only when the agent has it: a
+   *  card the gate kept stays unclaimed, because nobody is working on it. */
+  async function dispatchCard(card: Card, agentId: string, prompt: string, stage?: string): Promise<boolean> {
+    const gist = cardGist(card);
+    const delivery = await sendToAgentById(agentId, prompt, true, { id: card.id, gist, stage });
+    if (delivery === "stopped") stopped.set(card.id, gist);
+    return delivery === "sent";
+  }
+
+  // Send anyway delivered a held card: do what its dispatch would have done.
+  setCardDelivered((at, card, agent) => {
+    if (at !== dir) return;
+    stopped.delete(card.id);
+    void claimCard(card.id, agent, card.stage ?? DOING_TITLE);
+    if (card.stage && conductorMode === "pipeline") assignedStage.set(card.id, card.stage);
+  });
 
   /** Pipeline tick: advance cards through Build → Test → Review. Clears stale
    *  assignees (a hand-off completed) then dispatches each free agent the next
@@ -425,7 +457,7 @@ export function createKanban() {
   async function pipelineTick(
     agents: { id: string; name: string; running: boolean }[],
   ): Promise<void> {
-    const plan = planPipeline(board, agents, DEFAULT_PIPELINE, assignedStage);
+    const plan = planPipeline(board, agents, DEFAULT_PIPELINE, assignedStage, stoppedCards(board, stopped));
     if (plan.unassign.length) {
       for (const id of plan.unassign) assignedStage.delete(id);
       await withBoard((b) => {
@@ -441,17 +473,8 @@ export function createKanban() {
       // A To-do card enters the first work stage; a work-stage card stays put.
       const destStage = lc(d.fromTitle) === lc(PIPE_ENTRY) ? DEFAULT_PIPELINE[0].title : d.fromTitle;
       const prompt = pipelinePrompt(dispatchPrompt(found.card), DEFAULT_PIPELINE, destStage);
-      if (!sendToAgentById(d.agentId, prompt, true, cardGist(found.card))) continue;
-      await withBoard((b) => {
-        const f = findCardIn(b, d.cardId);
-        if (!f) return;
-        f.card.assignee = d.agentName;
-        if (lc(f.list.title) !== lc(destStage)) {
-          const dest = findOrCreateListIn(b, destStage);
-          f.list.cards.splice(f.idx, 1);
-          dest.cards.push(f.card);
-        }
-      });
+      if (!(await dispatchCard(found.card, d.agentId, prompt, destStage))) continue;
+      await claimCard(d.cardId, d.agentName, destStage);
       assignedStage.set(d.cardId, destStage);
     }
   }
@@ -835,14 +858,19 @@ export function createKanban() {
   const DOING_TITLE = "Doing";
   /** Record who a card is dispatched to; optionally pull it into Doing. */
   function assignCard(cardId: string, name: string | undefined, moveToDoing: boolean): void {
-    void withBoard((b) => {
+    void claimCard(cardId, name, moveToDoing ? DOING_TITLE : undefined);
+  }
+
+  /** Set a card's assignee and, given a stage, move it there. */
+  function claimCard(cardId: string, name: string | undefined, stage?: string): Promise<void> {
+    return withBoard((b) => {
       const found = findCardIn(b, cardId);
       if (!found) return;
       found.card.assignee = name;
-      if (moveToDoing && found.list.title.toLowerCase() !== DOING_TITLE.toLowerCase()) {
-        const doing = findOrCreateListIn(b, DOING_TITLE);
+      if (stage && lc(found.list.title) !== lc(stage)) {
+        const dest = findOrCreateListIn(b, stage);
         found.list.cards.splice(found.idx, 1);
-        doing.cards.push(found.card);
+        dest.cards.push(found.card);
       }
     });
   }
@@ -1162,13 +1190,13 @@ export function createKanban() {
       sel.innerHTML =
         `<option value="">Send to agent…</option>` +
         running.map((a) => `<option value="${enc(a.id)}">${enc(a.name)}</option>`).join("");
-      sel.addEventListener("change", () => {
+      sel.addEventListener("change", async () => {
         const a = running.find((x) => x.id === sel.value);
         if (!a) return;
-        if (sendToAgentById(a.id, dispatchPrompt(card), true, cardGist(card))) {
-          assignCard(card.id, a.name, true);
-        }
+        sel.disabled = true; // the gate can take seconds; one pick, one message
+        if (await dispatchCard(card, a.id, dispatchPrompt(card))) assignCard(card.id, a.name, true);
         sel.value = "";
+        sel.disabled = false;
       });
       agentRow.appendChild(sel);
     } else if (!card.assignee) {

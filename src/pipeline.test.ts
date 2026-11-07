@@ -68,6 +68,12 @@ describe("staleAssignments", () => {
 });
 
 describe("planPipeline", () => {
+  it("leaves a card the gate stopped and gives the agent the next one", () => {
+    const b = board([{ title: "To do", cards: [card("held"), card("next")] }]);
+    const plan = planPipeline(b, [agent("A")], DEFAULT_PIPELINE, new Map(), new Set(["held"]));
+    expect(plan.dispatches.map((d) => d.cardId)).toEqual(["next"]);
+  });
+
   it("dispatches unassigned work-stage cards to free agents", () => {
     const b = board([
       { title: "To do", cards: [card("c1")] },

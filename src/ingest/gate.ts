@@ -7,6 +7,7 @@ import type {
   BlockedEntry,
   Classified,
   ClassifyReply,
+  Delivery,
   GateSettings,
   LlmUsage,
   LogEntry,
@@ -38,6 +39,11 @@ const tokensOf = (text: string): number => Math.ceil(text.length / 4);
 
 const llmOf = (usage: LlmUsage | undefined, called: boolean): LogEntry["llm"] =>
   called ? { called: true, in: usage?.in ?? 0, out: usage?.out ?? 0, model: usage?.model } : undefined;
+
+/** Only a message that reached the agent counts as delivered. */
+export function deliveryOf(out: Outcome): Delivery {
+  return out.kind === "sent" ? "sent" : "stopped";
+}
 
 export class Gate {
   private readonly seen = new Map<string, number>();
@@ -171,7 +177,7 @@ export class Gate {
   private async block(req: Request, hash: string, reason: string, started: number, extra: Partial<LogEntry> = {}): Promise<Outcome> {
     const id = this.deps.id();
     try {
-      await this.deps.block({ id, hash, source: req.source, from: req.from, to: req.to, toName: req.toName, text: req.text, gist: req.gist, reason, at: this.now() });
+      await this.deps.block({ id, hash, source: req.source, from: req.from, to: req.to, toName: req.toName, text: req.text, gist: req.gist, card: req.card, reason, at: this.now() });
     } catch (e) {
       this.warn("could not keep the blocked message: " + String(e));
     }

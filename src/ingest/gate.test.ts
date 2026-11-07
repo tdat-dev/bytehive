@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Gate, type GateDeps } from "./gate";
+import { deliveryOf, Gate, type GateDeps } from "./gate";
 import { sha256 } from "./hash";
 import { normalize } from "./normalize";
 import { defaultTools } from "./tools";
@@ -241,6 +241,13 @@ describe("the gate's edges", () => {
       expect(t.blocked[0].gist).toBe("cảm ơn nhé");
     });
 
+    it("keeps the card with a held message, so Send anyway can finish the dispatch", async () => {
+      const t = setup();
+      const card = { id: "c1", stage: "Build" };
+      await t.gate.send({ source: "kanban", to: "a1", text: wrapped("cảm ơn nhé"), gist: "cảm ơn nhé", card });
+      expect(t.blocked[0].card).toEqual(card);
+    });
+
     it("delivers the full prompt for a real task", async () => {
       const t = setup();
       const out = await t.gate.send({ source: "kanban", to: "a1", text: wrapped("sửa lỗi test"), gist: "sửa lỗi test" });
@@ -265,5 +272,17 @@ describe("the gate's edges", () => {
     const out = await pending;
     expect(out.kind).toBe("sent");
     expect(t.logs).toHaveLength(0);
+  });
+});
+
+describe("deliveryOf", () => {
+  const result = { status: "ok", values: {}, timestamp: 0, metadata: { tool: "t", version: "1", cacheable: true } } as const;
+
+  it("counts a message as delivered only when the agent got it", () => {
+    expect(deliveryOf({ kind: "sent", via: "pass" })).toBe("sent");
+    expect(deliveryOf({ kind: "blocked", id: "b1", reason: "smalltalk" })).toBe("stopped");
+    expect(deliveryOf({ kind: "answered", via: "rule", result })).toBe("stopped");
+    expect(deliveryOf({ kind: "cache-hit", result })).toBe("stopped");
+    expect(deliveryOf({ kind: "failed", error: "pane is not running" })).toBe("stopped");
   });
 });

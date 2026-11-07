@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planConductor, type ConductorAgent } from "./conductor";
+import { planConductor, stoppedCards, type ConductorAgent } from "./conductor";
 import type { Board, Card } from "./board";
 
 const card = (id: string, over: Partial<Card> = {}): Card => ({
@@ -72,5 +72,28 @@ describe("planConductor", () => {
   it("ignores stopped agents", () => {
     const b = board([{ title: "To do", cards: [card("c1")] }]);
     expect(planConductor("semi", b, [agent("A", false)]).dispatches).toEqual([]);
+  });
+});
+
+describe("a card the gate stopped", () => {
+  it("is left alone, and the free agent takes the next card", () => {
+    const b = board([{ title: "To do", cards: [card("held"), card("next")] }]);
+    const plan = planConductor("semi", b, [agent("A")], new Set(["held"]));
+    expect(plan.dispatches).toEqual([{ cardId: "next", agentId: "a-A", agentName: "A" }]);
+  });
+
+  it("is not approved out of Proposed again", () => {
+    const b = board([{ title: "Proposed", cards: [card("held"), card("next")] }]);
+    expect(planConductor("auto", b, [agent("A")], new Set(["held"])).approvals).toEqual(["next"]);
+  });
+
+  it("stays stopped while it says the same thing", () => {
+    const b = board([{ title: "To do", cards: [card("c1", { title: "thanks" })] }]);
+    expect(stoppedCards(b, new Map([["c1", "thanks"]]))).toEqual(new Set(["c1"]));
+  });
+
+  it("can go out again once it is edited", () => {
+    const b = board([{ title: "To do", cards: [card("c1", { title: "thanks", desc: "fix the login redirect" })] }]);
+    expect(stoppedCards(b, new Map([["c1", "thanks"]])).size).toBe(0);
   });
 });

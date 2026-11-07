@@ -57,6 +57,7 @@ Founder ────┘                     │        │        │        │
 
 - `fleet_send` (`src/bridges.ts:301-310`), nguồn `fleet`.
 - Giao việc từ thẻ Kanban qua `sendToAgentById` (wiring ở `src/bridges.ts:159-192`), nguồn `kanban`. Thả kéo một thẻ vào pane là bản nháp, không gate. Thẻ được bọc thành prompt có `Task:` và hướng dẫn `card_move`, nên nơi gọi truyền thêm `gist` (`cardGist` trong `src/dispatch.ts`): gate xét `gist`, còn tin giao đi và tin trong Held back vẫn là prompt đầy đủ.
+  Kanban chờ kết quả của gate rồi mới gán thẻ: thẻ chỉ có người nhận và chuyển cột khi agent thực sự nhận tin. Thẻ bị giữ, được code trả lời hoặc giao thất bại thì đứng yên, và Conductor không gửi lại cho tới khi nội dung thẻ đổi. Send anyway làm nốt việc gán và chuyển cột (`card` trong `BlockedEntry`).
 - Nút "message" trên điện thoại (`src/dashboard.ts:220-232`), nguồn `phone`.
 - Relay của Founder (`src/company/engine.ts:248-263`), nguồn `founder`. Làm sau cùng vì Ana đang sửa vùng này.
 

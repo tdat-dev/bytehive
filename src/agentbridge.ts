@@ -2,6 +2,8 @@
 // agent's terminal without importing main.ts. main.ts registers the real sender
 // (which targets the focused pane of the active workspace) at startup.
 
+import type { CardRef, Delivery } from "./ingest/types";
+
 /** Types `text` into the active agent's PTY. `submit` appends Enter. Returns
  *  false when there is no agent to send to. */
 export type AgentSender = (text: string, submit: boolean) => boolean;
@@ -22,6 +24,13 @@ export function hasAgent(): boolean {
 
 /* ---- fleet directory: the board's agent picker + assignee chips ---- */
 
+/** A card being dispatched: the words the gate judges, and where it goes next. */
+export interface CardSend extends CardRef {
+  gist: string;
+}
+
+type AgentSenderById = (id: string, text: string, submit: boolean, card?: CardSend) => Promise<Delivery>;
+
 export interface AgentInfo {
   id: string;
   name: string;
@@ -30,7 +39,8 @@ export interface AgentInfo {
 }
 
 let fleet: (() => AgentInfo[]) | null = null;
-let senderById: ((id: string, text: string, submit: boolean, gist?: string) => boolean) | null = null;
+let senderById: AgentSenderById | null = null;
+let cardDeliveredFn: ((dir: string, card: CardRef, agent: string) => void) | null = null;
 let paneFocuser: ((id: string) => boolean) | null = null;
 
 /** main.ts registers the running panes of the active workspace. */
@@ -42,11 +52,19 @@ export function listAgents(): AgentInfo[] {
 }
 
 /** Types into a SPECIFIC pane's PTY (dispatch picks the agent, not focus). */
-export function setAgentSenderById(fn: (id: string, text: string, submit: boolean, gist?: string) => boolean): void {
+export function setAgentSenderById(fn: AgentSenderById): void {
   senderById = fn;
 }
-export function sendToAgentById(id: string, text: string, submit: boolean, gist?: string): boolean {
-  return senderById ? senderById(id, text, submit, gist) : false;
+export function sendToAgentById(id: string, text: string, submit: boolean, card?: CardSend): Promise<Delivery> {
+  return senderById ? senderById(id, text, submit, card) : Promise.resolve("no-agent");
+}
+
+/** A held card reached its agent after all: the board finishes the dispatch. */
+export function setCardDelivered(fn: (dir: string, card: CardRef, agent: string) => void): void {
+  cardDeliveredFn = fn;
+}
+export function cardDelivered(dir: string, card: CardRef, agent: string): void {
+  cardDeliveredFn?.(dir, card, agent);
 }
 
 /** Focus a pane's terminal (assignee chip click). */

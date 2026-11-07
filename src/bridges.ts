@@ -16,6 +16,7 @@ import {
 import { type Pane, type Workspace } from "./panetypes";
 import { workspaces, activeWs } from "./appstate";
 import { sendGated } from "./ingest";
+import { deliveryOf } from "./ingest/gate";
 import { focusPane } from "./panelayout";
 import {
   setAgentSender,
@@ -184,15 +185,18 @@ export function initBridges(): void {
         }))
       : [],
   );
-  setAgentSenderById((id, text, submit, gist) => {
+  setAgentSenderById(async (id, text, submit, card) => {
     const pane = activeWs?.panes.get(id);
-    if (!pane || !pane.running) return false;
+    if (!pane || !pane.running) return "no-agent";
+    pane.term.focus();
     // A draft left in the box (submit off) is yours to finish, not a message yet.
     const dir = activeWs?.dir;
-    if (submit && dir) void sendGated(dir, { source: "kanban", to: pane.id, toName: pane.spec.name, text, gist }).catch(() => {});
-    else void sendMessage(pane.id, text, submit).catch(() => {});
-    pane.term.focus();
-    return true;
+    if (submit && dir) {
+      const ref = card && { id: card.id, stage: card.stage };
+      const req = { source: "kanban", to: pane.id, toName: pane.spec.name, text, gist: card?.gist, card: ref } as const;
+      return sendGated(dir, req).then(deliveryOf, () => "stopped");
+    }
+    return (await sendMessage(pane.id, text, submit).catch(() => false)) ? "sent" : "stopped";
   });
   setPaneFocuser((id) => {
     const pane = activeWs?.panes.get(id);

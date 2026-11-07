@@ -1,5 +1,6 @@
 /** Wire the gate to the app: one instance per project, files under
  *  `.bytehive/`, settings from prefs, and the classifier from Rust. */
+import { cardDelivered } from "../agentbridge";
 import { workspaces } from "../appstate";
 import { showDelegationToast } from "../delegation";
 import { fsCreateFile, fsReadFile, fsWriteFile, sendMessage } from "../ipc";
@@ -162,6 +163,8 @@ export async function sendGated(dir: string, req: Request): Promise<Outcome> {
     if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], resultLine(out.result).replace("[ingest] ", ""));
   } else if (out.kind === "blocked") {
     if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], "Held back. Open Ingest to send it anyway.");
+  } else if (out.kind === "failed") {
+    if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], "Couldn't deliver it.");
   }
   changed();
   return out;
@@ -190,6 +193,7 @@ export async function blockedResend(dir: string, entry: BlockedEntry): Promise<b
   if (!sent) return false;
   await storeFor(dir).remove(entry.id);
   void logFor(dir).add({ ts: Date.now(), hash: entry.hash, source: "retry", from: entry.from, to, path: "pass", ms: { total: 0 } });
+  if (entry.card) cardDelivered(dir, entry.card, panes.find((p) => p.id === to)?.name ?? entry.toName ?? "");
   return true;
 }
 

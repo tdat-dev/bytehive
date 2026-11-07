@@ -111,6 +111,7 @@ export function planPipeline(
   agents: PipelineAgent[],
   pipeline: PipelineStage[],
   assigned: Map<string, string>,
+  skip: ReadonlySet<string> = new Set(),
 ): PipelinePlan {
   const unassign = staleAssignments(board, assigned);
   const stale = new Set(unassign);
@@ -136,7 +137,7 @@ export function planPipeline(
   for (const title of dispatchStages(pipeline)) {
     const list = byTitle(board, title);
     for (const c of list?.cards ?? []) {
-      if (!effectiveAssignee(c)) queue.push({ cardId: c.id, fromTitle: title });
+      if (!effectiveAssignee(c) && !skip.has(c.id)) queue.push({ cardId: c.id, fromTitle: title });
     }
   }
 

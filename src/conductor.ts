@@ -8,6 +8,7 @@
  * moves to make. The kanban controller executes them. Unit-testable. */
 
 import type { Board } from "./board";
+import { cardGist } from "./dispatch";
 
 // "pipeline" is driven by planPipeline (see pipeline.ts), not planConductor.
 export type ConductorMode = "off" | "semi" | "auto" | "pipeline";
@@ -30,10 +31,20 @@ const byTitle = (board: Board, title: string) =>
   board.lists.find((l) => l.title.trim().toLowerCase() === title);
 
 /** Decide this tick's moves. Deterministic; caller applies the result. */
+/** The cards still saying what they said when the gate stopped them. Sending
+ *  those again changes nothing; an edited card is a new message. */
+export function stoppedCards(board: Board, stopped: ReadonlyMap<string, string>): Set<string> {
+  const ids = new Set<string>();
+  for (const l of board.lists)
+    for (const c of l.cards) if (stopped.get(c.id) === cardGist(c)) ids.add(c.id);
+  return ids;
+}
+
 export function planConductor(
   mode: ConductorMode,
   board: Board,
   agents: ConductorAgent[],
+  skip: ReadonlySet<string> = new Set(),
 ): ConductorPlan {
   // Only semi/auto run here; off does nothing and pipeline is planned elsewhere.
   if (mode !== "semi" && mode !== "auto") return EMPTY;
@@ -47,13 +58,13 @@ export function planConductor(
   if (!free.length) return EMPTY;
 
   const todo = byTitle(board, "to do");
-  const queue = (todo?.cards ?? []).filter((c) => !c.assignee).map((c) => c.id);
+  const queue = (todo?.cards ?? []).filter((c) => !c.assignee && !skip.has(c.id)).map((c) => c.id);
 
   const approvals: string[] = [];
   if (mode === "auto" && queue.length < free.length) {
     const proposed = byTitle(board, "proposed");
     const need = free.length - queue.length;
-    for (const c of (proposed?.cards ?? []).slice(0, need)) {
+    for (const c of (proposed?.cards ?? []).filter((c) => !skip.has(c.id)).slice(0, need)) {
       approvals.push(c.id);
       queue.push(c.id); // approved cards are dispatchable this same tick
     }
