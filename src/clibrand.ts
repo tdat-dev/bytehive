@@ -80,6 +80,12 @@ export function brandOf(a: BrandSource): Brand | null {
   return BRANDS.find((b) => b.key === a.badge) ?? commandBrand([a.program ?? "", ...(a.args ?? [])].filter(Boolean));
 }
 
+/** A CLI's logo file, for drawing it somewhere other than HTML. */
+export function cliLogoUrl(a: BrandSource): string | null {
+  const b = brandOf(a);
+  return b ? LOGOS[`./assets/clis/${b.key}.png`] ?? null : null;
+}
+
 const svg = (inner: string) =>
   `<svg class="cli-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 

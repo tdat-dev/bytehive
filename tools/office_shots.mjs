@@ -14,10 +14,13 @@ const SHOTS = [
   ["building", "level=building"],
   ["floor-bytehive", "level=floor:bytehive"],
   ["desk-linh", "level=desk:linh"],
+  ["desk-hai", "level=desk:hai"],
   ["desk-founder", "level=desk:founder"],
   ["quiet", "level=building&quiet=1"],
   ["empty", "level=building&empty=1"],
   ["floors-8", "level=building&floors=8"],
+  ["flight-landed", "level=building&flight=1"],
+  ["flight-air", "level=building&flight=1&air=0.5"],
 ];
 
 const [base, out, only] = process.argv.slice(2);
@@ -87,7 +90,8 @@ async function waitForFrames() {
 
 async function shoot(name, query, w, h) {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: false });
-  await send("Page.navigate", { url: `${base}?${query}&software=1&still=1` });
+  // `air` holds a plane halfway, which reduced motion would put at its destination.
+  await send("Page.navigate", { url: `${base}?${query}&software=1${query.includes("air=") ? "" : "&still=1"}` });
   await sleep(400);
   if (!(await waitForFrames())) {
     const text = await value("document.body.innerText.slice(0, 300)");

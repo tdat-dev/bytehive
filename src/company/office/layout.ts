@@ -31,8 +31,6 @@ export interface Shot { px: number; py: number; pz: number; tx: number; ty: numb
 
 /** The Founder's desk, out on the roof in front of the penthouse, facing the camera. */
 export const FOUNDER_DESK: Seat = { x: -1.6, z: 1.4, rot: Math.PI };
-/** Where a head comes to, from the floor, for anything that points at a person. */
-export const HEAD_Y = 1.5;
 const CHAIR_BACK = 0.78;
 
 /** Where the chair stands. At rot 0 it is on the camera's side of the desk, looking away:

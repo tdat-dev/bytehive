@@ -67,6 +67,9 @@ describe("pickFrom", () => {
   it("never reaches through a slab to someone on the floor below", () => {
     expect(pickFrom([floor("top", 10), floor("below", 14), person("hidden", "below", 15)])).toEqual({ floorId: "top" });
   });
+  it("gives a bubble the click even over the floor above: it is drawn on top of it", () => {
+    expect(pickFrom([floor("above", 9), { personId: "hai", floorId: "below", over: true, distance: 14 }])).toEqual({ personId: "hai", floorId: "below" });
+  });
   it("finds the Founder, who has no floor", () => {
     expect(pickFrom([person("founder", undefined, 9), floor("a", 12)])).toEqual({ personId: "founder" });
   });

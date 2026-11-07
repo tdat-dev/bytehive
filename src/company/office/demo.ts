@@ -1,6 +1,7 @@
 /* The dev page for looking at the office: fixtures in, no app around it, so nothing
  * here can reach a real company. It never ships: vite builds index.html only. */
 import { demoSource, levelFrom, type DemoOptions } from "./fixtures";
+import { FLIGHT_MS } from "./layout";
 import { createScene, webglProbe, type OfficeScene, type SceneStats } from "./scene";
 
 declare global {
@@ -23,8 +24,14 @@ if (!probe.ok) {
   host.append(canvas);
 
   const source = demoSource(options);
+  // `still` is reduced motion, so a plane waits at its destination. `air=0.5` holds one halfway
+  // instead, for a picture of it. Both stop the clock, or the plane would land before the shot.
+  const air = Number(query.get("air"));
+  const leftAt = source.snapshot(Date.now()).model?.flights[0]?.at ?? Date.now();
+  const stopped = air > 0 || flag("still") ? leftAt + (air || 0.5) * FLIGHT_MS : null;
   const scene = createScene(canvas, {
-    reducedMotion: flag("still") || matchMedia("(prefers-reduced-motion: reduce)").matches,
+    reducedMotion: (flag("still") && !air) || matchMedia("(prefers-reduced-motion: reduce)").matches,
+    ...(stopped === null ? {} : { clock: () => stopped }),
     dpr: devicePixelRatio,
     onLost: () => console.warn("office: context lost"),
     onRestored: () => console.info("office: context restored"),

@@ -3,14 +3,16 @@
  * a whole floor of furniture is one draw call. Nothing here reads the page: textures
  * are drawn on an OffscreenCanvas, so this runs in a Worker too. */
 import {
-  AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Color, ConeGeometry, CylinderGeometry, ExtrudeGeometry, Group,
-  Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Shape, SphereGeometry, SRGBColorSpace, type Material, type Texture,
+  AdditiveBlending, BoxGeometry, BufferGeometry, CanvasTexture, Color, ConeGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Group,
+  Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Shape, SphereGeometry, SRGBColorSpace, type Material, type Object3D, type Texture,
 } from "three";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { mergeGeometries, toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { DESK_TOP, box, merged, moved, soft, tint } from "./geometry";
 import { FOUNDER_DESK, GROUND, LIFT_W, ROOM_D, ROOM_W, SLAB, STOREY, chairSpot, type FloorSpot, type Seat, type Tower } from "./layout";
-import type { BoardCounts, OfficeFloor, OfficeModel, OfficeState } from "./model";
+import type { BoardCounts, OfficeFloor, OfficeModel, OfficePerson } from "./model";
 import { OFFICE } from "./palette";
+import { buildPerson, deskGlow, deskProp, lampGeometry, paperDesk, paperStack, planeGeometry, pose, screenLight, seatPerson, type Pose } from "./people";
+import { badgeInk, createTextures } from "./textures";
 
 const BEVEL = 0.11;
 const WALL = 0.34;
@@ -19,12 +21,13 @@ const SLAB_W = ROOM_W + LIFT_W + 0.5;
 const SLAB_D = ROOM_D + 0.5;
 /** The slab reaches over the lift, so it is not centred on the room. */
 const SLAB_X = LIFT_W / 2;
-const DESK_TOP = 0.78;
 /** The ground plate's top: the lowest slab stands on it. */
 const PLATE_TOP = GROUND - SLAB;
 const MAX_STICKIES = 12;
 const BOARD_X = 3.1;
 const BOARD_Y = 1.32;
+/** The roof sign. `logo` sizes the picture to the plate: the cell's radius is 11.2 of the logo's 24. */
+const SIGN = { x: 6.5, z: 2.75, r: 1.05, thick: 0.34, post: 1.05, turn: 0.42, logo: (0.94 * 24) / 11.2 };
 
 /** The right edge of a floor, where its tag goes. */
 export const FLOOR_EDGE = { x: SLAB_X + SLAB_W / 2, z: -ROOM_D / 2 };
@@ -56,25 +59,6 @@ export function plantSpot(desks: Seat[], board: boolean): { x: number; z: number
 }
 
 /* ---- geometry helpers ---- */
-
-/** Keeps position and normal, and puts the colour on the vertices. `top` paints what faces up. */
-function tint(g: BufferGeometry, hex: string, top?: string): BufferGeometry {
-  const flat = g.index ? g.toNonIndexed() : g;
-  flat.deleteAttribute("uv");
-  const normal = flat.getAttribute("normal");
-  const body = new Color(hex);
-  const up = new Color(top ?? hex);
-  const colors = new Float32Array(normal.count * 3);
-  for (let i = 0; i < normal.count; i += 1) (normal.getY(i) > 0.9 ? up : body).toArray(colors, i * 3);
-  flat.setAttribute("color", new BufferAttribute(colors, 3));
-  return flat;
-}
-
-const moved = (g: BufferGeometry, x: number, y: number, z: number, turn = 0): BufferGeometry =>
-  g.clone().applyMatrix4(new Matrix4().makeRotationY(turn).setPosition(x, y, z));
-const merged = (parts: BufferGeometry[]): BufferGeometry => mergeGeometries(parts, false);
-const box = (w: number, h: number, d: number, hex: string) => tint(new BoxGeometry(w, h, d), hex);
-const soft = (w: number, h: number, d: number, r: number, hex: string) => tint(new RoundedBoxGeometry(w, h, d, 2, r), hex);
 
 /** A plate with rounded corners and a soft edge, its top at y = 0. Most of the toy look. */
 export function roundedSlab(w: number, d: number, h: number, r: number): BufferGeometry {
@@ -175,8 +159,23 @@ export interface Kit {
   room: BufferGeometry;
   desk: BufferGeometry;
   chair: BufferGeometry;
+  chairBack: BufferGeometry;
   plant: BufferGeometry;
   boardFrame: BufferGeometry;
+  lamp: { solid: BufferGeometry; lit: BufferGeometry };
+  /** Light on a desk top, in the colour on its vertices. */
+  deskLight: MeshBasicMaterial;
+  glowWork: BufferGeometry;
+  glowLamp: BufferGeometry;
+  /** The paper plane: one shape, as many flights as there are. */
+  plane: BufferGeometry;
+  paper: MeshBasicMaterial;
+  /** Stands over everything, so no slab ever hides that someone needs you. */
+  bubble: MeshBasicMaterial;
+  logo: MeshBasicMaterial;
+  logoPlate: BufferGeometry;
+  /** One material for each CLI on a badge. */
+  badge(cli: string): Material;
   ground: Group;
   /** The rooms' light on the ground: off when no room is lit. */
   groundLight: Group;
@@ -215,10 +214,14 @@ function deskGeometry(): BufferGeometry {
   ]);
 }
 
+const CHAIR_HINGE = { y: 0.56, z: 0.27 };
+
+/** The back of a chair, apart from the rest, for tipping it. */
+const chairBackGeometry = () => soft(0.52, 0.62, 0.11, 0.05, OFFICE.chair).translate(0, 0.31, 0);
+
 function chairGeometry(): BufferGeometry {
   const parts = [
     moved(soft(0.56, 0.11, 0.54, 0.05, OFFICE.chair), 0, 0.5, 0),
-    moved(soft(0.52, 0.62, 0.11, 0.05, OFFICE.chair), 0, 0.87, 0.27),
     moved(tint(new CylinderGeometry(0.04, 0.05, 0.36, 8), OFFICE.chair), 0, 0.28, 0),
   ];
   for (let i = 0; i < 5; i += 1) {
@@ -264,7 +267,8 @@ function groundGroup(pool: MeshBasicMaterial, spill: MeshBasicMaterial, matte: M
   return { group, light, owned: [plate, patch, beyond] };
 }
 
-export function createKit(): Kit {
+export function createKit(loaded: () => void = () => {}): Kit {
+  const pictures = createTextures(loaded);
   const textures = [
     painted(256, 256, wallPaint(OFFICE.wallLit, OFFICE.wallDim, 0.55)),
     painted(128, 128, wallPaint(OFFICE.wallDark, OFFICE.floorDark, 0.5)),
@@ -272,8 +276,9 @@ export function createKit(): Kit {
     painted(256, 256, floorPaint(OFFICE.floorDark, OFFICE.slabTop)),
     painted(256, 256, floorPaint(OFFICE.floorLit, "#000000")),
     painted(256, 256, poolPaint(255, 170, 80, 0.42)),
+    painted(64, 64, poolPaint(255, 255, 255, 1)),
   ];
-  const [wallLitMap, wallDarkMap, floorLitMap, floorDarkMap, floorGlowMap, poolMap] = textures;
+  const [wallLitMap, wallDarkMap, floorLitMap, floorDarkMap, floorGlowMap, poolMap, deskLightMap] = textures;
 
   const floorPlane = new PlaneGeometry(SLAB_W - 0.5, SLAB_D - 0.5);
   floorPlane.rotateX(-Math.PI / 2);
@@ -290,41 +295,81 @@ export function createKit(): Kit {
   const pool = new MeshBasicMaterial({ map: poolMap, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, dithering: true });
   const spill = pool.clone();
   spill.opacity = 0.45;
+  const deskLight = new MeshBasicMaterial({ map: deskLightMap, vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
+  const paper = new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, toneMapped: false });
+  const bubble = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, depthTest: false, depthWrite: false });
+  const logo = new MeshBasicMaterial({ map: pictures.logoTexture(), transparent: true, toneMapped: false });
+  const badges = new Map<string, MeshBasicMaterial>();
+  const badge = (cli: string): Material => {
+    let m = badges.get(cli);
+    if (!m) {
+      m = new MeshBasicMaterial({ map: pictures.badgeTexture(cli), color: badgeInk(cli), transparent: true, toneMapped: false });
+      badges.set(cli, m);
+    }
+    return m;
+  };
 
   const { shell, slab } = shellGeometry();
   const walls = wallPlanes();
   const desk = deskGeometry();
   const chair = chairGeometry();
+  const chairBack = chairBackGeometry();
   const plant = plantGeometry();
   const boardFrame = boardGeometry();
+  const lamp = lampGeometry();
+  const glowWork = deskGlow("work");
+  const glowLamp = deskGlow("lamp");
+  const plane = planeGeometry();
+  const logoPlate = new PlaneGeometry(SIGN.r * SIGN.logo, SIGN.r * SIGN.logo);
   const { group: ground, light: groundLight, owned } = groundGroup(pool, spill, matte);
 
-  const geometries = [shell, slab, walls, floorPlane, desk, chair, plant, boardFrame, ...owned];
-  const materials: Material[] = [matte, glow, glass, wallLit, wallDark, floorLit, floorDark, pool, spill];
+  const geometries = [shell, slab, walls, floorPlane, desk, chair, chairBack, plant, boardFrame, lamp.solid, lamp.lit, glowWork, glowLamp, plane, logoPlate, ...owned];
+  const materials: Material[] = [matte, glow, glass, wallLit, wallDark, floorLit, floorDark, pool, spill, deskLight, paper, bubble, logo];
   return {
-    matte, glow, glass, wallLit, wallDark, floorLit, floorDark, pool, shell, slab, walls, room: floorPlane, desk, chair, plant, boardFrame, ground, groundLight,
+    matte, glow, glass, wallLit, wallDark, floorLit, floorDark, pool, shell, slab, walls, room: floorPlane, desk, chair, chairBack, plant, boardFrame, lamp, deskLight, glowWork, glowLamp, plane, paper, bubble, logo, logoPlate, badge, ground, groundLight,
     dispose() {
       for (const g of geometries) g.dispose();
-      for (const m of materials) m.dispose();
+      for (const m of [...materials, ...badges.values()]) m.dispose();
       for (const t of textures) t.dispose();
+      pictures.dispose();
+      badges.clear();
     },
   };
 }
 
 /* ---- what the model decides ---- */
 
-/** Task 7 replaces this with the pose. */
-const screenColour = (state: OfficeState | undefined): string => (state === "working" ? OFFICE.screenOn : state === "stopped" ? OFFICE.screenOff : "#3b5c7a");
-
-function screen(d: Seat, state: OfficeState | undefined): BufferGeometry {
-  const plane = tint(new PlaneGeometry(0.56, 0.34), screenColour(state));
-  plane.translate(0, DESK_TOP + 0.31, -0.2 + 0.028);
-  return moved(plane, d.x, 0, d.z, d.rot);
+/** A lit screen, and at work a lit panel on its back: from a desk facing the viewer that is all that shows. */
+function screen(d: Seat, state: Pose["screen"]): BufferGeometry {
+  const colour = `#${screenLight(state).getHexString()}`;
+  const parts = [tint(new PlaneGeometry(0.56, 0.34), colour).translate(0, DESK_TOP + 0.31, -0.2 + 0.028)];
+  if (state === "work") parts.push(tint(new PlaneGeometry(0.34, 0.22), colour).rotateY(Math.PI).translate(0, DESK_TOP + 0.31, -0.2 - 0.028));
+  return moved(merged(parts), d.x, 0, d.z, d.rot);
 }
 
-function deskParts(d: Seat, kit: Kit): BufferGeometry[] {
-  const chair = chairSpot(d);
-  return [moved(kit.desk, d.x, 0, d.z, d.rot), moved(kit.chair, chair.x, 0, chair.z, d.rot)];
+function chairParts(d: Seat, lean: number, kit: Kit): BufferGeometry[] {
+  const c = chairSpot(d);
+  const back = kit.chairBack.clone().applyMatrix4(new Matrix4().makeRotationX(lean).setPosition(0, CHAIR_HINGE.y, CHAIR_HINGE.z));
+  return [moved(kit.chair, c.x, 0, c.z, d.rot), moved(back, c.x, 0, c.z, d.rot)];
+}
+
+/** One desk as its person leaves it: what is matte, what holds its own light, and the light it throws. */
+function deskFor(d: Seat, p: OfficePerson | undefined, papers: number, kit: Kit): { solid: BufferGeometry[]; lit: BufferGeometry[]; thrown: BufferGeometry[] } {
+  const look = p ? pose(p.state, 0, p.seat) : pose("stopped", 0, 0);
+  const onDesk = (g: BufferGeometry) => moved(g, d.x, 0, d.z, d.rot);
+  const solid = [onDesk(kit.desk), ...chairParts(d, look.lean, kit)];
+  const lit = [screen(d, look.screen)];
+  const thrown: BufferGeometry[] = [];
+  if (look.screen === "work") thrown.push(onDesk(kit.glowWork));
+  const prop = p ? deskProp(p.prop) : null;
+  if (prop) solid.push(onDesk(prop));
+  if (papers) solid.push(onDesk(paperStack(papers, !!prop)));
+  if (look.lamp) {
+    solid.push(onDesk(kit.lamp.solid));
+    lit.push(onDesk(kit.lamp.lit));
+    thrown.push(onDesk(kit.glowLamp));
+  }
+  return { solid, lit, thrown };
 }
 
 function noteParts(board: BoardCounts | null): BufferGeometry[] {
@@ -341,6 +386,12 @@ function mesh(g: BufferGeometry, m: Material, o: { cast?: boolean; receive?: boo
   out.receiveShadow = !!o.receive;
   out.userData.owned = true;
   return out;
+}
+
+function person(p: OfficePerson, d: Seat, y: number, kit: Kit): Object3D {
+  const who = buildPerson(p, kit);
+  seatPerson(who, d, y);
+  return who;
 }
 
 /** Frees what was built for one floor or for the top, and leaves the kit alone. */
@@ -361,9 +412,18 @@ export function buildFloor(f: OfficeFloor, spot: FloorSpot, kit: Kit): Group {
   group.add(shell, walls, room);
 
   const board = !!f.board;
-  const stateOf = (id: string) => f.people.find((p) => p.id === id)?.state;
-  const solid = spot.desks.flatMap((d) => deskParts(d, kit));
-  const lit = spot.desks.map((d) => screen(d, stateOf(d.personId)));
+  const solid: BufferGeometry[] = [];
+  const lit: BufferGeometry[] = [];
+  const thrown: BufferGeometry[] = [];
+  const papersOn = paperDesk(f);
+  for (const d of spot.desks) {
+    const p = f.people.find((x) => x.id === d.personId);
+    const desk = deskFor(d, p, d.personId === papersOn ? f.papers : 0, kit);
+    solid.push(...desk.solid);
+    lit.push(...desk.lit);
+    thrown.push(...desk.thrown);
+    if (p) group.add(person(p, d, 0, kit));
+  }
   if (board) {
     // The slab above shades this wall, and the notes are what the board is for, so on a lit floor they do not take light.
     const z = -ROOM_D / 2 + WALL / 2 + 0.04;
@@ -375,6 +435,7 @@ export function buildFloor(f: OfficeFloor, spot: FloorSpot, kit: Kit): Group {
   if (f.lit) lit.push(moved(box(ROOM_W * 0.72, 0.05, 0.16, OFFICE.glow), 0, ROOM_H - 0.04, -ROOM_D / 2 + 0.5));
   if (solid.length) group.add(mesh(merged(solid), kit.matte, { cast: true, receive: true }));
   if (lit.length) group.add(mesh(merged(lit), kit.glow));
+  if (thrown.length) group.add(mesh(merged(thrown), kit.deskLight));
   return group;
 }
 
@@ -424,8 +485,22 @@ export function buildTop(m: OfficeModel, t: Tower, kit: Kit): Group {
   solid.push(moved(box(0.02, pane.h, 0.05, OFFICE.deskTop), side + 0.055, pane.y, pane.z));
 
   // The Founder's desk, out front.
-  solid.push(...deskParts(FOUNDER_DESK, kit).map((g) => moved(g, 0, y, 0)));
-  lit.push(moved(screen(FOUNDER_DESK, m.founder?.state), 0, y, 0));
+  const desk = deskFor(FOUNDER_DESK, m.founder ?? undefined, 0, kit);
+  solid.push(...desk.solid.map((g) => moved(g, 0, y, 0)));
+  lit.push(...desk.lit.map((g) => moved(g, 0, y, 0)));
+  if (desk.thrown.length) group.add(mesh(merged(desk.thrown.map((g) => moved(g, 0, y, 0))), kit.deskLight));
+  if (m.founder) group.add(person(m.founder, FOUNDER_DESK, y, kit));
+
+  // The sign: a thick hexagon on a short post, at the corner of the roof nearest the viewer,
+  // turned a little from the view so that its edge shows.
+  const plate = tint(new CylinderGeometry(SIGN.r, SIGN.r, SIGN.thick, 6), OFFICE.steel).rotateX(Math.PI / 2).rotateY(SIGN.turn);
+  const signY = y + SIGN.post + SIGN.r;
+  solid.push(moved(plate, SIGN.x, signY, SIGN.z));
+  solid.push(moved(tint(new CylinderGeometry(0.07, 0.09, SIGN.post, 10), OFFICE.steel), SIGN.x, y + SIGN.post / 2, SIGN.z));
+  const logo = new Mesh(kit.logoPlate, kit.logo);
+  logo.position.set(SIGN.x + Math.sin(SIGN.turn) * (SIGN.thick / 2 + 0.01), signY, SIGN.z + Math.cos(SIGN.turn) * (SIGN.thick / 2 + 0.01));
+  logo.rotation.y = SIGN.turn;
+  group.add(logo);
 
   // The lift: posts from the ground to just over the roof, a glass box, a car parked at the
   // bottom, a lamp at each floor, and the mast from there up to the top of the tower.

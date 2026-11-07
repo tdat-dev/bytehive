@@ -1,6 +1,6 @@
 import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BRANDS, brandOf, cliMark, commandBrand } from "./clibrand";
+import { BRANDS, brandOf, cliLogoUrl, cliMark, commandBrand } from "./clibrand";
 import { CLI_PRESETS, customPreset } from "./crew";
 
 const key = (cmd: string) => commandBrand(cmd.split(" "))?.key ?? null;
@@ -82,5 +82,15 @@ describe("the logo files", () => {
   it("match the brands, one for one", () => {
     const files = readdirSync("src/assets/clis").map((f) => f.replace(/\.png$/, "")).sort();
     expect(files).toEqual(BRANDS.map((b) => b.key).sort());
+  });
+});
+
+describe("cliLogoUrl", () => {
+  it("gives a known CLI's logo file", () => {
+    expect(cliLogoUrl({ badge: "claude" })).toMatch(/claude/);
+  });
+  it("gives nothing for a plain shell or an unknown CLI", () => {
+    expect(cliLogoUrl({ badge: "shell" })).toBeNull();
+    expect(cliLogoUrl({ badge: "nope" })).toBeNull();
   });
 });

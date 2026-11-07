@@ -3,19 +3,21 @@
  * page but the canvas it is given, so it can move to a Worker with an OffscreenCanvas. */
 import {
   ACESFilmicToneMapping, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, PCFSoftShadowMap, PerspectiveCamera,
-  Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer,
+  Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Object3D,
 } from "three";
 import { FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt } from "./build";
-import { FOUNDER_DESK, FOV, HEAD_Y, chairSpot, mixShots, shotFor, towerLayout, type FloorSpot, type Shot, type Tower } from "./layout";
-import { sceneKey, type OfficeFloor, type OfficeModel } from "./model";
+import { FOUNDER_DESK, FOV, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
+import { sceneKey, type OfficeFloor, type OfficeModel, type OfficePerson, type OfficeState } from "./model";
 import { BUILDING, frameDelay, type Level } from "./nav";
 import { OFFICE } from "./palette";
+import { animate, isPerson, planeAt, pose, spotOf, type PlaneSpot } from "./people";
 
 export interface SceneOptions {
   reducedMotion: boolean;
   dpr: number;
   onLost(): void;       // context lost
   onRestored(): void;   // context back, picture drawn unless the scene is hidden
+  clock?(): number;     // what `Flight.at` is measured against. Date.now, unless a demo holds time still
 }
 export interface Anchor { id: string; kind: "floor" | "person" | "top"; x: number; y: number; visible: boolean } // CSS pixels in the canvas
 export interface SceneStats { calls: number; triangles: number; frames: number; lost: number; restored: number; lastRestoreMs: number | null; drawW: number; drawH: number }
@@ -35,9 +37,13 @@ const MOVE_MS = 900;
 const PICK_LAYER = 1;
 const MAX_DPR = 1.5;
 const SHADOW_MAP = 1024;
-const PERSON_BOX = { w: 0.9, h: 1.7, d: 0.9 };
+const PERSON_BOX = { w: 0.9, d: 0.9 };
+/** A pick box reaches this far over the head. */
+const HEAD_ROOM = 0.4;
+const BUBBLE_BOX = { w: 1.1, h: 1 };
 const TAG_Y = 1.5;
 const SUN = new Vector3(0.25, 0.45, 1).normalize();
+const VIEWER = new Vector3(1, 0.165, 0.84).normalize();
 
 export const goodRenderer = (name: string): boolean => !/swiftshader|llvmpipe|basic render|software/i.test(name);
 
@@ -59,12 +65,15 @@ export function cssPoint(p: { x: number; y: number; z: number }, w: number, h: n
   return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h, visible: Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && Math.abs(p.z) <= 1 };
 }
 
-export interface PickHit { personId?: string; floorId?: string; distance: number }
+export interface PickHit { personId?: string; floorId?: string; over?: boolean; distance: number }
 
 /** What a ray means. Everyone stands inside a floor's box, so the first thing it enters
- *  is the floor it can see, and a person on any other floor is behind a slab. */
+ *  is the floor it can see, and a person on any other floor is behind a slab. A bubble is
+ *  drawn over everything, so it takes the click over everything too. */
 export function pickFrom(hits: PickHit[]): { personId?: string; floorId?: string } | null {
   const near = [...hits].sort((a, b) => a.distance - b.distance);
+  const over = near.find((h) => h.over);
+  if (over) return { personId: over.personId, floorId: over.floorId };
   const first = near[0];
   if (!first) return null;
   if (first.personId && !first.floorId) return { personId: first.personId };
@@ -80,7 +89,8 @@ export const retargeted = (t: Tween, now: Shot, to: Shot): Tween => ({ ...t, fro
 const sameShot = (a: Shot, b: Shot) => (Object.keys(a) as Array<keyof Shot>).every((k) => Math.abs(a[k] - b[k]) < 1e-6);
 
 /** What a floor's meshes depend on. A floor whose key stands still is left alone. */
-const floorKey = (f: OfficeFloor, spot: FloorSpot) => JSON.stringify([spot.y, f.lit, f.board, f.people.map((p) => [p.id, p.state, p.seat]), spot.desks]);
+const lookKey = (p: OfficePerson) => [p.id, p.state, p.seat, p.rank, p.shirt, p.hair, p.prop, p.cli];
+const floorKey = (f: OfficeFloor, spot: FloorSpot) => JSON.stringify([spot.y, f.lit, f.board, f.papers, f.lead, f.people.map(lookKey), spot.desks]);
 
 export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeScene {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "low-power", preserveDrawingBuffer: false });
@@ -103,10 +113,15 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
 
-  const kit = createKit();
+  const clock = o.clock ?? Date.now;
+  const kit = createKit(() => invalidate());
   scene.add(kit.ground);
   const floors = new Map<string, { key: string; group: Group }>();
   let top: { key: string; group: Group } | null = null;
+
+  let cast: Object3D[] = [];
+  const planes = new Group();
+  scene.add(planes);
 
   const proxies = new Group();
   scene.add(proxies);
@@ -140,7 +155,16 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   let lastRestoreMs: number | null = null;
   const moved = new Set<() => void>();
 
-  const moving = () => tween !== null;
+  const floorOf = (id: string): string | null | undefined => {
+    if (model?.founder?.id === id) return null;
+    return model?.floors.find((f) => f.people.some((p) => p.id === id))?.id;
+  };
+
+  const flying = (now: number): PlaneSpot[] =>
+    (tower && model ? model.flights.flatMap((f) => planeAt(tower!, f, floorOf, now, o.reducedMotion) ?? []) : []);
+
+  /** A plane on screen counts too: it takes one more frame to clear it after it lands. */
+  const moving = () => tween !== null || flying(clock()).length > 0 || planes.children.some((p) => p.visible);
 
   /* The whole of the on-demand rule: a frame only when something asks for one. */
   function schedule(): void {
@@ -197,6 +221,9 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   /** Everything that follows the clock. Nothing kept here matters: it is all from time. */
   function advance(t: number): void {
+    const now = clock();
+    for (const who of cast) animate(who, o.reducedMotion ? 0 : now);
+    fly(now);
     if (!tween) return;
     tween.at ??= t;
     const k = Math.min(1, (t - tween.at) / MOVE_MS);
@@ -205,6 +232,23 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       tween = null;
       resting = true;
     }
+  }
+
+  function fly(now: number): void {
+    const spots = flying(now);
+    while (planes.children.length < spots.length) {
+      const plane = new Mesh(kit.plane, kit.paper);
+      // lookAt rolls it to this, so its wings stay open to the viewer, even flying straight up the lift.
+      plane.up.copy(VIEWER);
+      planes.add(plane);
+    }
+    planes.children.forEach((plane, i) => {
+      const s = spots[i];
+      plane.visible = !!s;
+      if (!s) return;
+      plane.position.set(s.x, s.y, s.z);
+      plane.lookAt(s.x + s.dx, s.y + s.dy, s.z + s.dz);
+    });
   }
 
   /** Point the camera where the level says. */
@@ -238,7 +282,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     c.updateProjectionMatrix();
   }
 
-  function proxy(x: number, y: number, z: number, w: number, h: number, d: number, data: { personId?: string; floorId?: string }): void {
+  function proxy(x: number, y: number, z: number, w: number, h: number, d: number, data: Omit<PickHit, "distance">): void {
     const m = new Mesh(proxyBox, proxyMaterial);
     m.position.set(x, y, z);
     m.scale.set(w, h, d);
@@ -247,19 +291,23 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     proxies.add(m);
   }
 
+  function personProxy(d: Seat, y: number, data: { personId: string; floorId?: string }): void {
+    const state = stateOf(data.personId);
+    const s = spotOf(d, state);
+    const h = s.head + HEAD_ROOM;
+    proxy(s.x, y + h / 2, s.z, PERSON_BOX.w, h, PERSON_BOX.d, data);
+    if (pose(state, 0, 0).bubble) proxy(s.x, y + s.bubble, s.z, BUBBLE_BOX.w, BUBBLE_BOX.h, BUBBLE_BOX.w, { ...data, over: true });
+  }
+
+  const stateOf = (id: string): OfficeState => (model?.founder?.id === id ? model.founder : model?.floors.flatMap((f) => f.people).find((p) => p.id === id))?.state ?? "stopped";
+
   function placeProxies(m: OfficeModel, t: Tower): void {
     proxies.clear();
     for (const spot of t.floors) {
       proxy(FLOOR_BOX.x, spot.y + FLOOR_BOX.h / 2, 0, FLOOR_BOX.w, FLOOR_BOX.h, FLOOR_BOX.d, { floorId: spot.id });
-      for (const d of spot.desks) {
-        const c = chairSpot(d);
-        proxy(c.x, spot.y + PERSON_BOX.h / 2, c.z, PERSON_BOX.w, PERSON_BOX.h, PERSON_BOX.d, { personId: d.personId, floorId: spot.id });
-      }
+      for (const d of spot.desks) personProxy(d, spot.y, { personId: d.personId, floorId: spot.id });
     }
-    if (m.founder) {
-      const c = chairSpot(FOUNDER_DESK);
-      proxy(c.x, t.roofY + PERSON_BOX.h / 2, c.z, PERSON_BOX.w, PERSON_BOX.h, PERSON_BOX.d, { personId: m.founder.id });
-    }
+    if (m.founder) personProxy(FOUNDER_DESK, t.roofY, { personId: m.founder.id });
     proxies.updateMatrixWorld(true);
   }
 
@@ -294,7 +342,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       floors.set(f.id, { key: k, group });
       rebuilt = true;
     });
-    const topKey = JSON.stringify([t.roofY, t.floors.map((f) => f.y), m.founder?.state]);
+    const topKey = JSON.stringify([t.roofY, t.floors.map((f) => f.y), m.founder && lookKey(m.founder)]);
     if (top?.key !== topKey) {
       if (top) drop(top.group);
       top = { key: topKey, group: buildTop(m, t, kit) };
@@ -302,6 +350,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       rebuilt = true;
     }
 
+    cast = [...floors.values(), ...(top ? [top] : [])].flatMap(({ group }) => group.children.filter(isPerson));
     placeProxies(m, t);
     kit.groundLight.visible = m.floors.some((f) => f.lit);
     anyoneWorking = [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].some((p) => p.state === "working");
@@ -351,13 +400,13 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     const out = tower.floors.flatMap((spot) => [
       at(spot.id, "floor", FLOOR_EDGE.x, spot.y + TAG_Y, FLOOR_EDGE.z),
       ...spot.desks.map((d) => {
-        const c = chairSpot(d);
-        return at(d.personId, "person", c.x, spot.y + HEAD_Y, c.z);
+        const s = spotOf(d, stateOf(d.personId));
+        return at(d.personId, "person", s.x, spot.y + s.head, s.z);
       }),
     ]);
     if (model.founder) {
-      const c = chairSpot(FOUNDER_DESK);
-      out.push(at(model.founder.id, "person", c.x, tower.roofY + HEAD_Y, c.z));
+      const s = spotOf(FOUNDER_DESK, model.founder.state);
+      out.push(at(model.founder.id, "person", s.x, tower.roofY + s.head, s.z));
     }
     out.push(at("top", "top", FLOOR_EDGE.x, tower.roofY + TAG_Y, FLOOR_EDGE.z));
     return out;
@@ -409,6 +458,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       for (const { group } of floors.values()) disposeBuilt(group);
       if (top) disposeBuilt(top.group);
       floors.clear();
+      cast = [];
+      planes.clear();
       proxyBox.dispose();
       proxyMaterial.dispose();
       kit.dispose();
