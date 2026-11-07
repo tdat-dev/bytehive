@@ -1,8 +1,8 @@
 /* File tree rows in the code panel's upper pane. The tree renders as one flat
    list — depth is expressed by --d (padding + indent guides), so multi-select
    and keyboard navigation walk a simple linear row order. */
-.file-tree{font-size:12.5px;color:var(--text-2);padding:4px 6px 8px;outline:none}
-.tw-msg{padding:22px 16px;color:var(--muted-2);font-size:11.5px;line-height:1.5;text-align:center}
+.file-tree{font-size:var(--fs-meta);color:var(--text-2);padding:4px 6px 8px;outline:none}
+.tw-msg{padding:22px 16px;color:var(--muted-2);font-size:var(--fs-meta);line-height:1.5;text-align:center}
 
 .tw-row{display:flex;align-items:center;gap:5px;height:24px;cursor:pointer;white-space:nowrap;user-select:none;border-radius:var(--r1);position:relative;
   padding:0 6px 0 calc(6px + var(--d,0) * 12px);
@@ -27,7 +27,7 @@
 .tw-name{overflow:hidden;text-overflow:ellipsis;font-weight:450}
 .tw-dir .tw-name{color:var(--text-2);font-weight:500}
 /* where a filter hit actually lives */
-.tw-path{margin-left:7px;min-width:0;font-size:10.5px;color:var(--muted-2);overflow:hidden;text-overflow:ellipsis}
+.tw-path{margin-left:7px;min-width:0;font-size:var(--fs-meta);color:var(--muted-2);overflow:hidden;text-overflow:ellipsis}
 
 /* per-language icon tints — the tree gets scanned by colour before it's read */
 .tw-c-blue{color:#519aba}
@@ -50,22 +50,22 @@ body.tree-dragging .tw-row{cursor:grabbing}
 .tw-row.drop{background-color:var(--accent-glow);box-shadow:inset 0 0 0 1px var(--accent-dim)}
 .file-tree.drop-root{box-shadow:inset 0 0 0 1px var(--accent-dim);border-radius:var(--r2)}
 /* cursor-following label: what's being dragged, and how much of it */
-.tw-ghost{position:fixed;z-index:400;display:flex;align-items:center;gap:6px;max-width:260px;padding:4px 9px;border-radius:var(--r2);background:var(--surface-2);border:1px solid var(--line-strong);box-shadow:0 10px 26px rgba(0,0,0,.45);color:var(--text-2);font-size:12px;white-space:nowrap;pointer-events:none}
+.tw-ghost{position:fixed;z-index:400;display:flex;align-items:center;gap:6px;max-width:260px;padding:4px 9px;border-radius:var(--r2);background:var(--surface-2);border:1px solid var(--line-strong);box-shadow:0 10px 26px rgba(0,0,0,.45);color:var(--text-2);font-size:var(--fs-meta);white-space:nowrap;pointer-events:none}
 
 /* inline create / rename input — sits in the row, monospace like file names */
-.tw-input{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--accent-dim);border-radius:4px;color:var(--text);font:inherit;font-size:12px;padding:1px 6px;outline:none}
+.tw-input{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--accent-dim);border-radius:4px;color:var(--text);font:inherit;font-size:var(--fs-meta);padding:1px 6px;outline:none}
 .tw-input::placeholder{color:var(--muted-2)}
 .tw-input-row{background-color:var(--surface-1)}
 
 /* failure notice (name taken, file locked) — silence would read as "nothing happened" */
-.tw-toast{margin:6px 2px 0;padding:7px 9px;border-radius:var(--r2);background:rgba(242,118,107,.12);border:1px solid rgba(242,118,107,.3);color:var(--text-2);font-size:11px;line-height:1.45;white-space:normal;animation:ctxIn .14s ease}
+.tw-toast{margin:6px 2px 0;padding:7px 9px;border-radius:var(--r2);background:rgba(242,118,107,.12);border:1px solid rgba(242,118,107,.3);color:var(--text-2);font-size:var(--fs-meta);line-height:1.45;white-space:normal;animation:ctxIn .14s ease}
 
 /* explorer header toolbar + filter box */
 .cp-tools{display:flex;align-items:center;gap:1px;margin-left:auto;margin-right:2px}
 .cp-btn.on{color:var(--accent);background:var(--accent-glow)}
 .cp-filterbar{flex:none;display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--muted-2)}
 .cp-filterbar svg{flex:none}
-.cp-filter{flex:1;min-width:0;background:transparent;border:0;outline:none;color:var(--text);font:inherit;font-size:12px}
+.cp-filter{flex:1;min-width:0;background:transparent;border:0;outline:none;color:var(--text);font:inherit;font-size:var(--fs-meta)}
 .cp-filter::placeholder{color:var(--muted-2)}
 .cp-filterbar:focus-within{color:var(--accent)}
 /* filter results are a flat hit list, so the indent guides would be noise */
@@ -73,10 +73,10 @@ body.tree-dragging .tw-row{cursor:grabbing}
 
 /* right-click context menu */
 .ctx-menu{position:fixed;z-index:300;min-width:200px;padding:5px;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--r3);box-shadow:0 12px 36px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:1px;animation:ctxIn .1s ease}
-.ctx-item{display:flex;align-items:center;justify-content:space-between;gap:16px;height:30px;padding:0 10px;border-radius:var(--r1);color:var(--text-2);font-size:12.5px;text-align:left;transition:background .12s,color .12s}
+.ctx-item{display:flex;align-items:center;justify-content:space-between;gap:16px;height:30px;padding:0 10px;border-radius:var(--r1);color:var(--text-2);font-size:var(--fs-meta);text-align:left;transition:background .12s,color .12s}
 .ctx-item:hover{background:var(--surface-3);color:var(--text)}
 .ctx-item.danger{color:var(--err)}
 .ctx-item.danger:hover{background:rgba(242,118,107,.14)}
-.ctx-key{font-family:var(--mono);font-size:10px;color:var(--muted-2);letter-spacing:.02em}
+.ctx-key{font-family:var(--mono);font-size:var(--fs-meta);color:var(--muted-2);}
 .ctx-sep{height:1px;margin:4px 6px;background:var(--line)}
 @keyframes ctxIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}

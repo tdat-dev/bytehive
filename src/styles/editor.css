@@ -4,21 +4,21 @@
 /* breadcrumb tab: open file name + a dirty dot that lights lime when unsaved */
 .editor-host .ed-tab{flex:none;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;background:var(--surface-0);border-bottom:1px solid var(--line)}
 .editor-host .ed-tab[hidden]{display:none}
-.editor-host .ed-tab-name{flex:1;min-width:0;font-family:var(--mono);font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.editor-host .ed-tab-name{flex:1;min-width:0;font-family:var(--mono);font-size:var(--fs-meta);color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* tab actions: markdown Edit/Preview segment + expand button */
 .editor-host .ed-actions{display:flex;align-items:center;gap:6px;flex:none}
-.editor-host .ed-seg{height:22px;padding:0 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;transition:border-color .14s,color .14s}
+.editor-host .ed-seg{height:22px;padding:0 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);font-size:var(--fs-meta);font-weight:600;transition:border-color .14s,color .14s}
 .editor-host .ed-seg[hidden]{display:none}
 .editor-host .ed-seg:hover{border-color:var(--accent-dim);color:var(--accent)}
 .editor-host .ed-act{width:24px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .editor-host .ed-act:hover{background:var(--surface-2);color:var(--text-2)}
 
 /* rendered Markdown preview */
-.editor-host .ed-md{flex:1;min-height:0;overflow:auto;padding:22px 26px;font-size:13.5px;line-height:1.7;color:var(--text-2)}
+.editor-host .ed-md{flex:1;min-height:0;overflow:auto;padding:22px 26px;font-size:var(--fs-body);line-height:1.7;color:var(--text-2)}
 .editor-host .ed-md[hidden]{display:none}
 .ed-md>:first-child{margin-top:0}
-.ed-md h1,.ed-md h2,.ed-md h3,.ed-md h4{color:var(--text);font-weight:700;line-height:1.3;margin:1.5em 0 .6em}
+.ed-md h1,.ed-md h2,.ed-md h3,.ed-md h4{color:var(--text);font-weight:600;line-height:1.3;margin:1.5em 0 .6em}
 .ed-md h1{font-size:1.7em;border-bottom:1px solid var(--line);padding-bottom:.3em}
 .ed-md h2{font-size:1.35em;border-bottom:1px solid var(--line);padding-bottom:.25em}
 .ed-md h3{font-size:1.13em}
@@ -41,13 +41,13 @@
 .editor-host .ed-tab.dirty .ed-tab-name{color:var(--text)}
 
 /* conflict banner — amber, sits under the tab */
-.editor-host .ed-banner{flex:none;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:11.5px;color:#ffd9a0;background:rgba(255,184,76,.1);border-bottom:1px solid rgba(255,184,76,.28)}
+.editor-host .ed-banner{flex:none;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:var(--fs-meta);color:#ffd9a0;background:rgba(255,184,76,.1);border-bottom:1px solid rgba(255,184,76,.28)}
 .editor-host .ed-banner[hidden]{display:none}
-.editor-host .ed-banner button{font:inherit;font-size:11px;padding:3px 9px;border-radius:var(--r1);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:border-color .14s,color .14s}
+.editor-host .ed-banner button{font:inherit;font-size:var(--fs-meta);padding:3px 9px;border-radius:var(--r1);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:border-color .14s,color .14s}
 .editor-host .ed-banner button:hover{border-color:#ffb84c;color:#ffb84c}
 
 /* empty state — calm, centered, with a glyph */
-.editor-host .ed-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted-2);font-size:12px}
+.editor-host .ed-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted-2);font-size:var(--fs-meta)}
 .editor-host .ed-empty[hidden]{display:none}
 .editor-host .ed-empty svg{color:var(--line-strong)}
 

@@ -78,7 +78,7 @@
 
 /* the name, under the mark: wipes in once the M is drawn, then a shine
    crosses the letters */
-.intro-word{position:relative;margin-top:-54px;font:600 30px/1 var(--sans);letter-spacing:-.03em;opacity:0;
+.intro-word{position:relative;margin-top:-54px;font:var(--t-home);letter-spacing:-.03em;opacity:0;
   background:linear-gradient(105deg,#f4f4f5 0%,#f4f4f5 40%,#f4ffcf 50%,#f4f4f5 60%,#f4f4f5 100%);
   background-size:280% 100%;background-position:120% 0;
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;

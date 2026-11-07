@@ -168,8 +168,8 @@
   border-radius: 7px;
   flex: none;
   place-items: center;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: var(--fs-meta);
+  font-weight: 600;
   color: #0a0d07;
 }
 .grid.canvas.has-focus .pane.focused .pb-av {
@@ -177,11 +177,11 @@
   width: 28px;
   height: 28px;
   border-radius: 9px;
-  font-size: 13px;
+  font-size: var(--fs-body);
 }
 .grid.canvas.has-focus .pane.focused .pb-dot { display: none; }
 .grid.canvas .pb-name {
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -196,9 +196,7 @@
 }
 .grid.canvas .pb-cli {
   font-family: var(--mono);
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   padding: 2px 6px;
   border: 1px solid var(--line-strong);
@@ -299,10 +297,8 @@
    decoration; this is one word and it answers the question by itself. */
 .grid.canvas .pb-role {
   font-family: var(--mono);
-  font-size: 9.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
   color: var(--accent-ink);
   background: color-mix(in oklab, var(--accent-ink) 15%, transparent);
   padding: 2px 6px;
@@ -355,7 +351,7 @@
 }
 /* the stage header reads bigger than a tiled pane's slim bar */
 .grid.canvas.has-focus .pane.focused .pane-bar { height: 38px; }
-.grid.canvas.has-focus .pane.focused .pb-name { font-size: 14.5px; }
+.grid.canvas.has-focus .pane.focused .pb-name { font-size: var(--fs-lead); }
 .grid.canvas.has-focus .pane.focused .pb-dot { width: 9px; height: 9px; }
 /* ---------- focus-stage identity ----------
    When a pane fills the stage it must SHOUT whose it is (the whole point of
@@ -366,7 +362,7 @@
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  font-size: 15px;
+  font-size: var(--fs-lead);
 }
 /* live status ring on the stage avatar — colour follows the classes setStatus /
    attention already toggle, so it stays truthful without a render loop. The word
@@ -378,14 +374,14 @@
   box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px color-mix(in oklab, var(--amber) 78%, transparent);
 }
 .grid.canvas.has-focus .pane.focused .pb-name {
-  font-size: 15px;
+  font-size: var(--fs-lead);
   max-width: 280px;
 }
 .pb-where { display: none; }
 .grid.canvas.has-focus .pane.focused .pb-where {
   display: inline-block;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-meta);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
