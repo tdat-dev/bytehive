@@ -12,6 +12,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { topNote } from "./hint";
+import { icon } from "./icons";
 import { notify } from "./ipc";
 
 export interface Ask { id: number; agent: string; what: string; url: string; at: number }
@@ -62,9 +63,8 @@ function ago(ms: number): string {
   return s < 5 ? "just now" : s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`;
 }
 
-const svg = (d: string) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
-const ICON_FOLD = svg("M6 12h12");
-const ICON_OPEN = svg("M6 15l6-6 6 6");
+const ICON_FOLD = icon("minus");
+const ICON_OPEN = icon("chevron-up");
 
 const acts = new Map<string, Activity>();
 let card: HTMLElement | null = null;

@@ -100,7 +100,7 @@ export function initDock() {
     `<header class="dp-head">` +
     `<span class="dp-title"></span>` +
     `<div class="dp-actions"></div>` +
-    `<button class="dp-close" aria-label="Close panel" title="Close (Esc)"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` +
+    `<button class="dp-close" aria-label="Close panel" title="Close (Esc)"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>` +
     `</header>` +
     `<div class="dp-bodies"></div>`;
   app.appendChild(panel);

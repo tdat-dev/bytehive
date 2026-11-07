@@ -17,6 +17,7 @@ import {
   type RepoInfo,
 } from "./ipc";
 import { parseDiff, type DiffFile } from "./diff";
+import { icon } from "./icons";
 import type { DockContext } from "./dockstore";
 
 const MAX_FILE_LINES = 600; // bigger files start collapsed so one dump can't flood the DOM
@@ -36,7 +37,7 @@ function fileLines(f: DiffFile): number {
 }
 
 const REFRESH_SVG =
-  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-refresh-cw"/></svg>';
 
 export function createDiffView() {
   let ctx: DockContext | null = null;
@@ -141,7 +142,7 @@ export function createDiffView() {
     }
     card.innerHTML =
       `<header class="dv-file-h" data-file="${key}" role="button" tabindex="0">` +
-      `<span class="dv-chev">${isColl ? "▸" : "▾"}</span>` +
+      `<span class="dv-chev">${icon(isColl ? "chevron-right" : "chevron-down", "sm")}</span>` +
       `<span class="dv-path">${enc(f.path)}</span>` +
       `<span class="dv-counts"><span class="dv-a">+${f.additions}</span> <span class="dv-d">−${f.deletions}</span>${big ? `<span class="dv-ln">${lines} ln</span>` : ""}</span>` +
       `</header>` +
@@ -258,7 +259,7 @@ export function createDiffView() {
       `<span class="dv-files-n">${count} file${count === 1 ? "" : "s"}</span>` +
       `<span class="dv-a">+${adds}</span><span class="dv-d">−${dels}</span>` +
       (info?.branch
-        ? `<span class="dv-branch" title="Branch"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="8" r="3"/><path d="M6 9v6m12-4a6 6 0 0 1-6 6H9"/></svg>${enc(info.branch)}${info.isWorktree ? '<em class="dv-wt">worktree</em>' : ""}</span>`
+        ? `<span class="dv-branch" title="Branch"><svg class="i" aria-hidden="true"><use href="#i-git-branch"/></svg>${enc(info.branch)}${info.isWorktree ? '<em class="dv-wt">worktree</em>' : ""}</span>`
         : "");
     root.appendChild(bar);
 
@@ -297,7 +298,7 @@ export function createDiffView() {
     return el(
       "div",
       `dv-empty${clean ? " clean" : ""}`,
-      `<span class="dv-empty-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="8" r="3"/><path d="M6 9v6m12-4a6 6 0 0 1-6 6H9"/></svg></span><p>${enc(msg)}</p>`,
+      `<span class="dv-empty-ic"><svg class="i" aria-hidden="true"><use href="#i-git-branch"/></svg></span><p>${enc(msg)}</p>`,
     );
   }
 

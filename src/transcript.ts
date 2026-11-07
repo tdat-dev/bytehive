@@ -190,7 +190,7 @@ function stepHtml(s: StepItem, open: boolean): string {
   const title = esc(brief(s.full ?? s.target));
   // A step with nothing more to show is a plain line, not a dead button.
   return `<div class="cv-step${s.error ? " err" : ""}${open ? " open" : ""}" data-id="${s.id}">${body
-    ? `<button type="button" class="cv-sh" aria-expanded="${open}" title="${title}">${inner}<svg class="cv-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg></button>`
+    ? `<button type="button" class="cv-sh" aria-expanded="${open}" title="${title}">${inner}<svg class="i cv-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>`
     : `<div class="cv-sh cv-flat" title="${title}">${inner}</div>`}${open && body ? `<div class="cv-sb">${stepBody(s)}</div>` : ""}${s.images?.length ? shotsHtml(s.id, s.images, s.verb === "Took a screenshot" ? "Screenshot" : "Image") : ""}</div>`;
 }
 
@@ -318,9 +318,9 @@ export function openImage(pics: ChatImage[], start: number, what: string): void 
       <header class="cv-lb-bar"><span class="cv-lb-t">${esc(what)}</span><span class="cv-lb-n"></span>
         <button type="button" class="im-x" data-lb-close aria-label="Close" title="Close (Esc)">${ICON_CLOSE}</button></header>
       <div class="cv-lb-stage">
-        <button type="button" class="cv-lb-nav prev" data-lb="-1" aria-label="Previous picture"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button type="button" class="cv-lb-nav prev" data-lb="-1" aria-label="Previous picture"><svg class="i" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
         <img class="cv-lb-img" src="${urlOf(pics[k])}" alt="${esc(what)}">
-        <button type="button" class="cv-lb-nav next" data-lb="1" aria-label="Next picture"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+        <button type="button" class="cv-lb-nav next" data-lb="1" aria-label="Next picture"><svg class="i" aria-hidden="true"><use href="#i-chevron-right"/></svg></button>
       </div></div>`;
   document.body.appendChild(el);
   const img = el.querySelector<HTMLImageElement>(".cv-lb-img")!;

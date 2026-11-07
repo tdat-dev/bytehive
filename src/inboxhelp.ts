@@ -5,6 +5,7 @@
 
 import { officeToggle } from "./company/office/office";
 import { dockToggle, type ToolId } from "./dock";
+import { ICON_CLOSE } from "./icons";
 import { closePalette } from "./inboxpalette";
 
 export interface HelpRow {
@@ -79,7 +80,7 @@ export function openHelp(openTool: (id: string) => void): void {
   back.className = "inbox-modal-back hp-back";
   back.innerHTML = `<div class="inbox-modal hp" role="dialog" aria-modal="true" aria-labelledby="hpTitle">
     <header class="im-head"><div><h2 id="hpTitle">What ByteHive can do</h2><p class="im-sub">The things without a button of their own. All of them are in Ctrl K too. Keys work with focus outside a terminal: inside one, they are its CLI's.</p></div>
-      <button type="button" class="im-x" data-close aria-label="Close">✕</button></header>
+      <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
     <div class="hp-body">
       <section class="hp-sec hp-tools" aria-label="Tools"><h3>Tools</h3><div class="hp-grid">${TOOLS.map((t) =>
         `<button type="button" class="hp-tool" data-tool="${esc(t.id)}"><b>${esc(t.name)}</b><span>${esc(t.what)}</span>${t.keys ? `<i>${caps(t.keys)}</i>` : ""}</button>`).join("")}</div></section>

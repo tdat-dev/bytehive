@@ -10,6 +10,7 @@
  * hard-capped so a long session can't grow it.
  */
 
+import { icon } from "./icons";
 import { revealPane } from "./agentbridge";
 
 /** Messages kept in memory. Older ones fall off the front. */
@@ -208,10 +209,7 @@ export function createFlow() {
       clear.type = "button";
       clear.title = "Clear the flow";
       clear.setAttribute("aria-label", "Clear the flow");
-      clear.innerHTML =
-        `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ` +
-        `stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
-        `<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>`;
+      clear.innerHTML = icon("trash-2");
       clear.addEventListener("click", () => {
         clearFlow();
         list?.replaceChildren();

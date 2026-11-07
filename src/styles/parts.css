@@ -25,3 +25,41 @@ input:focus-visible + .tg,input:focus-visible + .pt-sw,input:focus-visible + .cf
 @media (prefers-reduced-motion:reduce){
   *:not(.intro,.intro *),*:not(.intro,.intro *)::before,*:not(.intro,.intro *)::after{animation:none !important;transition-property:opacity !important;transition-duration:var(--m-swap) !important}
 }
+
+/* Lucide at 16, one sprite in index.html, one stroke. State has its own 12px glyphs,
+   so a state never rests on colour alone. */
+.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.i.sm{width:12px;height:12px}
+.g{width:12px;height:12px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.g-needs{color:var(--honey)}
+.g-review{color:var(--review)}
+.g-work{color:var(--work)}
+.g-idle,.g-stopped,.g-merged,.g-out{color:var(--stop)}
+.g-error{color:var(--danger)}
+
+/* One button. Quiet by itself, for toolbars; Secondary and Primary say more. Primary
+   is honey: at most once per view, and only when it is your move. */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);flex:none;
+  height:32px;padding:0 var(--s3);border:0;border-radius:var(--r-control);
+  background:transparent;color:var(--ink-2);font:var(--t-row);white-space:nowrap;cursor:pointer;
+  transition:background-color var(--m-press) var(--ease-in),color var(--m-press) var(--ease-in),transform var(--m-press) var(--ease-in);
+}
+.btn:hover{background:var(--raised);color:var(--ink)}
+.btn:active{background:var(--over);transform:scale(.98)}
+.btn[aria-pressed="true"],.btn[aria-current="true"]{background:var(--over);color:var(--ink)}
+.btn.secondary{background:var(--raised);color:var(--ink);box-shadow:var(--ring-control)}
+.btn.secondary:hover,.btn.secondary:active{background:var(--over)}
+.btn.primary{background:var(--honey);color:var(--honey-ink);font-weight:600}
+.btn.primary:hover,.btn.primary:active{background:var(--honey-hover);color:var(--honey-ink)}
+/* danger is a word in red, filled only inside the confirm dialog */
+.btn.danger{color:var(--danger)}
+.btn.danger:hover{color:var(--danger)}
+.confirm .btn.danger{background:var(--danger);color:var(--ground);font-weight:600}
+.confirm .btn.danger:hover{background:var(--danger);color:var(--ground)}
+.btn.sm{height:24px;padding:0 var(--s2);gap:var(--s1)}
+.btn.icon{width:32px;padding:0}
+.btn.icon.sm{width:24px}
+.btn:disabled,.btn:disabled:hover,.btn.primary:disabled,.btn.secondary:disabled{background:transparent;color:var(--ink-off);box-shadow:none;cursor:default;transform:none}
+.btn[aria-busy="true"]{cursor:progress}
+.btn kbd{font:var(--t-mono);color:inherit;opacity:.72}

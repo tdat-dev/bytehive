@@ -48,5 +48,4 @@
 }
 .upd-go:hover{background:var(--ink)}
 .upd-go:disabled{opacity:.6;cursor:default}
-.upd-go svg{width:13px;height:13px}
 @media (prefers-reduced-motion: reduce){.upd-toast{transition:opacity var(--m-swap) var(--ease-in)}}

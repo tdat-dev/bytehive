@@ -4,6 +4,7 @@
 // change the same file through the bytehive MCP tools; the panel follows them.
 
 import { fsCreateDir, fsCreateFile, fsReadFile, fsStat, fsWriteFile } from "./ipc";
+import { ICON_CLOSE } from "./icons";
 import { addFact, deleteFact, parseMemory, serializeMemory, updateFact, MemoryError, type MemoryEntry, type ProjectMemory } from "./projectmemory";
 
 const FILE = ".bytehive\\memory.json";
@@ -87,7 +88,7 @@ export function openMemory(o: MemoryViewOpts): void {
   back.className = "inbox-modal-back mm-back";
   back.innerHTML = `<div class="inbox-modal mm" role="dialog" aria-modal="true" aria-labelledby="mmTitle">
     <header class="im-head"><div><h2 id="mmTitle">Project memory</h2><p class="im-sub">What every agent in <b>${esc(o.project)}</b> knows when it starts. Agents add to it as they learn.</p></div>
-      <button type="button" class="im-x" data-close aria-label="Close">✕</button></header>
+      <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
     ${o.projects && o.projects.length > 1 ? `<nav class="mm-tabs" aria-label="Projects">${o.projects.map((p) =>
       `<button type="button" class="mm-tab" data-proj-tab="${esc(p.id)}"${p.id === o.current ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</nav>` : ""}
     <form class="mm-add"><label class="mm-sr" for="mmNew">Add a fact</label><textarea id="mmNew" rows="2" placeholder="Add a fact every agent here should know: a convention, a decision, where something lives…"></textarea><button type="submit" class="im-btn primary">Add</button></form>

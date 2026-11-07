@@ -183,7 +183,7 @@ body.inbox-ui #btnToggleCode { display: none !important; }
   font: var(--t-row); color: var(--ib-ink-2);  text-align: left;
 }
 .iq-ph:hover { background: var(--raised); color: var(--ib-ink); }
-.iq-chev { flex: none; width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; transform: rotate(90deg); transition: transform var(--m-swap) var(--ease-in); }
+.iq-chev { width: 12px; height: 12px; opacity: 0.7; transform: rotate(90deg); transition: transform var(--m-swap) var(--ease-in); }
 .iq-group.folded .iq-chev { transform: none; }
 .iq-pn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iq-need {
@@ -317,7 +317,6 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   background: var(--ib-raise);
   box-shadow: var(--lift);
 }
-.id-seg button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .id-seg button {
   display: inline-flex; align-items: center; gap: var(--s2);
   height: 30px; padding: 0 var(--s3);

@@ -104,9 +104,9 @@ export function initEditor(opts: EditorOpts): EditorApi {
   const { host, getRoot } = opts;
 
   const EXPAND_SVG =
-    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>`;
+    `<svg class="i" aria-hidden="true"><use href="#i-maximize"/></svg>`;
   const COLLAPSE_SVG =
-    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3a1 1 0 0 0 1-1V4m12 4h-3a1 1 0 0 1-1-1V4M4 16h3a1 1 0 0 1 1 1v3m12-4h-3a1 1 0 0 0-1 1v3"/></svg>`;
+    `<svg class="i" aria-hidden="true"><use href="#i-minimize"/></svg>`;
 
   // Breadcrumb tab: filename + dirty dot on the left, actions on the right.
   const tab = document.createElement("div");
@@ -143,7 +143,7 @@ export function initEditor(opts: EditorOpts): EditorApi {
   const empty = document.createElement("div");
   empty.className = "ed-empty";
   empty.innerHTML =
-    `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/></svg>` +
+    `<svg class="i" aria-hidden="true"><use href="#i-file"/></svg>` +
     `<span>Select a file to view or edit</span>`;
   host.replaceChildren(tab, banner, empty, mount, imgWrap, mdEl);
 

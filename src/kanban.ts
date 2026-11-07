@@ -59,6 +59,7 @@ import {
   DEFAULT_PIPELINE,
   ENTRY as PIPE_ENTRY,
 } from "./pipeline";
+import { ICON_CLOSE, glyph } from "./icons";
 import { parsePlan, type PlanTask } from "./planparse";
 
 /* ---- agent ⇄ board plan gate ---- */
@@ -466,7 +467,7 @@ export function createKanban() {
       bar.innerHTML =
         `<input class="kb-url" placeholder="http://localhost:5173" spellcheck="false">` +
         `<button class="kb-add-btn">Capture</button>` +
-        `<button class="kb-url-x" aria-label="Cancel">✕</button>`;
+        `<button class="kb-url-x" aria-label="Cancel">${ICON_CLOSE}</button>`;
       const input = bar.querySelector("input") as HTMLInputElement;
       input.value = initial;
       root.prepend(bar);
@@ -864,24 +865,24 @@ export function createKanban() {
       const d = fmtDue(card.due);
       badges.push(
         `<span class="kb-badge due${d.overdue ? " over" : d.soon ? " soon" : ""}">` +
-          `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${d.label}</span>`,
+          `<svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>${d.label}</span>`,
       );
     }
     if (card.checklist.length) {
       badges.push(
         `<span class="kb-badge${done === card.checklist.length ? " ok" : ""}">` +
-          `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>${done}/${card.checklist.length}</span>`,
+          `<svg class="i" aria-hidden="true"><use href="#i-square-check"/></svg>${done}/${card.checklist.length}</span>`,
       );
     }
     if (card.desc.trim()) {
       badges.push(
-        `<span class="kb-badge"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>`,
+        `<span class="kb-badge"><svg class="i" aria-hidden="true"><use href="#i-text"/></svg></span>`,
       );
     }
 
     const doneFooter = card.done
       ? `<div class="kb-done">` +
-        `<span class="kb-done-tag">✓ done</span>` +
+        `<span class="kb-done-tag">${glyph("merged")} done</span>` +
         card.done.files
           .slice(0, 5)
           .map(
@@ -946,7 +947,7 @@ export function createKanban() {
     head.innerHTML =
       `<span class="kb-list-t" title="Rename list">${enc(list.title)}</span>` +
       `<span class="kb-list-n">${list.cards.length}</span>` +
-      `<button class="kb-list-x" title="Delete list" aria-label="Delete list"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m1 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>`;
+      `<button class="kb-list-x" title="Delete list" aria-label="Delete list"><svg class="i" aria-hidden="true"><use href="#i-trash-2"/></svg></button>`;
     // Pointerdown on the header (but not the delete button) starts a list drag.
     head.addEventListener("pointerdown", (e) => {
       const t = e.target as HTMLElement;
@@ -1113,7 +1114,7 @@ export function createKanban() {
       b.style.background = l.hex;
       b.title = l.name;
       b.innerHTML = on
-        ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#0d1014" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>'
+        ? '<svg class="i" aria-hidden="true"><use href="#i-check"/></svg>'
         : "";
       b.addEventListener("click", () => {
         const next = on ? card.labels.filter((k) => k !== l.key) : [...card.labels, l.key];
@@ -1199,9 +1200,9 @@ export function createKanban() {
       const row = el("label", `kb-cl-item${item.done ? " done" : ""}`);
       row.innerHTML =
         `<input type="checkbox" ${item.done ? "checked" : ""}>` +
-        `<span class="kb-cl-box"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 5 8.6 9.5 3.6"/></svg></span>` +
+        `<span class="kb-cl-box"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg></span>` +
         `<span class="kb-cl-text">${enc(item.text)}</span>` +
-        `<button class="kb-cl-x" aria-label="Remove">×</button>`;
+        `<button class="kb-cl-x" aria-label="Remove">${ICON_CLOSE}</button>`;
       row.querySelector("input")?.addEventListener("change", () => {
         item.done = !item.done;
         patchCard(card.id, { checklist: card.checklist });
@@ -1263,7 +1264,7 @@ export function createKanban() {
         capBtn.classList.add("kb-tool-icon");
         capBtn.setAttribute("aria-label", "Capture a web page");
         capBtn.innerHTML =
-          `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M8 5l1.5-2h5L16 5"/></svg>`;
+          `<svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>`;
 
         // Conductor: cycles Off → Semi → Auto. Semi dispatches approved (To do)
         // cards to free agents; Auto also tops up To do from Proposed. Click

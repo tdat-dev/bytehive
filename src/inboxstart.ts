@@ -24,7 +24,7 @@ import { openHelpPage } from "./inboxhelp";
 import type { Workspace } from "./panetypes";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-const FOLDER_SVG = `<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`;
+const FOLDER_SVG = `<svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>`;
 const LAST_CLI = "maestro.inbox.lastCli";
 const LAST_CUSTOM = "maestro.inbox.lastCustom";
 const CHOOSE = "__choose__";

@@ -56,7 +56,7 @@ describe("space", () => {
   it("steps by the scale", () => {
     const off = files.filter(([f]) => f !== "splash.css" && f !== "tokens.css").flatMap(([f, s]) =>
       [...s.matchAll(/\b(?:gap|row-gap|column-gap|padding(?:-\w+)?|margin(?:-\w+)?):\s*([^;}]+)/g)].flatMap((m) =>
-        /calc\(|var\(--s\d+\)|min\(|max\(/.test(m[1]) ? [] : m[1].split(/\s+/).filter((t) => /^\d[\d.]*px$/.test(t) && parseFloat(t) > 2 && parseFloat(t) <= 48).map((t) => `${f}: ${m[0]}`)));
+        /calc\(|var\(--s\d+\)|min\(|max\(/.test(m[1]) ? [] : m[1].split(/\s+/).filter((t) => /^\d[\d.]*px$/.test(t) && parseFloat(t) > 2 && parseFloat(t) <= 48).map(() => `${f}: ${m[0]}`)));
     expect(off).toEqual([]);
   });
 });

@@ -12,8 +12,8 @@
  *   data-sep      a divider above the row
  */
 
-const CHEVRON = `<svg class="sm-chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 3.75 5 6.25l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const CHECK = `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const CHEVRON = `<svg class="i sm-chev" aria-hidden="true"><use href="#i-chevron-down"/></svg>`;
+const CHECK = `<svg class="i" aria-hidden="true"><use href="#i-check"/></svg>`;
 
 const done = new WeakMap<HTMLSelectElement, HTMLButtonElement>();
 let pop: HTMLDivElement | null = null;

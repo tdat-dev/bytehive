@@ -157,7 +157,7 @@ export function roomNote(badge: string, others: Array<{ badge: string; label: st
 export function planHtml(now = Date.now()): string {
   const body = sectionHtml(sources.claude, now) + sectionHtml(sources.codex, now);
   if (!body) return "";
-  const chev = `<svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg>`;
+  const chev = `<svg class="i iq-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg>`;
   return `<details class="iq-plan"${planOpen ? " open" : ""}><summary class="pl-sum">${chev}<b>Limits</b>${summaryHtml(now)}</summary><div class="pl-body">${body}</div></details>`;
 }
 

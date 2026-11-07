@@ -48,6 +48,7 @@ import type { Pane, Workspace } from "./panetypes";
 import { hiddenGate } from "./hiddengate";
 import { onAppKey } from "./appkeys";
 import { companyNeeds, onCompanyChange } from "./company/engine";
+import { ICON_CLOSE, ICON_EXPAND, icon } from "./icons";
 import { officeReveal } from "./company/office/office";
 
 /* ---------------- pure helpers (tested) ---------------- */
@@ -734,7 +735,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
       const loose = ws ? unclaimedChanges(ws) : 0;
       return `<section class="iq-group${folded ? " folded" : ""}${g.needs ? " has-needs" : ""}">
       <h2 class="iq-gt iq-proj"><button type="button" class="iq-ph" data-proj="${esc(g.wsId)}" aria-expanded="${!folded}" aria-controls="iq-r-${gi}" title="${esc(g.name)}${folded ? (away ? ` · show ${away} stopped` : " · unfold") : " · fold the stopped away"}">
-        <svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}${loose ? `<span class="iq-loose" title="${loose} uncommitted file${loose === 1 ? "" : "s"} here that no agent claims">Uncommitted changes</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.5 2.5h7.5a1.5 1.5 0 0 1 1.5 1.5v9.5H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 12a1.5 1.5 0 0 1 1.5-1.5h7.5M6.5 5.5h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button></h2>
+        <svg class="i iq-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><span class="iq-pn">${esc(g.name)}</span>${g.needs ? `<span class="iq-need" aria-label="${g.needs} need${g.needs === 1 ? "s" : ""} you">${g.needs}</span>` : ""}${loose ? `<span class="iq-loose" title="${loose} uncommitted file${loose === 1 ? "" : "s"} here that no agent claims">Uncommitted changes</span>` : ""}<span class="iq-n">${g.tasks.length}</span></button><button type="button" class="iq-mem" data-mem="${esc(g.wsId)}" title="Project memory: what every agent in ${esc(g.name)} knows" aria-label="${esc(g.name)} memory"><svg class="i" aria-hidden="true"><use href="#i-book-open"/></svg></button></h2>
       <ul class="iq-rows" id="iq-r-${gi}"${rows.length ? "" : " hidden"}>${rows.map((t) => {
         const p = paneOf(t);
         const main = t.title ?? t.name;
@@ -750,9 +751,9 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
         return `<li><button class="iq-row st-${t.status.state}${t.status.limit ? " limited" : ""}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
           <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliMark(p?.spec)}</span>
           <span class="iq-t">${esc(main)}</span>
-          <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">◫</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
+          <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">${icon("layout-grid", "sm")}</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
           ${t.status.state === "stopped" ? `<span class="iq-resume" data-resume aria-hidden="true" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</span>` : ""}
-          <span class="iq-more" data-more aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="12.5" cy="8" r="1.3" fill="currentColor"/></svg></span>
+          <span class="iq-more" data-more aria-hidden="true"><svg class="i" aria-hidden="true"><use href="#i-ellipsis"/></svg></span>
           <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}${cost}${full}</span>
         </button></li>`;
       }).join("")}</ul>
@@ -828,7 +829,7 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.className = "ib-acts";
       acts.dataset.mode = build;
       acts.innerHTML = pinned
-        ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">⤢</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">✕</button>`
+        ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">${ICON_EXPAND}</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">${ICON_CLOSE}</button>`
         : stopped
           // stopped: nothing to type into, one button starts it again
           ? `<button class="ib-act ib-go" data-stage="resume" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</button>${handoffTargets(p).length || openTargets(p).length ? `<button class="ib-act" data-stage="handover" title="Another agent carries on ${esc(t.name)}'s task">Hand over</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`
@@ -1013,7 +1014,7 @@ function openCompare(raceId: string): void {
   back.className = "inbox-modal-back cmp-back";
   back.innerHTML = `<div class="inbox-modal cmp" role="dialog" aria-modal="true" aria-labelledby="cmpTitle">
     <header class="im-head"><div><h2 id="cmpTitle">${esc(racers[0].title ?? "Same job")}</h2><p class="im-sub">${racers.length} agents on the same job. Review each one, merge the best, discard the rest.</p></div>
-      <button type="button" class="im-x" data-close aria-label="Close">✕</button></header>
+      <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
     <div class="cmp-grid">${racers.map((t) => {
       const p = paneOf(t);
       return `<section class="cmp-col">
@@ -1255,18 +1256,18 @@ function mount(): void {
   dockEl.setAttribute("aria-label", "ByteHive");
   dockEl.innerHTML = `
     <div class="id-seg">
-      <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, full size (Alt+S switches)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6.5h5M5.5 9.5h3"/></svg><span>Focus</span></button>
-      <button data-dock="split" aria-pressed="false" title="Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/></svg><span>Grid</span></button>
+      <button data-dock="queue" aria-pressed="true" title="Focus: one agent at a time, full size (Alt+S switches)"><svg class="i" aria-hidden="true"><use href="#i-square-terminal"/></svg><span>Focus</span></button>
+      <button data-dock="split" aria-pressed="false" title="Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)"><svg class="i" aria-hidden="true"><use href="#i-layout-grid"/></svg><span>Grid</span></button>
     </div>
     <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl+K)">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl+K</kbd></button>
     <button class="id-new" data-dock="new" title="New agent (Ctrl+Shift+T)">New agent</button>
     <button class="id-gear" data-dock="sessions" aria-label="Sessions" title="Sessions: read back earlier conversations (Alt+O)">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg></button>
+      <svg class="i" aria-hidden="true"><use href="#i-history"/></svg></button>
     <button class="id-gear id-help" data-dock="help" aria-label="What ByteHive can do" title="What ByteHive can do (?)">?</button>
     <button class="id-gear" data-dock="settings" aria-label="Settings" title="Settings (Ctrl+,)">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
+      <svg class="i" aria-hidden="true"><use href="#i-settings"/></svg></button>`;
   app.appendChild(dockEl);
   splitBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="split"]');
   dockEl.addEventListener("click", (e) => {

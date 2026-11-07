@@ -98,26 +98,26 @@ const enc = new TextEncoder();
 export const PANE_MIN_ROWS = 20;
 
 const RESTART_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-rotate-ccw"/></svg>';
 const KILL_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-x"/></svg>';
 const SEARCH_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-search"/></svg>';
 const MAX_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-maximize"/></svg>';
 // A filled dot — the record button; the ".rec" class pulses it red while active.
 const REC_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-circle"/></svg>';
 // Back-to-canvas arrow — swaps in for MAX_SVG while a pane is focused (the
 // mockup's .stage-back). And a pencil for the on-hover rename affordance.
 const BACK_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l-6 6 6 6M3 12h13"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-arrow-left"/></svg>';
 const EDIT_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg>';
 // "⋯ more" — collapses the app's extra controls (search/record/restart) so the
 // header shows the mockup's exact three (rename · focus · kill) by default.
 const MORE_SVG =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+  '<svg class="i" aria-hidden="true"><use href="#i-ellipsis"/></svg>';
 
 function buildPaneEl(
   id: string,

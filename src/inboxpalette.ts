@@ -55,7 +55,7 @@ export function openPalette(items: PaletteItem[], opts: { placeholder?: string }
   el.innerHTML = `
     <div class="inbox-pal" role="dialog" aria-modal="true" aria-label="${hint}">
       <div class="pal-in">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
         <input id="palQ" autocomplete="off" spellcheck="false" placeholder="${hint}" role="combobox" aria-expanded="true" aria-controls="palList">
       </div>
       <div class="pal-list" id="palList" role="listbox"></div>

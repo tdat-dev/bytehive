@@ -7,6 +7,7 @@ import { roomNote } from "./planmeter";
 import { topNote } from "./hint";
 import { activeWs } from "./appstate";
 import { loadCrew, presetAvailable, refreshCliAvailability, saveTemplate, spawnAgents } from "./spawnmodal";
+import { ICON_CLOSE } from "./icons";
 import { getPref } from "./prefs";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -66,7 +67,7 @@ export function openNewAgent(opts: { count?: number } = {}): void {
     <form class="inbox-modal na" role="dialog" aria-modal="true" aria-labelledby="naTitle">
       <header class="im-head">
         <div><h2 id="naTitle">New agent</h2><p class="im-sub">In ${esc(ws.name)}${ws.dir ? ` · <span class="im-mono">${esc(ws.dir)}</span>` : ""}</p></div>
-        <button type="button" class="im-x" data-close aria-label="Close">✕</button>
+        <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button>
       </header>
       <label class="im-label" for="naTask">What should it do?</label>
       <textarea id="naTask" rows="4" placeholder="Fix the flaky upload test and add a regression test. Leave empty to give it a job later."></textarea>

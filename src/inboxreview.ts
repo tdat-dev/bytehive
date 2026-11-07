@@ -14,6 +14,7 @@ import { agentDiff, agentLeftOut, killPty, reposUnder, reviewBranchDiff, reviewD
 import { changeScope, markMerged, markReviewed, taskOf } from "./tasks";
 import { promptShown } from "./working";
 import { clearComments, commentWhere, commentsOf, diffTotals, dropComment, numberHunk, putComment, sendBackText, type Conflict, type LineComment } from "./reviewtext";
+import { glyph } from "./icons";
 import type { Pane } from "./panetypes";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -171,7 +172,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const count = files === null ? "Reading the changes…" : `${list.length} file${list.length === 1 ? "" : "s"} changed`;
     const where = own ? `${branch || pane.spec.branch || ""}${base ? ` → ${base}` : ""}` : reviewDir(pane) ?? "";
     let chip = "";
-    if (own && check?.kind === "ok") chip = `<span class="check"><span class="a" aria-hidden="true">✓</span>Merges cleanly into ${esc(check.base)}</span>`;
+    if (own && check?.kind === "ok") chip = `<span class="check">${glyph("merged")}Merges cleanly into ${esc(check.base)}</span>`;
     else if (own && conflict) chip = `<span class="check"><span class="d" aria-hidden="true">!</span>Conflicts with ${esc(conflict.base)} in ${conflict.files.length} file${conflict.files.length === 1 ? "" : "s"}</span>`;
     return `<div class="rhead">
       <button class="hbtn ir-close" type="button" data-act="close" title="Close (Esc)">Close</button>
