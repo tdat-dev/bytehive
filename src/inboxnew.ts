@@ -45,7 +45,12 @@ export function closeNewAgent(): void {
 export function openNewAgent(opts: { count?: number } = {}): void {
   const preset = Math.min(3, Math.max(1, opts.count ?? getPref("defaultCount")));
   const ws = activeWs;
-  if (!ws) { topNote("Open a project first: <b>Home</b>, then pick a folder"); return; }
+  if (!ws) {
+    // With nothing open the owner stands on Start or in the office, and neither has a Home to press.
+    const office = document.getElementById("office");
+    topNote(office && !office.hidden ? "Open a project first: <b>Open project</b>, at the top of the office" : "Open a project first: pick a folder here");
+    return;
+  }
   el?.remove();
   returnTo = document.activeElement as HTMLElement | null;
   const presets = agentPresets();

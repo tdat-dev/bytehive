@@ -831,3 +831,28 @@ describe("who may take the keyboard at a Desk", () => {
     expect(showDesk).toHaveBeenLastCalledWith("bao", "terminal", true);
   });
 });
+
+describe("opening a project from the bar", () => {
+  beforeEach(() => { scene.anchors.mockReturnValue([] as never); });
+  const button = (el: HTMLElement) => el.querySelector<HTMLElement>("[data-open-project]")!;
+
+  it("offers it where the host can do it, and hands it the press", async () => {
+    const openProject = vi.fn();
+    const { shell } = await shown({ openProject });
+    expect(button(shell.el).hidden).toBe(false);
+    expect(button(shell.el).textContent).toBe("Open project");
+    button(shell.el).click();
+    expect(openProject).toHaveBeenCalledTimes(1);
+  });
+  it("says nothing where the host cannot", async () => {
+    const { shell } = await shown();
+    expect(button(shell.el).hidden).toBe(true);
+  });
+  it("is gone at a Desk: a new project would take the stage from the person there", async () => {
+    const { shell } = await shown({ openProject: vi.fn() });
+    shell.go(desk("linh", "bytehive"));
+    expect(button(shell.el).hidden).toBe(true);
+    shell.go(floor("bytehive"));
+    expect(button(shell.el).hidden).toBe(false);
+  });
+});

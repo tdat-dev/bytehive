@@ -39,6 +39,7 @@ import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { initDock, dockSetContext, dockToggle, dockOpen } from "./dock";
 import { initOffice, officeBoot, officeGoHome, officeToggle } from "./company/office/office";
+import { chooseFolder } from "./inboxstart";
 import { initPanels } from "./panels";
 import { initFileTree, type FileTreeApi } from "./filetree";
 import { initEditor } from "./editor";
@@ -266,6 +267,7 @@ if (!isDetachedWindow) {
   initOffice({
     showApp: () => { showWorkspace(); },
     showHome: showView,
+    openProject: () => void chooseFolder(),
     openBoard: (dir) => {
       const ws = [...workspaces.values()].find((w) => w.dir && sameFolder(w.dir, dir));
       if (!ws) return false;

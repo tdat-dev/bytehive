@@ -57,6 +57,7 @@
 .of-crumbs button { color: var(--ib-ink-2, var(--muted)); cursor: pointer; }
 .of-crumbs button:hover { color: var(--of-ink); background: var(--ib-raise, var(--surface-2)); }
 .of-crumbs span { color: var(--of-honey); font-weight: 600; }
+.of-acts { display: flex; flex: none; gap: 8px; }
 .of-inbox { flex: none; height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r1); background: none; color: var(--of-ink); font: 500 12.5px/1 var(--sans); cursor: pointer; }
 .of-inbox:hover { background: var(--ib-raise, var(--surface-2)); }
 

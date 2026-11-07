@@ -84,10 +84,11 @@ async function fresh() {
   const showApp = vi.fn();
   const showHome = vi.fn();
   const openBoard = vi.fn((dir: string) => dir === "D:/alpha");
+  const openProject = vi.fn();
   const m = await import("./office");
-  m.initOffice({ showApp, showHome, openBoard });
+  m.initOffice({ showApp, showHome, openBoard, openProject });
   opened.push(m);
-  return { m, showApp, showHome, openBoard };
+  return { m, showApp, showHome, openBoard, openProject };
 }
 /** Dynamic imports take a few turns of the loop, even mocked. */
 const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0)); };
@@ -473,6 +474,17 @@ describe("at a Desk", () => {
     io.calls = [];
     document.querySelector<HTMLElement>('[data-tab="terminal"]')!.click();
     expect(io.calls).toContain("stage pane-hai");
+  });
+});
+
+describe("a new project", () => {
+  it("can be opened from the office, or nothing could be once Start is out of reach", async () => {
+    io.used = true;
+    const { m, openProject } = await fresh();
+    m.officeBoot();
+    await settle();
+    document.querySelector<HTMLElement>("#office [data-open-project]")!.click();
+    expect(openProject).toHaveBeenCalledTimes(1);
   });
 });
 

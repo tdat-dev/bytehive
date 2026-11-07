@@ -24,6 +24,8 @@ export interface OfficeDeps {
   showHome(): void;
   /** Open the Board on a project's folder. False when that project is not open. */
   openBoard?(dir: string): boolean;
+  /** Ask for a folder and open it: Start is out of reach once the office is home. */
+  openProject?(): void;
 }
 
 let deps: OfficeDeps | null = null;
@@ -251,6 +253,7 @@ function onKey(e: KeyboardEvent): void {
 
 export function initOffice(d: OfficeDeps): void {
   deps = d;
+  host.openProject = d.openProject;
   onCompanyChange(onEngine);
   document.addEventListener("keydown", onKey, true);
 }

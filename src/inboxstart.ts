@@ -85,7 +85,7 @@ export function openProject(dir: string, count?: number): void {
   if (!ws.panes.size || count) openNewAgent({ count });
 }
 
-async function chooseFolder(count?: number): Promise<void> {
+export async function chooseFolder(count?: number): Promise<void> {
   const dir = await pickFolder();
   if (dir) openProject(dir, count);
 }

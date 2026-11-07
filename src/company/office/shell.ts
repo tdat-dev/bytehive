@@ -24,6 +24,8 @@ export interface ShellHost {
   loadScene(): Promise<typeof import("./scene")>;
   /** Which pane's Changes drawer is open: the Changes tab follows it. */
   changesOpenFor?(): string | null;
+  /** Ask for a folder and open it as a project. Without it the bar does not offer that. */
+  openProject?(): void;
   /** Open the Board tool on a floor's project. Without it the wall board's counts are plain text. */
   openBoard?(floorId: string): void;
   /** The context went or came back, for whoever decides how long to wait. */
@@ -126,7 +128,10 @@ function reportHtml(r: DeskReport | null, fallbackName: string): string {
 const LAYOUT = `
   <header class="of-bar" data-tauri-drag-region>
     <nav class="of-crumbs" aria-label="Where you are" data-crumbs></nav>
-    <button type="button" class="of-inbox" data-leave>Inbox</button>
+    <div class="of-acts">
+      <button type="button" class="of-inbox" data-open-project hidden>Open project</button>
+      <button type="button" class="of-inbox" data-leave>Inbox</button>
+    </div>
   </header>
   <div class="of-stage" data-stage>
     <canvas class="of-canvas" tabindex="-1" aria-hidden="true"></canvas>
@@ -157,6 +162,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   const find = <T extends HTMLElement>(sel: string) => el.querySelector<T>(sel)!;
   const stage = find("[data-stage]");
   const crumbsEl = find("[data-crumbs]");
+  const openEl = find("[data-open-project]");
   const tagsEl = find("[data-tags]");
   const noteEl = find("[data-stage] [data-note]");
   const jobEl = find("[data-job-box]");
@@ -401,6 +407,8 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   }
 
   function paint(): void {
+    // Not at a Desk: the new project would take the stage from the person sitting there.
+    openEl.hidden = !host.openProject || level.kind === "desk";
     if (model) {
       drawCrumbs(model);
       drawBoxes(model);
@@ -566,6 +574,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     if (c) go(c.level);
   });
   find("[data-leave]").addEventListener("click", () => host.leave());
+  openEl.addEventListener("click", () => host.openProject?.());
   tagsEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("button.of-tag");
     const t = b && placed.get(b.dataset.key ?? "")?.tag;
