@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const dock = vi.hoisted(() => ({ opened: [] as string[] }));
+const dock = vi.hoisted(() => ({ opened: [] as string[], office: 0 }));
 vi.mock("./dock", () => ({ dockToggle: (id: string) => { dock.opened.push(id); } }));
+vi.mock("./company/office/office", () => ({ officeReveal() {}, officeToggle() { dock.office += 1; } }));
 
 import { HELP, TOOLS, isHelpKey, openHelp, openTool } from "./inboxhelp";
 import { resetTips, showTip, tipSeen } from "./tips";
@@ -44,7 +45,8 @@ describe("What ByteHive can do", () => {
     document.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => clicked.push(b.id)));
     dock.opened = [];
     for (const t of TOOLS) openTool(t.id);
-    expect(dock.opened).toEqual(["kanban", "flow", "company", "fleet", "pomodoro"]);
+    expect(dock.opened).toEqual(["kanban", "flow", "fleet", "pomodoro"]);
+    expect(dock.office).toBe(1);
     expect(clicked).toEqual(["setOpenSched", "setOpenReplays", "setOpenUsage"]);
   });
 });

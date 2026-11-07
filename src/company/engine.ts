@@ -20,7 +20,7 @@ import { needsYou } from "./needs";
 import { OP_LIMIT_MS, OpTimeout, withLimit } from "./queue";
 import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, stopTurns, typeable, type Effect, type State } from "./reduce";
 import { FLIGHT_MS } from "./office/layout";
-import type { Flight } from "./office/model";
+import { companyUsed, type Flight } from "./office/model";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
 import { LOCK_STALE_MS, lockMove, lockSilent } from "./lock";
 import { companyRoot, ensureDirs, loadCompany, pickRoot, rootParts, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
@@ -78,6 +78,9 @@ const changed = () => listeners.forEach((fn) => fn());
 onStandingChange(changed);
 
 export function companyView() { return state; }
+
+/** Someone has given this company a Job, ever. */
+export const companyUsedNow = () => !!state && companyUsed(state.jobs);
 
 /** Why the company could not be loaded, when it could not. */
 export const companyError = () => loadError;

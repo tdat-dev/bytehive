@@ -11,10 +11,9 @@ import { createPomodoro } from "./pomodoro";
 import { createDiffView } from "./diffview";
 import { createFleet } from "./fleet";
 import { createFlow } from "./flow";
-import { createCompanyPanel } from "./company/panel";
 import type { DockContext } from "./dockstore";
 
-export type ToolId = "kanban" | "pomodoro" | "diff" | "fleet" | "flow" | "company";
+export type ToolId = "kanban" | "pomodoro" | "diff" | "fleet" | "flow";
 
 interface ToolController {
   mount(body: HTMLElement, actions: HTMLElement): void;
@@ -30,10 +29,9 @@ const TITLES: Record<ToolId, string> = {
   diff: "Changes",
   fleet: "Fleet",
   flow: "Flow",
-  company: "Company",
 };
 
-const TOOL_IDS: ToolId[] = ["kanban", "pomodoro", "diff", "fleet", "flow", "company"];
+const TOOL_IDS: ToolId[] = ["kanban", "pomodoro", "diff", "fleet", "flow"];
 
 let panel: HTMLElement | null = null;
 let titleEl: HTMLElement | null = null;
@@ -115,7 +113,6 @@ export function initDock() {
   tools.diff = createDiffView();
   tools.fleet = createFleet();
   tools.flow = createFlow();
-  tools.company = createCompanyPanel();
 
   TOOL_IDS.forEach((id) => {
     const body = document.createElement("div");

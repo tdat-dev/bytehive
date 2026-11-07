@@ -20,6 +20,7 @@ vi.mock("./settingsmodal", () => ({ openSettings: () => {} }));
 vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
 vi.mock("./company/engine", () => ({ companyNeeds: () => 0, onCompanyChange: () => () => {} }));
+vi.mock("./company/office/office", () => ({ officeReveal() {}, officeToggle() {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
 import { setInbox } from "./inbox";

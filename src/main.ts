@@ -33,11 +33,12 @@ import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
-import { basename } from "./workspaces";
+import { basename, sameFolder } from "./workspaces";
 import { checkForUpdates } from "./updater";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { initDock, dockSetContext, dockToggle, dockOpen } from "./dock";
+import { initOffice, officeBoot, officeGoHome, officeToggle } from "./company/office/office";
 import { initPanels } from "./panels";
 import { initFileTree, type FileTreeApi } from "./filetree";
 import { initEditor } from "./editor";
@@ -248,7 +249,7 @@ initHint();
 initBridges();
 initQuitLife();
 
-document.getElementById("btnHome")?.addEventListener("click", goHome);
+document.getElementById("btnHome")?.addEventListener("click", () => { if (!officeGoHome()) goHome(); });
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 document.getElementById("btnResumeAll")?.addEventListener("click", () => void resumeAllStopped());
 
@@ -261,6 +262,20 @@ initTitlebar(!isDetachedWindow);
 // activateWorkspace() re-scopes the dock to its folder.
 initDock();
 dockSetContext(null);
+if (!isDetachedWindow) {
+  initOffice({
+    showApp: () => { showWorkspace(); },
+    showHome: showView,
+    openBoard: (dir) => {
+      const ws = [...workspaces.values()].find((w) => w.dir && sameFolder(w.dir, dir));
+      if (!ws) return false;
+      showWorkspace();
+      activateWorkspace(ws);
+      dockOpen("kanban");
+      return true;
+    },
+  });
+}
 
 /* ---------------- Side panels (project rail resize + code panel) ---------------- */
 // The editor is created first so the tree's onOpenFile can hand files to it.
@@ -415,7 +430,7 @@ document.addEventListener("keydown", (e) => {
     dockToggle("flow");
   } else if (k === "o") {
     e.preventDefault();
-    dockToggle("company");
+    officeToggle();
   }
 });
 
@@ -471,6 +486,7 @@ if (isDetachedWindow) {
   if (getPref("restore")) restoreSession();
 }
 showView();
+if (!isDetachedWindow) officeBoot();
 
 /* Intro splash: plays once on first paint (CSS-driven), then we retire the
  * overlay and drop the `boot` gate so Home is fully interactive. Always plays

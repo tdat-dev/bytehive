@@ -3,6 +3,7 @@
 // live behind Ctrl K or Settings — on one page. Opens with ? (when you're not
 // typing), Ctrl+/, from Ctrl K, and from the start screen. Tools open from it.
 
+import { officeToggle } from "./company/office/office";
 import { dockToggle, type ToolId } from "./dock";
 import { closePalette } from "./inboxpalette";
 
@@ -42,6 +43,7 @@ export const HELP: HelpSection[] = [
   ] },
   { title: "Anywhere", rows: [
     { keys: [["Ctrl", "K"]], what: "Jump to any agent or project, or run any command." },
+    { keys: [["Ctrl", "Shift", "O"]], what: "The office: your company, floor by floor. Press it again for the Inbox." },
     { keys: [["Ctrl", "Tab"]], what: "Next project." },
     { keys: [["Ctrl", "Shift", "E"]], what: "Files: the project's folder tree and editor." },
     { keys: [["Ctrl", ","]], what: "Settings." },
@@ -52,7 +54,7 @@ export const HELP: HelpSection[] = [
 export const TOOLS: HelpTool[] = [
   { id: "kanban", name: "Board", what: "Cards the agents move as they plan and finish work.", keys: ["Ctrl", "Shift", "K"] },
   { id: "flow", name: "Flow", what: "Every hand-off between agents, in order, with the message kept.", keys: ["Ctrl", "Shift", "M"] },
-  { id: "company", name: "Company", what: "Give the Founder a job and see what needs you.", keys: ["Ctrl", "Shift", "O"] },
+  { id: "company", name: "Company", what: "Give the Founder a job and see the office.", keys: ["Ctrl", "Shift", "O"] },
   { id: "fleet", name: "Fleet", what: "Every agent in every project at a glance.", keys: ["Ctrl", "Shift", "L"] },
   { id: "pomodoro", name: "Pomodoro", what: "A focus timer while the agents work.", keys: ["Ctrl", "Shift", "J"] },
   { id: "schedule", name: "Scheduled agents", what: "Start a saved preset every day, or once, at a set time." },
@@ -100,7 +102,8 @@ export function openHelp(openTool: (id: string) => void): void {
 export function openTool(id: string): void {
   const viaSettings: Record<string, string> = { schedule: "setOpenSched", replays: "setOpenReplays", usage: "setOpenUsage" };
   if (viaSettings[id]) document.getElementById(viaSettings[id])?.click();
-  else if (["kanban", "pomodoro", "diff", "fleet", "flow", "company"].includes(id)) dockToggle(id as ToolId);
+  else if (id === "company") officeToggle();
+  else if (["kanban", "pomodoro", "diff", "fleet", "flow"].includes(id)) dockToggle(id as ToolId);
 }
 
 /** The page, from anywhere: the dock's ?, Ctrl K, the start screen. */

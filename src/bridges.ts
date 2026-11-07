@@ -331,8 +331,10 @@ export function initBridges(): void {
     spawn: (dir, req) => void spawnForConductor(dir, req),
   });
   // Main window only: a detached window would read the same requests and, not
-  // seeing the people's panes, start everyone a second time.
-  if (!new URLSearchParams(location.search).has("detach")) void initCompany().catch(() => {});
+  // seeing the people's panes, start everyone a second time. The office demo has
+  // no company at all, so a dev app can show it without touching one.
+  const officeDemo = import.meta.env.DEV && !!import.meta.env.VITE_OFFICE_DEMO;
+  if (!new URLSearchParams(location.search).has("detach") && !officeDemo) void initCompany().catch(() => {});
   void onDragDrop((e) => {
     if (e.type === "leave") return setDropTarget(null);
     if (e.type === "enter" || e.type === "over") {

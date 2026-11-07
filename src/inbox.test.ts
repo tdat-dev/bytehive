@@ -62,6 +62,7 @@ vi.mock("./dock", () => ({ dockToggle: () => {} }));
 vi.mock("./finishwatch", () => ({ startFinishWatch: () => {}, stopFinishWatch: () => {} }));
 vi.mock("./sessionfollow", () => ({ startSessionFollow: () => {}, stopSessionFollow: () => {} }));
 vi.mock("./company/engine", () => ({ companyNeeds: () => 0, onCompanyChange: () => () => {} }));
+vi.mock("./company/office/office", () => ({ officeReveal() {}, officeToggle() {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
 import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox, setSplit, stageAgent, openChanges, closeChanges, changesOpenFor } from "./inbox";

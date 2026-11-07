@@ -47,6 +47,7 @@ import { clockOf, type TaskState } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
 import { hiddenGate } from "./hiddengate";
 import { companyNeeds, onCompanyChange } from "./company/engine";
+import { officeReveal } from "./company/office/office";
 
 /* ---------------- pure helpers (tested) ---------------- */
 
@@ -325,7 +326,11 @@ export function openChanges(paneId: string): void {
   if (stagePane()?.id !== paneId && !stageAgent(paneId)) return;
   if (reviewer?.paneId !== paneId) openReview();
 }
-export function closeChanges(): void { if (reviewer?.paneId) reviewer.close(); }
+/** Both drawers: neither can be reached under the office. */
+export function closeChanges(): void {
+  if (reviewer?.paneId) reviewer.close();
+  if (historian?.paneId) historian.close();
+}
 export const changesOpenFor = (): string | null => reviewer?.paneId ?? null;
 
 /** Make a pane the one the decision card and Alt+number talk to, without
@@ -1010,7 +1015,7 @@ export function paletteItems(): PaletteItem[] {
       label: t.name,
       sub: `${t.title ? `${t.title} · ` : ""}${t.project} · ${rowLine(t)}`,
       mark: { color: p?.color ?? "#888", letter: (t.name.trim()[0] ?? "?").toUpperCase(), agent: p?.spec },
-      run: () => openTask(t),
+      run: () => { officeReveal(t.paneId); openTask(t); },
     };
   });
   const act = (label: string, run: () => void, keys?: string, sub?: string): PaletteItem => ({ group: "Actions", label, run, keys, sub });
@@ -1305,7 +1310,7 @@ function mount(): void {
   // Agents that finish say so; a click on that notification opens the agent.
   startFinishWatch({
     screen: () => stagePane()?.id ?? null,
-    open: (id) => { const t = taskOf(id); if (t) openTask(t); },
+    open: (id) => { const t = taskOf(id); if (t) { officeReveal(t.paneId); openTask(t); } },
   });
   // Hidden, the inbox redraws every 5 s (it also trims hidden terminals'
   // history); what changes an agent's state still redraws it at once.

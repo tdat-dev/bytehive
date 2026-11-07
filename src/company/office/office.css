@@ -122,6 +122,14 @@ body.inbox-ui.office-desk .tb-left, body.inbox-ui.office-desk .inbox-queue, body
 .of-tab[aria-selected="true"] { background: var(--ib-raise, var(--surface-2)); color: var(--ib-ink, var(--text)); }
 .of-tab:focus-visible { outline: 2px solid var(--ib-needs, var(--amber)); outline-offset: 2px; }
 
+/* Over the layer by their own z-index, and out of reach under it. */
+body.office-cover .inbox-dock, body.office-cover .inbox-ask { visibility: hidden; }
+
+/* No 3D: the rail and the job box are a fourth column of the Inbox. */
+body.office-fallback.inbox-ui .app { grid-template-columns: var(--ib-q) 1fr var(--code-w, 380px) 300px; }
+body.office-fallback.inbox-ui.ib-grid-wide .app { grid-template-columns: 0px 1fr var(--code-w, 380px) 300px; }
+body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box; min-height: 0; margin: 0 16px var(--ib-dock-h) 0; padding: 12px 14px; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--r3); background: var(--ib-panel, var(--surface-1)); }
+
 @media (max-width: 1000px) {
   :root { --office-rail-w: 280px; }
   /* Names only: with a role each, the tags climb over the floor above. */
