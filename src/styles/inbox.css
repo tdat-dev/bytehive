@@ -193,7 +193,8 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-group:not(.folded) .iq-ph .iq-n { display: none; }
 /* who needs you is marked where it is, never moved to the top */
 .iq-row.st-needs { background: var(--honey-soft); }
-.iq-row.st-needs .iq-s { color: var(--ink-2); }
+/* --ink-3 is only 4.4 on honey-soft */
+.iq-row.st-needs .iq-s, .iq-row.st-needs .iq-tm { color: var(--ink-2); }
 .iq-row.st-needs:hover { background: color-mix(in srgb, var(--honey) 20%, transparent); }
 /* selected is --over, never honey: the glyph and the word still say who waits */
 .iq-row.st-needs[aria-current="true"] { background: var(--over); }
@@ -770,7 +771,7 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .ib-acts { display: inlin
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-ctrls { display: none; }
 /* ---------- the job as the headline of an agent ---------- */
 .iq-s { display: flex; align-items: baseline; gap: 0 var(--s1); }
-.iq-s .iq-p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.iq-s .iq-p { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
 .iq-s .iq-dot { flex: none; }
 .iq-s .iq-l { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .iq-race { font: var(--t-mono); padding: 1px var(--s1); border-radius: var(--r-control); background: var(--raised); color: var(--ib-ink-2); flex: none; }

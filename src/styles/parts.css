@@ -5,12 +5,12 @@
    than an outline, for the halo; the outline stays for Windows' contrast themes,
    which drop the shadow and paint the outline. Important, because a part must not
    lose its ring to a screen's own shadow. */
-:focus-visible:not([tabindex="-1"]){outline:2px solid transparent;outline-offset:2px;box-shadow:var(--ring) !important}
+:focus-visible:where(:not([tabindex="-1"])){outline:2px solid transparent;outline-offset:2px;box-shadow:var(--ring) !important}
 [tabindex="-1"]:focus{outline:none}
 /* a field shows its caret and its border; the ring is for things you press */
 input:not([type=checkbox],[type=radio],[type=range]):focus-visible,textarea:focus-visible,[contenteditable]:focus-visible,select:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var(--ink) !important}
-/* the terminal and the editor own their caret and their focus */
-.xterm textarea:focus-visible,.cm-editor :focus-visible,.cm-content:focus-visible{box-shadow:none !important}
+/* the terminal and the editor own their caret and their focus, and a box that is the whole bar has no border to light */
+.xterm textarea:focus-visible,.cm-editor :focus-visible,.cm-content:focus-visible,.pal-in input:focus-visible,.pane-find-in:focus-visible,.st-compose textarea:focus-visible{box-shadow:none !important}
 /* the ring goes on the thing you see, not on the hidden input inside it */
 input:focus-visible + .tg,input:focus-visible + .pt-sw,input:focus-visible + .cf-box,input:focus-visible + span{box-shadow:var(--ring) !important}
 .st-chip:has(:focus-visible){box-shadow:var(--ring) !important}

@@ -57,7 +57,6 @@ export function applyLayout(ws: Workspace): void {
 // avatar rail (replaces the old maximize that hid every other pane).
 export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent, take = true): void {
   for (const p of ws.panes.values()) p.el.classList.toggle("focused", p === pane);
-  pane.el.style.setProperty("--stg", pane.color); // tints the stage's hue ring
   // Identity subtitle on the stage header: workspace · where it works. Only
   // shown while focused (CSS), so the tiled bar stays slim.
   const where = pane.spec.branch || (pane.spec.cwd ? basename(pane.spec.cwd) : "");

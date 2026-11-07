@@ -89,9 +89,6 @@
 .grid.canvas .pane.stopped {
   opacity: 0.62;
 }
-.grid.canvas .pane.run::before {
-  opacity: 0.6;
-}
 
 /* slim draggable title bar (grab anywhere on the bar) */
 .grid.canvas .pane-bar {
@@ -305,7 +302,7 @@
   /* lifted stage: bigger radius, a ring in the focused agent's hue, deep shadow,
      and a zoom-in on entry — the mockup's focus-stage feel. */
   border-radius: var(--r-dialog);
-  box-shadow: var(--lift), 0 0 0 1px color-mix(in oklab, var(--stg, var(--work)) 22%, transparent);
+  box-shadow: var(--lift);
   transform-origin: var(--ox, 50%) var(--oy, 50%);
   animation: rise var(--m-panel) var(--ease-in);
 }
@@ -326,15 +323,6 @@
   height: 34px;
   border-radius: var(--r-card);
   font-size: var(--fs-lead);
-}
-/* live status ring on the stage avatar — colour follows the classes setStatus /
-   attention already toggle, so it stays truthful without a render loop. The word
-   in .pb-where + the ring keep status off colour-alone. */
-.grid.canvas.has-focus .pane.focused.run .pb-av {
-  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px color-mix(in oklab, var(--run) 65%, transparent);
-}
-.grid.canvas.has-focus .pane.focused.attention .pb-av {
-  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px color-mix(in oklab, var(--amber) 78%, transparent);
 }
 .grid.canvas.has-focus .pane.focused .pb-name {
   font-size: var(--fs-lead);

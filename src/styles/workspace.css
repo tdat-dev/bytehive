@@ -75,7 +75,6 @@
 .pane.drop-target::after{content:"Drop file to attach path";position:absolute;inset:0;display:grid;place-items:center;background:var(--scrim);color:var(--accent);font-size:var(--fs-body);font-weight:600;pointer-events:none;z-index:2}
 /* same overlay, but a Kanban card (a task) is being dropped, not a file */
 .pane.drop-agent::after{content:"Drop to send task to agent"}
-.pane.run::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:linear-gradient(90deg,transparent,var(--run),transparent);opacity:.55;z-index:2;pointer-events:none}
 .pane.err{box-shadow:var(--ring-line)}
 .pane.stopped{opacity:.66;transition:opacity var(--m-swap) var(--ease-in)}
 .pane.stopped:hover{opacity:1}
