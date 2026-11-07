@@ -99,3 +99,13 @@ describe("CSS kept in TS strings", () => {
   });
 });
 
+describe("focus", () => {
+  const parts = bare(readFileSync(`${here}/parts.css`, "utf8"));
+  it("rings what the keyboard holds, tabindex -1 included", () => {
+    const ring = /([^{}]*)\{[^{}]*box-shadow:var\(--ring\)[^{}]*\}/.exec(parts)?.[1] ?? "";
+    expect(ring).toContain(":focus-visible");
+    expect(ring).not.toContain("tabindex");
+    expect(parts).not.toMatch(/\[tabindex="-1"\]/);
+  });
+});
+

@@ -5,8 +5,9 @@
    than an outline, for the halo; the outline stays for Windows' contrast themes,
    which drop the shadow and paint the outline. Important, because a part must not
    lose its ring to a screen's own shadow. */
-:focus-visible:where(:not([tabindex="-1"])){outline:2px solid transparent;outline-offset:2px;box-shadow:var(--ring) !important}
-[tabindex="-1"]:focus{outline:none}
+:focus-visible:where(:not(.inbox-review,.inbox-modal,.sm-pop,.of-canvas)){outline:2px solid transparent;outline-offset:2px;box-shadow:var(--ring) !important}
+/* a drawer, a page or a list that holds the keyboard for what is inside it is not a thing you press */
+:where(.inbox-review,.inbox-modal,.sm-pop,.of-canvas):focus{outline:none}
 /* a field shows its caret and its border; the ring is for things you press */
 input:not([type=checkbox],[type=radio],[type=range]):focus-visible,textarea:focus-visible,[contenteditable]:focus-visible,select:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var(--ink) !important}
 /* the terminal and the editor own their caret and their focus, and a box that is the whole bar has no border to light */
