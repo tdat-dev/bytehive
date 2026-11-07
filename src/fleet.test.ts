@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fleetStatus, sortFleet, needsCount } from "./fleet";
+import { fleetStatus, fleetSummary, sortFleet, needsCount } from "./fleet";
 import type { FleetPane } from "./agentbridge";
 
 const mk = (over: Partial<FleetPane>): FleetPane => ({
@@ -45,6 +45,15 @@ describe("sortFleet", () => {
     ]);
     expect(rows.map((r) => r.name)).toEqual(["Beta", "Gamma", "Alpha", "Zeta"]);
     expect(rows.map((r) => r.status)).toEqual(["needs", "active", "idle", "stopped"]);
+  });
+});
+
+describe("fleetSummary", () => {
+  it("counts Company items as the headline does, and calls them that", () => {
+    const rows = sortFleet([mk({ id: "1", state: "needs" }), mk({ id: "2", state: "working" })]);
+    expect(fleetSummary(rows, 0).replace(/<[^>]+>/g, "")).toBe("2 agents · 1 needs you · 1 working");
+    expect(fleetSummary(rows, 2).replace(/<[^>]+>/g, "")).toBe("2 agents · 1 needs you · 2 Company items need you · 1 working");
+    expect(fleetSummary([], 1).replace(/<[^>]+>/g, "")).toBe("0 agents · 1 Company item needs you");
   });
 });
 

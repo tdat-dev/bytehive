@@ -5,6 +5,7 @@
 
 import { fleetSnapshotNow, revealPane, type FleetPane } from "./agentbridge";
 import type { TaskState } from "./taskstate";
+import { companyNeeds } from "./company/engine";
 
 export type FleetStatus = "needs" | "active" | "idle" | "stopped";
 
@@ -34,6 +35,17 @@ export function sortFleet(panes: FleetPane[]): FleetRow[] {
 /** Count of agents currently waiting on you — the rail badge number. */
 export function needsCount(panes: FleetPane[]): number {
   return panes.reduce((n, p) => (fleetStatus(p.state, p.running) === "needs" ? n + 1 : n), 0);
+}
+
+/** The summary line, with the same people and Company items the headline counts,
+ *  each named for what it is: Fleet lists agents, a Company item has no row here. */
+export function fleetSummary(rows: FleetRow[], company: number): string {
+  const needs = rows.filter((r) => r.status === "needs").length;
+  const active = rows.filter((r) => r.status === "active").length;
+  return `<span class="fleet-sum-n">${rows.length}</span> agents` +
+    (needs ? ` · <span class="fleet-sum-needs">${needs} need${needs === 1 ? "s" : ""} you</span>` : "") +
+    (company ? ` · <span class="fleet-sum-needs">${company} Company item${company === 1 ? " needs" : "s need"} you</span>` : "") +
+    (active ? ` · <span class="fleet-sum-active">${active} working</span>` : "");
 }
 
 const STATUS_LABEL: Record<FleetStatus, string> = {
@@ -73,14 +85,9 @@ export function createFleet() {
       return;
     }
 
-    const needs = rows.filter((r) => r.status === "needs").length;
-    const active = rows.filter((r) => r.status === "active").length;
     const summary = document.createElement("div");
     summary.className = "fleet-sum";
-    summary.innerHTML =
-      `<span class="fleet-sum-n">${rows.length}</span> agents` +
-      (needs ? ` · <span class="fleet-sum-needs">${needs} need you</span>` : "") +
-      (active ? ` · <span class="fleet-sum-active">${active} working</span>` : "");
+    summary.innerHTML = fleetSummary(rows, companyNeeds());
     root.appendChild(summary);
 
     const list = document.createElement("div");
@@ -104,7 +111,8 @@ export function createFleet() {
 
   function refreshBadge(): void {
     if (!badge) return;
-    const n = needsCount(fleetSnapshotNow());
+    // the same number as the headline: agents and Company items
+    const n = needsCount(fleetSnapshotNow()) + companyNeeds();
     badge.textContent = String(n);
     badge.hidden = n === 0;
   }
