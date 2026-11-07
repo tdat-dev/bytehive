@@ -2,13 +2,13 @@
  * text pairs on screen, which the test holds to WCAG AA. */
 export const OFFICE = {
   sky: "#191d27", ground: "#23262e", shellOut: "#3a3e4a", shellEdge: "#2d303a", slabTop: "#4c505c",
-  wallLit: "#efb877", wallDim: "#6d4632", wallDark: "#465270", wallNightLow: "#272d40", floorLit: "#8a6e52", floorDark: "#3a4360", grout: "#65493a", groutNight: "#232838",
+  wallLit: "#efb877", wallDim: "#6d4632", wallDark: "#475a90", wallNightLow: "#272f54", floorLit: "#8a6e52", floorDark: "#3a4670", grout: "#65493a", groutNight: "#222a4a",
   honey: "#f5b83d", glow: "#ffe2ae", glass: "#9fc3d8", steel: "#6a7180",
   deskTop: "#b07a45", deskBody: "#2f3240", chair: "#262935", screenOn: "#7cc4ff", screenOff: "#1b1e24", lampNeeds: "#f5b83d",
   bead: "#efc48a", plant: "#4f8f4a", plantDeep: "#2f6a4a", pot: "#b5734a", paper: "#f2ece0",
   cork: "#b98d58", noteTodo: "#f2d15e", noteDoing: "#8fc7f2", noteDone: "#8fd9a4",
   grass: "#2f5048", grassLit: "#4a6a4e", stone: "#4a4f5e", kerb: "#3a3e4d", leaf: "#2f5e57", leafDeep: "#1f4347", bark: "#3a2f33",
-  skyTop: "#0d1018", skyHigh: "#131722", skyMid: "#1a2030", skyLow: "#283044", skyGlow: "#4e5266", haze: "#3e4458", moon: "#aeb1b8",
+  skyTop: "#0a1030", skyHigh: "#101a48", skyMid: "#1c2c6a", skyLow: "#34418a", skyGlow: "#a86f7c", haze: "#54508a", moon: "#c4c6d0",
 } as const;
 
 /** The app's colours, the same values as tokens.css: the test reads that file, so the

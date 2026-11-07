@@ -101,7 +101,10 @@ export interface Kit extends KitParts {
   /** A room with the lamps on, and one left for the night. */
   indoor: MeshStandardMaterial;
   night: MeshStandardMaterial;
+  /** What gives light: screens, bulbs, windows. It stays lit at a Floor, when the rest falls back. */
   glow: MeshBasicMaterial;
+  /** A wall with its light baked on: unlit by anything else, but a surface, so it falls back. */
+  wall: MeshBasicMaterial;
   glass: MeshStandardMaterial;
   /** Light thrown on things and glowing in the air, in the colour on its vertices. Quality turns it off whole. */
   deskLight: MeshBasicMaterial;
@@ -188,10 +191,10 @@ export function createKit(loaded: () => void = () => {}): Kit {
   const glow = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, dithering: true });
   const glass = new MeshStandardMaterial({ color: OFFICE.glass, transparent: true, opacity: 0.13, roughness: 0.15, metalness: 0, depthWrite: false });
   const deskLight = new MeshBasicMaterial({ map: deskLightMap, vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, dithering: true });
-  for (const m of [matte, indoor, night, glow, glass]) fallsBack(m, focus);
+  const wall = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, dithering: true });
+  for (const m of [matte, indoor, night, wall, glass]) fallsBack(m, focus);
   const hazeLight = deskLight.clone();
   hazeLight.depthTest = false;
-  fallsBack(deskLight, focus);
   const haze = flare(LIFT_W / 2, ROOM_H / 2, 0.8, 17, "#ffb070", 0.1);
   const paper = new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, toneMapped: false });
   const bubble = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, transparent: true, depthTest: false, depthWrite: false });
@@ -213,9 +216,9 @@ export function createKit(loaded: () => void = () => {}): Kit {
   const ready = new Map<string, unknown>();
 
   const geometries = [haze, plane, logoPlate];
-  const materials: Material[] = [matte, indoor, night, glow, glass, deskLight, hazeLight, paper, bubble, logo];
+  const materials: Material[] = [matte, indoor, night, glow, wall, glass, deskLight, hazeLight, paper, bubble, logo];
   const kit: Kit = {
-    matte, indoor, night, glow, glass, deskLight, hazeLight, haze, plane, paper, bubble, logo, logoPlate, badge, shapes,
+    matte, indoor, night, glow, wall, glass, deskLight, hazeLight, haze, plane, paper, bubble, logo, logoPlate, badge, shapes,
     ...({} as KitParts),
     *parts() {
       if (kit.shell) return;
@@ -431,7 +434,8 @@ function* roomSteps(f: OfficeFloor, spot: FloorSpot, kit: Kit, key: string): Gen
   yield;
   group.add(mesh(merged([things, tiles]), inRoom, { cast: true, receive: true }));
   yield;
-  group.add(mesh(merged([...room.lit, wallGrid(light, f.lit)]), kit.glow));
+  group.add(mesh(wallGrid(light, f.lit), kit.wall));
+  if (room.lit.length) group.add(mesh(merged(room.lit), kit.glow));
   yield;
   if (room.thrown.length) {
     const t = mesh(merged(room.thrown), kit.deskLight);

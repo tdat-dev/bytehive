@@ -1,6 +1,7 @@
-/* At a Floor the rest of the tower falls back: everything outside one band of heights
- * goes dim and cool. It is one number on the graphics card, so it costs no draw call, it
- * moves with the camera, and the sky and the marks over people stay as they are. */
+/* At a Floor the rest of the tower falls back by about half: outside one band of heights
+ * surfaces go dimmer and cooler. It is one number on the graphics card, so it costs no draw
+ * call and it moves with the camera. Things that give light do not take part, so windows,
+ * lamps and string lights keep their glow, and nor do the sky or the marks over people. */
 import { Vector3, type Material } from "three";
 
 /** Lowest height, highest height, and how far the rest falls back: 0 is not at all. */
@@ -23,7 +24,7 @@ export function fallsBack<M extends Material>(m: M, band: FocusBand): M {
       .replace("#include <common>", "#include <common>\nvarying float vFocusY;\nuniform vec3 focusBand;")
       .replace("#include <opaque_fragment>", `
         float focusIn = smoothstep(focusBand.x - ${SOFT}, focusBand.x, vFocusY) * (1.0 - smoothstep(focusBand.y, focusBand.y + ${SOFT}, vFocusY));
-        outgoingLight *= mix(vec3(1.0), vec3(0.2, 0.23, 0.32), focusBand.z * (1.0 - focusIn));
+        outgoingLight *= mix(vec3(1.0), vec3(0.5, 0.54, 0.68), focusBand.z * (1.0 - focusIn));
         #include <opaque_fragment>`);
   };
   if (!m.customProgramCacheKey().startsWith("clay")) m.customProgramCacheKey = () => "focus";

@@ -16,7 +16,7 @@ const PLATE_TOP = GROUND - SLAB;
 const FACING = Math.atan2(VIEW.x, VIEW.z);
 const SKY = { z: -330, w: 1000, y0: -92, y1: 72 };
 /** Where the sky's painted light sits, as a share of the sheet from the bottom. */
-const SKY_GLOW = 0.3;
+const SKY_GLOW = 0.37;
 const MOON = { x: -50, y: 5, r: 1.7 };
 const TOWN = { near: -30, far: -74, edge: -92 };
 
@@ -28,7 +28,7 @@ const stops = (g: CanvasGradient, list: Array<[number, string]>) => { for (const
 const paintSky: Painter = (c, w, h) => {
   const air = c.createLinearGradient(0, 0, 0, h);
   const glow = 1 - SKY_GLOW;
-  stops(air, [[0, OFFICE.skyTop], [glow - 0.42, OFFICE.skyHigh], [glow - 0.2, OFFICE.skyMid], [glow - 0.07, OFFICE.skyLow], [glow, OFFICE.skyGlow], [1, OFFICE.skyGlow]]);
+  stops(air, [[0, OFFICE.skyTop], [glow - 0.42, OFFICE.skyHigh], [glow - 0.2, OFFICE.skyMid], [glow - 0.1, OFFICE.skyLow], [glow, OFFICE.skyGlow], [1, OFFICE.skyGlow]]);
   c.fillStyle = air;
   c.fillRect(0, 0, w, h);
   const rand = seeded(11);
@@ -37,7 +37,7 @@ const paintSky: Painter = (c, w, h) => {
   for (let i = 0; i < 26; i += 1) {
     const y = h * (glow - 0.02 - rand() * 0.34);
     const low = 1 - (glow - y / h) / 0.36;
-    c.fillStyle = low > 0.6 ? "rgba(150,150,170,.08)" : "rgba(110,120,150,.07)";
+    c.fillStyle = low > 0.6 ? "rgba(190,130,150,.1)" : "rgba(100,120,190,.08)";
     c.beginPath();
     c.ellipse(rand() * w, y, w * (0.04 + rand() * 0.09), h * (0.004 + rand() * 0.012), 0, 0, Math.PI * 2);
     c.fill();
@@ -114,9 +114,9 @@ function* townParts(out: BufferGeometry[]): Generator<void, void> {
   const rand = seeded(23);
   const windows: BufferGeometry[] = [];
   const layers: Layer[] = [
-    { z: TOWN.far, low: 5, high: 17, top: "#2c3244", foot: OFFICE.haze, lit: 0.04, glow: 0.55 },
-    { z: (TOWN.far + TOWN.near) / 2, low: 3.5, high: 11, top: "#20252f", foot: "#363c4e", lit: 0.07, glow: 0.7 },
-    { z: TOWN.near, low: 2.2, high: 6.5, top: "#161a24", foot: "#2a2f3e", lit: 0.09, glow: 0.85 },
+    { z: TOWN.far, low: 5, high: 17, top: "#26316a", foot: OFFICE.haze, lit: 0.04, glow: 0.55 },
+    { z: (TOWN.far + TOWN.near) / 2, low: 3.5, high: 11, top: "#1a2452", foot: "#343f7c", lit: 0.07, glow: 0.7 },
+    { z: TOWN.near, low: 2.2, high: 6.5, top: "#111838", foot: "#26305e", lit: 0.09, glow: 0.85 },
   ];
   for (const l of layers) {
     out.push(...townRow(l, rand, windows));
@@ -127,8 +127,8 @@ function* townParts(out: BufferGeometry[]): Generator<void, void> {
 
 /** The floor of the world, into the mist at the foot of the town. */
 function fieldGeometry(): BufferGeometry {
-  const near = new Color("#12161f");
-  const mid = new Color("#1a1f2b");
+  const near = new Color("#0e1430");
+  const mid = new Color("#161e46");
   const far = new Color(OFFICE.haze);
   return paint(tint(new PlaneGeometry(1000, 300, 1, 24).rotateX(-Math.PI / 2).translate(0, PLATE_TOP - 0.36, 150 + TOWN.edge), "#000000"), (_x, _y, z) => {
     const k = (20 - z) / (20 - TOWN.edge);
@@ -251,7 +251,7 @@ export function createSetting(o: { outdoor: MeshStandardMaterial; thrown: MeshBa
     stars.renderOrder = -2;
     const moon = new Mesh(moved(moonGeometry(), MOON.x, MOON.y, SKY.z + 5), flat);
     moon.renderOrder = -2;
-    const halo = new Mesh(flare(MOON.x, MOON.y, SKY.z + 4, 16, "#7f8aa8", 0.16), o.thrown);
+    const halo = new Mesh(flare(MOON.x, MOON.y, SKY.z + 4, 16, "#7f92d8", 0.2), o.thrown);
     halo.renderOrder = -2;
     far.add(skyMesh, stars, moon, halo);
     owned.push(sheet, skyMap, air, starMaterial, stars.geometry, moon.geometry, halo.geometry);
