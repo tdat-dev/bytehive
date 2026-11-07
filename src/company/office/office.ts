@@ -36,8 +36,6 @@ let fallback = false;
 let noted = false;
 /** Boot opened what is on screen, not the owner: another app holding the Company takes it down. */
 let byBoot = false;
-/** The owner pressed the key, so they want the Company even if they never used it. */
-let asked = false;
 let booted = false;
 let seenUsed = false;
 /** Goes up with each open and close: an open still loading is dropped when it is not the last. */
@@ -157,10 +155,10 @@ function leaveFallback(): void {
   document.body.classList.remove("office-fallback");
 }
 
-/** The Inbox, with the rail and the job box as a fourth column. Only for someone who used the
- *  Company or asked for it: everyone else is kept out of here by homeView. */
+/** The Inbox, with the rail and the job box as a fourth column. Only open comes here, so only
+ *  someone who used the Company or pressed the key: without 3D, this is where the job box is. */
 async function toFallback(): Promise<void> {
-  if (fallback || !(used() || asked)) return;
+  if (fallback) return;
   fallback = true;
   try {
     source ??= await sourceNow();
@@ -277,7 +275,6 @@ export function officeToggle(): void {
     return;
   }
   if (fallback && !OFFICE_3D) return;
-  asked = true;
   byBoot = false;
   void open();
 }

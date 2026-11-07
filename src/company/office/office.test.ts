@@ -19,6 +19,7 @@ const io = vi.hoisted(() => ({
   liveThrows: false,
   anchors: [] as unknown[],
   moved: null as (() => void) | null,
+  sourceChanged: null as (() => void) | null,
 }));
 vi.mock("./live", () => ({
   liveSource: () => {
@@ -57,7 +58,7 @@ const EMPTY: OfficeModel = { founder: null, floors: [], needs: [], jobs: [], fli
 function mockSource() {
   return {
     snapshot: () => ({ model: (io.model as OfficeModel | null) ?? EMPTY, note: null, error: null }),
-    onChange: () => () => {}, watching() {}, showPerson: () => true,
+    onChange: (fn: () => void) => { io.sourceChanged = fn; return () => {}; }, watching() {}, showPerson: () => true,
   };
 }
 
@@ -416,6 +417,17 @@ describe("at a Desk", () => {
     Object.defineProperty(end, "propertyName", { value: "width" });
     office.dispatchEvent(end);
     expect(io.calls).toEqual(["refit"]);
+  });
+  it("moves nobody when asked again for the same pane and tab: a floor change lands here", async () => {
+    await atDesk();
+    const moved = withPeople();
+    moved.floors[0].people = moved.floors[0].people.map((p) => ({ ...p, floorId: "f2" }));
+    moved.floors.push({ ...moved.floors[0], id: "f2", name: "beta" });
+    io.model = moved;
+    io.calls = [];
+    io.sourceChanged?.();
+    expect(document.getElementById("office")?.dataset.level).toBe("desk");
+    expect(io.calls.filter((c) => c.startsWith("stage"))).toEqual([]);
   });
   it("closes Changes on every level change, not only on the way up", async () => {
     await atDesk();
