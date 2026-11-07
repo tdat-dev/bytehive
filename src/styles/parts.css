@@ -12,3 +12,15 @@ input:not([type=checkbox],[type=radio],[type=range]):focus-visible,textarea:focu
 .xterm textarea:focus-visible,.cm-editor :focus-visible,.cm-content:focus-visible{box-shadow:none !important}
 /* the ring goes on the thing you see, not on the hidden input inside it */
 input:focus-visible + .tg,input:focus-visible + .pt-sw,input:focus-visible + .cf-box,input:focus-visible + span{box-shadow:var(--ring) !important}
+.st-chip:has(:focus-visible){box-shadow:var(--ring) !important}
+
+/* Entrances move something already visible, so a failed trigger cannot hide it.
+   Only transform and opacity move; spin is the one loop, on the Working ring, and
+   body.anim-paused holds it while the window is away. */
+@keyframes rise{from{transform:translateY(4px)}to{transform:none}}
+@keyframes slide-in{from{transform:translateX(12px)}to{transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Position changes become instant, the opacity swap stays as feedback, the ring holds still. */
+@media (prefers-reduced-motion:reduce){
+  *:not(.intro,.intro *),*:not(.intro,.intro *)::before,*:not(.intro,.intro *)::after{animation:none !important;transition-property:opacity !important;transition-duration:var(--m-swap) !important}
+}
