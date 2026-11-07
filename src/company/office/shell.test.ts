@@ -356,6 +356,41 @@ describe("clicking the scene", () => {
     click(shell);
     expect(shell.level()).toEqual(desk("founder", null));
   });
+  it("does not pick while the camera moves: a double click would go two levels down", async () => {
+    const { shell } = await shown();
+    scene.pick.mockReturnValue({ floorId: "gcare" } as never);
+    click(shell);
+    expect(shell.level()).toEqual(floor("gcare"));
+    scene.pick.mockClear();
+    scene.pick.mockReturnValue({ personId: "linh", floorId: "bytehive" } as never);
+    click(shell);
+    expect(scene.pick).not.toHaveBeenCalled();
+    expect(shell.level()).toEqual(floor("gcare"));
+    rest();
+    click(shell);
+    expect(shell.level()).toEqual(desk("linh", "bytehive"));
+  });
+  it("does not pick while a new size is waiting: the camera still has the old one", async () => {
+    let resized = () => {};
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(cb: () => void) { resized = cb; }
+      observe() {}
+      disconnect() {}
+    });
+    try {
+      const { shell } = await shown();
+      scene.pick.mockReturnValue({ personId: "linh", floorId: "bytehive" } as never);
+      resized();
+      click(shell);
+      expect(scene.pick).not.toHaveBeenCalled();
+      expect(shell.level()).toEqual(BUILDING);
+      await new Promise((r) => setTimeout(r, 150));
+      click(shell);
+      expect(shell.level()).toEqual(desk("linh", "bytehive"));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it("does nothing on the sky", async () => {
     const { shell, host } = await shown();
     const before = vi.mocked(host.levelChanged).mock.calls.length;

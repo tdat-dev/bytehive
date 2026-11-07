@@ -582,7 +582,8 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     else if (t?.floor) host.openBoard?.(t.floor);
   });
   stage.addEventListener("click", (e) => {
-    if (e.target !== canvas || !scene) return;
+    // The picture is not where the pointer saw it: a second click of a double, or a size not applied yet.
+    if (e.target !== canvas || !scene || moving || fitTimer !== null) return;
     const r = canvas.getBoundingClientRect();
     const hit = scene.pick(e.clientX - r.left, e.clientY - r.top);
     const person = hit?.personId ? personIn(model, hit.personId) : undefined;
