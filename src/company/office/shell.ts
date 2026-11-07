@@ -26,6 +26,10 @@ export interface ShellHost {
   changesOpenFor?(): string | null;
   /** Ask for a folder and open it as a project. Without it the bar does not offer that. */
   openProject?(): void;
+  /** The bar's doors, each offered only when given. Jump stays at a Desk, where the bar is narrow. */
+  openPalette?(): void;
+  openBoardTool?(): void;
+  newAgent?(): void;
   /** Open the Board tool on a floor's project. Without it the wall board's counts are plain text. */
   openBoard?(floorId: string): void;
   /** The context went or came back, for whoever decides how long to wait. */
@@ -129,6 +133,9 @@ const LAYOUT = `
   <header class="of-bar" data-tauri-drag-region>
     <nav class="of-crumbs" aria-label="Where you are" data-crumbs></nav>
     <div class="of-acts">
+      <button type="button" class="of-door" data-jump hidden title="Jump to an agent or run a command  ·  Ctrl+K">Jump</button>
+      <button type="button" class="of-door" data-board-door hidden title="Board  ·  Ctrl+Shift+K">Board</button>
+      <button type="button" class="of-inbox" data-new-agent hidden title="New agent  ·  Ctrl+Shift+T">New agent</button>
       <button type="button" class="of-inbox" data-open-project hidden>Open project</button>
       <button type="button" class="of-inbox" data-leave>Inbox</button>
     </div>
@@ -163,6 +170,9 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   const stage = find("[data-stage]");
   const crumbsEl = find("[data-crumbs]");
   const openEl = find("[data-open-project]");
+  const jumpEl = find("[data-jump]");
+  const boardEl = find("[data-board-door]");
+  const newEl = find("[data-new-agent]");
   const tagsEl = find("[data-tags]");
   const noteEl = find("[data-stage] [data-note]");
   const jobEl = find("[data-job-box]");
@@ -415,7 +425,11 @@ export function createShell(source: OfficeSource, host: ShellHost) {
 
   function paint(): void {
     // Not at a Desk: the new project would take the stage from the person sitting there.
-    openEl.hidden = !host.openProject || level.kind === "desk";
+    const desk = level.kind === "desk";
+    openEl.hidden = !host.openProject || desk;
+    jumpEl.hidden = !host.openPalette;
+    boardEl.hidden = !host.openBoardTool || desk;
+    newEl.hidden = !host.newAgent || desk;
     if (model) {
       drawCrumbs(model);
       drawBoxes(model);
@@ -582,6 +596,9 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   });
   find("[data-leave]").addEventListener("click", () => host.leave());
   openEl.addEventListener("click", () => host.openProject?.());
+  jumpEl.addEventListener("click", () => host.openPalette?.());
+  boardEl.addEventListener("click", () => host.openBoardTool?.());
+  newEl.addEventListener("click", () => host.newAgent?.());
   tagsEl.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("button.of-tag");
     const t = b && placed.get(b.dataset.key ?? "")?.tag;

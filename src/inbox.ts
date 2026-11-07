@@ -1126,6 +1126,11 @@ function onCtrlK(e: KeyboardEvent): void {
   if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k") return;
   e.preventDefault();
   e.stopImmediatePropagation();
+  openJump();
+}
+
+/** The palette, from Ctrl K or the Jump button in the top bar. */
+export function openJump(): void {
   if (paletteOpen()) closePalette(); else openPalette(paletteItems());
 }
 

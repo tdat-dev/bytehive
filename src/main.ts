@@ -19,7 +19,7 @@ import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
 import { configureWorkspace, initWorkspace, createWorkspace, closeWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
-import { initInbox } from "./inbox";
+import { initInbox, openJump } from "./inbox";
 import { initCalm } from "./calm";
 import { initBrowserView } from "./browserview";
 import { enhanceSelects } from "./selectmenu";
@@ -254,6 +254,9 @@ initQuitLife();
 document.getElementById("btnHome")?.addEventListener("click", () => { if (!officeGoHome()) goHome(); });
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 document.getElementById("btnResumeAll")?.addEventListener("click", () => void resumeAllStopped());
+document.getElementById("doorJump")?.addEventListener("click", openJump);
+document.getElementById("doorBoard")?.addEventListener("click", () => dockToggle("kanban"));
+document.getElementById("doorOffice")?.addEventListener("click", officeToggle);
 
 // (extracted to its own module)
 /* ---------------- frameless window controls ---------------- */
@@ -269,6 +272,9 @@ if (!isDetachedWindow) {
     showApp: () => { showWorkspace(); },
     showHome: showView,
     openProject: () => void chooseFolder(),
+    openPalette: openJump,
+    openBoardTool: () => dockToggle("kanban"),
+    newAgent: () => openNewAgent(),
     openBoard: (dir) => {
       const ws = [...workspaces.values()].find((w) => w.dir && sameFolder(w.dir, dir));
       if (!ws) return false;

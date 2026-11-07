@@ -36,6 +36,9 @@ body.inbox-ui .topbar { background: transparent; border-bottom: 0; backdrop-filt
 body.inbox-ui .tb-left { flex: none; }
 body.inbox-ui .tb-center { justify-content: flex-start; gap: 10px; min-width: 0; padding-left: 8px; flex: 1; }
 body.inbox-ui .tb-right { flex: none; }
+.tb-door { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r1, 6px); background: none; color: var(--ib-ink-2, var(--muted)); font: 500 12.5px/1 var(--sans); cursor: pointer; white-space: nowrap; }
+.tb-door:hover { background: var(--ib-raise, var(--surface-2)); color: var(--ib-ink, var(--text)); }
+.tb-door:focus-visible { outline: 2px solid var(--ib-ink, var(--text)); outline-offset: 1px; }
 /* the code-panel toggle stays in the DOM (Files in Ctrl K clicks it) but not on screen */
 body.inbox-ui .tb-right .tb-div,
 body.inbox-ui #btnToggleCode { display: none !important; }

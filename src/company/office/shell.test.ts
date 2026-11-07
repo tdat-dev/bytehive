@@ -892,6 +892,37 @@ describe("opening a project from the bar", () => {
   });
 });
 
+describe("the doors in the bar", () => {
+  beforeEach(() => { scene.anchors.mockReturnValue([] as never); });
+  const doors = (el: HTMLElement) => ({
+    jump: el.querySelector<HTMLElement>("[data-jump]")!,
+    board: el.querySelector<HTMLElement>("[data-board-door]")!,
+    agent: el.querySelector<HTMLElement>("[data-new-agent]")!,
+  });
+
+  it("offers each where the host can do it, and hands it the press", async () => {
+    const openPalette = vi.fn(), openBoardTool = vi.fn(), newAgent = vi.fn();
+    const { shell } = await shown({ openPalette, openBoardTool, newAgent });
+    const d = doors(shell.el);
+    expect([d.jump.hidden, d.board.hidden, d.agent.hidden]).toEqual([false, false, false]);
+    d.jump.click(); d.board.click(); d.agent.click();
+    expect([openPalette, openBoardTool, newAgent].map((f) => f.mock.calls.length)).toEqual([1, 1, 1]);
+  });
+  it("says nothing where the host cannot", async () => {
+    const { shell } = await shown();
+    const d = doors(shell.el);
+    expect([d.jump.hidden, d.board.hidden, d.agent.hidden]).toEqual([true, true, true]);
+  });
+  it("keeps only Jump at a Desk, where the bar is narrow", async () => {
+    const { shell } = await shown({ openPalette: vi.fn(), openBoardTool: vi.fn(), newAgent: vi.fn() });
+    shell.go(desk("linh", "bytehive"));
+    const d = doors(shell.el);
+    expect([d.jump.hidden, d.board.hidden, d.agent.hidden]).toEqual([false, true, true]);
+    shell.go(floor("bytehive"));
+    expect([d.jump.hidden, d.board.hidden, d.agent.hidden]).toEqual([false, false, false]);
+  });
+});
+
 describe("a shell that cannot be made", () => {
   it("leaves nothing listening: the rail is up when the job box fails", () => {
     const source = demoSource();

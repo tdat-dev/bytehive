@@ -60,6 +60,8 @@
 .of-acts { display: flex; flex: none; gap: 8px; }
 .of-inbox { flex: none; height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r1); background: none; color: var(--of-ink); font: 500 12.5px/1 var(--sans); cursor: pointer; }
 .of-inbox:hover { background: var(--ib-raise, var(--surface-2)); }
+.of-door { flex: none; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r1); background: none; color: var(--ib-ink-2, var(--muted)); font: 500 12.5px/1 var(--sans); cursor: pointer; }
+.of-door:hover { background: var(--ib-raise, var(--surface-2)); color: var(--of-ink); }
 
 .of-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--of-sky); }
 .of-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }

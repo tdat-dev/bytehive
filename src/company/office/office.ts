@@ -28,6 +28,10 @@ export interface OfficeDeps {
   openBoard?(dir: string): boolean;
   /** Ask for a folder and open it: Start is out of reach once the office is home. */
   openProject?(): void;
+  /** The bar's doors to the tools a key can't reach from a focused terminal. */
+  openPalette?(): void;
+  openBoardTool?(): void;
+  newAgent?(): void;
 }
 
 let deps: OfficeDeps | null = null;
@@ -272,6 +276,9 @@ function onKey(e: KeyboardEvent): void {
 export function initOffice(d: OfficeDeps): void {
   deps = d;
   host.openProject = d.openProject;
+  host.openPalette = d.openPalette;
+  host.openBoardTool = d.openBoardTool;
+  host.newAgent = d.newAgent;
   onCompanyChange(onEngine);
   document.addEventListener("keydown", onKey, true);
 }
