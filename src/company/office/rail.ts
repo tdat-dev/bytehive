@@ -4,7 +4,7 @@
 import "./office.css";
 import type { NeedRow, PlanDetail } from "../needs";
 import type { OfficeJob, OfficeModel } from "./model";
-import { rowTarget, type Level } from "./nav";
+import { BUILDING, rowTarget, type Level } from "./nav";
 import type { OfficeSource } from "./source";
 
 const RAISE_BY = 1_000_000;
@@ -13,7 +13,7 @@ const WHY_HINT = "Why send it back? Leave empty to cancel the job.";
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** A failure as words: the engine rejects with Errors, strings or backend objects. */
-function why(e: unknown): string {
+export function why(e: unknown): string {
   if (e instanceof Error && e.message) return e.message;
   if (typeof e === "string" && e) return e;
   const failed = (e as { Failed?: unknown } | null)?.Failed;
@@ -44,7 +44,7 @@ const jobHtml = (j: OfficeJob, busy: Busy) => {
   return `<li class="co-row"><b>${esc(j.title)}</b><span>${esc(j.id)}. ${esc(j.label)}, ${tokens}.</span><div>${actButton(busy, "stop", "Stop", j.title, j.id)}</div></li>`;
 };
 
-function rowHtml(r: NeedRow, busy: Busy): string {
+function rowHtml(r: NeedRow, busy: Busy, goes: boolean): string {
   const btn = (act: string, label: string, extra = "") => actButton(busy, act, label, r.title, r.jobId, extra);
   const buttons =
     r.kind === "plan" ? btn("approve", "Approve") + btn("reject", "Send back")
@@ -54,21 +54,34 @@ function rowHtml(r: NeedRow, busy: Busy): string {
   const note = r.kind === "plan" && r.jobId
     ? `<textarea class="co-note" data-note="${esc(r.jobId)}" rows="2" placeholder="${WHY_HINT}" aria-label="Why send it back"></textarea>`
     : "";
-  return `<li class="co-row co-${r.kind}"><button type="button" class="co-go" data-row="${esc(r.key)}"><b>${esc(r.title)}</b></button>` +
+  const title = goes ? `<button type="button" class="co-go" data-row="${esc(r.key)}"><b>${esc(r.title)}</b></button>` : `<b>${esc(r.title)}</b>`;
+  return `<li class="co-row co-${r.kind}">${title}` +
     `${r.detail ? `<span>${esc(r.detail)}</span>` : ""}${r.plan ? planHtml(r.plan) : ""}${buttons ? `<div>${buttons}</div>` : ""}${note}</li>`;
 }
 
 /** What identifies a control across a redraw. */
 const identity = (el: HTMLElement) => [el.dataset.act, el.dataset.job, el.dataset.key, el.dataset.row, el.dataset.note].map((x) => x ?? "").join("|");
 
-export function createRail(source: OfficeSource, go: (l: Level) => void): { mount(el: HTMLElement): void; draw(): void } {
+const sameLevel = (a: Level, b: Level) => JSON.stringify(a) === JSON.stringify(b);
+
+/** `where` says where the owner stands: a row title that would not move them is not a button. */
+export function createRail(source: OfficeSource, go: (l: Level) => void, where: () => Level = () => BUILDING): { mount(el: HTMLElement): void; draw(): void; dispose(): void } {
   let body: HTMLElement | null = null;
+  let off: (() => void) | null = null;
   let model: OfficeModel | null = null;
   /** Actions in flight, by "act:job". A second click on one does nothing. */
   const pending = new Set<string>();
   /** Notes being typed, by job: a redraw replaces the rows. */
   const notes = new Map<string, string>();
   let failure = "";
+  /** What each list holds now. A redraw that changes nothing leaves it alone: replacing a
+   *  row between a mouse press and its release loses the click. */
+  const drawn = new Map<HTMLElement, string>();
+  const put = (el: HTMLElement, html: string) => {
+    if (drawn.get(el) === html) return;
+    drawn.set(el, html);
+    el.innerHTML = html;
+  };
 
   const busy = (key: string) => pending.has(key);
 
@@ -94,15 +107,17 @@ export function createRail(source: OfficeSource, go: (l: Level) => void): { moun
 
     if (!model) {
       const text = snap.note ?? (snap.error ? "Not available." : "Starting...");
-      list.innerHTML = `<li class="co-none">${esc(text)}</li>`;
-      jobs.innerHTML = "";
+      put(list, `<li class="co-none">${esc(text)}</li>`);
+      put(jobs, "");
       count.textContent = "";
       return;
     }
 
     count.textContent = model.needs.length ? String(model.needs.length) : "";
-    list.innerHTML = model.needs.map((r) => rowHtml(r, busy)).join("") || `<li class="co-none">Nothing needs you.</li>`;
-    jobs.innerHTML = model.jobs.map((j) => jobHtml(j, busy)).join("") || `<li class="co-none">No job is running.</li>`;
+    const here = where();
+    const m = model;
+    put(list, m.needs.map((r) => rowHtml(r, busy, !sameLevel(rowTarget(r, m), here))).join("") || `<li class="co-none">Nothing needs you.</li>`);
+    put(jobs, m.jobs.map((j) => jobHtml(j, busy)).join("") || `<li class="co-none">No job is running.</li>`);
 
     const live = new Set<string>();
     for (const n of body.querySelectorAll<HTMLTextAreaElement>("[data-note]")) {
@@ -145,6 +160,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void): { moun
         `<h3 id="coNeedsH">Needs you <span class="co-n" data-count></span></h3>` +
         `<ul class="co-needs" aria-labelledby="coNeedsH" data-needs></ul>` +
         `<h3 id="coJobsH">Jobs</h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
+      const noteOf = (job: string) => [...el.querySelectorAll<HTMLTextAreaElement>("[data-note]")].find((n) => n.dataset.note === job);
       el.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
         const b = target.closest<HTMLElement>("[data-act]");
@@ -154,11 +170,13 @@ export function createRail(source: OfficeSource, go: (l: Level) => void): { moun
           if (kind === "dismiss") source.dismiss(b.dataset.key ?? "");
           else if (kind === "approve") void act(`approve:${job}`, () => source.approve(job));
           else if (kind === "reject") {
-            const box = [...el.querySelectorAll<HTMLTextAreaElement>("[data-note]")].find((n) => n.dataset.note === job);
-            const words = box?.value ?? "";
+            const words = noteOf(job)?.value ?? "";
             void act(`reject:${job}`, () => source.reject(job, words)).then((ok) => {
-              if (ok && (box?.value ?? "") === words) notes.delete(job);
-              draw();
+              // A redraw replaced the box, so read it again, and keep words typed since.
+              const box = noteOf(job);
+              if (!ok || (box?.value ?? "") !== words) return;
+              if (box) box.value = "";
+              notes.delete(job);
             });
           } else if (kind === "raise") void act(`raise:${job}`, () => source.raiseCap(job, RAISE_BY));
           else if (kind === "finish") void act(`finish:${job}`, () => source.finishJob(job));
@@ -169,16 +187,22 @@ export function createRail(source: OfficeSource, go: (l: Level) => void): { moun
         const need = row && model?.needs.find((r) => r.key === row.dataset.row);
         if (need && model) go(rowTarget(need, model));
       });
-      source.onChange(draw);
+      off = source.onChange(draw);
       draw();
     },
     draw,
+    dispose() {
+      off?.();
+      off = null;
+      body = null;
+    },
   };
 }
 
 /** The box that gives the Founder a job. */
-export function createJobBox(source: OfficeSource): { mount(el: HTMLElement): void; draw(): void } {
+export function createJobBox(source: OfficeSource): { mount(el: HTMLElement): void; draw(): void; dispose(): void } {
   let body: HTMLElement | null = null;
+  let off: (() => void) | null = null;
   let working = false;
   let failure = "";
 
@@ -214,9 +238,14 @@ export function createJobBox(source: OfficeSource): { mount(el: HTMLElement): vo
           (err) => { failure = why(err); },
         ).finally(() => { working = false; draw(); });
       });
-      source.onChange(draw);
+      off = source.onChange(draw);
       draw();
     },
     draw,
+    dispose() {
+      off?.();
+      off = null;
+      body = null;
+    },
   };
 }

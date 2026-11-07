@@ -1717,7 +1717,7 @@ describe("the owner talking to a person", () => {
     await engine.approve(job().id);
     await vi.advanceTimersByTimeAsync(9000); // past the boot wait
     io.sent.length = 0;
-    await engine.messagePerson(member().spec.personId!, "Please[2J check the login page");
+    await engine.messagePerson(member().spec.personId!, "Please\u001b[2J check the login page");
     expect(io.sent[io.sent.length - 1]).toEqual([member().id, "[From the owner] Please[2J check the login page"]);
   });
   it("sends nothing for an empty message", async () => {

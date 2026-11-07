@@ -46,7 +46,8 @@ export function liveSource(): OfficeSource {
     messageFloor: async (floorId, text) => {
       const s = engine.companyView();
       const who = s && floorContact(s.company, floorId);
-      if (who) await engine.messagePerson(who.id, text);
+      if (!who) throw new Error(`Nobody on ${s?.company.floors.find((f) => f.id === floorId)?.name ?? "this floor"} can get a message.`);
+      await engine.messagePerson(who.id, text);
     },
     approve: engine.approve,
     reject: engine.reject,

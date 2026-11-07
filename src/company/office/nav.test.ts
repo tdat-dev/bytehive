@@ -60,6 +60,14 @@ describe("clampLevel", () => {
     expect(clampLevel(desk, model)).toBe(desk);
     expect(clampLevel(floor, model)).toBe(floor);
   });
+  it("follows a person who moved floors", () => {
+    const moved = { ...model, floors: [{ id: "a", name: "alpha", people: [] }, { id: "b", name: "beta", people: [{ ...ana, floorId: "b" }] }] } as unknown as OfficeModel;
+    expect(clampLevel(desk, moved)).toEqual({ ...desk, floorId: "b" });
+  });
+  it("keeps the Founder off every floor", () => {
+    const top: Level = { kind: "desk", personId: "founder", floorId: null, tab: "report" };
+    expect(clampLevel(top, model)).toBe(top);
+  });
   it("falls back when a person or a floor has gone", () => {
     expect(clampLevel({ ...desk, personId: "gone" }, model)).toEqual(floor);
     expect(clampLevel({ kind: "floor", floorId: "z" }, model)).toEqual(BUILDING);

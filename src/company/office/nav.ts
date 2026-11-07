@@ -9,6 +9,8 @@ export type Level =
   | { kind: "floor"; floorId: string }
   | { kind: "desk"; personId: string; floorId: string | null; tab: DeskTab };
 
+export type DeskLevel = Extract<Level, { kind: "desk" }>;
+
 export interface Crumb { label: string; level: Level; current: boolean }
 
 export const BUILDING: Level = { kind: "building" };
@@ -18,6 +20,9 @@ export const MOVE_MS = 34;
 export const AMBIENT_MS = 125;
 
 const everyone = (m: OfficeModel): OfficePerson[] => [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)];
+
+/** A person's desk. The Founder sits on the roof, on no floor. */
+export const deskOf = (p: OfficePerson, tab: DeskTab = "terminal"): DeskLevel => ({ kind: "desk", personId: p.id, floorId: p.id === FOUNDER_ID ? null : p.floorId, tab });
 
 export function navUp(l: Level): Level {
   if (l.kind === "desk" && l.floorId) return { kind: "floor", floorId: l.floorId };
@@ -40,12 +45,16 @@ export function escapeGoesUp(o: { level: Level; terminal: boolean; dialog: boole
 export function rowTarget(row: NeedRow, m: OfficeModel): Level {
   const p = row.personId ? everyone(m).find((x) => x.id === row.personId) : undefined;
   if (!p) return BUILDING;
-  return { kind: "desk", personId: p.id, floorId: p.id === FOUNDER_ID ? null : p.floorId, tab: row.kind === "merge" ? "changes" : "terminal" };
+  return deskOf(p, row.kind === "merge" ? "changes" : "terminal");
 }
 
 /** People leave and projects close while the owner looks at them. */
 export function clampLevel(l: Level, m: OfficeModel): Level {
-  if (l.kind === "desk" && everyone(m).some((p) => p.id === l.personId)) return l;
+  const p = l.kind === "desk" ? everyone(m).find((x) => x.id === l.personId) : undefined;
+  if (l.kind === "desk" && p) {
+    const here = deskOf(p, l.tab);
+    return here.floorId === l.floorId ? l : here;
+  }
   const floorId = l.kind === "building" ? null : l.floorId;
   if (floorId && m.floors.some((f) => f.id === floorId)) return l.kind === "floor" ? l : { kind: "floor", floorId };
   return BUILDING;

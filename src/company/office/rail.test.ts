@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NeedRow } from "../needs";
 import type { OfficeModel } from "./model";
-import { BUILDING } from "./nav";
+import { BUILDING, type Level } from "./nav";
 import { createJobBox, createRail } from "./rail";
 import type { OfficeSource, Snapshot } from "./source";
 
@@ -26,10 +26,10 @@ function fake(snap: Partial<Snapshot> = {}) {
   };
   return s as typeof s & OfficeSource;
 }
-const mountRail = (s: OfficeSource, go = vi.fn()) => {
+const mountRail = (s: OfficeSource, go = vi.fn(), where?: () => Level) => {
   const el = document.createElement("div");
   document.body.appendChild(el);
-  createRail(s, go).mount(el);
+  createRail(s, go, where).mount(el);
   return { el, go };
 };
 const click = (el: HTMLElement, sel: string) => el.querySelector<HTMLElement>(sel)!.click();
@@ -75,6 +75,39 @@ describe("Needs you rail", () => {
     el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!.value = "Fewer people";
     click(el, '[data-act="reject"]');
     expect(s.reject).toHaveBeenCalledWith("J-1", "Fewer people");
+  });
+  it("clears the note once the plan went back, even with the row still there", async () => {
+    const s = fake();
+    const { el } = mountRail(s);
+    const note = () => el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!;
+    note().value = "Fewer people";
+    click(el, '[data-act="reject"]');
+    await tick();
+    expect(note().value).toBe("");
+    s.fire();
+    expect(note().value).toBe("");
+  });
+  it("keeps what was typed while the plan was going back", async () => {
+    let done = () => {};
+    const s = fake();
+    s.reject.mockImplementation(() => new Promise<void>((r) => { done = r; }));
+    const { el } = mountRail(s);
+    const note = () => el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!;
+    note().value = "Fewer people";
+    click(el, '[data-act="reject"]');
+    note().value = "Fewer people, and no QA";
+    done();
+    await tick();
+    expect(note().value).toBe("Fewer people, and no QA");
+  });
+  it("keeps the note when sending it back failed", async () => {
+    const s = fake();
+    s.reject.mockRejectedValue(new Error("offline"));
+    const { el } = mountRail(s);
+    el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!.value = "Fewer people";
+    click(el, '[data-act="reject"]');
+    await tick();
+    expect(el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!.value).toBe("Fewer people");
   });
   it("keeps a note while the rail redraws", () => {
     const s = fake();
@@ -228,11 +261,44 @@ describe("Needs you rail", () => {
     expect(el.querySelector("[onerror]")).toBeNull();
     expect(el.querySelector(".co-merge span")?.textContent).toBe(evil);
   });
-  it("has BUILDING to go to for a row with nobody", () => {
+  it("has BUILDING to go to for a row with nobody, from a floor", () => {
     const row: NeedRow = { key: "k", kind: "paused", jobId: "J-1", personId: null, title: "Paused", detail: "" };
-    const { el, go } = mountRail(fake({ model: model([row]) }));
+    const { el, go } = mountRail(fake({ model: model([row]) }), vi.fn(), () => ({ kind: "floor", floorId: "a" }));
     click(el, "[data-row]");
     expect(go).toHaveBeenCalledWith(BUILDING);
+  });
+  it("draws a title that goes nowhere as plain text, not a button", () => {
+    const row: NeedRow = { key: "k", kind: "paused", jobId: "J-1", personId: null, title: "Paused", detail: "" };
+    const { el } = mountRail(fake({ model: model([row]) }));
+    expect(el.querySelector("[data-row]")).toBeNull();
+    expect(el.querySelector(".co-paused b")?.textContent).toBe("Paused");
+  });
+  it("draws the row of the desk you are at as plain text", () => {
+    const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };
+    const s = fake({ model: model([row], { founder: { id: "founder", name: "Founder", floorId: null } as never }) });
+    let at: Level = BUILDING;
+    const { el } = mountRail(s, vi.fn(), () => at);
+    expect(el.querySelector("[data-row]")).not.toBeNull();
+    at = { kind: "desk", personId: "founder", floorId: null, tab: "terminal" };
+    s.fire();
+    expect(el.querySelector("[data-row]")).toBeNull();
+  });
+  it("leaves the rows alone when nothing about them changed, so a click in progress lands", () => {
+    const s = fake();
+    const { el } = mountRail(s);
+    const button = el.querySelector('[data-act="approve"]');
+    s.fire();
+    expect(el.querySelector('[data-act="approve"]')).toBe(button);
+  });
+  it("hears nothing more after it is disposed", () => {
+    const s = fake();
+    const el = document.createElement("div");
+    const rail = createRail(s, vi.fn());
+    rail.mount(el);
+    rail.dispose();
+    s.snap = { model: model([]), note: null, error: null };
+    s.fire();
+    expect(el.textContent).not.toContain("Nothing needs you.");
   });
 });
 
