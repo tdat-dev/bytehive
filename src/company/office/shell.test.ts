@@ -188,6 +188,21 @@ describe("tags", () => {
     expect(tag.textContent).toContain("4 people");
     expect(tag.textContent).toContain("2 need you");
   });
+  it("counts what belongs to no floor at the top, so the tags add up to the rail", async () => {
+    scene.anchors.mockReturnValue([anchor("top", "top"), anchor("bytehive", "floor"), anchor("gcare", "floor")] as never);
+    const { shell, source } = await shown();
+    expect(shell.el.querySelector('[data-tag="top"]')?.textContent).toBe("Founder 2 need you");
+    const say = (id: string) => Number(/(\d+) needs? you/.exec(shell.el.querySelector(`[data-tag="${id}"]`)?.textContent ?? "")?.[1]);
+    expect(say("top") + say("bytehive") + say("gcare")).toBe(source.snapshot(0).model!.needs.length);
+  });
+  it("says only Founder at the top when nothing waits there", async () => {
+    scene.anchors.mockReturnValue([anchor("top", "top")] as never);
+    const { shell, source } = await shown();
+    const real = source.snapshot(0).model!;
+    vi.spyOn(source, "snapshot").mockReturnValue({ model: { ...real, needs: [] }, note: null, error: null });
+    await source.approve("nothing");
+    expect(shell.el.querySelector('[data-tag="top"]')?.textContent).toBe("Founder");
+  });
   it("marks a closed floor", async () => {
     scene.anchors.mockReturnValue([anchor("oldsite", "floor")] as never);
     const { shell } = await shown();
@@ -197,7 +212,7 @@ describe("tags", () => {
     scene.anchors.mockReturnValue([anchor("top", "top")] as never);
     const { shell } = await shown();
     const tag = shell.el.querySelector<HTMLElement>('[data-tag="top"]')!;
-    expect(tag.textContent).toBe("Founder");
+    expect(tag.textContent).toContain("Founder");
     tag.click();
     expect(shell.level()).toEqual(desk("founder", null));
   });

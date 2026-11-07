@@ -76,6 +76,37 @@ describe("Needs you rail", () => {
     click(el, '[data-act="reject"]');
     expect(s.reject).toHaveBeenCalledWith("J-1", "Fewer people");
   });
+  it("asks once more before an empty note cancels the job", async () => {
+    const s = fake();
+    const { el } = mountRail(s);
+    const button = () => el.querySelector<HTMLElement>('[data-act="reject"]')!;
+    expect(button().textContent).toBe("Send back");
+    button().focus();
+    button().click();
+    expect(s.reject).not.toHaveBeenCalled();
+    expect(button().textContent).toBe("Press again to cancel the job");
+    expect(document.activeElement).toBe(button());
+    button().click();
+    expect(s.reject).toHaveBeenCalledWith("J-1", "");
+    await tick();
+    expect(button().textContent).toBe("Send back");
+  });
+  it("takes spaces for an empty note", () => {
+    const s = fake();
+    const { el } = mountRail(s);
+    el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!.value = "   ";
+    click(el, '[data-act="reject"]');
+    expect(s.reject).not.toHaveBeenCalled();
+  });
+  it("stands down when the owner starts writing a note", () => {
+    const s = fake();
+    const { el } = mountRail(s);
+    click(el, '[data-act="reject"]');
+    const note = el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!;
+    note.value = "F";
+    note.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(el.querySelector('[data-act="reject"]')?.textContent).toBe("Send back");
+  });
   it("clears the note once the plan went back, even with the row still there", async () => {
     const s = fake();
     const { el } = mountRail(s);

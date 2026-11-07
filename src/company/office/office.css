@@ -3,7 +3,7 @@
  * tokens; the --ib-* names exist only in the Inbox, so every one has the dock's token behind it. */
 .co-rail, .co-box { display: flex; flex-direction: column; gap: 10px; color: var(--ib-ink, var(--text)); }
 .co-rail h3 { margin: 0; font-size: 13px; font-weight: 600; display: flex; align-items: baseline; gap: 6px; }
-.co-rail h3:first-of-type { color: var(--ib-needs, var(--amber)); }
+.co-rail h3:has(.co-n:not(:empty)) { color: var(--ib-needs, var(--amber)); }
 .co-rail ul { list-style: none; margin: 0; padding: 0; }
 .co-n { font-size: 12px; font-weight: 600; color: var(--ib-needs, var(--amber)); }
 .co-n:empty { display: none; }
@@ -12,6 +12,9 @@
 .co-give textarea, .co-note { resize: vertical; font: inherit; font-size: 12.5px; color: var(--ib-ink, var(--text)); background: var(--surface-0); border: 1px solid var(--ib-line, var(--line-strong)); border-radius: var(--r1); padding: 8px 10px; }
 .co-give textarea:focus-visible, .co-note:focus-visible { border-color: var(--ib-needs, var(--amber)); }
 .co-note { margin-top: 4px; }
+.co-note::placeholder, .co-give textarea::placeholder { color: var(--ib-ink-3, var(--muted)); opacity: 1; }
+/* Stop is not the row's main action: the dock's first-child accent is for that. */
+.co-jobs .kb-tool:first-child:not(:hover) { border-color: var(--line-strong); color: var(--text-2); }
 .co-send { align-self: flex-end; height: 28px; padding: 0 14px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 600; }
 .co-send[aria-disabled="true"], .co-row .kb-tool[aria-disabled="true"] { opacity: .5; cursor: default; }
 .co-error { margin: 0; padding: 8px 10px; border-radius: var(--r1); border: 1px solid var(--err); color: var(--err); font-size: 12px; line-height: 1.5; }
@@ -110,7 +113,7 @@ button.of-tag:hover { border-color: var(--of-ink); }
 
 /* A Desk: the column takes the queue's place, and the rest is the app. */
 body.inbox-ui.office-desk { --ib-q: var(--office-desk-w); --ib-dock-h: 16px; }
-body.inbox-ui.office-desk .app { grid-template-rows: var(--office-bar-h) 1fr; }
+body.inbox-ui.office-desk .app { grid-template-rows: var(--office-bar-h) 1fr; background: var(--ib-ground); }
 body.inbox-ui.office-desk .topbar { padding-left: calc(var(--office-desk-w) + 8px); }
 body.inbox-ui.office-desk .tb-left, body.inbox-ui.office-desk .inbox-queue, body.inbox-ui.office-desk .inbox-dock, body.inbox-ui.office-desk .inbox-head { display: none; }
 .of-tabs { display: flex; align-items: center; gap: 2px; }
@@ -119,5 +122,14 @@ body.inbox-ui.office-desk .tb-left, body.inbox-ui.office-desk .inbox-queue, body
 .of-tab[aria-selected="true"] { background: var(--ib-raise, var(--surface-2)); color: var(--ib-ink, var(--text)); }
 .of-tab:focus-visible { outline: 2px solid var(--ib-needs, var(--amber)); outline-offset: 2px; }
 
-@media (max-width: 1000px) { :root { --office-rail-w: 280px; } }
+@media (max-width: 1000px) {
+  :root { --office-rail-w: 280px; }
+  /* Names only: with a role each, the tags climb over the floor above. */
+  .of-tag-person span { display: none; }
+}
+/* No room over the scene: the box would hide the lowest floor, so it stands under the rail. */
+@media (max-width: 1000px), (max-height: 640px) {
+  .of-job, .of-msg { right: 0; bottom: 0; left: auto; width: var(--office-rail-w); border-width: 1px 0 0; border-radius: 0; }
+  .of:not([data-level="desk"]) .of-rail { padding-bottom: 176px; }
+}
 @media (prefers-reduced-motion: reduce) { .of { transition: none; } }

@@ -10,6 +10,7 @@ import type { OfficeSource } from "./source";
 const RAISE_BY = 1_000_000;
 const ASK_HINT = "Add marketing to gcare";
 const WHY_HINT = "Why send it back? Leave empty to cancel the job.";
+const CANCEL_ASK = "Press again to cancel the job";
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** A failure as words: the engine rejects with Errors, strings or backend objects. */
@@ -44,10 +45,10 @@ const jobHtml = (j: OfficeJob, busy: Busy) => {
   return `<li class="co-row"><b>${esc(j.title)}</b><span>${esc(j.id)}. ${esc(j.label)}, ${tokens}.</span><div>${actButton(busy, "stop", "Stop", j.title, j.id)}</div></li>`;
 };
 
-function rowHtml(r: NeedRow, busy: Busy, goes: boolean): string {
+function rowHtml(r: NeedRow, busy: Busy, goes: boolean, armed: boolean): string {
   const btn = (act: string, label: string, extra = "") => actButton(busy, act, label, r.title, r.jobId, extra);
   const buttons =
-    r.kind === "plan" ? btn("approve", "Approve") + btn("reject", "Send back")
+    r.kind === "plan" ? btn("approve", "Approve") + btn("reject", armed ? CANCEL_ASK : "Send back")
     : r.kind === "paused" ? btn("raise", "Add 1M tokens")
     : r.kind === "merge" ? btn("finish", "Mark done")
     : r.standing ? btn("dismiss", "Dismiss", ` data-key="${esc(r.key)}"`) : "";
@@ -73,6 +74,8 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
   const pending = new Set<string>();
   /** Notes being typed, by job: a redraw replaces the rows. */
   const notes = new Map<string, string>();
+  /** Jobs one press from being cancelled: with no note, Send back ends the job for good. */
+  const armed = new Set<string>();
   let failure = "";
   /** What each list holds now. A redraw that changes nothing leaves it alone: replacing a
    *  row between a mouse press and its release loses the click. */
@@ -116,7 +119,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
     count.textContent = model.needs.length ? String(model.needs.length) : "";
     const here = where();
     const m = model;
-    put(list, m.needs.map((r) => rowHtml(r, busy, !sameLevel(rowTarget(r, m), here))).join("") || `<li class="co-none">Nothing needs you.</li>`);
+    put(list, m.needs.map((r) => rowHtml(r, busy, !sameLevel(rowTarget(r, m), here), !!r.jobId && armed.has(r.jobId))).join("") || `<li class="co-none">Nothing needs you.</li>`);
     put(jobs, m.jobs.map((j) => jobHtml(j, busy)).join("") || `<li class="co-none">No job is running.</li>`);
 
     const live = new Set<string>();
@@ -160,6 +163,9 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
         `<h3 id="coNeedsH">Needs you <span class="co-n" data-count></span></h3>` +
         `<ul class="co-needs" aria-labelledby="coNeedsH" data-needs></ul>` +
         `<h3 id="coJobsH">Jobs</h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
+      el.addEventListener("input", (e) => {
+        if (armed.delete((e.target as HTMLElement).dataset.note ?? "")) draw();
+      });
       const noteOf = (job: string) => [...el.querySelectorAll<HTMLTextAreaElement>("[data-note]")].find((n) => n.dataset.note === job);
       el.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
@@ -171,6 +177,12 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
           else if (kind === "approve") void act(`approve:${job}`, () => source.approve(job));
           else if (kind === "reject") {
             const words = noteOf(job)?.value ?? "";
+            if (!words.trim() && !armed.has(job)) {
+              armed.add(job);
+              draw();
+              return;
+            }
+            armed.delete(job);
             void act(`reject:${job}`, () => source.reject(job, words)).then((ok) => {
               // A redraw replaced the box, so read it again, and keep words typed since.
               const box = noteOf(job);

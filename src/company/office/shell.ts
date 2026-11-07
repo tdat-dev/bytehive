@@ -44,6 +44,7 @@ const MOOD: Partial<Record<OfficePerson["state"], string>> = { needs: "needs you
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const sameLevel = (a: Level, b: Level) => JSON.stringify(a) === JSON.stringify(b);
 const people = (n: number) => (n === 1 ? "1 person" : `${n} people`);
+const needYou = (n: number) => (n ? ` <em>${n === 1 ? "1 needs you" : `${n} need you`}</em>` : "");
 const contactOf = (f: OfficeFloor): OfficePerson | null => f.people.find((p) => p.id === f.lead) ?? f.people[0] ?? null;
 const personIn = (m: OfficeModel | null, id: string): OfficePerson | undefined =>
   (m?.founder?.id === id ? m.founder : m?.floors.flatMap((f) => f.people).find((p) => p.id === id)) ?? undefined;
@@ -74,9 +75,8 @@ export function settleTags(tags: Box[], bubbles: Box[], edge = 0): void {
 interface Tag { key: string; id: string; kind: Anchor["kind"]; html: string; label: string; needs: boolean; to?: Level; floor?: string }
 
 function floorTag(f: OfficeFloor): Tag {
-  const needs = f.needs ? ` <em>${f.needs === 1 ? "1 needs you" : `${f.needs} need you`}</em>` : "";
   const closed = f.open ? "" : " <span>closed</span>";
-  return { key: `floor:${f.id}`, id: f.id, kind: "floor", html: `<b>${esc(f.name)}</b> <span>${people(f.people.length)}</span>${needs}${closed}`, label: f.name, needs: f.needs > 0, to: { kind: "floor", floorId: f.id } };
+  return { key: `floor:${f.id}`, id: f.id, kind: "floor", html: `<b>${esc(f.name)}</b> <span>${people(f.people.length)}</span>${needYou(f.needs)}${closed}`, label: f.name, needs: f.needs > 0, to: { kind: "floor", floorId: f.id } };
 }
 
 function personTag(p: OfficePerson): Tag {
@@ -88,7 +88,10 @@ function personTag(p: OfficePerson): Tag {
 
 function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean): Tag[] {
   if (l.kind === "building") {
-    const top: Tag[] = m.founder ? [{ key: "top:top", id: "top", kind: "top", html: "Founder", label: "", needs: false, to: deskOf(m.founder) }] : [];
+    // A plan or a paused Job is nobody's on a floor: without this the tags would not add up to the rail.
+    const here = new Set(m.floors.flatMap((f) => f.people.map((p) => p.id)));
+    const loose = m.needs.filter((r) => !r.personId || !here.has(r.personId)).length;
+    const top: Tag[] = m.founder ? [{ key: "top:top", id: "top", kind: "top", html: `Founder${needYou(loose)}`, label: "", needs: loose > 0, to: deskOf(m.founder) }] : [];
     return [...top, ...m.floors.map(floorTag)];
   }
   if (l.kind === "desk") return [];
