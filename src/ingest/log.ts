@@ -72,7 +72,8 @@ export class IngestLog {
   }
 
   stats(): LogStats {
-    const today = this.today();
+    // A held message sent on from the panel is the same message, not a second one.
+    const today = this.today().filter((e) => e.source !== "retry");
     const out: LogStats = { messages: today.length, cacheHits: 0, blocked: 0, calls: 0, tokens: 0, saved: 0 };
     for (const e of today) {
       if (e.path === "cache-hit") out.cacheHits += 1;

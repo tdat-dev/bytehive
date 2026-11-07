@@ -1,11 +1,12 @@
 /** Wire the gate to the app: one instance per project, files under
  *  `.bytehive/`, settings from prefs, and the classifier from Rust. */
+import { workspaces } from "../appstate";
 import { showDelegationToast } from "../delegation";
 import { fsCreateFile, fsReadFile, fsWriteFile, sendMessage } from "../ipc";
 import { getPrefs, onPrefs } from "../prefs";
 import { pricesFingerprint } from "../pricing";
 import { taskOf } from "../tasks";
-import { BlockedStore, type BlockedList } from "./blocked";
+import { BlockedStore, liveTarget, type BlockedList } from "./blocked";
 import { ResultCache } from "./cache";
 import { Gate } from "./gate";
 import { sha256 } from "./hash";
@@ -158,11 +159,10 @@ export async function sendGated(dir: string, req: Request): Promise<Outcome> {
     list.push({ ...req, at: Date.now(), result: out.result, cached: out.kind === "cache-hit" });
     recents.set(dir, list.slice(-RECENT_MAX));
     if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], resultLine(out.result).replace("[ingest] ", ""));
-    changed();
   } else if (out.kind === "blocked") {
     if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], "Held back. Open Ingest to send it anyway.");
-    changed();
   }
+  changed();
   return out;
 }
 
@@ -181,10 +181,14 @@ export const blockedRestore = (dir: string, entry: BlockedEntry): Promise<void> 
 /** Deliver a held message as it was written, past the gate. It stays on the
  *  list unless it really reached the agent. */
 export async function blockedResend(dir: string, entry: BlockedEntry): Promise<boolean> {
-  const sent = await sendMessage(entry.to, entry.text).catch(() => false);
+  const ws = [...workspaces.values()].find((w) => w.dir === dir);
+  const panes = ws ? [...ws.panes.values()].map((p) => ({ id: p.id, name: p.spec.name, running: p.running })) : [];
+  const to = liveTarget(panes, entry);
+  if (!to) return false;
+  const sent = await sendMessage(to, entry.text).catch(() => false);
   if (!sent) return false;
   await storeFor(dir).remove(entry.id);
-  void logFor(dir).add({ ts: Date.now(), hash: entry.hash, source: "retry", from: entry.from, to: entry.to, path: "pass", ms: { total: 0 } });
+  void logFor(dir).add({ ts: Date.now(), hash: entry.hash, source: "retry", from: entry.from, to, path: "pass", ms: { total: 0 } });
   return true;
 }
 

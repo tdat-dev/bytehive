@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BlockedStore } from "./blocked";
+import { BlockedStore, liveTarget } from "./blocked";
 import type { BlockedEntry } from "./types";
 
 const entry = (id: string, at = 1): BlockedEntry => ({ id, hash: "h", source: "fleet", to: "a1", text: id, reason: "smalltalk", at });
@@ -13,6 +13,23 @@ function memory(start: string | null = null) {
     },
   };
 }
+
+describe("liveTarget", () => {
+  const held = { ...entry("x"), to: "old-id", toName: "Bob" };
+
+  it("uses the pane it was meant for while that pane runs", () => {
+    expect(liveTarget([{ id: "old-id", name: "Bob", running: true }], held)).toBe("old-id");
+  });
+
+  it("finds the agent by name after a restart gave it a new pane", () => {
+    expect(liveTarget([{ id: "new-id", name: "Bob", running: true }], held)).toBe("new-id");
+  });
+
+  it("gives up on a stopped agent, so nothing claims a delivery", () => {
+    expect(liveTarget([{ id: "old-id", name: "Bob", running: false }], held)).toBeNull();
+    expect(liveTarget([{ id: "other", name: "Ana", running: true }], held)).toBeNull();
+  });
+});
 
 describe("BlockedStore", () => {
   it("starts empty when there is no file", async () => {
@@ -40,6 +57,13 @@ describe("BlockedStore", () => {
     const gone = await s.remove("old");
     await s.add(gone as BlockedEntry);
     expect((await s.list()).entries.map((e) => e.id)).toEqual(["old", "new"]);
+  });
+
+  it("adding an entry it already holds does not double it", async () => {
+    const s = new BlockedStore(memory());
+    await s.add(entry("a"));
+    await s.add(entry("a"));
+    expect((await s.list()).entries).toHaveLength(1);
   });
 
   it("says so when the file is damaged instead of showing an empty list", async () => {

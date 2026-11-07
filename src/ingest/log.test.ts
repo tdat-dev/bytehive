@@ -39,4 +39,11 @@ describe("IngestLog", () => {
     expect(log.stats().messages).toBe(2);
     expect(log.stats().blocked).toBe(1);
   });
+
+  it("does not count a message twice when it is sent again from the panel", async () => {
+    const log = new IngestLog({ read: async () => null, write: async () => {} }, { delayMs: 0, now: () => 1_000 });
+    await log.add({ ts: 1_000, hash: "h", source: "fleet", to: "a", path: "blocked", ms: { total: 0 } });
+    await log.add({ ts: 1_000, hash: "h", source: "retry", to: "a", path: "pass", ms: { total: 0 } });
+    expect(log.stats()).toMatchObject({ messages: 1, blocked: 1 });
+  });
 });

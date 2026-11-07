@@ -16,6 +16,14 @@ export interface BlockedList {
 
 const CAP = 100;
 
+/** The pane to deliver a held message to now: the one it was meant for, or the
+ *  same agent under a new pane after a restart. Null when that agent isn't
+ *  running, so nothing claims a delivery that can't happen. */
+export function liveTarget(panes: Array<{ id: string; name: string; running: boolean }>, entry: BlockedEntry): string | null {
+  const running = panes.filter((p) => p.running);
+  return (running.find((p) => p.id === entry.to) ?? running.find((p) => p.name === entry.toName))?.id ?? null;
+}
+
 export class BlockedStore {
   private tail: Promise<unknown> = Promise.resolve();
 
@@ -50,7 +58,7 @@ export class BlockedStore {
   add(entry: BlockedEntry): Promise<void> {
     return this.turn(async () => {
       const { entries } = await this.read();
-      await this.write([...entries, entry].sort((a, b) => a.at - b.at));
+      await this.write([...entries.filter((e) => e.id !== entry.id), entry].sort((a, b) => a.at - b.at));
     });
   }
 
