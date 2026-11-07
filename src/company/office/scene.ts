@@ -6,11 +6,11 @@ import {
   Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Object3D,
 } from "three";
 import { BOARD_EDGE, FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt } from "./build";
-import { FOUNDER_DESK, FOV, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
+import { FOUNDER_DESK, FOV, VIEW, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
 import { sceneKey, type OfficeFloor, type OfficeModel, type OfficePerson, type OfficeState } from "./model";
 import { BUILDING, frameDelay, type Level } from "./nav";
 import { OFFICE } from "./palette";
-import { animate, isPerson, planeAt, pose, spotOf, type PlaneSpot } from "./people";
+import { MARK_UNITS, animate, isPerson, planeAt, spotOf, type PlaneSpot } from "./people";
 
 export interface SceneOptions {
   reducedMotion: boolean; // read at every use: the owner can change it while the scene runs
@@ -40,11 +40,15 @@ const MAX_DPR = 1.5;
 const SHADOW_MAP = 1024;
 const PERSON_BOX = { w: 0.9, d: 0.9 };
 /** A pick box reaches this far over the head. */
-const HEAD_ROOM = 0.4;
+const HEAD_ROOM = 0.5;
 const BUBBLE_BOX = { w: 1.1, h: 1 };
+/** How tall a mark over someone who needs you stands on screen. */
+const MARK_PX = 36;
+const HAZE_FROM = 75;
+const HAZE_OVER = 60;
 const TAG_Y = 1.5;
 const SUN = new Vector3(0.25, 0.45, 1).normalize();
-const VIEWER = new Vector3(1, 0.165, 0.84).normalize();
+const VIEWER = new Vector3(VIEW.x, VIEW.y, VIEW.z).normalize();
 
 export const goodRenderer = (name: string): boolean => !/swiftshader|llvmpipe|basic render|software/i.test(name);
 
@@ -91,7 +95,13 @@ const sameShot = (a: Shot, b: Shot) => (Object.keys(a) as Array<keyof Shot>).eve
 
 /** What a floor's meshes depend on. A floor whose key stands still is left alone. */
 const lookKey = (p: OfficePerson) => [p.id, p.state, p.seat, p.rank, p.shirt, p.hair, p.prop, p.cli];
-const floorKey = (f: OfficeFloor, spot: FloorSpot) => JSON.stringify([spot.y, f.lit, f.board, f.papers, f.lead, f.people.map(lookKey), spot.desks]);
+const floorKey = (f: OfficeFloor, spot: FloorSpot, marked: ReadonlySet<string>) => JSON.stringify([spot.y, f.lit, f.board, f.papers, f.lead, f.people.map(lookKey), spot.desks, f.people.filter((p) => marked.has(p.id)).map((p) => p.id)]);
+
+/** Everyone a Needs you row points at, and everyone asking something. */
+const markedIn = (m: OfficeModel): Set<string> => new Set([
+  ...m.needs.flatMap((r) => (r.personId ? [r.personId] : [])),
+  ...[...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].filter((p) => p.state === "needs").map((p) => p.id),
+]);
 
 export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeScene {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "low-power", preserveDrawingBuffer: false });
@@ -104,14 +114,15 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   renderer.shadowMap.autoUpdate = false;
 
   const scene = new Scene();
-  scene.background = new Color(OFFICE.sky);
-  const camera = new PerspectiveCamera(FOV, 1, 1, 800);
-  scene.add(new HemisphereLight(0xe4ebf5, 0x343a48, 2.8));
-  const sun = new DirectionalLight(0xffe2b0, 2);
+  scene.background = new Color(OFFICE.skyTop);
+  const camera = new PerspectiveCamera(FOV, 1, 1, 900);
+  scene.add(new HemisphereLight(0xb9c8f0, 0x4a3a34, 1.1));
+  const sun = new DirectionalLight(0xffe2c0, 1.25);
   sun.castShadow = true;
   sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.03;
+  sun.shadow.intensity = 0.62;
   scene.add(sun, sun.target);
 
   const clock = o.clock ?? Date.now;
@@ -140,6 +151,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   let shot: Shot | null = null;
   let tween: Tween | null = null;
   let anyoneWorking = false;
+  let marked: ReadonlySet<string> = new Set();
 
   let visible = true;
   let disposed = false;
@@ -218,6 +230,17 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     camera.updateProjectionMatrix();
     camera.lookAt(s.tx, s.ty, s.tz);
     camera.updateMatrixWorld();
+    sizeMarks();
+  }
+
+  /** A mark is the same size on screen at every level, the far ones most of all. */
+  function sizeMarks(): void {
+    if (!shot) return;
+    const dist = Math.hypot(shot.px - shot.tx, shot.py - shot.ty, shot.pz - shot.tz);
+    const perPixel = (2 * Math.tan((shot.fov * Math.PI) / 360) * dist) / height;
+    for (const who of cast) who.getObjectByName("bubble")?.scale.setScalar((MARK_PX * perPixel) / MARK_UNITS);
+    // The glow of a lit room is for the far view: close to, it would only grey the picture.
+    if (kit.hazeLight) kit.hazeLight.opacity = Math.min(1, Math.max(0, (dist - HAZE_FROM) / HAZE_OVER));
   }
 
   /** Everything that follows the clock. Nothing kept here matters: it is all from time. */
@@ -297,7 +320,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     const s = spotOf(d, state);
     const h = s.head + HEAD_ROOM;
     proxy(s.x, y + h / 2, s.z, PERSON_BOX.w, h, PERSON_BOX.d, data);
-    if (pose(state, 0, 0).bubble) proxy(s.x, y + s.bubble, s.z, BUBBLE_BOX.w, BUBBLE_BOX.h, BUBBLE_BOX.w, { ...data, over: true });
+    if (marked.has(data.personId)) proxy(s.x, y + s.bubble + BUBBLE_BOX.h / 2, s.z, BUBBLE_BOX.w, BUBBLE_BOX.h, BUBBLE_BOX.w, { ...data, over: true });
   }
 
   const stateOf = (id: string): OfficeState => (model?.founder?.id === id ? model.founder : model?.floors.flatMap((f) => f.people).find((p) => p.id === id))?.state ?? "stopped";
@@ -325,6 +348,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     model = m;
     const t = towerLayout(m);
     tower = t;
+    marked = markedIn(m);
     let rebuilt = false;
 
     for (const [id, built] of floors) {
@@ -335,24 +359,25 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     }
     m.floors.forEach((f, i) => {
       const spot = t.floors[i];
-      const k = floorKey(f, spot);
+      const k = floorKey(f, spot, marked);
       const built = floors.get(f.id);
       if (built?.key === k) return;
       if (built) drop(built.group);
-      const group = buildFloor(f, spot, kit);
+      const group = buildFloor(f, spot, kit, marked);
       scene.add(group);
       floors.set(f.id, { key: k, group });
       rebuilt = true;
     });
-    const topKey = JSON.stringify([t.roofY, t.floors.map((f) => f.y), m.founder && lookKey(m.founder)]);
+    const topKey = JSON.stringify([t.roofY, t.floors.map((f) => f.y), m.founder && lookKey(m.founder), m.founder && marked.has(m.founder.id)]);
     if (top?.key !== topKey) {
       if (top) drop(top.group);
-      top = { key: topKey, group: buildTop(m, t, kit) };
+      top = { key: topKey, group: buildTop(m, t, kit, marked) };
       scene.add(top.group);
       rebuilt = true;
     }
 
     cast = [...floors.values(), ...(top ? [top] : [])].flatMap(({ group }) => group.children.filter(isPerson));
+    sizeMarks();
     placeProxies(m, t);
     kit.groundLight.visible = m.floors.some((f) => f.lit);
     anyoneWorking = [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].some((p) => p.state === "working");
@@ -397,14 +422,14 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   }
 
   /** A name goes over the head, and over the bubble when there is one: that is what says it needs you. */
-  const tagHeight = (s: { head: number; bubble: number }, state: OfficeState) => (pose(state, 0, 0).bubble ? s.bubble + BUBBLE_BOX.h / 2 : s.head + HEAD_ROOM);
+  const tagHeight = (s: { head: number; bubble: number }, id: string) => (marked.has(id) ? s.bubble + BUBBLE_BOX.h : s.head + HEAD_ROOM);
 
   function anchors(): Anchor[] {
     if (!tower || !model) return [];
     const at = (id: string, kind: Anchor["kind"], x: number, y: number, z: number): Anchor => ({ id, kind, ...cssPoint(new Vector3(x, y, z).project(camera), width, height) });
     const someone = (id: string, s: { x: number; z: number; head: number; bubble: number }, y: number): Anchor => {
-      const a = at(id, "person", s.x, y + tagHeight(s, stateOf(id)), s.z);
-      if (!pose(stateOf(id), 0, 0).bubble) return a;
+      const a = at(id, "person", s.x, y + tagHeight(s, id), s.z);
+      if (!marked.has(id)) return a;
       return { ...a, clear: at(id, "person", s.x, y + s.head + HEAD_ROOM, s.z).y - a.y };
     };
     const out = tower.floors.flatMap((spot) => [

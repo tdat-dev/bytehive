@@ -7,10 +7,10 @@ import {
   type Material, type Object3D,
 } from "three";
 import type { Kit } from "./build";
-import { DESK_TOP, box, merged, moved, tint } from "./geometry";
+import { DESK_TOP, box, hashOf, merged, moved, soft, tint } from "./geometry";
 import { FLIGHT_MS, chairSpot, flightPoint, type Seat, type Tower } from "./layout";
 import type { Flight, OfficeFloor, OfficePerson, OfficeState } from "./model";
-import { OFFICE } from "./palette";
+import { BEADS, OFFICE } from "./palette";
 
 export interface Pose {
   sit: number;        // 0 standing, 1 seated
@@ -42,9 +42,9 @@ export function pose(state: OfficeState, t: number, seat: number): Pose {
 
 const SIT_HIP = 0.6;
 const STAND_HIP = 0.7;
-const HEAD_UP = 0.92;
-const HEAD_R = 0.34;
-const SHOULDER = { x: 0.31, y: 0.62 };
+const HEAD_UP = 0.98;
+const HEAD_R = 0.41;
+const SHOULDER = { x: 0.3, y: 0.56 };
 const HAND = -0.54;
 /** Arms reach for the desk sitting down, and hang on their feet. */
 const ARM_SIT = 1.02;
@@ -60,8 +60,7 @@ const stepOf = (rot: number) => (Math.cos(rot) > 0 ? STEP.back : STEP.front);
 const VIEW_YAW = Math.atan2(1, 0.84);
 /** Facing the viewer, with -z as forward. */
 const FACE_VIEWER = VIEW_YAW + Math.PI;
-const BUBBLE_GAP = 0.52;
-const BUBBLE_SCALE = 1.3;
+const BUBBLE_GAP = 0.12;
 const INK = "#14161c";
 const CARD = "#f6f3ec";
 const TROUSERS = "#2b2f3a";
@@ -80,23 +79,47 @@ export function spotOf(d: Seat, state: OfficeState): { x: number; z: number; hea
 
 /* ---- the body ---- */
 
+/** A person's look that comes from no setting, the same every time for the same id. */
+const beadOf = (id: string): string => BEADS[hashOf(id) % BEADS.length];
+
+const dome = (hex: string, tip = 0.32) => tint(new SphereGeometry(HEAD_R + 0.018, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2), hex).rotateX(tip);
+
+/** Six kinds of hair. All of them keep clear of the face, which is on -z. */
+const HAIR: Array<(hex: string) => BufferGeometry[]> = [
+  (hex) => [dome(hex)],
+  (hex) => [dome(hex), moved(tint(new SphereGeometry(0.19, 12, 8), hex).scale(1.5, 0.6, 1), -0.13, 0.31, -0.25)],
+  (hex) => [dome(hex), moved(tint(new SphereGeometry(0.17, 12, 9), hex), 0, 0.42, 0.24)],
+  (hex) => [moved(tint(new SphereGeometry(HEAD_R + 0.1, 18, 12), hex), 0, 0.1, 0.1), ...[[-0.38, 0.28, -0.08], [0.38, 0.28, -0.08], [-0.18, 0.46, -0.14], [0.18, 0.46, -0.14]].map(([x, y, z]) => moved(tint(new SphereGeometry(0.15, 10, 7), hex), x, y, z))],
+  (hex) => [dome(hex, 0.5), tint(new SphereGeometry(HEAD_R + 0.03, 20, 9, 0, Math.PI * 2, Math.PI / 2 - 0.1, Math.PI / 2.6), hex).rotateX(0.46)],
+  (hex) => [dome(hex, 0.68), tint(new SphereGeometry(HEAD_R + 0.014, 18, 7, 0, Math.PI * 2, Math.PI * 0.68, Math.PI * 0.32), hex).rotateX(0.2)],
+];
+
 function torsoGeometry(p: OfficePerson): BufferGeometry {
-  const hair = tint(new SphereGeometry(HEAD_R + 0.015, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), p.hair).rotateX(0.32);
-  const smile = tint(new TorusGeometry(0.07, 0.013, 6, 10, Math.PI), INK).rotateZ(Math.PI);
+  const skin = beadOf(p.id);
+  const hash = hashOf(p.id);
+  const smile = tint(new TorusGeometry(0.075, 0.014, 6, 10, Math.PI), INK).rotateZ(Math.PI);
+  const cheek = () => tint(new SphereGeometry(0.06, 8, 6), "#e88f7a").scale(1, 0.7, 0.4);
+  const face = HEAD_R + 0.002;
+  const collar = p.rank === "staff" ? new Color(p.shirt).lerp(new Color("#ffffff"), 0.4) : new Color("#f4efe6");
   return merged([
-    moved(tint(new CapsuleGeometry(0.24, 0.34, 6, 14), p.shirt), 0, 0.38, 0),
-    moved(tint(new SphereGeometry(HEAD_R, 24, 18), OFFICE.bead), 0, HEAD_UP, 0),
-    moved(hair, 0, HEAD_UP, 0),
-    moved(tint(new SphereGeometry(0.04, 8, 6), INK), -0.12, HEAD_UP + 0.05, -0.31),
-    moved(tint(new SphereGeometry(0.04, 8, 6), INK), 0.12, HEAD_UP + 0.05, -0.31),
-    moved(smile, 0, HEAD_UP - 0.05, -0.325),
-    moved(box(0.22, 0.24, 0.015, CARD), 0, BADGE.y, -BADGE.z + 0.012),
+    moved(tint(new CapsuleGeometry(0.255, 0.22, 6, 14), p.shirt), 0, 0.32, 0),
+    moved(soft(0.3, 0.09, 0.24, 0.04, `#${collar.getHexString()}`), 0, 0.57, -0.03),
+    ...(p.rank !== "staff" ? [moved(box(0.07, 0.3, 0.02, "#3a4670"), 0, 0.38, -0.255)] : []),
+    moved(tint(new SphereGeometry(HEAD_R, 22, 16), skin), 0, HEAD_UP, 0),
+    ...HAIR[hash % HAIR.length](p.hair).map((g) => moved(g, 0, HEAD_UP, 0)),
+    moved(tint(new SphereGeometry(0.048, 8, 6), INK), -0.14, HEAD_UP + 0.06, -face + 0.04),
+    moved(tint(new SphereGeometry(0.048, 8, 6), INK), 0.14, HEAD_UP + 0.06, -face + 0.04),
+    moved(smile, 0, HEAD_UP - 0.06, -face + 0.014),
+    moved(cheek(), -0.23, HEAD_UP - 0.04, -face + 0.09),
+    moved(cheek(), 0.23, HEAD_UP - 0.04, -face + 0.09),
+    moved(box(0.22, 0.24, 0.015, CARD), 0.0, BADGE.y, -BADGE.z + 0.012),
   ]);
 }
 
 const legsGeometry = (): BufferGeometry => {
-  const leg = tint(new CapsuleGeometry(0.125, 0.47, 4, 10), TROUSERS);
-  return merged([moved(leg, -0.135, -0.345, 0), moved(leg, 0.135, -0.345, 0)]);
+  const leg = tint(new CapsuleGeometry(0.125, 0.4, 4, 10), TROUSERS);
+  const shoe = soft(0.22, 0.13, 0.34, 0.06, "#e8e4da");
+  return merged([moved(leg, -0.135, -0.3, 0), moved(leg, 0.135, -0.3, 0), moved(shoe, -0.135, -0.6, -0.06), moved(shoe, 0.135, -0.6, -0.06)]);
 };
 
 /** What a prop looks like held out at the desk, set into the arm that swings it. */
@@ -112,7 +135,7 @@ function clipboard(): BufferGeometry {
 
 function megaphone(): BufferGeometry {
   const cone = tint(new ConeGeometry(0.15, 0.34, 14), OFFICE.paper).rotateX(Math.PI / 2);
-  const ring = tint(new TorusGeometry(0.15, 0.025, 6, 16), OFFICE.honey);
+  const ring = tint(new TorusGeometry(0.15, 0.025, 6, 16), OFFICE.steel);
   return inHand(merged([moved(cone, 0, 0.04, -0.14), moved(ring, 0, 0.04, -0.31)]));
 }
 
@@ -136,29 +159,33 @@ const IN_HAND = new Map<string, { hand: "L" | "R"; make: () => BufferGeometry }>
   ["megaphone", { hand: "R", make: megaphone }],
   ["magnifier", { hand: "R", make: magnifier }],
   ["pen", { hand: "R", make: () => writer(OFFICE.steel, OFFICE.noteDoing) }],
-  ["pencil", { hand: "R", make: () => writer(OFFICE.honey, INK) }],
+  ["pencil", { hand: "R", make: () => writer("#c4605a", INK) }],
 ]);
 
 function armGeometry(p: OfficePerson, hand: "L" | "R"): BufferGeometry {
   const parts = [
-    moved(tint(new CapsuleGeometry(0.09, 0.34, 4, 10), p.shirt), 0, -0.26, 0),
-    moved(tint(new SphereGeometry(0.095, 10, 8), OFFICE.bead), 0, HAND + 0.02, 0),
+    moved(tint(new CapsuleGeometry(0.085, 0.34, 4, 10), p.shirt), 0, -0.26, 0),
+    moved(tint(new SphereGeometry(0.098, 10, 8), beadOf(p.id)), 0, HAND + 0.02, 0),
   ];
-  if (hand === "L" && p.rank === "lead") parts.push(moved(tint(new CylinderGeometry(0.1, 0.1, 0.07, 14), OFFICE.honey), 0, -0.17, 0));
+  if (hand === "L" && p.rank === "lead") parts.push(moved(tint(new CylinderGeometry(0.1, 0.1, 0.07, 14), OFFICE.paper), 0, -0.17, 0));
   const held = IN_HAND.get(p.prop);
   if (held?.hand === hand) parts.push(held.make());
   return merged(parts);
 }
 
-/** A honey pill with a dark mark and a small tail: the one thing over anyone's head. */
+/** The honey mark over someone who needs you, its foot at the origin and a dark edge all
+ *  round, so it holds against a lit room as well as the sky. About one unit tall. */
 function bubbleGeometry(): BufferGeometry {
-  const pill = tint(new CapsuleGeometry(0.27, 0.34, 6, 20), OFFICE.honey).rotateZ(Math.PI / 2).scale(1, 1, 0.4);
-  const tail = tint(new ConeGeometry(0.13, 0.24, 4), OFFICE.honey).rotateX(Math.PI);
+  const pillAt = 0.62;
+  const pill = (r: number, hex: string) => tint(new CapsuleGeometry(r, 0.34, 6, 20), hex).rotateZ(Math.PI / 2).scale(1, 1, 0.4);
+  const tail = (r: number, hex: string) => tint(new ConeGeometry(r, r * 1.9, 4), hex).rotateX(Math.PI);
   return merged([
-    moved(tail, 0, -0.32, 0),
-    pill,
-    moved(box(0.085, 0.24, 0.02, INK), 0, 0.06, 0.12),
-    moved(tint(new SphereGeometry(0.056, 12, 8), INK), 0, -0.15, 0.12),
+    moved(tail(0.19, INK), 0, 0.2, 0),
+    moved(pill(0.34, INK), 0, pillAt, 0),
+    moved(tail(0.13, OFFICE.honey), 0, 0.24, 0),
+    moved(pill(0.27, OFFICE.honey), 0, pillAt, 0),
+    moved(box(0.085, 0.24, 0.02, INK), 0, pillAt + 0.06, 0.12),
+    moved(tint(new SphereGeometry(0.056, 12, 8), INK), 0, pillAt - 0.15, 0.12),
   ]);
 }
 
@@ -174,8 +201,12 @@ interface Parts { body: Object3D; trunk: Object3D; legs: Object3D; armL: Object3
 
 export type PeopleKit = Pick<Kit, "matte" | "bubble" | "badge">;
 
+/** What the mark is at scale 1, to size it the same on screen at every level. */
+export const MARK_UNITS = 1;
+
+
 /** A person at the origin, looking down -z. `seatPerson` puts them at a desk. */
-export function buildPerson(p: OfficePerson, kit: PeopleKit): Object3D {
+export function buildPerson(p: OfficePerson, kit: PeopleKit, marked = false): Object3D {
   const root = new Group();
   const body = new Group();
   const trunk = new Group();
@@ -195,16 +226,15 @@ export function buildPerson(p: OfficePerson, kit: PeopleKit): Object3D {
 
   const look = pose(p.state, 0, p.seat);
   let bubble: Mesh | null = null;
-  if (look.bubble) {
+  if (look.bubble || marked) {
     bubble = part("bubble", bubbleGeometry(), kit.bubble, false);
     bubble.rotation.y = VIEW_YAW;
-    bubble.scale.setScalar(BUBBLE_SCALE);
     bubble.renderOrder = 3;
     root.add(bubble);
   }
 
   const parts: Parts = { body, trunk, legs, armL, armR, bubble };
-  root.userData = { person: { state: p.state, seat: p.seat }, parts, rot: 0 };
+  root.userData = { person: { state: p.state, seat: p.seat }, parts, rot: 0, marked };
   applyPose(root, look);
   return root;
 }
@@ -219,7 +249,7 @@ export function seatPerson(obj: Object3D, d: Seat, y: number): void {
 }
 
 export function applyPose(obj: Object3D, p: Pose): void {
-  const { parts, rot } = obj.userData as { parts: Parts; rot: number };
+  const { parts, rot, marked } = obj.userData as { parts: Parts; rot: number; marked: boolean };
   const up = 1 - p.sit;
   const hip = hipAt(p.sit);
   const reach = ARM_STAND + (ARM_SIT - ARM_STAND) * p.sit - p.lean * ARM_REST;
@@ -232,7 +262,7 @@ export function applyPose(obj: Object3D, p: Pose): void {
   parts.armL.rotation.x = reach + p.armL;
   parts.armR.rotation.x = reach + p.armR;
   if (parts.bubble) {
-    parts.bubble.visible = p.bubble;
+    parts.bubble.visible = p.bubble || marked;
     parts.bubble.position.set(step.x * up, bubbleAt(p.sit), step.z * up);
   }
 }

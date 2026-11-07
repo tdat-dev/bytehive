@@ -57,9 +57,9 @@ describe("looks", () => {
     expect(lookOf(person("x"), r).shirt).toBe(departmentShirt("Engineering"));
     expect(lookOf(person("x", { look: { shirt: "#123456", hair: "#654321", prop: "book", edited: true } }), r)).toEqual({ shirt: "#123456", hair: "#654321", prop: "book" });
   });
-  it("keeps the role's prop and the Founder's honey", () => {
+  it("keeps the role's prop and the Founder's white shirt, since honey says it is your turn", () => {
     expect(lookOf(person("x"), role("qa", "Engineering")).prop).toBe("laptop");
-    expect(lookOf(person("f", { rank: "founder" }), role("founder", "Management")).shirt).toBe("#f5b83d");
+    expect(lookOf(person("f", { rank: "founder" }), role("founder", "Management")).shirt).toBe("#eef0f4");
   });
   it("falls back to the stored shirt with no role", () => {
     expect(lookOf(person("x"), undefined).shirt).toBe("#111111");
@@ -72,7 +72,7 @@ describe("looks", () => {
     const r = role("qa", "Engineering");
     expect(lookOf(person("x", { look: bad }), r)).toEqual({ shirt: departmentShirt("Engineering"), hair: hairFor("x"), prop: "book" });
     expect(lookOf(person("x", { look: { ...bad, edited: false } }), undefined).shirt).toMatch(/^#[0-9a-f]{6}$/);
-    expect(lookOf(person("f", { rank: "founder", look: bad }), r).shirt).toBe("#f5b83d");
+    expect(lookOf(person("f", { rank: "founder", look: bad }), r).shirt).toBe("#eef0f4");
   });
   it("keeps the short and the long way to write a colour", () => {
     const look = { shirt: "#ABC", hair: "#aabbcc", prop: "pen", edited: true };

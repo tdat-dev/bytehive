@@ -69,7 +69,7 @@ const MAX_PAPERS = 3;
 /** The Jobs still going, as the rail names them. */
 const GOING: Partial<Record<JobStatus, string>> = { planning: "Planning", "awaiting-plan": "Waiting for your approval", running: "Running", paused: "Paused" };
 
-export const FOUNDER_SHIRT = "#f5b83d";
+export const FOUNDER_SHIRT = "#eef0f4";
 const SHIRTS = new Map([["Management", "#5ec2f0"], ["Engineering", "#5fd08a"], ["Design", "#ff6b6b"], ["Marketing", "#e0913a"], ["Research", "#b18cf0"]]);
 const SPARE_SHIRTS = ["#7d8b99", "#c98fb4", "#9db36b", "#6f9fd8"];
 export const HAIRS = ["#2a2e3a", "#4a3226", "#7a5230", "#b08a55", "#55585f", "#7a2f2a"];

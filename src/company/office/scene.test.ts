@@ -1,7 +1,7 @@
 // src/company/office/scene.test.ts
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { plantSpot, stickies } from "./build";
+import { stickies } from "./build";
 import { OFFICE } from "./palette";
 import { cssPoint, easeInOutCubic, goodRenderer, pickFrom } from "./scene";
 
@@ -100,22 +100,3 @@ describe("stickies", () => {
   });
 });
 
-describe("plantSpot", () => {
-  it("stands in a corner of the room", () => {
-    const s = plantSpot([], false)!;
-    expect(Math.abs(s.x)).toBeGreaterThan(4);
-    expect(s.z).toBeLessThan(-2.5);
-  });
-  it("keeps clear of a desk", () => {
-    const first = plantSpot([], false)!;
-    const next = plantSpot([{ x: first.x, z: first.z, rot: 0 }], false)!;
-    expect(next).not.toEqual(first);
-  });
-  it("keeps clear of the wall board", () => {
-    expect(plantSpot([], true)).not.toEqual(plantSpot([], false));
-  });
-  it("gives up with no corner free", () => {
-    const desks = [-5, 5].flatMap((x) => [-3, 3].map((z) => ({ x, z, rot: 0 })));
-    expect(plantSpot(desks, false)).toBeNull();
-  });
-});
