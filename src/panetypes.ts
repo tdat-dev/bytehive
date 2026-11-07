@@ -33,9 +33,8 @@ export interface Pane {
   running: boolean;
   spawnedAt: number | null;
   lastOutputAt: number; // ms of the last PTY output — drives the active/idle status
-  lastInputAt: number; // ms of the last user keystroke into this pane (attention reset)
-  attention: boolean; // agent went silent after output → probably waiting on the user
-  attentionClearedAt: number; // ms attention was last cleared (so a quiet prompt can't re-flag)
+  lastInputAt: number; // ms of the last user keystroke into this pane
+  attention: boolean; // its task state is "needs" (tasks.ts), mirrored on the pill
   attentionNotified: boolean; // OS notification already fired for the current flag
   color: string;
   spec: AgentSpec; // the launch recipe — kept so the session can be serialized + re-booted

@@ -69,6 +69,7 @@ import { workspaces, setActiveWs } from "./appstate";
 import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox, setSplit, stageAgent, openChanges, closeChanges, changesOpenFor, focusStage } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
+import { sortFleet, needsCount } from "./fleet";
 
 const RUN_ASK: Ask = {
   kind: "run", prompt: "Do you want to proceed?", detail: "npm run build",
@@ -185,6 +186,24 @@ describe("inbox helpers", () => {
     expect(fillPins(["b", "a"], gridOrder(list), new Set())).toEqual(["a", "c"]);
     list[1] = task("b", "Bo", "idle");
     expect(fillPins(["a", "c"], gridOrder(list), new Set())).toEqual(["a", "c", "b"]);
+  });
+});
+
+describe("who needs you", () => {
+  it("Fleet and the headline give the same count and the same names", () => {
+    // The audit's moment: Dao asks something, Eli and Hai only went quiet.
+    const list = [
+      task("a", "Ana", "needs"), task("d", "Dao", "needs"),
+      task("e", "Eli", "idle"), task("h", "Hai", "review", { changedFiles: 1 }), task("w", "Wes", "working"),
+    ];
+    const rows = sortFleet(list.map((t) => ({
+      id: t.paneId, name: t.name, color: "#fff", wsId: t.wsId, wsName: t.project, running: true,
+      state: t.status.state, spawnedAt: 1, lastOutputAt: 1,
+    })));
+    const fleet = rows.filter((r) => r.status === "needs").map((r) => r.name);
+    expect(headline(list).lead).toBe(`${fleet.length} agents need you.`);
+    expect(fleet).toEqual(list.filter((t) => t.status.state === "needs").map((t) => t.name));
+    expect(needsCount(rows)).toBe(fleet.length);
   });
 });
 

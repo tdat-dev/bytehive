@@ -5,7 +5,7 @@
 
 import { workspaces } from "./appstate";
 import { hiddenGate } from "./hiddengate";
-import { paneStatus } from "./fleet";
+import { fleetStatus } from "./fleet";
 import { taskOf } from "./tasks";
 import { lastFinish } from "./finishwatch";
 import { finishedLabel } from "./finishnote";
@@ -61,13 +61,7 @@ function fleetSnapshotJson(): string {
         project: project.name,
         projectKey: project.key,
         projectDir: project.dir,
-        status: paneStatus(
-          {
-            id: p.id, name: p.spec.name, color: p.color, wsId: ws.id, wsName: ws.name,
-            running: p.running, attention: p.attention, spawnedAt: p.spawnedAt, lastOutputAt: p.lastOutputAt,
-          },
-          now,
-        ),
+        status: fleetStatus(t?.status.state ?? null, p.running),
         uptime: p.spawnedAt && p.running ? fmtUptimeShort(now - p.spawnedAt) : "",
         // through with its work: "done" or "review" (Ready to review), and how many files
         finished: t ? finishedLabel(t.status.state, !!t.worked, !!t.status.limit) : null,

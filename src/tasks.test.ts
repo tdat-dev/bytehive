@@ -28,7 +28,7 @@ function pane(id: string, name: string, over: Partial<Pane> & { screen?: string;
   const { screen = "", worktree, ...rest } = over;
   return {
     id, el: {} as HTMLElement, running: true, spawnedAt: 0, lastOutputAt: 0, lastInputAt: 0,
-    attention: false, attentionClearedAt: 0, attentionNotified: false, color: "#fff",
+    attention: false, attentionNotified: false, color: "#fff",
     spec: { program: "claude", args: [], cwd: "D:\\p", name, badge: "claude", color: "#fff", mono: "C", worktree, branch: worktree ? `${name.toLowerCase()}/x` : undefined },
     term: { snapshot: () => screen } as unknown as Pane["term"],
     ...rest,

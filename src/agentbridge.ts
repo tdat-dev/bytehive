@@ -2,6 +2,8 @@
 // agent's terminal without importing main.ts. main.ts registers the real sender
 // (which targets the focused pane of the active workspace) at startup.
 
+import type { TaskState } from "./taskstate";
+
 /** Types `text` into the active agent's PTY. `submit` appends Enter. Returns
  *  false when there is no agent to send to. */
 export type AgentSender = (text: string, submit: boolean) => boolean;
@@ -66,7 +68,7 @@ export interface FleetPane {
   wsId: string;
   wsName: string;
   running: boolean;
-  attention: boolean; // agent went quiet after output → probably waiting on you
+  state: TaskState | null; // its task state (tasks.ts); null before the first tick
   spawnedAt: number | null;
   lastOutputAt: number;
   // Extra identity the ⌘K switcher shows (optional so the fleet monitor, which

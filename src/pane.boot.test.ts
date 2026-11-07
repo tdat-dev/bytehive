@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ worktreeFails: false, trustFails: false, written: [] as string[], spawns: 0, spawnFails: false, gitWaits: null as Promise<void> | null }));
+const io = vi.hoisted(() => ({ state: "idle", worktreeFails: false, trustFails: false, written: [] as string[], spawns: 0, spawnFails: false, gitWaits: null as Promise<void> | null }));
 vi.mock("./terminal", () => ({
   mountTerminal: () => ({
     fit: () => ({ cols: 80, rows: 24 }), setAutoFit: () => {}, onTitleChange: () => {}, write: (b: Uint8Array) => { io.written.push(new TextDecoder().decode(b)); },
@@ -26,9 +26,11 @@ vi.mock("./background", () => ({ paneLook: () => ({}) }));
 vi.mock("./zoom", () => ({ getZoom: () => 1, setZoom: () => {}, paneFont: () => 13, autoFitRows: () => 0 }));
 vi.mock("./ctxmenu", () => ({ openMenu: () => {} }));
 vi.mock("./clibrand", () => ({ cliMark: () => "" }));
+vi.mock("./tasks", async (real) => ({ ...(await real<typeof import("./tasks")>()), taskOf: () => ({ status: { state: io.state } }) }));
 
 import { clearAlert, standingAlerts } from "./company/alerts";
-import { createAgent } from "./pane";
+import { createAgent, updateAttention } from "./pane";
+import { workspaces } from "./appstate";
 import type { AgentSpec, Workspace } from "./panetypes";
 
 const project = () => {
@@ -48,6 +50,27 @@ beforeEach(() => {
   io.gitWaits = null;
   for (const a of standingAlerts()) clearAlert(a.key);
   vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+describe("the needs-you pill", () => {
+  it("follows the task state, and silence alone never lights it", async () => {
+    const ws = project();
+    workspaces.set(ws.id, ws);
+    await createAgent(ws, spec())();
+    const pane = [...ws.panes.values()][0];
+    pane.running = true;
+    pane.lastOutputAt = 1; // long quiet after output: the old guess said it needs you
+    io.state = "idle";
+    updateAttention();
+    expect(pane.attention).toBe(false);
+    io.state = "needs";
+    updateAttention();
+    expect(pane.attention).toBe(true);
+    io.state = "working";
+    updateAttention();
+    expect(pane.attention).toBe(false);
+    workspaces.delete(ws.id);
+  });
 });
 
 describe("a member whose worktree fails", () => {

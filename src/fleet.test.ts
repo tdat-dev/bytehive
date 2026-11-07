@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { paneStatus, sortFleet, needsCount } from "./fleet";
+import { fleetStatus, sortFleet, needsCount } from "./fleet";
 import type { FleetPane } from "./agentbridge";
 
-const now = 1_000_000;
 const mk = (over: Partial<FleetPane>): FleetPane => ({
   id: "p",
   name: "Agent",
@@ -10,50 +9,47 @@ const mk = (over: Partial<FleetPane>): FleetPane => ({
   wsId: "w",
   wsName: "ws",
   running: true,
-  attention: false,
-  spawnedAt: now - 5000,
-  lastOutputAt: now,
+  state: "idle",
+  spawnedAt: 1,
+  lastOutputAt: 2,
   ...over,
 });
 
-describe("paneStatus", () => {
-  it("stopped when not running (even if it has an attention flag)", () => {
-    expect(paneStatus(mk({ running: false, attention: true }), now)).toBe("stopped");
+describe("fleetStatus", () => {
+  it("says needs only for an agent whose task state is needs", () => {
+    expect(fleetStatus("needs", true)).toBe("needs");
+    for (const s of ["review", "idle", "working", "stopped", "merged"] as const) expect(fleetStatus(s, true)).not.toBe("needs");
   });
-  it("needs when running + attention", () => {
-    expect(paneStatus(mk({ attention: true }), now)).toBe("needs");
+  it("calls a working agent active, and one that is quiet idle", () => {
+    expect(fleetStatus("working", true)).toBe("active");
+    expect(fleetStatus("idle", true)).toBe("idle");
+    expect(fleetStatus("review", true)).toBe("idle");
   });
-  it("active when output is recent", () => {
-    expect(paneStatus(mk({ lastOutputAt: now - 500 }), now)).toBe("active");
+  it("stopped when not running, whatever the state last was", () => {
+    expect(fleetStatus("needs", false)).toBe("stopped");
+    expect(fleetStatus("merged", false)).toBe("stopped");
   });
-  it("idle when quiet past the idle window", () => {
-    expect(paneStatus(mk({ lastOutputAt: now - 5000 }), now)).toBe("idle");
+  it("before the first tick a running agent is idle, never needs", () => {
+    expect(fleetStatus(null, true)).toBe("idle");
+    expect(fleetStatus(null, false)).toBe("stopped");
   });
 });
 
 describe("sortFleet", () => {
   it("orders needs → active → idle → stopped, then by name", () => {
-    const rows = sortFleet(
-      [
-        mk({ id: "1", name: "Zeta", running: false }),
-        mk({ id: "2", name: "Beta", attention: true }),
-        mk({ id: "3", name: "Alpha", lastOutputAt: now - 9000 }),
-        mk({ id: "4", name: "Gamma", lastOutputAt: now }),
-      ],
-      now,
-    );
+    const rows = sortFleet([
+      mk({ id: "1", name: "Zeta", running: false, state: "stopped" }),
+      mk({ id: "2", name: "Beta", state: "needs" }),
+      mk({ id: "3", name: "Alpha", state: "idle" }),
+      mk({ id: "4", name: "Gamma", state: "working" }),
+    ]);
     expect(rows.map((r) => r.name)).toEqual(["Beta", "Gamma", "Alpha", "Zeta"]);
     expect(rows.map((r) => r.status)).toEqual(["needs", "active", "idle", "stopped"]);
   });
 });
 
 describe("needsCount", () => {
-  it("counts only running agents flagged for attention", () => {
-    const panes = [
-      mk({ attention: true }),
-      mk({ attention: true, running: false }),
-      mk({ attention: false }),
-    ];
-    expect(needsCount(panes, now)).toBe(1);
+  it("counts only running agents whose task needs you", () => {
+    expect(needsCount([mk({ state: "needs" }), mk({ state: "needs", running: false }), mk({ state: "idle" })])).toBe(1);
   });
 });

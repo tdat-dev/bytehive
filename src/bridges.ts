@@ -32,7 +32,8 @@ import { exitVerdict, holdExit, setExitHandler } from "./ptyexit";
 import { spawnForConductor } from "./spawnmodal";
 import { initCompany } from "./company/engine";
 import { boardPanes } from "./workspaces";
-import { paneStatus } from "./fleet";
+import { fleetStatus } from "./fleet";
+import { taskOf } from "./tasks";
 import { showDelegation, showDelegationToast } from "./delegation";
 import { pushFlow } from "./flow";
 
@@ -210,7 +211,7 @@ export function initBridges(): void {
           wsId: ws.id,
           wsName: ws.name,
           running: p.running,
-          attention: p.attention,
+          state: taskOf(p.id)?.status.state ?? null,
           spawnedAt: p.spawnedAt,
           lastOutputAt: p.lastOutputAt,
           badge: p.spec.badge,
@@ -262,7 +263,6 @@ export function initBridges(): void {
   // deliver messages the bytehive-mcp `fleet_send` tool drops into outbox.jsonl.
   initFleetBridge({
     workspaces: () => {
-      const now = Date.now();
       const out = [];
       for (const ws of workspaces.values()) {
         if (!ws.dir) continue;
@@ -272,20 +272,7 @@ export function initBridges(): void {
           agents: boardPanes(ws.panes.values()).map((p) => ({
             id: p.id,
             name: p.spec.name,
-            status: paneStatus(
-              {
-                id: p.id,
-                name: p.spec.name,
-                color: p.color,
-                wsId: ws.id,
-                wsName: ws.name,
-                running: p.running,
-                attention: p.attention,
-                spawnedAt: p.spawnedAt,
-                lastOutputAt: p.lastOutputAt,
-              },
-              now,
-            ),
+            status: fleetStatus(taskOf(p.id)?.status.state ?? null, p.running),
             // Recent on-screen text so an agent (a conductor) can read a worker's
             // progress via the MCP agent_output tool. Capped for the file.
             screen: p.term.snapshot(40).slice(-2000),

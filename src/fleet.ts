@@ -4,26 +4,17 @@
  * of them. Read-only over the pane state main.ts owns (via agentbridge). */
 
 import { fleetSnapshotNow, revealPane, type FleetPane } from "./agentbridge";
+import type { TaskState } from "./taskstate";
 
 export type FleetStatus = "needs" | "active" | "idle" | "stopped";
 
-// Matches main.ts IDLE_MS: no PTY output for this long (while running) ⇒ the
-// agent is idle at a prompt rather than actively producing output.
-const IDLE_MS = 1200;
-
-/** Classify one pane. `needs` (waiting on you) ranks above everything so it
- *  can't hide; then active (recent output) / idle (quiet) / stopped.
- *
- *  Takes only the three fields it reads, so a live `Pane` can be classified
- *  without first being flattened into a FleetPane — the sigil needs the same
- *  verdict the fleet monitor shows, and two copies of this rule would drift. */
-export function paneStatus<T extends Pick<FleetPane, "running" | "attention" | "lastOutputAt">>(
-  p: T,
-  now: number,
-): FleetStatus {
-  if (!p.running) return "stopped";
-  if (p.attention) return "needs";
-  return now - p.lastOutputAt <= IDLE_MS ? "active" : "idle";
+/** Fleet's word for an agent's task state (tasks.ts), the same state the
+ *  headline counts, so the two can't disagree on who needs you. `state` is null
+ *  until the first tick has read the agent. */
+export function fleetStatus(state: TaskState | null, running: boolean): FleetStatus {
+  if (!running) return "stopped";
+  if (state === "needs") return "needs";
+  return state === "working" ? "active" : "idle";
 }
 
 const RANK: Record<FleetStatus, number> = { needs: 0, active: 1, idle: 2, stopped: 3 };
@@ -34,15 +25,15 @@ export interface FleetRow extends FleetPane {
 
 /** Sort for display: needs-you first, then active, idle, stopped; ties keep a
  *  stable name order so the list doesn't jitter between refreshes. */
-export function sortFleet(panes: FleetPane[], now: number): FleetRow[] {
+export function sortFleet(panes: FleetPane[]): FleetRow[] {
   return panes
-    .map((p) => ({ ...p, status: paneStatus(p, now) }))
+    .map((p) => ({ ...p, status: fleetStatus(p.state, p.running) }))
     .sort((a, b) => RANK[a.status] - RANK[b.status] || a.name.localeCompare(b.name));
 }
 
 /** Count of agents currently waiting on you — the rail badge number. */
-export function needsCount(panes: FleetPane[], now: number): number {
-  return panes.reduce((n, p) => (paneStatus(p, now) === "needs" ? n + 1 : n), 0);
+export function needsCount(panes: FleetPane[]): number {
+  return panes.reduce((n, p) => (fleetStatus(p.state, p.running) === "needs" ? n + 1 : n), 0);
 }
 
 const STATUS_LABEL: Record<FleetStatus, string> = {
@@ -71,7 +62,7 @@ export function createFleet() {
   function render(): void {
     if (!root) return;
     const now = Date.now();
-    const rows = sortFleet(fleetSnapshotNow(), now);
+    const rows = sortFleet(fleetSnapshotNow());
     root.replaceChildren();
 
     if (!rows.length) {
@@ -113,7 +104,7 @@ export function createFleet() {
 
   function refreshBadge(): void {
     if (!badge) return;
-    const n = needsCount(fleetSnapshotNow(), Date.now());
+    const n = needsCount(fleetSnapshotNow());
     badge.textContent = String(n);
     badge.hidden = n === 0;
   }

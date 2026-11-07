@@ -241,7 +241,7 @@ export function createAgent(
     if (title.trim() && nameEl) nameEl.title = title;
   });
 
-  const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionClearedAt: 0, attentionNotified: false, color: spec.color, spec };
+  const pane: Pane = { id, el, term, running: false, spawnedAt: null, lastOutputAt: 0, lastInputAt: 0, attention: false, attentionNotified: false, color: spec.color, spec };
   ws.panes.set(id, pane);
   layoutGrid(ws);
   onUpdateCount();
@@ -577,21 +577,16 @@ export async function toggleRecord(ws: Workspace, p: Pane): Promise<void> {
 }
 
 /* ---------------- attention ---------------- */
-// Heuristic "agent needs you": a RUNNING pane that produced output recently and
-// then went silent is probably waiting at a prompt for the user. We flag it,
+// "Agent needs you" is its task state (tasks.ts), the one truth the headline and
+// Fleet read too: a prompt on its screen, never a guess from silence. We flag it,
 // light up the pill + tab, and (if the window is in the background) fire one OS
-// notification. The flag clears when the user types/clicks into the pane or the
-// agent starts producing output again. attentionClearedAt stops a quiet shell
-// prompt from re-flagging forever: only a NEW burst of output (after the clear)
-// that then goes silent can flag again.
-const ATTN_SILENCE_MS = 10_000; // output, then this much quiet ⇒ probably waiting
+// notification per wait. A click or a key clears the pill until the next tick
+// reads the screen again.
 
 /** Drop a pane's attention flag and restore its normal pill/tab styling. */
 export function clearAttention(pane: Pane) {
   if (!pane.attention) return;
   pane.attention = false;
-  pane.attentionNotified = false;
-  pane.attentionClearedAt = Date.now();
   pane.el.classList.remove("attention");
   pane.el.querySelector(".pb-dot")?.classList.remove("work");
   // Let the next tick re-derive the run/idle status; set a sane default now.
@@ -608,27 +603,17 @@ function setAttention(pane: Pane, ws: Workspace) {
   // Notify only while the window is unattended, once per flag.
   if (!pane.attentionNotified && getPref("notifyNeeds") && (document.hidden || !document.hasFocus())) {
     pane.attentionNotified = true;
-    // Say what it wants when the screen shows it ("Ana wants to run npm test").
-    const line = taskOf(pane.id)?.status.state === "needs" ? taskLine(pane.id) : null;
-    void notifyAgent(line ?? `${pane.spec.name} needs you`, ws.name, pane.id).catch(() => {});
+    // Say what it wants ("Ana wants to run npm test").
+    void notifyAgent(taskLine(pane.id) ?? `${pane.spec.name} needs you`, ws.name, pane.id).catch(() => {});
   }
 }
 
 /** Per-tick attention sweep. Cheap no-op when nothing is running. */
-export function updateAttention(now: number) {
+export function updateAttention() {
   for (const w of workspaces.values())
     for (const pane of w.panes.values()) {
-      if (!pane.running || pane.attention) continue;
-      // Flag when: had output, that output is now stale, and it arrived AFTER
-      // both the last user input and the last clear (so a parked prompt that
-      // we already dismissed can't immediately re-flag).
-      if (
-        pane.lastOutputAt > 0 &&
-        now - pane.lastOutputAt > ATTN_SILENCE_MS &&
-        pane.lastOutputAt > pane.lastInputAt &&
-        pane.lastOutputAt > pane.attentionClearedAt
-      ) {
-        setAttention(pane, w);
-      }
+      if (pane.running && taskOf(pane.id)?.status.state === "needs") { setAttention(pane, w); continue; }
+      pane.attentionNotified = false;
+      clearAttention(pane);
     }
 }

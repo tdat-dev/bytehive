@@ -40,7 +40,7 @@ vi.mock("./chatsource", () => ({ knownConversation: () => null }));
 vi.mock("./ptyexit", () => ({ exitVerdict: () => null, holdExit: () => {}, setExitHandler: () => {} }));
 vi.mock("./spawnmodal", () => ({ spawnForConductor: async () => {} }));
 vi.mock("./company/engine", () => ({ initCompany: async () => {} }));
-vi.mock("./fleet", () => ({ paneStatus: () => "idle" }));
+vi.mock("./fleet", () => ({ fleetStatus: () => "idle" }));
 vi.mock("./delegation", () => ({ showDelegation: () => {}, showDelegationToast: () => {} }));
 vi.mock("./flow", () => ({ pushFlow: () => {} }));
 

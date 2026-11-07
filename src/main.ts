@@ -430,7 +430,7 @@ function tick() {
   if (!tickGate()) return;
   const now = Date.now();
   updateTasks(now); // derived task state first, so attention notifications can say what the agent wants
-  updateAttention(now);
+  updateAttention();
   if (document.hidden) return;
   const d = new Date();
   const p = (n: number) => (n < 10 ? "0" : "") + n;
