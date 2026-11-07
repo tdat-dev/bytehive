@@ -2,7 +2,7 @@
 /* The office in the app: when it shows, what it replaces, and what happens without WebGL. */
 import { dockIsOpen } from "../../dock";
 import { topNote } from "../../hint";
-import { changesOpenFor, closeChanges, openChanges, refitStage, stageAgent } from "../../inbox";
+import { changesOpenFor, closeChanges, focusStage, openChanges, refitStage, stageAgent } from "../../inbox";
 import { companyElsewhere, companyUsedNow, onCompanyChange } from "../engine";
 import type { OfficeModel, OfficePerson } from "./model";
 import { BUILDING, deskOf, homeView, type DeskTab, type Level } from "./nav";
@@ -17,6 +17,8 @@ const USED_KEY = "maestro.office.used";
 /** How long a lost context gets before the Inbox takes over. */
 const RESTORE_MS = 2000;
 const FELL_BACK = "The 3D office could not start, so you are in the Inbox.";
+/** The rail lives in the Inbox, and with no project open Start shows instead. */
+const FELL_BACK_NO_PROJECT = "The 3D office could not start. Open a project to see the Company.";
 const NOT_HERE = "The Company runs in the main window.";
 
 export interface OfficeDeps {
@@ -68,6 +70,24 @@ function cover(on: boolean): void {
   for (const c of document.getElementById("app")?.children ?? []) c.toggleAttribute("inert", on && !c.classList.contains("dock-panel"));
 }
 
+/** Whether the keyboard is the office's, or nobody's: leaving, it would go nowhere. */
+function keyboardHere(): boolean {
+  const at = document.activeElement;
+  return !at || at === document.body || !!at.closest("#office, .of-tabs");
+}
+
+/** Take the layer down. The app comes back first: focus cannot land on what is still covered. */
+function uncover(): void {
+  const held = keyboardHere();
+  turn += 1;
+  visible = false;
+  seated = "";
+  shell?.hide();
+  cover(false);
+  deps?.showHome();
+  if (held) focusStage();
+}
+
 function clearLost(): void {
   if (lostTimer !== null) window.clearTimeout(lostTimer);
   lostTimer = null;
@@ -102,12 +122,7 @@ function failed(reason: string): void {
   clearLost();
   // Nobody is looking: the next open makes a new scene.
   if (!visible) return;
-  turn += 1;
-  visible = false;
-  seated = "";
-  shell?.hide();
-  cover(false);
-  deps?.showHome();
+  uncover();
   void toFallback();
 }
 
@@ -164,28 +179,29 @@ function leaveFallback(): void {
 async function toFallback(): Promise<void> {
   if (fallback) return;
   fallback = true;
+  const el = document.createElement("aside");
   try {
     source ??= await sourceNow();
+    const app = document.getElementById("app");
+    if (!app || !fallback) return;
+    el.className = "of-side";
+    el.setAttribute("aria-label", "The Company");
+    el.innerHTML = `<div data-job-box></div><div data-rail></div>`;
+    app.append(el);
+    const box = createJobBox(source);
+    const rail = createRail(source, goFromSide);
+    box.mount(el.querySelector<HTMLElement>("[data-job-box]")!);
+    rail.mount(el.querySelector<HTMLElement>("[data-rail]")!);
+    side = { el, dispose() { box.dispose(); rail.dispose(); el.remove(); } };
+    document.body.classList.add("office-fallback");
+    if (!noted) topNote(app.hidden ? FELL_BACK_NO_PROJECT : FELL_BACK);
+    noted = true;
   } catch (e) {
+    // Nothing worse than the Inbox as it always was.
+    el.remove();
     fallback = false;
     console.error(`[bytehive] the office could not start: ${why(e)}`);
-    return;
   }
-  const app = document.getElementById("app");
-  if (!app || !fallback) return;
-  const el = document.createElement("aside");
-  el.className = "of-side";
-  el.setAttribute("aria-label", "The Company");
-  el.innerHTML = `<div data-job-box></div><div data-rail></div>`;
-  app.append(el);
-  const box = createJobBox(source);
-  const rail = createRail(source, goFromSide);
-  box.mount(el.querySelector<HTMLElement>("[data-job-box]")!);
-  rail.mount(el.querySelector<HTMLElement>("[data-rail]")!);
-  side = { el, dispose() { box.dispose(); rail.dispose(); el.remove(); } };
-  document.body.classList.add("office-fallback");
-  if (!noted) topNote(FELL_BACK);
-  noted = true;
 }
 
 /** The layer goes up at once, so the Inbox never shows while the scene loads. The shell fetches
@@ -199,27 +215,21 @@ async function open(to?: Level): Promise<void> {
   visible = true;
   try {
     source ??= await sourceNow();
+    if (mine !== turn) return;
+    if (fallback) leaveFallback();
+    if (!shell) {
+      shell = createShell(source, host);
+      document.body.append(shell.el);
+    }
+    shell.show(to);
   } catch (e) {
     failed(why(e));
-    return;
   }
-  if (mine !== turn) return;
-  if (fallback) leaveFallback();
-  if (!shell) {
-    shell = createShell(source, host);
-    document.body.append(shell.el);
-  }
-  shell.show(to);
 }
 
 function close(): void {
-  turn += 1;
-  visible = false;
   byBoot = false;
-  seated = "";
-  shell?.hide();
-  cover(false);
-  deps?.showHome();
+  uncover();
 }
 
 function onEngine(): void {
@@ -241,9 +251,9 @@ function onKey(e: KeyboardEvent): void {
   const at = document.activeElement as HTMLElement | null;
   const went = shell.escape({
     terminal: !!at?.closest(".xterm"),
-    dialog: !!document.querySelector(".backdrop.open, .inbox-modal-back, .inbox-pal, .inbox-review"),
+    dialog: !!document.querySelector(".backdrop.open, .inbox-modal-back, .inbox-pal, .inbox-review, .cm-menu, .sm-pop"),
     dock: dockIsOpen(),
-    typing: !!at?.closest("input, textarea, select"),
+    typing: !!at?.closest("input, textarea, select, .cm-editor"),
   });
   if (went) {
     e.preventDefault();

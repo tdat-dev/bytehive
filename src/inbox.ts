@@ -343,6 +343,11 @@ export function closeChanges(): void {
 }
 export const changesOpenFor = (): string | null => reviewer?.paneId ?? null;
 
+/** Back to the agent on the stage, when the app is what shows. */
+export function focusStage(): void {
+  if (!document.getElementById("app")?.hidden) stagePane()?.term.focus();
+}
+
 /** Fit the agent on the stage to the stage. The keyboard stays where it is. */
 export function refitStage(): void {
   const p = stagePane();

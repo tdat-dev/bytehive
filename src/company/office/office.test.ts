@@ -20,6 +20,7 @@ const io = vi.hoisted(() => ({
   anchors: [] as unknown[],
   moved: null as (() => void) | null,
   sourceChanged: null as (() => void) | null,
+  snapshotThrows: 0,
 }));
 vi.mock("./live", () => ({
   liveSource: () => {
@@ -45,6 +46,7 @@ vi.mock("../../inbox", () => ({
   closeChanges: () => { io.pane = null; io.calls.push("close changes"); },
   changesOpenFor: () => io.pane,
   refitStage: () => { io.calls.push("refit"); },
+  focusStage: () => { io.calls.push("focus stage"); },
 }));
 vi.mock("../../dock", () => ({ dockIsOpen: () => false }));
 vi.mock("../engine", () => ({
@@ -57,7 +59,10 @@ const EMPTY: OfficeModel = { founder: null, floors: [], needs: [], jobs: [], fli
 
 function mockSource() {
   return {
-    snapshot: () => ({ model: (io.model as OfficeModel | null) ?? EMPTY, note: null, error: null }),
+    snapshot: () => {
+      if (io.snapshotThrows > 0) { io.snapshotThrows -= 1; throw new Error("no snapshot"); }
+      return { model: (io.model as OfficeModel | null) ?? EMPTY, note: null, error: null };
+    },
     onChange: (fn: () => void) => { io.sourceChanged = fn; return () => {}; }, watching() {}, showPerson: () => true,
   };
 }
@@ -99,7 +104,7 @@ const esc = () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Es
 
 beforeEach(() => {
   io.used = false; io.probe = { ok: true, renderer: "ANGLE (Intel)" }; io.sceneThrows = false; io.notes = []; io.elsewhere = null; io.sceneLoads = 0;
-  io.pane = null; io.model = null; io.options = null; io.calls = []; io.engineChanged = null; io.liveThrows = false; io.anchors = []; io.moved = null;
+  io.pane = null; io.model = null; io.options = null; io.calls = []; io.engineChanged = null; io.liveThrows = false; io.anchors = []; io.moved = null; io.snapshotThrows = 0;
 });
 
 afterEach(() => {
@@ -338,6 +343,38 @@ describe("once the Company has been used", () => {
     document.querySelector<HTMLElement>('.of-side [data-row="ask"]')!.click();
     expect(io.notes[io.notes.length - 1]).toBe("minh is not running.");
   });
+  it("falls back when the shell cannot be made", async () => {
+    io.used = true;
+    io.snapshotThrows = 1;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    expect(m.officeVisible()).toBe(false);
+    expect(document.body.classList.contains("office-fallback")).toBe(true);
+    errors.mockRestore();
+  });
+  it("gets nothing worse than the Inbox when even the fallback cannot be drawn", async () => {
+    io.used = true;
+    io.snapshotThrows = 9;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    expect(m.officeVisible()).toBe(false);
+    expect(document.body.classList.contains("office-fallback")).toBe(false);
+    expect(document.querySelector(".of-side")).toBeNull();
+    errors.mockRestore();
+  });
+  it("says where the rail is when no project is open: it is in the Inbox, and Start shows", async () => {
+    io.used = true;
+    io.probe = { ok: false, renderer: "" };
+    const { m } = await fresh();
+    document.getElementById("app")!.hidden = true;
+    m.officeBoot();
+    await settle();
+    expect(io.notes).toEqual(["The 3D office could not start. Open a project to see the Company."]);
+  });
   it("falls back when the source cannot load", async () => {
     io.used = true;
     io.liveThrows = true;
@@ -474,6 +511,46 @@ describe("at a Desk", () => {
     io.calls = [];
     document.querySelector<HTMLElement>('[data-tab="terminal"]')!.click();
     expect(io.calls).toContain("stage pane-hai");
+  });
+});
+
+describe("the keyboard after closing", () => {
+  async function up() {
+    io.used = true;
+    const t = await fresh();
+    t.m.officeBoot();
+    await settle();
+    io.calls = [];
+    return t;
+  }
+
+  it("goes back to the agent when it was in the office", async () => {
+    const { m } = await up();
+    document.querySelector<HTMLElement>("#office [data-leave]")!.focus();
+    m.officeToggle();
+    expect(io.calls).toContain("focus stage");
+  });
+  it("goes back to the agent when nothing had it", async () => {
+    const { m } = await up();
+    (document.activeElement as HTMLElement | null)?.blur();
+    m.officeToggle();
+    expect(io.calls).toContain("focus stage");
+  });
+  it("stays where the owner put it", async () => {
+    const { m } = await up();
+    const box = document.createElement("input");
+    document.querySelector(".dock-panel")!.append(box);
+    box.focus();
+    m.officeToggle();
+    expect(io.calls).not.toContain("focus stage");
+    expect(document.activeElement).toBe(box);
+  });
+  it("comes after the app is back: it cannot land on what is still covered", async () => {
+    const { m, showHome } = await up();
+    showHome.mockImplementation(() => { io.calls.push("home"); });
+    document.querySelector<HTMLElement>("#office [data-leave]")!.focus();
+    m.officeToggle();
+    expect(io.calls.indexOf("home")).toBeLessThan(io.calls.indexOf("focus stage"));
   });
 });
 
@@ -706,6 +783,34 @@ describe("Esc", () => {
     const drawer = document.createElement("aside");
     drawer.className = "inbox-review";
     document.getElementById("app")!.append(drawer);
+    expect(esc()).toBe(true);
+    expect(document.getElementById("office")?.dataset.level).toBe("desk");
+  });
+  it.each([["a context menu", "cm-menu"], ["a drop-down", "sm-pop"]])("stays with %s while it is up", async (_what, cls) => {
+    io.used = true;
+    io.model = withPeople();
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    m.officeReveal("pane-hai");
+    const menu = document.createElement("div");
+    menu.className = cls;
+    document.body.append(menu);
+    expect(esc()).toBe(true);
+    expect(document.getElementById("office")?.dataset.level).toBe("desk");
+  });
+  it("stays with the editor while it has the keyboard", async () => {
+    io.used = true;
+    io.model = withPeople();
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    m.officeReveal("pane-hai");
+    const editor = document.createElement("div");
+    editor.className = "cm-editor";
+    editor.innerHTML = '<div class="cm-content" contenteditable="true" tabindex="0"></div>';
+    document.getElementById("app")!.append(editor);
+    editor.querySelector<HTMLElement>(".cm-content")!.focus();
     expect(esc()).toBe(true);
     expect(document.getElementById("office")?.dataset.level).toBe("desk");
   });

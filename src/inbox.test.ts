@@ -66,7 +66,7 @@ vi.mock("./company/engine", () => ({ companyNeeds: () => 0, onCompanyChange: () 
 vi.mock("./company/office/office", () => ({ officeReveal() {}, officeToggle() {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox, setSplit, stageAgent, openChanges, closeChanges, changesOpenFor } from "./inbox";
+import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox, setSplit, stageAgent, openChanges, closeChanges, changesOpenFor, focusStage } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
 
@@ -227,6 +227,19 @@ describe("inbox DOM", () => {
     expect(panes[1].el.classList.contains("focused")).toBe(true);
     expect(document.querySelector('[data-dock="split"]')?.getAttribute("aria-pressed") ?? "false").toBe("false");
     expect(stageAgent("gone")).toBe(false);
+  });
+
+  it("hands the keyboard to the agent on the stage, only while the app shows", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    setInbox(true);
+    stageAgent("e");
+    const focus = vi.spyOn(panes[1].term, "focus");
+    document.getElementById("app")!.hidden = true;
+    focusStage();
+    expect(focus).not.toHaveBeenCalled();
+    document.getElementById("app")!.hidden = false;
+    focusStage();
+    expect(focus).toHaveBeenCalledTimes(1);
   });
 
   it("can stage an agent and leave the keyboard alone, for a terminal that will be covered", () => {
