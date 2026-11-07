@@ -168,7 +168,9 @@ export function mountTerminal(
     // wide lineHeight/letterSpacing bloat every cell (fewer cols/rows per pane).
     fontFamily: "'Geist Mono', 'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
     fontSize: opts.fontSize ?? 13,
-    lineHeight: 1.2,
+    // Geist Mono's own line box is 1.25em. xterm multiplies on top of it, so 1 is
+    // the 1.25 the design asks for; every row more is a line of the agent's work.
+    lineHeight: 1,
     letterSpacing: 0,
     scrollback: SCROLLBACK_SHOWN, // generous history so search/scroll can reach older output
     // Needed for any alpha < 1 in the theme background. Harmless when the

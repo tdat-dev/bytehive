@@ -31,10 +31,9 @@ export const TWO_COLS_KEEP = 110;
  *  scrollbar (measured in the app: a 784 x 456 pane has a 739 x 378 screen). */
 const CHROME_W = 46;
 const CHROME_H = 80;
-/** Geist Mono's cell is 0.6em wide; a row is 1.5em (the font's own line box
- *  times xterm's lineHeight 1.2: 21px at 14px). */
+/** Geist Mono's cell is 0.6em wide; a row is 1.25em, the font's own line box. */
 const CELL_W = 0.6;
-const CELL_H = 1.5;
+const CELL_H = 1.25;
 
 export interface RailPlan {
   /** Where the terminal goes. */

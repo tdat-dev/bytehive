@@ -404,7 +404,7 @@ function clearSplit(ws: Workspace): void {
     for (const v of SPLIT_VARS) p.el.style.removeProperty(v);
   }
   const stage = [...ws.panes.values()].find((p) => p.el.classList.contains("focused"));
-  requestAnimationFrame(() => { if (stage) refit(stage, paneFont(ws, 2)); });
+  requestAnimationFrame(() => { if (stage) refit(stage, paneFont(ws)); });
 }
 
 /** The list stepped aside for the Grid: said once while the app runs. */

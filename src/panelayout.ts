@@ -75,7 +75,7 @@ export function focusPane(ws: Workspace, pane: Pane, ev?: MouseEvent, take = tru
   }
   ws.gridEl.classList.add("has-focus");
   requestAnimationFrame(() => {
-    pane.term.setFontSize(paneFont(ws, 2)); // bigger on the stage, still zoomed
+    pane.term.setFontSize(paneFont(ws)); // the setting's size, as Settings says
     const s = pane.term.fit();
     if (pane.running) void resizePty(pane.id, s.cols, s.rows).catch(() => {});
     if (take) pane.term.focus();
