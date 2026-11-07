@@ -15,6 +15,10 @@ const key = (target: Element, init: KeyboardEventInit) => {
 };
 
 describe("What ByteHive can do", () => {
+  it("says the terminal keeps Tab and Esc at a Desk", () => {
+    const rows = HELP.flatMap((s) => s.rows).map((r) => r.what).join(" ");
+    expect(rows).toContain("At a Desk the terminal keeps Tab and Esc");
+  });
   afterEach(() => { document.body.innerHTML = ""; });
 
   it("opens on ? outside text and terminals, and on Ctrl+/ outside terminals", () => {

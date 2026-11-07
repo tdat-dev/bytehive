@@ -44,6 +44,7 @@ export const HELP: HelpSection[] = [
   { title: "Anywhere", rows: [
     { keys: [["Ctrl", "K"]], what: "Jump to any agent or project, or run any command." },
     { keys: [["Ctrl", "Shift", "O"]], what: "The office: your company, floor by floor. Press it again for the Inbox." },
+    { keys: [["Esc"]], what: "In the office: up a level. At a Desk the terminal keeps Tab and Esc, so reach the rail and the path at the top with the mouse." },
     { keys: [["Ctrl", "Tab"]], what: "Next project." },
     { keys: [["Ctrl", "Shift", "E"]], what: "Files: the project's folder tree and editor." },
     { keys: [["Ctrl", ","]], what: "Settings." },

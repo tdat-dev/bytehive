@@ -555,17 +555,19 @@ describe("the Desk", () => {
     await tick();
     expect(shell.el.querySelector(".of-report")?.textContent).toContain("New icons");
   });
-  it("fits the terminal again once the column has stopped moving", async () => {
-    const { shell, host } = await shown();
+  it("fits the terminal again once the column has stopped moving, and only fits it", async () => {
+    const refit = vi.fn();
+    const { shell, host } = await shown({ refit });
     shell.go(desk("linh", "bytehive"));
     const before = vi.mocked(host.showDesk).mock.calls.length;
     const end = new Event("transitionend", { bubbles: true }) as Event & { propertyName?: string };
     end.propertyName = "width";
     shell.el.dispatchEvent(end);
-    expect(host.showDesk).toHaveBeenCalledTimes(before + 1);
+    expect(refit).toHaveBeenCalledTimes(1);
+    expect(host.showDesk).toHaveBeenCalledTimes(before);
     shell.go(floor("bytehive"));
     shell.el.dispatchEvent(end);
-    expect(host.showDesk).toHaveBeenCalledTimes(before + 1);
+    expect(refit).toHaveBeenCalledTimes(1);
   });
   it("says a closed floor opens again, and clears the card once someone starts", async () => {
     let up = false;
@@ -703,5 +705,64 @@ describe("its life", () => {
     const atBuilding = titles();
     shell.go(floor("bytehive"));
     expect(titles()).toBeGreaterThan(atBuilding);
+  });
+});
+
+describe("what a review of the shell found", () => {
+  beforeEach(() => { scene.anchors.mockReturnValue([] as never); scene.pick.mockReturnValue(null); });
+
+  it("keeps a checklist item's done out of the page, whatever a board file holds", async () => {
+    const { shell, source } = await shown();
+    const item = { text: "t", done: `"><img src=x onerror=alert(1)>` as unknown as boolean };
+    vi.spyOn(source, "report").mockResolvedValue({ name: "Linh", branch: null, cards: [{ title: "c", list: "Done", job: null, jobTitle: null, summary: null, files: [], checklist: [item], stopped: false }] });
+    shell.go(desk("linh", "bytehive", "report"));
+    await tick();
+    await tick();
+    const report = shell.el.querySelector(".of-report")!;
+    expect(report.querySelector("img")).toBeNull();
+    expect(report.querySelector("li")?.getAttribute("data-done")).toBe("true");
+  });
+
+  it("leaves the stage alone when a start lands after the owner left", async () => {
+    let finish = () => {};
+    const { shell, source, host } = await shown({ showDesk: vi.fn(() => false) });
+    vi.spyOn(source, "wakePerson").mockImplementation(() => new Promise((r) => { finish = () => r(); }));
+    shell.go(desk("bao", "oldsite"));
+    shell.el.querySelector<HTMLElement>("[data-wake]")!.click();
+    shell.hide();
+    const before = vi.mocked(host.showDesk).mock.calls.length;
+    finish();
+    await tick();
+    expect(host.showDesk).toHaveBeenCalledTimes(before);
+  });
+
+  it("keeps the keyboard on a tag when the tags change order", async () => {
+    scene.anchors.mockReturnValue([anchor("bytehive", "floor", 10, 10), anchor("gcare", "floor", 10, 40)] as never);
+    const { shell, source } = await shown();
+    const tag = shell.el.querySelector<HTMLElement>('[data-tag="gcare"]')!;
+    tag.focus();
+    scene.anchors.mockReturnValue([anchor("bytehive", "floor", 10, 40), anchor("gcare", "floor", 10, 10)] as never);
+    source.dismiss("nothing");
+    expect(shell.el.querySelector("[data-tags]")!.firstElementChild).toBe(tag);
+    expect(document.activeElement).toBe(tag);
+  });
+
+  it("takes the keyboard off a terminal when its Desk goes from under it", async () => {
+    const { shell, source } = await shown();
+    shell.go(desk("linh", "bytehive"));
+    const box = document.createElement("div");
+    box.className = "xterm";
+    box.innerHTML = "<textarea></textarea>";
+    document.body.append(box);
+    box.querySelector("textarea")!.focus();
+    const real = source.snapshot.bind(source);
+    vi.spyOn(source, "snapshot").mockImplementation((now) => {
+      const s = real(now);
+      return { ...s, model: s.model && { ...s.model, floors: s.model.floors.map((f) => ({ ...f, people: f.people.filter((p) => p.id !== "linh") })) } };
+    });
+    source.dismiss("nothing");
+    expect(shell.level().kind).toBe("floor");
+    expect((document.activeElement as HTMLElement).closest(".xterm")).toBeNull();
+    expect((document.activeElement as HTMLElement).closest("#office")).not.toBeNull();
   });
 });

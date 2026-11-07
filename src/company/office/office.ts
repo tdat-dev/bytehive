@@ -2,7 +2,7 @@
 /* The office in the app: when it shows, what it replaces, and what happens without WebGL. */
 import { dockIsOpen } from "../../dock";
 import { topNote } from "../../hint";
-import { changesOpenFor, closeChanges, openChanges, stageAgent } from "../../inbox";
+import { changesOpenFor, closeChanges, openChanges, refitStage, stageAgent } from "../../inbox";
 import { companyElsewhere, companyUsedNow, onCompanyChange } from "../engine";
 import type { OfficeModel, OfficePerson } from "./model";
 import { BUILDING, deskOf, homeView, type DeskTab, type Level } from "./nav";
@@ -73,7 +73,7 @@ function clearLost(): void {
   lostTimer = null;
 }
 
-/** Safe to ask again: the shell does when the layer settles, and the same pane and tab move nothing. */
+/** Safe to ask again: the same pane and tab move nothing, so the keyboard stays where it is. */
 function showDesk(personId: string, tab: DeskTab): boolean {
   const paneId = everyone(modelNow()).find((p) => p.id === personId)?.paneId;
   if (!paneId) {
@@ -87,7 +87,6 @@ function showDesk(personId: string, tab: DeskTab): boolean {
   deps?.showApp();
   if ((arriving || tab === "terminal") && !stageAgent(paneId)) source?.showPerson(personId);
   if (tab === "changes") openChanges(paneId);
-  else closeChanges();
   return true;
 }
 
@@ -114,10 +113,11 @@ const host: ShellHost = {
   showDesk,
   levelChanged(l) {
     cover(l.kind !== "desk");
-    if (l.kind === "desk") return;
-    seated = "";
-    closeChanges();
+    if (l.kind !== "desk") seated = "";
+    // On every change: it stands over the rail, and only its own Esc or a tab would close it.
+    if (l.kind !== "desk" || l.tab !== "changes") closeChanges();
   },
+  refit: () => refitStage(),
   leave: () => close(),
   failed,
   async loadScene() {
@@ -239,7 +239,7 @@ function onKey(e: KeyboardEvent): void {
   const at = document.activeElement as HTMLElement | null;
   const went = shell.escape({
     terminal: !!at?.closest(".xterm"),
-    dialog: !!document.querySelector(".backdrop.open, .inbox-modal-back, .inbox-pal"),
+    dialog: !!document.querySelector(".backdrop.open, .inbox-modal-back, .inbox-pal, .inbox-review"),
     dock: dockIsOpen(),
     typing: !!at?.closest("input, textarea, select"),
   });

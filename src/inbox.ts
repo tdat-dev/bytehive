@@ -333,6 +333,14 @@ export function closeChanges(): void {
 }
 export const changesOpenFor = (): string | null => reviewer?.paneId ?? null;
 
+/** Fit the agent on the stage to the stage. The keyboard stays where it is. */
+export function refitStage(): void {
+  const p = stagePane();
+  if (!p) return;
+  const s = p.term.fit();
+  if (p.running) void resizePty(p.id, s.cols, s.rows).catch(() => {});
+}
+
 /** Make a pane the one the decision card and Alt+number talk to, without
  *  moving or refitting anything (Split keeps every terminal where it is). */
 function setCurrent(pane: Pane): void {

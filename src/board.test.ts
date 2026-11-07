@@ -123,6 +123,18 @@ describe("markJobStopped", () => {
     markJobStopped(b, "J1");
     expect(markJobStopped(b, "J1")).toBe(0);
   });
+  it("makes a checklist plain, whatever the file holds", () => {
+    const hostile = `"><img src=x onerror=alert(1)>`;
+    const c = normalizeCard({ title: "t", checklist: [
+      { id: "i1", text: "ok", done: hostile as unknown as boolean },
+      { id: "i2", text: "yes", done: true },
+      { id: 7 as unknown as string, text: "no id", done: false },
+      { id: "i4", text: 5 as unknown as string, done: true },
+      null as never,
+    ] });
+    expect(c.checklist.map((i) => [i.text, i.done])).toEqual([["ok", false], ["yes", true], ["no id", false]]);
+    expect(typeof c.checklist[2].id).toBe("string");
+  });
   it("survives a read of the file", () => {
     const b = board();
     markJobStopped(b, "J1");

@@ -77,7 +77,11 @@ export function normalizeCard(c: Partial<Card>): Card {
     desc: typeof c.desc === "string" ? c.desc : "",
     labels: Array.isArray(c.labels) ? c.labels : [],
     due: typeof c.due === "string" ? c.due : null,
-    checklist: Array.isArray(c.checklist) ? c.checklist : [],
+    checklist: Array.isArray(c.checklist)
+      ? c.checklist
+          .filter((i) => i && typeof i === "object" && typeof i.text === "string")
+          .map((i) => ({ id: typeof i.id === "string" && i.id ? i.id : uid("i"), text: i.text, done: i.done === true }))
+      : [],
   };
   if (typeof c.assignee === "string" && c.assignee.trim()) card.assignee = c.assignee;
   if (typeof c.job === "string" && c.job) card.job = c.job;

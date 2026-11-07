@@ -43,6 +43,7 @@ vi.mock("../../inbox", () => ({
   openChanges: (id: string) => { io.pane = id; io.calls.push(`changes ${id}`); },
   closeChanges: () => { io.pane = null; io.calls.push("close changes"); },
   changesOpenFor: () => io.pane,
+  refitStage: () => { io.calls.push("refit"); },
 }));
 vi.mock("../../dock", () => ({ dockIsOpen: () => false }));
 vi.mock("../engine", () => ({
@@ -407,14 +408,21 @@ describe("at a Desk", () => {
     expect(io.calls).toContain("stage pane-hai");
     expect(showApp).toHaveBeenCalled();
   });
-  it("can be asked again for the same thing: nobody is moved and the keyboard stays put", async () => {
+  it("fits the terminal when the column settles, with nobody moved and the keyboard where it was", async () => {
     await atDesk();
-    const before = io.calls.length;
+    io.calls = [];
     const office = document.getElementById("office")!;
     const end = new Event("transitionend");
     Object.defineProperty(end, "propertyName", { value: "width" });
     office.dispatchEvent(end);
-    expect(io.calls.length).toBe(before);
+    expect(io.calls).toEqual(["refit"]);
+  });
+  it("closes Changes on every level change, not only on the way up", async () => {
+    await atDesk();
+    document.querySelector<HTMLElement>('[data-tab="changes"]')!.click();
+    io.calls = [];
+    document.querySelector<HTMLElement>('[data-tab="terminal"]')!.click();
+    expect(io.calls).toContain("close changes");
   });
   it("opens Changes for that pane, and closes it on the other tabs", async () => {
     await atDesk();
@@ -637,6 +645,19 @@ describe("Esc", () => {
     wrap.append(term);
     document.getElementById("app")!.append(wrap);
     term.focus();
+    expect(esc()).toBe(true);
+    expect(document.getElementById("office")?.dataset.level).toBe("desk");
+  });
+  it("stays with the Changes drawer while it is up", async () => {
+    io.used = true;
+    io.model = withPeople();
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    m.officeReveal("pane-hai");
+    const drawer = document.createElement("aside");
+    drawer.className = "inbox-review";
+    document.getElementById("app")!.append(drawer);
     expect(esc()).toBe(true);
     expect(document.getElementById("office")?.dataset.level).toBe("desk");
   });

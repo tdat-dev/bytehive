@@ -12,6 +12,8 @@ import type { OfficeSource } from "./source";
 export interface ShellHost {
   /** Put a person's real pane on the stage and open a tab there. */
   showDesk(personId: string, tab: DeskTab): boolean;
+  /** Fit the terminal to the stage again. Takes no focus: this runs on any resize at a Desk. */
+  refit?(): void;
   /** Called when the level changes: the app shows or hides what sits under the layer. */
   levelChanged(l: Level): void;
   /** Leave the office for the Inbox: the owner asked to. */
@@ -107,7 +109,7 @@ function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean): Tag[] {
 
 const cardHtml = (c: ReportCard) => {
   const where = [c.job, c.jobTitle, c.list, c.stopped ? "Stopped" : ""].filter(Boolean).map((x) => esc(x!)).join(", ");
-  const ticks = c.checklist.map((i) => `<li data-done="${i.done}"><span aria-hidden="true">${i.done ? "&#10003;" : "&#9675;"}</span>${esc(i.text)}<span class="of-sr">${i.done ? ", done" : ", not done"}</span></li>`).join("");
+  const ticks = c.checklist.map((i) => `<li data-done="${!!i.done}"><span aria-hidden="true">${i.done ? "&#10003;" : "&#9675;"}</span>${esc(i.text)}<span class="of-sr">${i.done ? ", done" : ", not done"}</span></li>`).join("");
   return `<section class="of-card"><h3>${esc(c.title)}</h3><p class="of-meta">${where}</p>` +
     `${c.summary ? `<p>${esc(c.summary)}</p>` : ""}${ticks ? `<ul class="of-ticks">${ticks}</ul>` : ""}` +
     `${c.files.length ? `<ul class="of-files">${c.files.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}</section>`;
@@ -286,7 +288,11 @@ export function createShell(source: OfficeSource, host: ShellHost) {
       placed.delete(key);
     }
     const order = live.map((t) => tagEl(t, !!t.to || !!t.floor));
-    if (order.some((b, i) => tagsEl.children[i] !== b) || tagsEl.children.length !== order.length) tagsEl.replaceChildren(...order);
+    if (order.some((b, i) => tagsEl.children[i] !== b) || tagsEl.children.length !== order.length) {
+      const held = document.activeElement;
+      tagsEl.replaceChildren(...order);
+      if (held instanceof HTMLElement && held !== document.activeElement && tagsEl.contains(held)) held.focus({ preventScroll: true });
+    }
 
     const w = stage.clientWidth;
     const h = stage.clientHeight;
@@ -415,7 +421,13 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     }
     scene?.setModel(model);
     const clamped = clampLevel(level, model);
-    if (clamped !== level) arrive(clamped, { instant: false, focus: false });
+    if (clamped !== level) {
+      // Left focused under the layer, a terminal would take keys the owner cannot see it take.
+      const at = document.activeElement as HTMLElement | null;
+      const blind = clamped.kind !== "desk" && !!at?.closest(".xterm");
+      if (blind) at?.blur();
+      arrive(clamped, { instant: false, focus: blind });
+    }
     if (level.kind === "desk") {
       const at = level;
       if (at.tab === "changes" && !noPane && host.changesOpenFor && !host.changesOpenFor()) arrive({ ...at, tab: "terminal" }, { instant: false, focus: false });
@@ -509,7 +521,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     drawWake();
     source.wakePerson(at.personId).then(
       () => {
-        if (level.kind === "desk" && level.personId === at.personId) noPane = !host.showDesk(at.personId, level.tab);
+        if (shown && !disposed && level.kind === "desk" && level.personId === at.personId) noPane = !host.showDesk(at.personId, level.tab);
       },
       (e) => { wakeFailure = why(e); },
     ).finally(() => {
@@ -582,9 +594,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
   });
   el.addEventListener("transitionend", (e) => {
     // The stage has its full width only now, so the terminal fits it again.
-    if (e.target !== el || e.propertyName !== "width" || level.kind !== "desk") return;
-    noPane = !host.showDesk(level.personId, level.tab);
-    drawWake();
+    if (e.target === el && e.propertyName === "width" && level.kind === "desk") host.refit?.();
   });
   wakeBtn.addEventListener("click", wake);
   tablist.addEventListener("click", (e) => {

@@ -25,6 +25,16 @@ describe("normalizeBoard assignee/by", () => {
     expect(b.lists[0].cards[1].assignee).toBeUndefined();
   });
 
+  it("makes a checklist plain, whatever the file holds", () => {
+    const hostile = `"><img src=x onerror=alert(1)>`;
+    const b = normalizeBoard({ lists: [{ id: "l1", title: "To do", cards: [{ id: "c1", title: "t", checklist: [
+      { id: "i1", text: "ok", done: hostile },
+      { id: "i2", text: "yes", done: true },
+      { id: "i3", text: 5, done: true },
+    ] }] }] });
+    expect(b.lists[0].cards[0].checklist.map((i) => [i.text, i.done])).toEqual([["ok", false], ["yes", true]]);
+  });
+
   it("legacy cards without assignee still normalize", () => {
     const b = normalizeBoard({ lists: [{ id: "l1", title: "To do", cards: [{ id: "c1", title: "old" }] }] });
     expect(b.lists[0].cards[0].assignee).toBeUndefined();
