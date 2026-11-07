@@ -1,0 +1,30 @@
+/* src/company/office/office.css
+ * The Needs you rail and the job box. Colours come from the app's tokens; the --ib-*
+ * names exist only in the Inbox, so every one has the dock's token behind it. */
+.co-rail, .co-box { display: flex; flex-direction: column; gap: 10px; color: var(--ib-ink, var(--text)); }
+.co-rail h3 { margin: 0; font-size: 13px; font-weight: 600; display: flex; align-items: baseline; gap: 6px; }
+.co-rail ul { list-style: none; margin: 0; padding: 0; }
+.co-n { font-size: 12px; font-weight: 600; color: var(--ib-needs, var(--amber)); }
+.co-n:empty { display: none; }
+.co-give { display: flex; flex-direction: column; gap: 6px; }
+.co-give label { font-size: 12px; color: var(--ib-ink-2, var(--muted)); }
+.co-give textarea, .co-note { resize: vertical; font: inherit; font-size: 12.5px; color: var(--ib-ink, var(--text)); background: var(--surface-0); border: 1px solid var(--ib-line, var(--line-strong)); border-radius: var(--r1); padding: 8px 10px; }
+.co-give textarea:focus-visible, .co-note:focus-visible { border-color: var(--ib-needs, var(--amber)); }
+.co-note { margin-top: 4px; }
+.co-send { align-self: flex-end; height: 28px; padding: 0 14px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 600; }
+.co-send[aria-disabled="true"], .co-row .kb-tool[aria-disabled="true"] { opacity: .5; cursor: default; }
+.co-error { margin: 0; padding: 8px 10px; border-radius: var(--r1); border: 1px solid var(--err); color: var(--err); font-size: 12px; line-height: 1.5; }
+.co-row { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--ib-line, var(--line)); }
+.co-row b { font-weight: 600; font-size: 12.5px; overflow-wrap: anywhere; }
+.co-row span { color: var(--ib-ink-2, var(--muted)); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.co-row div { display: flex; gap: 6px; margin-top: 2px; }
+/* Only a row that needs you carries the honey. */
+.co-needs .co-row { padding-left: 10px; border-left: 2px solid var(--ib-needs, var(--amber)); }
+.co-go { display: block; width: 100%; padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
+.co-go:hover b { text-decoration: underline; text-underline-offset: 2px; }
+.co-go:focus-visible { outline: 2px solid var(--ib-needs, var(--amber)); outline-offset: 2px; }
+.co-plan { margin: 2px 0; font-size: 12px; line-height: 1.5; }
+.co-plan dt { color: var(--ib-ink-2, var(--muted)); margin-top: 6px; }
+.co-plan dd { margin: 0; color: var(--ib-ink, var(--text)); overflow-wrap: anywhere; }
+.co-plan .co-prompt { white-space: pre-wrap; padding: 6px 8px; border: 1px solid var(--ib-line, var(--line)); border-radius: var(--r1); background: var(--surface-0); }
+.co-none { color: var(--ib-ink-2, var(--muted)); font-size: 12px; padding: 4px 0; }

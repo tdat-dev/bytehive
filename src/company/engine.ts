@@ -18,7 +18,9 @@ import { buildRoleLaunch, composePrompt, founderFolder, FOUNDER_SETTINGS, mcpCon
 import { floorContact, floorId, personById, personByName } from "./org";
 import { needsYou } from "./needs";
 import { OP_LIMIT_MS, OpTimeout, withLimit } from "./queue";
-import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, stopTurns, type Effect, type State } from "./reduce";
+import { applyRequest, approvePlan, haltJob, joinJob, newJob, notePerson, closeJob, pausedNote, pauseJob, rejectPlan, reportFailures, resumedNotes, resumeJob, stoppedNote, stopTurns, typeable, type Effect, type State } from "./reduce";
+import { FLIGHT_MS } from "./office/layout";
+import type { Flight } from "./office/model";
 import { clearAlert, onStandingChange, raiseAlert, standingAlerts } from "./alerts";
 import { LOCK_STALE_MS, lockMove, lockSilent } from "./lock";
 import { companyRoot, ensureDirs, loadCompany, pickRoot, rootParts, loadJobs, readLock, saveCompany, saveJob, writeLock, writeNew } from "./store";
@@ -129,6 +131,13 @@ function paneOf(personId: string): { ws: Workspace; pane: Pane } | null {
       if (pane.spec.personId === personId) return { ws, pane };
   return null;
 }
+
+let flights: Flight[] = [];
+
+export const companyFlights = (now: number): Flight[] => {
+  flights = flights.filter((f) => now - f.at < FLIGHT_MS);
+  return flights;
+};
 
 export function openPerson(id: string): void {
   const found = paneOf(id);
@@ -281,6 +290,21 @@ async function deliver(personId: string, text: string): Promise<void> {
   else await sendMessage(pane.id, text).catch(() => {});
 }
 
+/** The owner types to someone from the office. Their word goes straight through: nothing holds it. */
+export const messagePerson = (id: string, text: string): Promise<void> => enqueue(async () => {
+  const words = typeable(text).trim();
+  if (state && words) await deliver(id, `[From the owner] ${words}`);
+}, "Sending a message");
+
+/** Start someone who has no running pane, on the conversation and branch they had. */
+export const wakePerson = (id: string): Promise<void> => enqueue(async () => {
+  const p = state && personById(state.company, id);
+  if (!p) return;
+  await ensurePerson(p);
+  const pane = paneOf(id)?.pane;
+  if (pane && !pane.running && !pane.spawning) await pane.restart?.();
+}, "Starting a person");
+
 async function run(effects: Effect[]): Promise<void> {
   for (const e of effects) {
     if (e.kind === "owner") raiseAlert(e.key, e.text);
@@ -331,8 +355,18 @@ async function tick(): Promise<void> {
         await tryPersist(state.jobs);
       }
       await run(r.effects);
+      noteFlight(req, r.effects);
     } catch { /* these lines are read only once: one bad request never costs the rest */ }
   }
+}
+
+/** A delivered message is a paper plane. A held one was bounced back to its sender. */
+function noteFlight(req: CompanyRequest, effects: Effect[]): void {
+  if (req.type !== "message") return;
+  for (const e of effects) {
+    if (e.kind === "deliver" && e.personId !== req.from) flights.push({ id: `${req.ts}-${flights.length}-${e.personId}`, from: req.from, to: e.personId, at: Date.now() });
+  }
+  if (effects.length) changed();
 }
 
 /** Every open project with a folder is a floor. */

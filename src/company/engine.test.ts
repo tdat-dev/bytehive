@@ -1710,3 +1710,46 @@ describe("watching a running job", () => {
     expect(job().tokenCap).toBe(1000);
   });
 });
+
+describe("the owner talking to a person", () => {
+  it("types the message into their terminal, marked as the owner's", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    await vi.advanceTimersByTimeAsync(9000); // past the boot wait
+    io.sent.length = 0;
+    await engine.messagePerson(member().spec.personId!, "Please[2J check the login page");
+    expect(io.sent[io.sent.length - 1]).toEqual([member().id, "[From the owner] Please[2J check the login page"]);
+  });
+  it("sends nothing for an empty message", async () => {
+    await engine.messagePerson("founder", "   ");
+    expect(io.sent).toEqual([]);
+  });
+});
+
+describe("waking a person", () => {
+  it("starts someone with no pane", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const id = member().spec.personId!;
+    const ws = [...workspaces.values()].find((w) => [...w.panes.values()].some((p) => p.spec.personId === id))!;
+    ws.panes.clear();
+    io.spawned.length = 0;
+    await engine.wakePerson(id);
+    expect(io.spawned).toHaveLength(1);
+  });
+});
+
+describe("flights", () => {
+  it("records a message between people for a moment", async () => {
+    await waitingJob(planFor("a", 1));
+    await engine.approve(job().id);
+    const id = member().spec.personId!;
+    await request({ type: "message", ts: 1, from: id, to: "Founder", message: "done" });
+    expect(engine.companyFlights(Date.now())).toMatchObject([{ from: id, to: "founder" }]);
+    expect(engine.companyFlights(Date.now() + 5000)).toEqual([]);
+  });
+  it("records nothing for a message that was held or refused", async () => {
+    await request({ type: "message", ts: 1, from: "nobody", to: "Founder", message: "x" });
+    expect(engine.companyFlights(Date.now())).toEqual([]);
+  });
+});
