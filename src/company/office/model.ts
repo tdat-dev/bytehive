@@ -70,20 +70,24 @@ const MAX_PAPERS = 3;
 const GOING: Partial<Record<JobStatus, string>> = { planning: "Planning", "awaiting-plan": "Waiting for your approval", running: "Running", paused: "Paused" };
 
 export const FOUNDER_SHIRT = "#f5b83d";
-const SHIRTS: Record<string, string> = { Management: "#5ec2f0", Engineering: "#5fd08a", Design: "#ff6b6b", Marketing: "#e0913a", Research: "#b18cf0" };
+const SHIRTS = new Map([["Management", "#5ec2f0"], ["Engineering", "#5fd08a"], ["Design", "#ff6b6b"], ["Marketing", "#e0913a"], ["Research", "#b18cf0"]]);
 const SPARE_SHIRTS = ["#7d8b99", "#c98fb4", "#9db36b", "#6f9fd8"];
 export const HAIRS = ["#2a2e3a", "#4a3226", "#7a5230", "#b08a55", "#55585f", "#7a2f2a"];
 
 const hash = (s: string) => [...s].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
 
 /** What everyone chosen by the app sees. A role from the Founder may name any department. */
-export const departmentShirt = (department: string): string => SHIRTS[department] ?? SPARE_SHIRTS[hash(department) % SPARE_SHIRTS.length];
+export const departmentShirt = (department: string): string => SHIRTS.get(department) ?? SPARE_SHIRTS[hash(department) % SPARE_SHIRTS.length];
 export const hairFor = (id: string): string => HAIRS[hash(id) % HAIRS.length];
 
+/** A look comes from a file on disk, so a colour is only trusted once it is one. */
+const colourOr = (c: unknown, fallback: string): string => (typeof c === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(c) ? c : fallback);
+
 export function lookOf(p: Person, role: RoleDef | undefined): { shirt: string; hair: string; prop: string } {
-  if (p.look.edited) return { shirt: p.look.shirt, hair: p.look.hair, prop: p.look.prop };
-  const shirt = p.rank === "founder" ? FOUNDER_SHIRT : role ? departmentShirt(role.department) : p.look.shirt;
-  return { shirt, hair: hairFor(p.id), prop: p.look.prop };
+  const shirt = p.rank === "founder" ? FOUNDER_SHIRT : departmentShirt(role?.department ?? "");
+  const hair = hairFor(p.id);
+  if (p.look.edited) return { shirt: colourOr(p.look.shirt, shirt), hair: colourOr(p.look.hair, hair), prop: p.look.prop };
+  return { shirt: role || p.rank === "founder" ? shirt : colourOr(p.look.shirt, shirt), hair, prop: p.look.prop };
 }
 
 /** The Founder always exists, and every open project is a floor, so only a Job says
@@ -148,5 +152,5 @@ export function officeModel(company: Company, jobs: Job[], alerts: Alert[], pane
 /** What the scene draws, as one string: the same string means nothing to redraw. */
 export function sceneKey(m: OfficeModel): string {
   const who = (p: OfficePerson) => [p.id, p.state, p.shirt, p.hair, p.prop, p.cli, p.seat, p.rank].join(":");
-  return JSON.stringify([m.founder && who(m.founder), m.floors.map((f) => [f.id, f.open, f.lit, f.papers, f.board, f.people.map(who)]), m.flights.map((x) => x.id)]);
+  return JSON.stringify([m.founder && who(m.founder), m.floors.map((f) => [f.id, f.name, f.open, f.lit, f.needs, f.papers, f.board, f.people.map(who)]), m.flights.map((x) => x.id)]);
 }

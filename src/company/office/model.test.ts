@@ -64,6 +64,20 @@ describe("looks", () => {
   it("falls back to the stored shirt with no role", () => {
     expect(lookOf(person("x"), undefined).shirt).toBe("#111111");
   });
+  it("gives a department named like an object key a real colour", () => {
+    for (const d of ["constructor", "toString", "__proto__"]) expect(departmentShirt(d)).toMatch(/^#[0-9a-f]{6}$/);
+  });
+  it("never passes on a colour that is not one", () => {
+    const bad = { shirt: "red; background:url(x)", hair: "", prop: "book", edited: true };
+    const r = role("qa", "Engineering");
+    expect(lookOf(person("x", { look: bad }), r)).toEqual({ shirt: departmentShirt("Engineering"), hair: hairFor("x"), prop: "book" });
+    expect(lookOf(person("x", { look: { ...bad, edited: false } }), undefined).shirt).toMatch(/^#[0-9a-f]{6}$/);
+    expect(lookOf(person("f", { rank: "founder", look: bad }), r).shirt).toBe("#f5b83d");
+  });
+  it("keeps the short and the long way to write a colour", () => {
+    const look = { shirt: "#ABC", hair: "#aabbcc", prop: "pen", edited: true };
+    expect(lookOf(person("x", { look }), undefined)).toEqual({ shirt: "#ABC", hair: "#aabbcc", prop: "pen" });
+  });
 });
 
 describe("officeModel", () => {
@@ -143,6 +157,12 @@ describe("sceneKey", () => {
   const m = (state: string) => officeModel(company([person("x")]), [], [], [pane("x", status(state))], { openDirs: ["D:\\a"] });
   it("is the same for the same picture", () => { expect(sceneKey(m("idle"))).toBe(sceneKey(m("idle"))); });
   it("changes when a person's state does", () => { expect(sceneKey(m("idle"))).not.toBe(sceneKey(m("working"))); });
+  it("changes when a floor's name or needs do, which anchors and tags follow", () => {
+    const a = m("idle");
+    const floor = (over: object) => ({ ...a, floors: a.floors.map((f, i) => (i ? f : { ...f, ...over })) });
+    expect(sceneKey(floor({ name: "renamed" }))).not.toBe(sceneKey(a));
+    expect(sceneKey(floor({ needs: 3 }))).not.toBe(sceneKey(a));
+  });
   it("ignores rail text, which the scene does not draw", () => {
     const a = m("idle");
     expect(sceneKey({ ...a, needs: [] })).toBe(sceneKey({ ...a, needs: [{ key: "k", kind: "alert", jobId: null, personId: null, title: "t", detail: "" }] }));
