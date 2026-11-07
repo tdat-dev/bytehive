@@ -21,7 +21,7 @@ use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Processor, R
 use gpui_kit::*;
 use portable_pty::PtySize;
 
-use crate::keys;
+use crate::{boxdraw, keys};
 
 const FONT_FAMILY: &str = "Geist Mono";
 const FONT_SIZE: f32 = 13.0;
@@ -405,7 +405,7 @@ impl Terminal {
     }
 
     /// One frame of the grid as flat lists, so the lock is not held while painting.
-    fn snapshot(&self) -> (Vec<Fill>, Vec<Span>, Option<(usize, usize, CursorShape)>) {
+    fn snapshot(&self) -> (Vec<Fill>, Vec<Span>, Vec<(usize, usize, char, Rgb)>, Option<(usize, usize, CursorShape)>) {
         let term = self.term.lock().unwrap();
         let content = term.renderable_content();
         let offset = content.display_offset as i32;
@@ -414,6 +414,7 @@ impl Terminal {
 
         let mut fills: Vec<Fill> = Vec::new();
         let mut spans: Vec<Span> = Vec::new();
+        let mut drawn: Vec<(usize, usize, char, Rgb)> = Vec::new();
         let push_fill = |fills: &mut Vec<Fill>, row: usize, col: usize, cols: usize, color: Hsla| match fills.last_mut() {
             Some(last) if last.row == row && last.col + last.cols == col && last.color == color => last.cols += cols,
             _ => fills.push(Fill { row, col, cols, color }),
@@ -451,10 +452,17 @@ impl Terminal {
             if let Some(marks) = cell.zerowidth() {
                 text.extend(marks);
             }
-            // A wide glyph stands alone so the cells after it stay on the grid.
+            if boxdraw::is_drawn(cell.c) {
+                drawn.push((row, col, cell.c, fg));
+                continue;
+            }
+            // Only plain ASCII runs together: anything else may come from a
+            // fallback font with its own width, and must stay on its cell.
+            let ascii = cell.c.is_ascii();
             match spans.last_mut() {
                 Some(last)
-                    if !wide
+                    if ascii
+                        && last.text.is_ascii()
                         && last.row == row
                         && last.col + last.text.chars().count() == col
                         && last.fg == fg
@@ -472,7 +480,7 @@ impl Terminal {
         let cursor = content.cursor;
         let at = (cursor.shape != CursorShape::Hidden && content.display_offset == 0)
             .then(|| ((cursor.point.line.0 + offset) as usize, cursor.point.column.0, cursor.shape));
-        (fills, spans, at)
+        (fills, spans, drawn, at)
     }
 
     fn paint_grid(&self, bounds: Bounds<Pixels>, font_base: &Font, window: &mut Window, cx: &mut App) {
@@ -480,7 +488,7 @@ impl Terminal {
         let at = |row: usize, col: usize| bounds.origin + point(cell_w * col as f32, cell_h * row as f32);
         window.paint_quad(fill(bounds, hsla(BACKGROUND)));
 
-        let (fills, spans, cursor) = self.snapshot();
+        let (fills, spans, drawn, cursor) = self.snapshot();
         for f in fills {
             window.paint_quad(fill(Bounds::new(at(f.row, f.col), size(cell_w * f.cols as f32, cell_h)), f.color));
         }
@@ -498,8 +506,15 @@ impl Terminal {
             window.paint_quad(quad);
         }
 
+        for (row, col, c, color) in drawn {
+            boxdraw::paint(c, at(row, col), size(cell_w, cell_h), hsla(color), window);
+        }
+
         for span in spans {
             let mut font = font_base.clone();
+            if span.text.chars().next().is_some_and(is_emoji) {
+                font.fallbacks = None;
+            }
             font.weight = span.weight;
             if span.italic {
                 font.style = FontStyle::Italic;
@@ -523,6 +538,11 @@ impl Terminal {
             let _ = line.paint(at(row, col), cell_h, TextAlign::Left, None, window, cx);
         }
     }
+}
+
+/// Pictures that keep their colour; other symbols stay plain text glyphs.
+fn is_emoji(c: char) -> bool {
+    matches!(c as u32, 0x1f300..=0x1faff | 0x2705 | 0x2728 | 0x274c | 0x274e | 0x26a1 | 0x2b50)
 }
 
 fn mouse_code(button: MouseButton) -> u8 {
@@ -580,7 +600,9 @@ impl Render for Terminal {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         let focus = self.focus.clone();
-        let font_base = font(FONT_FAMILY);
+        let mut font_base = font(FONT_FAMILY);
+        // Symbols before emoji: Claude Code's bullet must stay a plain glyph.
+        font_base.fallbacks = Some(FontFallbacks::from_fonts(vec!["Segoe UI Symbol".to_string(), "Cascadia Mono".to_string(), "Consolas".to_string()]));
         let grid = canvas(
             {
                 let this = this.clone();

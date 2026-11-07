@@ -1,6 +1,7 @@
 //! ByteHive drawn by itself: Rust + GPUI, no WebView. For now one window with
 //! a real terminal; the Inbox lands around it next.
 
+mod boxdraw;
 mod keys;
 mod terminal;
 
