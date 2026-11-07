@@ -8,9 +8,9 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(280px, 340px) 1fr;
-  border-radius: 18px;
+  border-radius: var(--r-dialog);
   background: var(--ib-panel);
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  box-shadow: var(--lift), var(--ring-line);
   overflow: hidden;
 }
 
@@ -20,25 +20,25 @@
 .sv-ht { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
 .sv-ht h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; letter-spacing:-.01em; }
 .sv-count { font-size: var(--fs-meta); color: var(--ib-ink-3); white-space: nowrap; }
-.sv-scope { display: flex; gap: 4px; margin: 0 14px 10px; padding: 3px; border-radius: 10px; background: rgba(0, 0, 0, 0.3); }
+.sv-scope { display: flex; gap: 4px; margin: 0 14px 10px; padding: 3px; border-radius: var(--r-card); background: rgba(0, 0, 0, 0.3); }
 .sv-scope button {
-  flex: 1; min-width: 0; height: 28px; padding: 0 10px; border-radius: 8px;
+  flex: 1; min-width: 0; height: 28px; padding: 0 10px; border-radius: var(--r-control);
   font-size: var(--fs-meta); color: var(--ib-ink-3);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sv-scope button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.1); color: var(--ib-ink); }
 .sv-scope button:disabled { opacity: 0.4; }
 .sv-q {
-  margin: 0 14px 8px; height: 34px; padding: 0 12px; border: 0; border-radius: 10px;
-  background: rgba(0, 0, 0, 0.35); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  margin: 0 14px 8px; height: 34px; padding: 0 12px; border: 0; border-radius: var(--r-card);
+  background: rgba(0, 0, 0, 0.35); box-shadow: var(--ring-line);
   color: var(--ib-ink); font: var(--t-body);
 }
-.sv-q:focus { outline: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.sv-q:focus { outline: none; box-shadow: var(--ring-line); }
 .sv-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 8px 10px; }
 .sv-day { margin: 12px 10px 4px; font-size: var(--fs-meta); font-weight: 500; color: var(--ib-ink-3); }
 .sv-item {
   display: flex; flex-direction: column; gap: 3px; width: 100%;
-  padding: 9px 10px; border-radius: 10px; text-align: left; color: var(--ib-ink-2);
+  padding: 9px 10px; border-radius: var(--r-card); text-align: left; color: var(--ib-ink-2);
 }
 .sv-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--ib-ink); }
 .sv-item:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
@@ -57,7 +57,7 @@
 .sv-rt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sv-rt b { font-size: var(--fs-lead); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sv-rm { font: var(--t-mono); color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sv-copyid, .sv-backto { flex: none; height: 28px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--ib-ink-2); font-size: var(--fs-meta); }
+.sv-copyid, .sv-backto { flex: none; height: 28px; padding: 0 12px; border-radius: var(--r-control); background: rgba(255, 255, 255, 0.06); color: var(--ib-ink-2); font-size: var(--fs-meta); }
 .sv-copyid:hover, .sv-backto:hover { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
 .sv-backto { display: none; }
 .sv-note { align-self: center; margin: 24px 0; font-size: var(--fs-body); color: var(--ib-ink-3); }

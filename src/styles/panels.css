@@ -5,8 +5,8 @@
 
 /* 5px hit-area splitters straddling the column borders. A hairline shows on
    hover/drag so the resize affordance reads without cluttering the chrome. */
-.rail-split{position:absolute;top:0;right:-2px;width:5px;height:100%;cursor:col-resize;z-index:8}
-.code-split{position:absolute;top:0;left:-2px;width:5px;height:100%;cursor:col-resize;z-index:8}
+.rail-split{position:absolute;top:0;right:-2px;width:5px;height:100%;cursor:col-resize;z-index:3}
+.code-split{position:absolute;top:0;left:-2px;width:5px;height:100%;cursor:col-resize;z-index:3}
 .rail-split::after,.code-split::after{content:"";position:absolute;inset:0 2px;background:var(--accent);opacity:0;transition:opacity .14s}
 .rail-split:hover::after,.code-split:hover::after,.splitting .rail-split::after,.splitting .code-split::after{opacity:.5}
 
@@ -20,7 +20,7 @@
 /* shared section eyebrow used by the rail head + code-panel head */
 .cp-head{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 6px 0 14px;flex:none;border-bottom:1px solid var(--line)}
 .cp-eyebrow{font-family:var(--mono);font-size:var(--fs-meta);font-weight:600;color:var(--muted-2)}
-.cp-btn{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
+.cp-btn{width:24px;height:24px;border-radius:var(--r-control);display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .cp-btn:hover{background:var(--surface-2);color:var(--text-2)}
 
 .code-panel .file-tree{flex:0 0 46%;min-height:0;overflow:auto}
@@ -29,19 +29,19 @@ body.splitting{cursor:col-resize;user-select:none}
 
 /* expand-to-fullscreen: the code panel floats as a large centered overlay so
    editing isn't cramped in the narrow column. Esc or the button collapses it. */
-.app.editor-max::before{content:"";position:fixed;inset:0;background:rgba(5,7,9,.62);z-index:199}
-.app.editor-max .code-panel{position:fixed;inset:max(32px,4vh) max(48px,6vw);width:auto;z-index:200;border:1px solid var(--line-strong);border-radius:var(--r4);box-shadow:0 30px 90px rgba(0,0,0,.6);background:var(--bg)}
+.app.editor-max::before{content:"";position:fixed;inset:0;background:rgba(5,7,9,.62);z-index:var(--z-scrim)}
+.app.editor-max .code-panel{position:fixed;inset:max(32px,4vh) max(48px,6vw);width:auto;z-index:var(--z-dialog);border:1px solid var(--line-strong);border-radius:var(--r-dialog);box-shadow:var(--lift);background:var(--bg)}
 .app.editor-max .code-panel .cp-head,.app.editor-max .code-panel .file-tree,.app.editor-max .code-split{display:none}
-.app.editor-max .code-panel .editor-host{border-top:none;border-radius:var(--r4)}
-.app.editor-max .code-panel .ed-tab{border-radius:var(--r4) var(--r4) 0 0}
+.app.editor-max .code-panel .editor-host{border-top:none;border-radius:var(--r-dialog)}
+.app.editor-max .code-panel .ed-tab{border-radius:var(--r-dialog) var(--r-dialog) 0 0}
 
 /* topbar pane-toggle buttons — mapped to the edge they control: the sidebar
    toggle sits far-left (by Home), the code-panel toggle far-right (by the
    window controls), so the button's position tells you which panel it opens. */
-.tb-pane{width:30px;height:30px;border-radius:var(--r2);display:grid;place-items:center;color:var(--muted-2);flex:none;transition:background .14s,color .14s,box-shadow .14s}
+.tb-pane{width:30px;height:30px;border-radius:var(--r-card);display:grid;place-items:center;color:var(--muted-2);flex:none;transition:background .14s,color .14s,box-shadow .14s}
 .tb-pane:hover{background:var(--surface-1);color:var(--text-2)}
 /* lit pill = that panel is currently open; dim = collapsed (click to reveal) */
-.tb-pane.on{color:var(--accent);background:var(--accent-glow);box-shadow:inset 0 0 0 1px var(--accent-dim)}
+.tb-pane.on{color:var(--accent);background:var(--accent-glow);box-shadow:var(--ring-line)}
 .tb-pane.on:hover{background:rgba(255,255,255,.22)}
 
 /* hairline divider grouping the toggles apart from the rest of the topbar */

@@ -32,14 +32,14 @@ select.sm-native { display: none !important; }
 
 .sm-pop {
   position: fixed;
-  z-index: 2000;
+  z-index: var(--z-toast);
   max-width: min(360px, calc(100vw - 24px));
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 5px;
-  border-radius: 14px;
+  border-radius: var(--r-dialog);
   background: #16171b;
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: var(--lift), var(--ring-line);
   font: var(--t-body);
   color: var(--ib-ink, #f4f4f5);
   outline: none;
@@ -58,7 +58,7 @@ select.sm-native { display: none !important; }
   gap: 8px;
   min-height: 34px;
   padding: 6px 12px 6px 8px;
-  border-radius: 9px;
+  border-radius: var(--r-card);
   cursor: pointer;
   user-select: none;
 }
@@ -80,12 +80,12 @@ select.sm-native { display: none !important; }
 /* The right-click menu (ctxmenu.ts): the same floating list, with actions. */
 .cm-menu {
   position: fixed;
-  z-index: 2000;
+  z-index: var(--z-toast);
   min-width: 210px;
   padding: 5px;
-  border-radius: 14px;
+  border-radius: var(--r-dialog);
   background: #16171b;
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: var(--lift), var(--ring-line);
   font: var(--t-body);
   color: var(--ib-ink, #f4f4f5);
   animation: sm-in 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -100,7 +100,7 @@ select.sm-native { display: none !important; }
   min-height: 32px;
   padding: 6px 12px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--r-card);
   background: none;
   color: inherit;
   font: inherit;

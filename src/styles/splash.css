@@ -3,7 +3,7 @@
    a flash blooms on completion, a light burst + rings + a
    signal field radiate, then the splash fades while Home focuses in. Effects
    overlap heavily so it reads fast despite the richness. */
-.intro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;place-content:center;pointer-events:none;overflow:hidden;
+.intro{position:fixed;inset:0;z-index:var(--z-sheet);display:grid;place-items:center;place-content:center;pointer-events:none;overflow:hidden;
   background:
     radial-gradient(820px 440px at 50% 42%, rgba(255,216,92,.10), transparent 62%),
     radial-gradient(560px 560px at 50% 100%, rgba(255,216,92,.05), transparent 60%),

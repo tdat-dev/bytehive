@@ -22,3 +22,17 @@ describe("type", () => {
     expect(hits(/font-weight:\s*(?:[1-3]00|[7-9]00|bold)\b/g)).toEqual([]);
   });
 });
+
+describe("shape", () => {
+  it("has three radii, a circle and the status word", () => {
+    const off = hits(/border(?:-\w+)*-radius:\s*[^;}]+/g).filter((h) => !/tokens\.css/.test(h) && !/radius:\s*((var\(--r-(control|card|dialog|word)\)|0|50%|inherit)\s*)+$/.test(h));
+    expect(off).toEqual([]);
+  });
+  it("blurs nothing behind a panel", () => {
+    expect(hits(/backdrop-filter/g)).toEqual([]);
+  });
+  it("stacks by the named scale, and small numbers stay inside a component", () => {
+    const off = hits(/z-index:\s*[^;}]+/g).filter((h) => !/z-index:\s*(var\(--z-(rail|sheet|popover|scrim|dialog|toast)\)|-1|[0-3])\s*$/.test(h));
+    expect(off).toEqual([]);
+  });
+});

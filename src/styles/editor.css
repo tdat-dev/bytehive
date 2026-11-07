@@ -8,10 +8,10 @@
 
 /* tab actions: markdown Edit/Preview segment + expand button */
 .editor-host .ed-actions{display:flex;align-items:center;gap:6px;flex:none}
-.editor-host .ed-seg{height:22px;padding:0 10px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);font-size:var(--fs-meta);font-weight:600;transition:border-color .14s,color .14s}
+.editor-host .ed-seg{height:22px;padding:0 10px;border-radius:var(--r-control);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);font-size:var(--fs-meta);font-weight:600;transition:border-color .14s,color .14s}
 .editor-host .ed-seg[hidden]{display:none}
 .editor-host .ed-seg:hover{border-color:var(--accent-dim);color:var(--accent)}
-.editor-host .ed-act{width:24px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
+.editor-host .ed-act{width:24px;height:22px;border-radius:var(--r-control);display:grid;place-items:center;color:var(--muted-2);transition:background .14s,color .14s}
 .editor-host .ed-act:hover{background:var(--surface-2);color:var(--text-2)}
 
 /* rendered Markdown preview */
@@ -25,8 +25,8 @@
 .ed-md p{margin:.7em 0}
 .ed-md a{color:var(--info);text-decoration:none}
 .ed-md a:hover{text-decoration:underline}
-.ed-md code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:.12em .4em;border-radius:4px;color:#9fd0e8}
-.ed-md pre{background:var(--surface-0);border:1px solid var(--line);border-radius:var(--r2);padding:12px 14px;overflow:auto;margin:.85em 0}
+.ed-md code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:.12em .4em;border-radius:var(--r-control);color:#9fd0e8}
+.ed-md pre{background:var(--surface-0);border:1px solid var(--line);border-radius:var(--r-card);padding:12px 14px;overflow:auto;margin:.85em 0}
 .ed-md pre code{background:none;padding:0;color:var(--text-2)}
 .ed-md ul,.ed-md ol{margin:.6em 0;padding-left:1.5em}
 .ed-md li{margin:.25em 0}
@@ -34,16 +34,16 @@
 .ed-md table{border-collapse:collapse;margin:.85em 0;font-size:.95em}
 .ed-md th,.ed-md td{border:1px solid var(--line);padding:6px 10px}
 .ed-md th{background:var(--surface-1);color:var(--text-2)}
-.ed-md img{max-width:100%;border-radius:var(--r1)}
+.ed-md img{max-width:100%;border-radius:var(--r-control)}
 .ed-md hr{border:0;border-top:1px solid var(--line);margin:1.3em 0}
 .editor-host .ed-dot{width:6px;height:6px;border-radius:50%;background:transparent;border:1.5px solid var(--muted-2);flex:none;transition:background .14s,border-color .14s}
-.editor-host .ed-tab.dirty .ed-dot{background:var(--accent);border-color:var(--accent);box-shadow:0 0 6px var(--accent-glow)}
+.editor-host .ed-tab.dirty .ed-dot{background:var(--accent);border-color:var(--accent);box-shadow:none}
 .editor-host .ed-tab.dirty .ed-tab-name{color:var(--text)}
 
 /* conflict banner — amber, sits under the tab */
 .editor-host .ed-banner{flex:none;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:var(--fs-meta);color:#ffd9a0;background:rgba(255,184,76,.1);border-bottom:1px solid rgba(255,184,76,.28)}
 .editor-host .ed-banner[hidden]{display:none}
-.editor-host .ed-banner button{font:inherit;font-size:var(--fs-meta);padding:3px 9px;border-radius:var(--r1);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:border-color .14s,color .14s}
+.editor-host .ed-banner button{font:inherit;font-size:var(--fs-meta);padding:3px 9px;border-radius:var(--r-control);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:border-color .14s,color .14s}
 .editor-host .ed-banner button:hover{border-color:#ffb84c;color:#ffb84c}
 
 /* empty state — calm, centered, with a glyph */
@@ -60,6 +60,6 @@
   background-image:linear-gradient(45deg,var(--surface-1) 25%,transparent 25%),linear-gradient(-45deg,var(--surface-1) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,var(--surface-1) 75%),linear-gradient(-45deg,transparent 75%,var(--surface-1) 75%);
   background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0}
 .editor-host .ed-img[hidden]{display:none}
-.editor-host .ed-img-el{max-width:100%;height:auto;border-radius:var(--r1);box-shadow:0 6px 24px rgba(0,0,0,.5);image-rendering:auto}
+.editor-host .ed-img-el{max-width:100%;height:auto;border-radius:var(--r-control);box-shadow:none;image-rendering:auto}
 .editor-host .cm-editor{height:100%}
 .editor-host .cm-editor.cm-focused{outline:none}

@@ -11,12 +11,12 @@
 
 .flow-list{display:flex;flex-direction:column;gap:6px}
 
-.flow-row{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:var(--r2);
+.flow-row{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:var(--r-card);
   background:var(--surface-1);border:1px solid var(--line)}
 
 .flow-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;
   width:100%;text-align:left;cursor:pointer}
-.flow-av{width:20px;height:20px;border-radius:var(--r1);flex:none;display:grid;place-items:center;
+.flow-av{width:20px;height:20px;border-radius:var(--r-control);flex:none;display:grid;place-items:center;
   font-size:var(--fs-meta);font-weight:600;color:var(--accent-ink);background:var(--muted-2)}
 .flow-who{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--fs-meta);color:var(--muted)}
 .flow-who b{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
