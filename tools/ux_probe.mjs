@@ -214,6 +214,10 @@ try {
   await until(`__probe.channels.length >= 2 && !!document.querySelector(".pane.focused .xterm-screen")`, "the agents to start");
   await sleep(400);
 
+  // The fake folder is dirty from the first look, so it is nobody's, and the project says so.
+  await until(`!!document.querySelector(".iq-ph")?.textContent.includes("Uncommitted changes")`, "the project header to name the folder's changes");
+  check(true, "the project header says the folder has uncommitted changes");
+
   await focusTerminal();
   await shot("terminal-focused");
   await send("Emulation.setDeviceMetricsOverride", { width: 900, height: 620, deviceScaleFactor: 1, mobile: false });
