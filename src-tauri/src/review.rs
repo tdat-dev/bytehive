@@ -125,10 +125,9 @@ fn repo_diff_impl(repo_root: String) -> Result<String, CommandError> {
 /// for itself, named one by one. Everything else counts, however it looks: a
 /// pattern here once hid `.claude/commands/ship.md` from Review and then deleted
 /// it with the worktree. Files git tracks count wherever they are, and ignored
-/// ones never come up.
-pub(crate) const MACHINE_FILES: [&str; 6] = [
+/// ones never come up. `.claude/worktrees` is not here: it holds real checkouts.
+pub(crate) const MACHINE_FILES: [&str; 5] = [
     ".claude/settings.local.json",
-    ".claude/worktrees",
     ".bytehive/board.json",
     ".bytehive/fleet.json",
     ".bytehive/outbox.jsonl",
@@ -136,20 +135,82 @@ pub(crate) const MACHINE_FILES: [&str; 6] = [
 ];
 
 fn is_machine_file(path: &str) -> bool {
-    MACHINE_FILES.iter().any(|m| path == *m || path.strip_prefix(m).is_some_and(|rest| rest.starts_with('/')))
+    MACHINE_FILES.contains(&path)
 }
 
-/// Untracked files that are work: not ignored, not the machine's.
-pub(crate) fn new_work(dir: &str) -> Result<Vec<String>, CommandError> {
+/// Every untracked, unignored path in `dir`. git shows a checkout nested in it as
+/// the one folder, with a trailing slash.
+fn untracked(dir: &str) -> Result<Vec<String>, CommandError> {
     let out = git_env(&["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"], dir, &READ_ONLY)?;
     Ok(out.split('\0').filter(|p| !p.is_empty() && !is_machine_file(p)).map(str::to_string).collect())
+}
+
+/// Untracked files that are work: not ignored, not the machine's, and not a
+/// nested checkout, which `add` would turn into a gitlink.
+pub(crate) fn new_work(dir: &str) -> Result<Vec<String>, CommandError> {
+    Ok(untracked(dir)?.into_iter().filter(|p| !p.ends_with('/')).collect())
+}
+
+/// Checkouts nested in `dir`, with whatever uncommitted work they hold.
+pub(crate) fn nested_checkouts(dir: &str) -> Result<Vec<String>, CommandError> {
+    Ok(untracked(dir)?.into_iter().filter(|p| p.ends_with('/')).collect())
+}
+
+/// Folders a build makes again, so losing them with a worktree costs nothing.
+const REGENERABLE: [&str; 7] = ["node_modules", "target", "dist", ".next", "build", "__pycache__", ".venv"];
+
+fn regenerable(path: &str) -> bool {
+    path.split('/').any(|part| REGENERABLE.contains(&part))
+}
+
+/// Ignored files in `dir` that nothing can bring back: a `.env`, a local database.
+/// `worktree remove` deletes ignored files without a word, forced or not.
+pub(crate) fn ignored_keepers(dir: &str) -> Result<Vec<String>, CommandError> {
+    let list = |extra: &[&str]| -> Result<Vec<String>, CommandError> {
+        let mut args = vec!["--literal-pathspecs", "-c", "core.quotepath=false", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"];
+        args.extend(extra);
+        Ok(git_env(&args, dir, &READ_ONLY)?.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect())
+    };
+    let mut keep = Vec::new();
+    // Folded by folder, so node_modules is not walked file by file. A folded folder
+    // that is not regenerable is opened: it may hold one, or only machine files.
+    for entry in list(&["--directory"])? {
+        if regenerable(&entry) {
+            continue;
+        }
+        if entry.ends_with('/') {
+            keep.extend(list(&["--", &entry])?);
+        } else {
+            keep.push(entry);
+        }
+    }
+    keep.retain(|p| !is_machine_file(p) && !regenerable(p));
+    keep.sort();
+    keep.dedup();
+    Ok(keep)
+}
+
+/// Names for a note: ten, then how many more.
+pub(crate) fn names_capped(names: &[String]) -> String {
+    const SHOWN: usize = 10;
+    let list = names[..names.len().min(SHOWN)].join(", ");
+    if names.len() > SHOWN { format!("{list} and {} more", names.len() - SHOWN) } else { list }
 }
 
 /// `git add <flag>` the new work in `dir`. By name from a file, not by a pathspec
 /// that leaves the machine files out: git refuses such a pathspec when one of them
 /// is ignored, and a list can be longer than a command line.
 pub(crate) fn add_new_work(dir: &str, flag: &str, envs: &[(&str, &str)]) -> Result<(), CommandError> {
-    let files = new_work(dir)?;
+    twice(|| add_listed(dir, flag, envs, &new_work(dir)?))
+}
+
+/// One more try: a file can go between listing it and adding it, and an agent
+/// deleting a temp file must not look like git failing.
+fn twice(mut attempt: impl FnMut() -> Result<(), CommandError>) -> Result<(), CommandError> {
+    attempt().or_else(|_| attempt())
+}
+
+fn add_listed(dir: &str, flag: &str, envs: &[(&str, &str)], files: &[String]) -> Result<(), CommandError> {
     if files.is_empty() {
         return Ok(());
     }
@@ -164,18 +225,12 @@ pub(crate) fn add_new_work(dir: &str, flag: &str, envs: &[(&str, &str)]) -> Resu
 }
 
 /// The machine files lying untracked in `dir`: what Review and a merge leave out.
-/// An agent's worktrees under `.claude/worktrees` count as the one folder.
 pub(crate) fn left_out_of(dir: &str) -> Result<Vec<String>, CommandError> {
     let mut args = vec!["--literal-pathspecs", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z", "--"];
     args.extend(MACHINE_FILES);
     let out = git_env(&args, dir, &READ_ONLY)?;
-    let mut names: Vec<String> = out
-        .split('\0')
-        .filter(|p| !p.is_empty())
-        .map(|p| MACHINE_FILES.iter().find(|m| p.starts_with(&format!("{m}/"))).map_or(p, |m| m).to_string())
-        .collect();
+    let mut names: Vec<String> = out.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect();
     names.sort();
-    names.dedup();
     Ok(names)
 }
 
@@ -184,7 +239,7 @@ pub(crate) fn left_out_words(names: &[String]) -> Option<String> {
     match names.len() {
         0 => None,
         1 => Some(format!("1 file left out: {}", names[0])),
-        n => Some(format!("{n} files left out: {}", names.join(", "))),
+        n => Some(format!("{n} files left out: {}", names_capped(names))),
     }
 }
 
@@ -750,7 +805,6 @@ mod tests {
         git(&["commit", "-qam", "agent work"], &root).unwrap();
         write(tmp.path(), "new.txt", "fresh\n");
         write(tmp.path(), ".claude/settings.local.json", "{}\n");
-        write(tmp.path(), ".claude/worktrees/a/x.txt", "noise\n");
         write(tmp.path(), ".bytehive/fleet.json", "{}\n");
         write(tmp.path(), ".gitignore", "built/\n");
         write(tmp.path(), "built/x.js", "noise\n");
@@ -758,7 +812,7 @@ mod tests {
         assert_eq!(sorted(&files), vec![".gitignore", "a.txt", "new.txt"]);
         assert_eq!(
             left_out_of(&root).unwrap(),
-            vec![".bytehive/fleet.json", ".claude/settings.local.json", ".claude/worktrees"]
+            vec![".bytehive/fleet.json", ".claude/settings.local.json"]
         );
         let a = files.iter().find(|f| f.path == "a.txt").unwrap();
         assert_eq!((a.added, a.removed), (Some(1), Some(0)));
@@ -791,10 +845,22 @@ mod tests {
 
     #[test]
     fn a_name_is_only_the_machine_s_when_it_is_exactly_one_of_them() {
-        assert!(is_machine_file(".claude/settings.local.json") && is_machine_file(".claude/worktrees/a/b.txt"));
-        for f in [".claude/settings.local.json.bak", ".claude/worktrees2/a", "x/.claude/settings.local.json", ".bytehive/memory.json"] {
+        assert!(is_machine_file(".claude/settings.local.json"));
+        for f in [".claude/settings.local.json.bak", ".claude/worktrees/a/b.txt", "x/.claude/settings.local.json", ".bytehive/memory.json"] {
             assert!(!is_machine_file(f), "{f}");
         }
+    }
+
+    #[test]
+    fn a_file_gone_between_the_list_and_the_add_is_listed_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        write(tmp.path(), "here.txt", "fresh\n");
+        let gone = vec!["gone.txt".to_string()];
+        assert!(add_listed(&root, "-N", &[], &gone).is_err(), "git refuses a name that has gone");
+        let mut lists = vec![gone, vec!["here.txt".to_string()]].into_iter();
+        twice(|| add_listed(&root, "-N", &[], &lists.next().unwrap())).unwrap();
+        assert_eq!(lists.next(), None);
     }
 
     #[test]
@@ -802,6 +868,8 @@ mod tests {
         assert_eq!(left_out_words(&[]), None);
         assert_eq!(left_out_words(&["a".into()]).unwrap(), "1 file left out: a");
         assert_eq!(left_out_words(&["a".into(), "b".into()]).unwrap(), "2 files left out: a, b");
+        let many: Vec<String> = (0..12).map(|i| format!("f{i}")).collect();
+        assert_eq!(left_out_words(&many).unwrap(), "12 files left out: f0, f1, f2, f3, f4, f5, f6, f7, f8, f9 and 2 more");
     }
 
     #[test]

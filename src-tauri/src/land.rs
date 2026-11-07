@@ -201,10 +201,12 @@ fn stage_work(dir: &str, env: &[(&str, &str)]) -> Result<(), String> {
     crate::review::add_new_work(dir, "-A", env).map_err(|e| e.to_string())
 }
 
-/// Files in the worktree that are not on the merged branch and not the machine's.
-/// None when git can't say, which keeps the worktree as surely as a file would.
+/// Files in the worktree that are not on the merged branch and not the machine's,
+/// checkouts nested in it included. None when git can't say, which keeps the
+/// worktree as surely as a file would.
 fn unmerged_files(dir: &str) -> Option<Vec<String>> {
     let mut files = crate::review::new_work(dir).ok()?;
+    files.extend(crate::review::nested_checkouts(dir).ok()?);
     let edited = git(&["-c", "core.quotepath=false", "diff", "--name-only", "HEAD"], dir).ok()?;
     files.extend(edited.lines().filter(|l| !l.is_empty()).map(str::to_string));
     Some(files)
@@ -215,9 +217,11 @@ fn removal_for(machine: &[String]) -> Removal {
     if machine.is_empty() { Removal::Merged } else { Removal::MergedOverMachineFiles }
 }
 
-/// Take a merged worktree away, forcing only over machine files and never over
-/// anything else, and say what stayed or was left out.
+/// Take a merged worktree away, forcing only over machine files, and only with
+/// nothing in it that would be lost: `worktree remove` takes ignored files with it
+/// even unforced. Say what stayed or was left out.
 fn clear_merged(s: &Sides) -> (bool, Option<String>) {
+    use crate::review::{left_out_words, names_capped};
     let kept = |why: String| (false, Some(format!("Merged, but the worktree was kept: {why}")));
     let unmerged = match unmerged_files(&s.worktree) {
         Some(files) => files,
@@ -225,11 +229,24 @@ fn clear_merged(s: &Sides) -> (bool, Option<String>) {
     };
     if !unmerged.is_empty() {
         let n = unmerged.len();
-        return kept(format!("{n} file{} in it did not go into the merge: {}", if n == 1 { "" } else { "s" }, unmerged.join(", ")));
+        return kept(format!("{n} file{} in it did not go into the merge: {}", if n == 1 { "" } else { "s" }, names_capped(&unmerged)));
+    }
+    let ignored = match crate::review::ignored_keepers(&s.worktree) {
+        Ok(files) => files,
+        Err(_) => return kept("git could not say what is left in it.".into()),
+    };
+    if !ignored.is_empty() {
+        let n = ignored.len();
+        return kept(format!("{n} ignored file{} in it would be lost: {}", if n == 1 { "" } else { "s" }, names_capped(&ignored)));
     }
     let machine = crate::review::left_out_of(&s.worktree).unwrap_or_default();
+    let left = left_out_words(&machine);
     match remove(s, removal_for(&machine)) {
-        Ok(()) => (true, crate::review::left_out_words(&machine)),
+        Ok(None) => (true, left),
+        Ok(Some(e)) => {
+            let branch = format!("Branch {} was kept: {e}", s.branch);
+            (true, Some(left.map_or(branch.clone(), |l| format!("{branch}. {l}"))))
+        }
         Err(e) => kept(e),
     }
 }
@@ -313,8 +330,9 @@ enum Removal {
     Discarded,
 }
 
-/// Take the worktree away and delete its branch.
-fn remove(s: &Sides, how: Removal) -> Result<(), String> {
+/// Take the worktree away and delete its branch. Err: the worktree stayed.
+/// Ok(Some(why)): it went, and the branch stayed for that reason.
+fn remove(s: &Sides, how: Removal) -> Result<Option<String>, String> {
     if !wait_released(&s.worktree) {
         return Err("its folder is still in use (is the agent still running there?)".into());
     }
@@ -324,8 +342,7 @@ fn remove(s: &Sides, how: Removal) -> Result<(), String> {
     }
     args.push(&s.worktree);
     git(&args, &s.main)?;
-    git(&["branch", if how == Removal::Discarded { "-D" } else { "-d" }, &s.branch], &s.main)?;
-    Ok(())
+    Ok(git(&["branch", if how == Removal::Discarded { "-D" } else { "-d" }, &s.branch], &s.main).err())
 }
 
 /// A commit message from what the agent was asked to do.
@@ -484,7 +501,11 @@ pub async fn review_discard_branch(worktree_path: String) -> Result<(), CommandE
 
 fn discard_impl(worktree: &str) -> Result<(), String> {
     let s = sides(worktree)?;
-    remove(&s, Removal::Discarded).map_err(|e| format!("Couldn't discard {}: {e}", s.branch))
+    match remove(&s, Removal::Discarded) {
+        Ok(None) => Ok(()),
+        Ok(Some(e)) => Err(format!("The worktree was removed, but branch {} was kept: {e}", s.branch)),
+        Err(e) => Err(format!("Couldn't discard {}: {e}", s.branch)),
+    }
 }
 
 #[cfg(test)]
@@ -796,6 +817,113 @@ two
         assert!(!g(&["branch", "--list", "agent"], &main).is_empty());
     }
 
+    fn ignore(main: &Path, patterns: &str) {
+        put(main, ".git/info/exclude", patterns);
+    }
+
+    fn land(wt: &Path) -> (bool, Option<String>) {
+        match land_impl(&s(wt), None, Some("work"), false) {
+            LandResult::Ok { removed, note, .. } => (removed, note),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_ignored_env_or_database_survives_a_merge() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        ignore(&main, ".env\n*.sqlite\n");
+        put(&wt, "new.txt", "fresh\n");
+        put(&wt, ".env", "SECRET=1\n");
+        put(&wt, "data/local.sqlite", "rows\n");
+        let (removed, note) = land(&wt);
+        assert!(!removed);
+        assert_eq!(note.as_deref(), Some("Merged, but the worktree was kept: 2 ignored files in it would be lost: .env, data/local.sqlite"));
+        assert_eq!(std::fs::read_to_string(wt.join(".env")).unwrap(), "SECRET=1\n");
+        assert!(main.join("new.txt").exists());
+    }
+
+    #[test]
+    fn folders_a_build_makes_again_do_not_keep_a_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        ignore(&main, "node_modules/\ntarget/\ndist/\n.next/\nbuild/\n");
+        put(&wt, "new.txt", "fresh\n");
+        for f in ["node_modules/x/i.js", "target/debug/a", "dist/a.js", ".next/b", "web/build/c", "web/node_modules/d.js"] {
+            put(&wt, f, "made again\n");
+        }
+        assert_eq!(land(&wt), (true, None));
+        assert!(!wt.exists());
+    }
+
+    #[test]
+    fn an_ignored_bytehive_folder_holding_only_machine_files_keeps_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        ignore(&main, ".bytehive/\n.claude/settings.local.json\n");
+        put(&wt, "new.txt", "fresh\n");
+        put(&wt, ".bytehive/fleet.json", "{}\n");
+        put(&wt, ".claude/settings.local.json", "{}\n");
+        assert_eq!(land(&wt), (true, None));
+    }
+
+    #[test]
+    fn what_an_agent_knows_is_not_a_machine_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        ignore(&main, ".bytehive/\n");
+        put(&wt, "new.txt", "fresh\n");
+        put(&wt, ".bytehive/fleet.json", "{}\n");
+        put(&wt, ".bytehive/memory.json", "{}\n");
+        let (removed, note) = land(&wt);
+        assert!(!removed);
+        assert!(note.unwrap().ends_with("1 ignored file in it would be lost: .bytehive/memory.json"));
+    }
+
+    #[test]
+    fn a_checkout_inside_the_worktree_keeps_it_and_stays_out_of_the_merge() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        let nested = wt.join(".claude").join("worktrees").join("a");
+        std::fs::create_dir_all(&nested).unwrap();
+        g(&["init", "-q"], &nested);
+        put(&nested, "half-done.txt", "uncommitted\n");
+        put(&wt, "new.txt", "fresh\n");
+        let (removed, note) = land(&wt);
+        assert!(!removed);
+        assert_eq!(note.as_deref(), Some("Merged, but the worktree was kept: 1 file in it did not go into the merge: .claude/worktrees/a/"));
+        assert!(nested.join("half-done.txt").exists());
+        assert_eq!(g(&["ls-files", ".claude"], &main), "", "no gitlink went into the merge");
+    }
+
+    #[test]
+    fn a_long_list_stops_at_ten_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        ignore(&main, "*.env\n");
+        put(&wt, "new.txt", "fresh\n");
+        for i in 0..13 {
+            put(&wt, &format!("{i:02}.env"), "x\n");
+        }
+        let note = land(&wt).1.unwrap();
+        assert!(note.contains("13 ignored files") && note.contains("09.env") && !note.contains("10.env"), "{note}");
+        assert!(note.ends_with("and 3 more"), "{note}");
+    }
+
+    #[test]
+    fn the_note_says_what_happened_when_the_branch_will_not_go() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (main, wt) = setup(tmp.path());
+        std::fs::write(wt.join("a.txt"), "one\nunmerged\n").unwrap();
+        g(&["commit", "-qam", "work"], &wt);
+        let sides = sides(&s(&wt)).unwrap();
+        let (removed, note) = clear_merged(&sides);
+        assert!(removed && !wt.exists());
+        let note = note.unwrap();
+        assert!(note.starts_with("Branch agent was kept:"), "{note}");
+        assert!(!g(&["branch", "--list", "agent"], &main).is_empty());
+    }
+
     #[test]
     fn a_clean_merge_needs_no_force() {
         let tmp = tempfile::tempdir().unwrap();
@@ -817,7 +945,7 @@ two
         std::fs::write(wt.join("a.txt"), "one\nunmerged\n").unwrap();
         g(&["commit", "-qam", "work"], &wt);
         let sides = sides(&s(&wt)).unwrap();
-        assert!(remove(&sides, Removal::MergedOverMachineFiles).is_err());
+        assert!(remove(&sides, Removal::MergedOverMachineFiles).unwrap().is_some());
         assert!(!g(&["branch", "--list", "agent"], &main).is_empty(), "the branch stays");
     }
 

@@ -761,6 +761,19 @@ describe("inbox DOM", () => {
     expect(removed).toBe(1);
   });
 
+  it("says what became of a merged agent's worktree", async () => {
+    state.tasks = [task("e", "Eli", "merged", { mergedInto: "main" })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review")!.textContent).toContain("Its worktree was kept");
+    closeChanges();
+    delete (panes[1].spec as { worktree?: string }).worktree;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector(".inbox-review")!.textContent).toContain("Its worktree and branch are removed");
+  });
+
   it("lists agents under their project, the project that needs you first", () => {
     const other = { id: "ws-2", name: "quy", gridEl: document.createElement("div"), panes: new Map() } as unknown as Workspace;
     workspaces.set("ws-2", other);
