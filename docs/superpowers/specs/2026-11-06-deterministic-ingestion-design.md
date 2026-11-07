@@ -31,7 +31,7 @@ Tiêu chí thành công:
 |---|---|
 | Điểm neo | Hàm mới `sendGated` trong `src/ingest/`, bọc `sendMessage` |
 | Bộ phân loại | Luật thuần trước, API ngoài (OpenAI-compatible) khi luật không quyết được |
-| Nhà cung cấp mặc định | 9Router, model `cx/gpt-6-luna`, đổi được trong Settings |
+| Nhà cung cấp mặc định | 9Router, model `cx/gpt-6-luna`, đổi được bằng cách sửa `~/.bytehive/ingest-provider.json` |
 | Tác vụ mã thuần | Số liệu ByteHive, thêm tool theo một interface chung |
 | Khi guardrail kết luận không cần xử lý | Chặn, lưu lại, có nút gửi lại |
 | Kết quả coding | Không cache, chỉ chống lặp 10 phút cho tin giữa các agent |
@@ -121,7 +121,7 @@ function sendGated(req: Request, deps: GateDeps): Promise<Outcome>;
 - Khóa là SHA-256 của nội dung sau khi gộp khoảng trắng và cắt hai đầu.
 - Mỗi entry lưu `at`, `toolVersion`, `result`. Khi đọc, nếu `toolVersion` khác bản hiện tại thì coi như MISS và xóa. `toolVersion` là hash của bảng giá, danh sách tool và phiên bản prompt phân loại, nên đổi giá là kết quả cũ tự hết hiệu lực mà không phải băm lại.
 - HIT: trả kết quả, nhãn `CACHE_HIT (0 Token)`, không gọi luật, API hay tool.
-- TTL mặc định 7 ngày, chỉnh trong Settings. Tối đa 500 entry, đuổi entry cũ nhất.
+- TTL 7 ngày, là hằng số trong code. Tối đa 500 entry, đuổi entry cũ nhất.
 - Chỉ ghi cache cho kết quả có `cacheable: true`.
 
 ### 6.2 Bước 2: phân loại
@@ -187,9 +187,9 @@ POST <baseUrl>/chat/completions
 
 Trường kết quả tên `data`, không phải `payload`: 9Router trên route `cx` thay chữ `payload` bằng một cụm khác trong cả câu trả lời lẫn văn bản thường, kiểm ngày 2026-11-06. Vì vậy prompt và tên trường tránh dùng chữ đó.
 
-Header: `Authorization: Bearer <apiKey>` (bỏ khi key trống) và `Content-Type: application/json`. `baseUrl` phải bắt đầu bằng `http://` hoặc `https://`; sai thì Settings từ chối lưu.
+Header: `Authorization: Bearer <apiKey>` (bỏ khi key trống) và `Content-Type: application/json`. `baseUrl` nằm trong file cấu hình, Settings không đụng tới; sai thì lần gọi lỗi và tin đi đường `pass`.
 
-Không gọi CLI nào cả, nên gate chạy được cả khi Claude Code, Codex, OpenCode đã hết quota hoặc chưa đăng nhập. Nhà cung cấp không hỗ trợ `response_format` thì đặt `jsonMode: "prompt"` trong cấu hình: bỏ khối đó và dặn model trả JSON thuần, code vẫn kiểm như trên.
+Không gọi CLI nào cả, nên gate chạy được cả khi Claude Code, Codex, OpenCode đã hết quota hoặc chưa đăng nhập. Nhà cung cấp không hỗ trợ `response_format` thì tự xử lý: khi gặp 400 hoặc 422 ở chế độ `schema`, Rust gọi lại một lần không có khối đó, và chỉ khi lần này thành công mới ghi `jsonMode: "prompt"` vào cấu hình. Code vẫn kiểm câu trả lời như trên.
 
 Nội dung tin đi trong body request tới nhà cung cấp bạn chọn. Key nằm trong file cấu hình phía Rust và không bao giờ đi qua JS hay vào log.
 
@@ -239,23 +239,22 @@ Ghi file theo cách của company store: ghi `.tmp` rồi `fs_rename`. Log ghi c
 
 | Trường | Ý nghĩa |
 |---|---|
-| `baseUrl` | Gốc API. Form điền sẵn `https://9router.zoldify.com/v1`; đổi được sang `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` |
+| `baseUrl` | Gốc API. Mặc định `https://9router.zoldify.com/v1`; sửa file để đổi sang `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` |
 | `model` | Model dùng để phân loại. Mặc định `cx/gpt-6-luna` trên 9Router |
 | `apiKey` | Khóa API, lưu văn bản thường trong file của bạn. Để trống với Ollama hoặc LM Studio |
-| `jsonMode` | `schema` (mặc định) hoặc `prompt` cho nhà cung cấp không hỗ trợ `response_format` |
+| `jsonMode` | `schema` (mặc định) hoặc `prompt`, do Rust tự chuyển khi nhà cung cấp từ chối `response_format` |
 | `timeoutMs` | Mặc định 12000 |
 
-Key chỉ đọc và ghi phía Rust. Settings nhận key lúc lưu, còn lần đọc sau chỉ trả `hasKey`, không trả lại chuỗi khóa. Key 9Router không ghi trong spec và không commit; chỉ dán một lần vào Settings.
+Key chỉ đọc và ghi phía Rust. Settings nhận key lúc lưu, còn lần đọc sau chỉ trả `hasKey`, không trả lại chuỗi khóa. Key 9Router không ghi trong spec và không commit; chỉ dán một lần vào Settings. Đó là ô duy nhất về nhà cung cấp trên giao diện: dán xong rời ô là tự lưu và tự gọi thử một tin mẫu.
 
-Settings, qua `prefs.ts` như các thiết lập khác:
+Trong `prefs.ts` chỉ có công tắc chính `ingest`, mặc định `false`. Các giới hạn là hằng số trong `ingestSettings()`, không hiện trên giao diện, vì chúng là giá trị an toàn chứ không phải lựa chọn của người dùng:
 
-| Khóa | Mặc định | Ý nghĩa |
+| Giới hạn | Giá trị | Ý nghĩa |
 |---|---|---|
-| `ingest.enabled` | `false` | Công tắc chính |
-| `ingest.ttlDays` | `7` | TTL cache |
-| `ingest.dailyCallCap` | `500` | Trần số lần gọi API mỗi ngày |
-| `ingest.dailyTokenCap` | `500000` | Trần token mỗi ngày |
-| `ingest.loopWindowMin` | `10` | Cửa sổ chống lặp tin giữa agent |
+| `ttlDays` | `7` | TTL cache |
+| `dailyCallCap` | `500` | Trần số lần gọi API mỗi ngày |
+| `dailyTokenCap` | `500000` | Trần token mỗi ngày |
+| `loopWindowMin` | `10` | Cửa sổ chống lặp tin giữa agent |
 
 ## 8. Xử lý lỗi
 
@@ -264,7 +263,7 @@ Settings, qua `prefs.ts` như các thiết lập khác:
 | Đọc cache lỗi | Chuyển sang cache bộ nhớ, cảnh báo một lần, luồng vẫn chạy |
 | Ghi cache lỗi | Vẫn trả kết quả, thử lại ở tin sau, sau hai lần lỗi liên tiếp thì chỉ dùng bộ nhớ trong 60 giây |
 | File cache hỏng | Coi như rỗng, ghi lại từ đầu, không chặn ai |
-| Chưa cấu hình nhà cung cấp, hoặc key sai (401/403) | Đường `pass`, log `provider.unconfigured` hoặc `provider.auth`, Settings hiện cảnh báo |
+| Chưa cấu hình nhà cung cấp, hoặc key sai (401/403) | Đường `pass`, log `provider.unconfigured` hoặc `provider.auth`; ô key báo ngay khi vừa dán một key sai |
 | API timeout, 404, 5xx, JSON hỏng hoặc sai schema | Đường `pass`, ghi log lý do, không chặn |
 | 429 từ nhà cung cấp | Đường `pass`, nghỉ 60 giây trước lần gọi kế, log `provider.rate_limited` |
 | Vượt trần gọi hoặc trần token trong ngày | Đường `pass`, ghi log `provider.capped` |
@@ -286,17 +285,18 @@ Không có đường nào để một lỗi của gate làm mất tin: hoặc ti
 ## 10. Trả kết quả cho ai
 
 - Người gửi là agent: gửi một dòng kết quả ngắn vào pane của agent đó, đi thẳng `sendMessage`, không qua gate (nguồn nội bộ `ingest-result`). Tin này tốn ít context nhưng vẫn tốn, nên chỉ gửi khi có tool thực sự chạy.
-- Người gửi là bạn (Kanban, điện thoại): toast có kết quả; lịch sử 50 tin gần nhất nằm trong panel Ingest, giữ trong bộ nhớ cho tới khi đóng app. Panel mở bằng Ctrl+Shift+G, Ctrl K hoặc trang Help.
-- Tin bị chặn: toast cho người gửi biết lý do. Không tự động gửi lại.
+- Người gửi là bạn (Kanban, điện thoại): toast có kết quả; lịch sử 50 tin gần nhất nằm trong panel Ingest, giữ trong bộ nhớ cho tới khi đóng app. Panel mở bằng Ctrl K. Không có phím tắt riêng: phím của terminal thuộc về CLI.
+- Tin bị chặn: toast có nút `Send anyway`, giữ 9 giây. Không tự động gửi lại.
 
 ## 11. Giao diện
 
-Panel Ingest nằm trong dock, cùng chỗ Kanban và Pomodoro:
+Quy tắc: việc máy tự làm được thì chạy phía sau, giao diện chỉ giữ thứ cần người quyết định.
 
-- Hàng đầu: số tin hôm nay, số cache hit, số bị chặn, số lần gọi API, token đã dùng.
-- Danh sách tin bị chặn: người gửi, agent nhận, lý do, thời gian, nút `Send anyway` và `Delete` (có Undo). Tin gửi lại đi thẳng tới agent, không qua gate, và chỉ rời danh sách khi tới được agent.
-- Danh sách kết quả gần đây: intent, kết quả, đường đi (`rule`, `api`, `cache`).
-- Nút mở Settings: các khóa ở mục 7 và form nhà cung cấp gồm Base URL, Model, API key, JSON mode, nút Test gọi thử một tin mẫu.
+- Settings: công tắc `Hold back small talk` và ô `Classifier key`. Không có gì khác.
+- Toast khi có tin bị chặn: nút `Send anyway`. Đây là đường chính.
+- Panel Ingest (Ctrl K) cho tin đã lỡ toast: danh sách tin bị chặn gồm người gửi, agent nhận, lý do, thời gian và đúng một nút `Send anyway`. Tin gửi lại đi thẳng tới agent, không qua gate, và chỉ rời danh sách khi tới được agent. Tin cũ quá 7 ngày tự xóa, trừ tin của một thẻ Kanban vì thẻ vẫn đang chờ nó, nên không cần nút `Delete`.
+- Kết quả tính bằng code hiện dưới danh sách đó, chỉ khi có.
+- Số liệu trong ngày không hiện ở đâu cả: chúng nằm trong `.bytehive/ingest.jsonl`.
 
 Chuỗi giao diện bằng tiếng Anh như phần còn lại của app. Bố cục chi tiết sẽ qua skill thiết kế trước khi code, không tự chế trong spec này.
 
