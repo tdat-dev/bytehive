@@ -126,6 +126,7 @@ describe("going away", () => {
     scene.setVisible(true);
     expect(calls).toContain("contextRestore");
     canvas.dispatchEvent(new Event("webglcontextrestored"));
+    runFrames(1);
     expect(calls).toContain("render");
   });
   it("does not tell the shell the picture is lost when it let go itself", () => {
@@ -160,7 +161,7 @@ describe("opening", () => {
     scene.setModel(demoModel({ quiet: true }));
     scene.setModel(demoModel());
     runFrames(2);
-    const last = vi.mocked(buildFloor).mock.calls.at(-1)![0];
+    const last = vi.mocked(buildFloor).mock.calls.slice(-1)[0][0];
     expect(demoModel().floors.map((f) => f.id)).toContain(last.id);
     expect(() => runFrames(3)).not.toThrow();
   });

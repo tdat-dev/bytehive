@@ -167,7 +167,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   scene.add(kit.ground);
   kit.setting?.sky();
   let settingRest: Generator<void, void> | null = kit.setting?.rest() ?? null;
-  let compiled = !renderer.compileAsync || !kit.looks;
+  const noWarmUp = !renderer.compileAsync || !kit.looks;
+  let compiled = noWarmUp;
   let building: Generator<void, void> | null = null;
   let pumpTimer: ReturnType<typeof setTimeout> | null = null;
   const floors = new Map<string, { key: string; group: Group }>();
@@ -466,17 +467,32 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     disposeBuilt(group);
   }
 
+  function warmUp(): void {
+    if (disposed) return;
+    void compileLooks().finally(() => {
+      compiled = true;
+      invalidate();
+    });
+  }
+
   async function compileLooks(): Promise<void> {
-    const probe = new Scene();
+    const nextTurn = () => new Promise((r) => setTimeout(r, 0));
     const g = new BufferGeometry();
     for (const [name, size] of [["position", 3], ["normal", 3], ["uv", 2], ["color", 3]] as const) g.setAttribute(name, new BufferAttribute(new Float32Array(3 * size), size));
-    for (const m of kit.looks()) probe.add(m instanceof PointsMaterial ? new Points(g, m) : new Mesh(g, m));
-    probe.add(new Mesh(g, risingLook));
+    const looks = [...kit.looks(), risingLook];
+    const probe = new Scene();
+    for (const m of looks) {
+      const one = new Scene();
+      one.add(m instanceof PointsMaterial ? new Points(g, m) : new Mesh(g, m));
+      renderer.compile(one, camera, scene);
+      probe.add(...one.children);
+      await nextTurn();
+    }
     await renderer.compileAsync(probe, camera, scene);
     // The first use asks the driver about each program, and that waits on it: one at a time, between frames.
-    for (const m of [...kit.looks(), risingLook]) {
+    for (const m of looks) {
       (renderer.properties.get(m) as { currentProgram?: { getUniforms(): unknown } }).currentProgram?.getUniforms();
-      await new Promise((r) => setTimeout(r, 0));
+      await nextTurn();
     }
     g.dispose();
   }
@@ -741,13 +757,17 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     lost = false;
     renderer.shadowMap.needsUpdate = seen.shadows;
     renderer.setSize(width, height, false);
-    // Hidden, the picture waits: setVisible asks for it.
-    if (visible) draw();
     if (asleep) {
+      // The shaders went with the context. Compiled aside again, coming back holds no frame up.
       asleep = false;
-      schedule();
+      if (!noWarmUp) {
+        compiled = false;
+        warmUp();
+      } else invalidate();
       return;
     }
+    // Hidden, the picture waits: setVisible asks for it.
+    if (visible) draw();
     restored += 1;
     lastRestoreMs = performance.now() - lostAt;
     o.onRestored();
@@ -763,13 +783,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   const offQuality = onQuality(setQuality);
   // A shader compiled on first use holds the frame until it is done, half a second and more
   // on this card. Asked for ahead, the driver does it aside while the rooms are being built.
-  if (!compiled) setTimeout(() => {
-    if (disposed) return;
-    void compileLooks().finally(() => {
-      compiled = true;
-      invalidate();
-    });
-  }, 0);
+  if (!compiled) setTimeout(warmUp, 0);
   if (kit.deskLight) kit.deskLight.visible = seen.glow;
   if (kit.hazeLight) kit.hazeLight.visible = seen.glow;
 
