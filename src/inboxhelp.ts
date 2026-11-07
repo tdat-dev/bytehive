@@ -31,6 +31,7 @@ export const HELP: HelpSection[] = [
   ] },
   { title: "In a terminal", rows: [
     { keys: [["Any key"]], what: "A terminal you clicked into gets every key, for its CLI. No shortcut on this page works there except these. Click anywhere outside it to use them again." },
+    { keys: [["Win", "Alt", "N"]], what: "From a terminal or any other app: ByteHive comes forward with the keyboard on the next agent waiting. Press it again to go back to the terminal you were in. Change it in Settings." },
     { keys: [["Select"]], what: "Selecting text copies it. Right-click a selection to copy it again." },
     { keys: [["Ctrl", "C"]], what: "Over a selection: copy it and let go of it. With nothing selected it goes to the CLI, as always." },
     { keys: [["Ctrl", "Shift", "C"]], what: "Copy the selection." },

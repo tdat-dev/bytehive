@@ -546,6 +546,15 @@ export async function reposUnder(dir: string): Promise<RepoRef[]> {
 }
 
 /** Raw unified diff of a repo's working tree vs HEAD. */
+export async function hotkeySet(combo: string | null): Promise<void> {
+  await invoke("hotkey_set", { combo });
+}
+
+/** The global key was pressed; the window is already coming forward. */
+export async function onHotkey(cb: () => void): Promise<UnlistenFn> {
+  return listen("hotkey-pressed", () => cb());
+}
+
 export async function repoDiff(repoRoot: string): Promise<string> {
   return invoke<string>("repo_diff", { repoRoot });
 }

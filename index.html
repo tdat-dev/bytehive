@@ -203,6 +203,11 @@
             <div class="sr-txt"><b>Font size</b><span>Applies live to every agent's terminal.</span></div>
             <div class="stepper" id="setFontStepper"><button type="button" data-dec aria-label="Smaller">−</button><span class="n" id="setFontN">15</span><button type="button" data-inc aria-label="Larger">+</button></div>
           </div>
+          <label class="toggle"><input type="checkbox" id="prefHotkeyOn"><span class="tg"></span><span class="sr-txt"><b>Key that reaches ByteHive</b><span>From any app, and from inside a terminal, where nothing else leaves it. Press it for the next agent waiting; press it again for the terminal you were in.</span></span></label>
+          <div class="srow">
+            <div class="sr-txt"><b>The key</b><span id="setHotkeyMsg" role="status">Write it like Win+Alt+N.</span></div>
+            <input class="input hk-input" id="prefHotkey" spellcheck="false" autocomplete="off" aria-label="The key that reaches ByteHive">
+          </div>
         </section>
         <section class="sec" data-sec="browser">
           <h3>Browser</h3>

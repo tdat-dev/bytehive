@@ -7,6 +7,7 @@ pub mod dashauth;
 pub mod dashboard;
 pub mod error;
 pub mod gitexclude;
+pub mod hotkey;
 pub mod land;
 pub mod planusage;
 pub mod agentusage;
@@ -30,6 +31,7 @@ const APP_NAME: &str = if cfg!(debug_assertions) { "ByteHive Dev" } else { "Byte
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
+        let _ = w.unminimize();
         let _ = w.set_focus();
     }
 }
@@ -119,6 +121,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             adopt::adopt_old_folder,
+            hotkey::hotkey_set,
             commands::pty_spawn,
             commands::pty_attach,
             commands::pty_input,

@@ -6,6 +6,7 @@ import { CLI_PRESETS } from "./crew";
 import { getPrefs, setPref, resetPrefs, SPLIT_SIZES, type Prefs } from "./prefs";
 import { loadCrew, saveSkipPerms } from "./spawnmodal";
 import { resetTips } from "./tips";
+import { hotkeyFailure, onHotkeyFailure } from "./hotkey";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 
@@ -22,7 +23,17 @@ const TOGGLES: Toggle[] = [
   { id: "prefAutoHandover", key: "autoHandover" },
   { id: "prefAutoResume", key: "autoResume" },
   { id: "prefLimitNotify", key: "limitNotify" },
+  { id: "prefHotkeyOn", key: "hotkeyOn" },
 ];
+
+/** What the key's row says: why it isn't working, when it isn't. */
+function showHotkey(): void {
+  const msg = $("setHotkeyMsg");
+  if (!msg) return;
+  const failed = hotkeyFailure();
+  msg.textContent = failed || (getPrefs().hotkeyOn ? "Write it like Win+Alt+N." : "Turned off.");
+  msg.classList.toggle("sr-bad", !!failed);
+}
 
 function markSeg(id: string, value: number): void {
   $(id)?.querySelectorAll<HTMLButtonElement>("button[data-v]").forEach((b) => {
@@ -52,6 +63,9 @@ export function syncPrefsView(): void {
     const el = $<HTMLInputElement>(t.id);
     if (el) el.checked = p[t.key] as boolean;
   }
+  const hotkey = $<HTMLInputElement>("prefHotkey");
+  if (hotkey) { hotkey.value = p.hotkey; hotkey.disabled = !p.hotkeyOn; }
+  showHotkey();
 }
 
 /** Wire the rows. Call once at startup. */
@@ -81,6 +95,10 @@ export function initPrefsView(): void {
     const el = $<HTMLInputElement>(t.id);
     el?.addEventListener("change", () => setPref(t.key, el.checked as never));
   }
+  const hotkey = $<HTMLInputElement>("prefHotkey");
+  hotkey?.addEventListener("change", () => setPref("hotkey", hotkey.value.trim()));
+  $<HTMLInputElement>("prefHotkeyOn")?.addEventListener("change", syncPrefsView);
+  onHotkeyFailure(showHotkey);
   $("prefTipsAgain")?.addEventListener("click", (e) => {
     resetTips();
     setPref("tips", true);

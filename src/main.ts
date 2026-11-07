@@ -20,6 +20,7 @@ import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setS
 import { configureWorkspace, initWorkspace, createWorkspace, closeWorkspace, activateWorkspace, bootDetached } from "./workspace";
 import { updateTasks } from "./tasks";
 import { initInbox, openJump } from "./inbox";
+import { initHotkey } from "./hotkey";
 import { initCalm } from "./calm";
 import { initBrowserView } from "./browserview";
 import { enhanceSelects } from "./selectmenu";
@@ -268,6 +269,7 @@ initTitlebar(!isDetachedWindow);
 initDock();
 dockSetContext(null);
 if (!isDetachedWindow) {
+  initHotkey();
   initOffice({
     showApp: () => { showWorkspace(); },
     showHome: showView,

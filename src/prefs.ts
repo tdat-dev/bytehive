@@ -35,6 +35,9 @@ export interface Prefs {
   autoHandover: boolean;
   /** Windows notification when a plan passes 90% of a limit, and when an agent runs out. */
   limitNotify: boolean;
+  /** The key registered with Windows: brings ByteHive forward, from any app or terminal. */
+  hotkeyOn: boolean;
+  hotkey: string;
 }
 
 /** How many agents the Grid may hold. */
@@ -58,6 +61,9 @@ export const DEFAULTS: Prefs = {
   autoResume: true,
   autoHandover: true,
   limitNotify: true,
+  hotkeyOn: true,
+  // N for Needs you. Windows keeps Win+Alt with B, D, H, K, arrows, Enter and digits.
+  hotkey: "Win+Alt+N",
 };
 
 const KEY = "maestro.prefs";
