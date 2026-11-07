@@ -19,7 +19,7 @@ export const HELP: HelpSection[] = [
   { title: "Agents", rows: [
     { keys: [["Right-click"], ["Shift", "F10"]], what: "An agent in the list: rename it, add it to the Grid, see its changes, restart, stop or remove it." },
     { keys: [["Alt", "↑"], ["Alt", "↓"]], what: "Move through the agents in the list." },
-    { keys: [["Book"]], what: "Beside a project name: its memory, what every agent there knows. Add, edit or delete facts, send one to an agent to fix, or switch project with the tabs." },
+    { keys: [["Memory icon"]], what: "Beside a project name: its memory, what every agent there knows. Add, edit or delete facts, send one to an agent to fix, or switch project with the tabs." },
     { keys: [["Ctrl", "Shift", "T"]], what: "New agent. Give 2 or 3 agents the same job to race them, then Compare and keep the best." },
   ] },
   { title: "Focus, Grid and review", rows: [
@@ -29,23 +29,23 @@ export const HELP: HelpSection[] = [
     { keys: [["Alt", "H"]], what: "What the agent did, and what you answered, by day." },
     { keys: [["Alt", "O"]], what: "Sessions: read back every earlier Claude conversation of the project, its agents' worktrees included. Only to read, nothing resumes." },
   ] },
-  { title: "Chat", rows: [
-    { keys: [["/"]], what: "In an empty message: the agent's own commands, to search and pick. /resume and /clear switch conversations." },
-    { keys: [["Esc"]], what: "Stop what the agent is doing." },
-    { keys: [["Enter"], ["Shift", "Enter"]], what: "Send, or start a new line." },
-  ] },
-  { title: "Terminal", rows: [
+  { title: "In a terminal", rows: [
+    { keys: [["Any key"]], what: "A terminal you clicked into gets every key, for its CLI. No shortcut on this page works there except these. Click anywhere outside it to use them again." },
     { keys: [["Select"]], what: "Selecting text copies it. Right-click a selection to copy it again." },
+    { keys: [["Ctrl", "C"]], what: "Over a selection: copy it and let go of it. With nothing selected it goes to the CLI, as always." },
+    { keys: [["Ctrl", "Shift", "C"]], what: "Copy the selection." },
+    { keys: [["Ctrl", "V"], ["Ctrl", "Shift", "V"]], what: "Paste." },
     { keys: [["Right-click"]], what: "With nothing selected: Paste, Select all, Clear." },
-    { keys: [["Drag a file"]], what: "Drop files from Explorer or Files onto an agent to type their paths, in its chat or its terminal." },
+    { keys: [["Drag a file"]], what: "Drop files from Explorer or Files onto an agent to type their paths in its terminal." },
     { keys: [["Ctrl", "Shift", "F"]], what: "Find in the output." },
-    { keys: [["Ctrl", "wheel"], ["Ctrl", "+ − 0"]], what: "Bigger or smaller text." },
+    { keys: [["Ctrl", "wheel"]], what: "Bigger or smaller text." },
   ] },
-  { title: "Anywhere", rows: [
+  { title: "Outside a terminal", rows: [
     { keys: [["Ctrl", "K"]], what: "Jump to any agent or project, or run any command." },
     { keys: [["Ctrl", "Shift", "O"]], what: "The office: your company, floor by floor. Press it again for the Inbox." },
     { keys: [["Esc"]], what: "In the office: up a level. At a Desk the terminal keeps Tab and Esc, so reach the rail and the path at the top with the mouse." },
     { keys: [["Ctrl", "Tab"]], what: "Next project." },
+    { keys: [["Ctrl", "+ − 0"]], what: "Bigger or smaller terminal text." },
     { keys: [["Ctrl", "Shift", "E"]], what: "Files: the project's folder tree and editor." },
     { keys: [["Ctrl", ","]], what: "Settings." },
     { keys: [["?"], ["Ctrl", "/"]], what: "This page." },
@@ -77,7 +77,7 @@ export function openHelp(openTool: (id: string) => void): void {
   const back = document.createElement("div");
   back.className = "inbox-modal-back hp-back";
   back.innerHTML = `<div class="inbox-modal hp" role="dialog" aria-modal="true" aria-labelledby="hpTitle">
-    <header class="im-head"><div><h2 id="hpTitle">What ByteHive can do</h2><p class="im-sub">The things without a button of their own. All of them are in Ctrl K too.</p></div>
+    <header class="im-head"><div><h2 id="hpTitle">What ByteHive can do</h2><p class="im-sub">The things without a button of their own. All of them are in Ctrl K too. Keys work with focus outside a terminal: inside one, they are its CLI's.</p></div>
       <button type="button" class="im-x" data-close aria-label="Close">✕</button></header>
     <div class="hp-body">
       <section class="hp-sec hp-tools" aria-label="Tools"><h3>Tools</h3><div class="hp-grid">${TOOLS.map((t) =>

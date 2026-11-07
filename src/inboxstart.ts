@@ -176,9 +176,9 @@ export function renderStart(): void {
         <i class="st-dia" aria-hidden="true"></i><b>${esc(t.name)}</b><span class="st-wp">${esc(t.project)}</span>
         <span class="st-wl">${esc(askLine(t))}</span><span class="st-open">Answer</span></button>`).join("")}</div></section>` : "") +
     (firstRun ? `<section class="st-sec" aria-label="Getting started"><h2>Getting started</h2><ol class="st-steps">
-        <li><b>Choose a folder</b><span>Any project on your disk. Each agent gets its own git branch there, so your checkout stays clean.</span></li>
+        <li><b>Choose a folder</b><span>Any project on your disk. Agents work right in that folder. Settings can give each one its own git branch instead.</span></li>
         <li><b>Say what you want done</b><span>In plain words, in the box above. Pick Claude Code, Codex, Gemini or another CLI you have installed.</span></li>
-        <li><b>Answer when it asks</b><span>When an agent wants to run a command or has a question, it moves to the top of the list. Answer it in its terminal.</span></li>
+        <li><b>Answer when it asks</b><span>When an agent wants to run a command or has a question, the line at the top says so and its row shows what it wants. Answer it in its terminal.</span></li>
       </ol></section>`
       : `<section class="st-sec" aria-label="Projects"><h2>Projects</h2><div class="st-projects">${rows.map((r) => `
         <button class="st-proj" data-dir="${esc(r.dir)}">

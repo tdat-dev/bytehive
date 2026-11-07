@@ -19,6 +19,12 @@ describe("What ByteHive can do", () => {
     const rows = HELP.flatMap((s) => s.rows).map((r) => r.what).join(" ");
     expect(rows).toContain("At a Desk the terminal keeps Tab and Esc");
   });
+  it("has no section for the chat that was removed, and says what a terminal keeps", () => {
+    expect(HELP.map((s) => s.title)).not.toContain("Chat");
+    expect(HELP.flatMap((s) => s.rows).flatMap((r) => r.keys).flat()).not.toContain("Book");
+    const inTerminal = HELP.find((s) => s.title === "In a terminal")!.rows.map((r) => r.keys.map((k) => k.join("+")).join(" ")).join(" | ");
+    for (const k of ["Ctrl+C", "Ctrl+Shift+C", "Ctrl+V", "Ctrl+Shift+V", "Ctrl+Shift+F", "Ctrl+wheel"]) expect(inTerminal).toContain(k);
+  });
   afterEach(() => { document.body.innerHTML = ""; });
 
   it("opens on ? outside text and terminals, and on Ctrl+/ outside terminals", () => {

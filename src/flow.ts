@@ -195,7 +195,7 @@ export function createFlow() {
 
       empty = document.createElement("div");
       empty.className = "flow-empty";
-      empty.innerHTML = `<p>No hand-offs yet.<br>When the Director sends work to an agent, it shows up here.</p>`;
+      empty.innerHTML = `<p>No hand-offs yet.<br>When one agent hands work to another, it shows up here.</p>`;
 
       list = document.createElement("div");
       list.className = "flow-list";
