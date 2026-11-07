@@ -95,8 +95,8 @@ describe("the panel", () => {
   it("says when nothing is held back", async () => {
     const t = setup();
     await opened(t);
-    expect(t.body.textContent).toContain("Held back (0)");
     expect(t.body.textContent).toContain("Nothing held back.");
+    expect(t.body.querySelector(".igp-h")).toBeNull();
   });
 
   it("explains the switch being off and leads to Settings", async () => {

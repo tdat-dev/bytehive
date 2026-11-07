@@ -31,6 +31,7 @@ import { configureBackground, initBackground, applyBackground } from "./backgrou
 import { configureZoomUi, initZoomUi } from "./zoomui";
 import { initHint, topNote } from "./hint";
 import { configureBridges, initBridges } from "./bridges";
+import { hiveLogo } from "./hivelogo";
 import { initQuitLife } from "./quitlife";
 import { workspaces, activeWs } from "./appstate";
 import { basename } from "./workspaces";
@@ -248,7 +249,9 @@ initHint();
 initBridges();
 initQuitLife();
 
-document.getElementById("btnHome")?.addEventListener("click", goHome);
+const homeBtn = document.getElementById("btnHome");
+if (homeBtn) homeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">${hiveLogo("tb")}</svg>`;
+homeBtn?.addEventListener("click", goHome);
 document.getElementById("homeResume")?.addEventListener("click", resumeWorkspace);
 document.getElementById("btnResumeAll")?.addEventListener("click", () => void resumeAllStopped());
 

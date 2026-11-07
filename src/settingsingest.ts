@@ -26,8 +26,21 @@ function show(p: IngestProvider): void {
   const key = field("ingKey");
   if (key) {
     key.value = "";
-    key.placeholder = p.hasKey ? "Saved (leave empty to keep)" : "API key";
+    key.placeholder = p.hasKey ? "Saved. Leave empty to keep it." : "";
   }
+  const sum = $("ingClassifierSum");
+  if (sum) sum.textContent = classifierLine(p);
+  // Nothing saved yet: the form is the next step, so it opens by itself.
+  const fold = $<HTMLDetailsElement>("ingClassifier");
+  if (fold && !p.hasKey) fold.open = true;
+}
+
+/** The classifier in one line: where it points, or that it isn't set up. */
+export function classifierLine(p: Pick<IngestProvider, "baseUrl" | "model" | "hasKey">): string {
+  if (!p.baseUrl || !p.hasKey) return "Not set up";
+  let host = p.baseUrl;
+  try { host = new URL(p.baseUrl).host; } catch { /* shown as typed */ }
+  return p.model ? `${p.model} at ${host}` : host;
 }
 
 function setNumber(id: string, value: number): void {
@@ -43,6 +56,8 @@ function showLimits(): void {
   setNumber("ingLoopMin", p.ingestLoopMin);
   const on = field("prefIngest");
   if (on) on.checked = p.ingest;
+  const sum = $("ingLimitsSum");
+  if (sum) sum.textContent = `${p.ingestDailyCalls.toLocaleString("en-US")} classifier calls a day, cached ${p.ingestTtlDays} days`;
 }
 
 export function syncIngestView(): void {

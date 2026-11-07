@@ -156,7 +156,26 @@ export function roomNote(badge: string, others: Array<{ badge: string; label: st
 /** The meter's HTML for the foot of the list; "" when no plan has anything to say. */
 export function planHtml(now = Date.now()): string {
   const body = sectionHtml(sources.claude, now) + sectionHtml(sources.codex, now);
-  return body ? `<section class="iq-plan" aria-label="Plan limits">${body}</section>` : "";
+  if (!body) return "";
+  const chev = `<svg class="iq-chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2.5 6 5 3.5 7.5" /></svg>`;
+  return `<details class="iq-plan"${planOpen ? " open" : ""}><summary class="pl-sum">${chev}<b>Limits</b>${summaryHtml(now)}</summary><div class="pl-body">${body}</div></details>`;
+}
+
+/** Each plan's fullest window, so the folded line still warns before a limit. */
+function summaryHtml(now: number): string {
+  return planSnapshot(now).map((u) => {
+    const top = planRows(u, now).sort((a, b) => b.percent - a.percent)[0];
+    return top ? `<span class="pl-s ${top.level}" title="${esc(`${u.provider ?? "Claude"}, ${top.label}`)}">${esc(u.provider ?? "Claude")} ${top.percent}%</span>` : "";
+  }).join("");
+}
+
+const PLAN_OPEN = "maestro.plan.open";
+let planOpen = (() => { try { return localStorage.getItem(PLAN_OPEN) === "1"; } catch { return false; } })();
+
+/** Remember whether the limits are unfolded. */
+export function setPlanOpen(open: boolean): void {
+  planOpen = open;
+  try { localStorage.setItem(PLAN_OPEN, open ? "1" : "0"); } catch { /* storage blocked */ }
 }
 
 async function askClaude(): Promise<void> {

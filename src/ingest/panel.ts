@@ -98,9 +98,12 @@ export function senderName(from: string | undefined, source: Source): string {
   return source === "kanban" || source === "phone" ? "You" : "An agent";
 }
 
-function who(from: string, to: string): HTMLElement {
-  const line = el("span", "flow-who");
-  line.append(el("b", "", from), el("span", "flow-arw", "→"), el("span", "flow-to", to));
+/** Who, why and when, on one quiet line under the message. */
+function meta(from: string, to: string, at: number, why?: string): HTMLElement {
+  const line = el("p", "igp-meta");
+  line.append(`${from} → ${to}`);
+  if (why) line.append(" · ", el("span", "igp-why", why));
+  line.append(" · ", el("time", "", stamp(at)));
   return line;
 }
 
@@ -149,28 +152,22 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     const row = el("div", "flow-row");
     row.dataset.id = entry.id;
 
-    const head = el("div", "igp-head");
-    head.append(who(senderName(entry.from, entry.source), entry.toName ?? "agent"), el("time", "flow-time", stamp(entry.at)));
-
     const del = button("igp-btn igp-del", "Delete", () => void remove(entry, index), `del:${entry.id}`);
     const send = button("igp-btn igp-send", "Send anyway", () => void resend(entry, index), `send:${entry.id}`);
     del.disabled = send.disabled = busy.has(entry.id);
 
-    const actions = el("div", "igp-actions");
-    actions.append(el("span", "igp-why", REASONS[entry.reason] ?? entry.reason), del, send);
+    const foot = el("div", "igp-foot");
+    foot.append(meta(senderName(entry.from, entry.source), entry.toName ?? "agent", entry.at, REASONS[entry.reason] ?? entry.reason), del, send);
 
-    row.append(head, foldable(entry.gist ?? entry.text, entry.id, opened), actions);
+    row.append(foldable(entry.gist ?? entry.text, entry.id, opened), foot);
     return row;
   }
 
   function answerRow(r: RecentResult, index: number): HTMLElement {
     const row = el("div", "flow-row");
-    const head = el("div", "igp-head");
-    head.append(who(senderName(r.from, r.source), r.toName ?? "agent"), el("time", "flow-time", stamp(r.at)));
     const line = el("p", "igp-answer");
     line.append(el("b", "", TOOLS[r.result.metadata.tool] ?? r.result.metadata.tool), ` ${answerText(r.result)}`);
-    if (r.cached) line.append(el("span", "igp-why", " from cache, 0 tokens"));
-    row.append(head, line, foldable(r.gist ?? r.text, `answer:${r.at}:${index}`, opened));
+    row.append(line, foldable(r.gist ?? r.text, `answer:${r.at}:${index}`, opened), meta(senderName(r.from, r.source), r.toName ?? "agent", r.at, r.cached ? "from cache, 0 tokens" : undefined));
     return row;
   }
 
@@ -260,9 +257,7 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     if (ticket !== drawn) return;
 
     const parts: HTMLElement[] = [status];
-    if (api.enabled()) {
-      parts.push(el("p", "igp-today", todayLine(today)));
-    } else {
+    if (!api.enabled()) {
       const off = el("p", "igp-today", "The gate is off, so every message goes straight to its agent. ");
       off.append(button("igp-link", "Open Settings", () => api.openSettings()));
       parts.push(off);
@@ -270,7 +265,7 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
 
     const heldSec = el("section", "igp-sec igp-held");
     heldSec.setAttribute("aria-label", "Held back");
-    heldSec.append(el("h3", "igp-h", held.damaged ? "Held back" : `Held back (${held.entries.length})`));
+    if (held.damaged || held.entries.length > 0) heldSec.append(el("h3", "igp-h", held.damaged ? "Held back" : `Held back (${held.entries.length})`));
     if (held.damaged) {
       heldSec.append(el("p", "igp-none", "The list of held messages is damaged, so it can't be shown. New ones start a fresh list."));
     } else if (held.entries.length === 0) {
@@ -291,6 +286,7 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
       sec.append(el("h3", "igp-h", `Answered by code (${answers.length})`), list);
       parts.push(sec);
     }
+    if (api.enabled()) parts.push(el("p", "igp-today", todayLine(today)));
 
     const active = document.activeElement as HTMLElement | null;
     const mark = active && root.contains(active) ? active.dataset.mark : undefined;

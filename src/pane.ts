@@ -4,6 +4,7 @@
 // bookkeeping, find-in-output wiring) are injected via configurePane to avoid
 // a circular import.
 
+import { confirmModal } from "./confirmmodal";
 import { mountTerminal } from "./terminal";
 import {
   sendInput,
@@ -151,16 +152,16 @@ function buildPaneEl(
       <span class="pb-sp"></span>
       <div class="pb-ctrls ctrls">
         <div class="pb-more">
-          <button class="pctrl" data-more aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More: search, record, restart">${MORE_SVG}</button>
+          <button class="pctrl" data-more aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More: search, record, rename, remove">${MORE_SVG}</button>
           <div class="pb-more-menu" hidden>
             <button class="pctrl" data-search aria-label="Search output" title="Search output">${SEARCH_SVG}</button>
             <button class="pctrl rec-btn" data-record aria-label="Record session" title="Record">${REC_SVG}</button>
             <button class="pctrl" data-restart aria-label="Restart agent" title="Restart">${RESTART_SVG}</button>
+            <button class="pctrl" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
+            <button class="pctrl danger" data-kill aria-label="Remove agent" title="Remove agent (stops it and closes its terminal)">${KILL_SVG}</button>
           </div>
         </div>
-        <button class="pctrl" data-edit aria-label="Rename agent" title="Rename">${EDIT_SVG}</button>
         <button class="pctrl" data-max aria-label="Focus pane" title="Focus"><span class="ic-max">${MAX_SVG}</span><span class="ic-back">${BACK_SVG}</span></button>
-        <button class="pctrl danger" data-kill aria-label="Remove agent" title="Remove agent (stops it and closes its terminal)">${KILL_SVG}</button>
       </div>
     </div>
     <div class="pane-find" data-find hidden>
@@ -269,6 +270,14 @@ export function createAgent(
       { label: "Search output", run: press("[data-search]") },
       { label: pane.recording ? "Stop recording" : "Record session", run: press("[data-record]") },
       { label: pane.running ? "Restart" : "Resume", run: press("[data-restart]") },
+      { label: "Rename…", sep: true, run: press("[data-edit]") },
+      // A scripted click skips the confirm that guards the button, so ask here.
+      { label: "Remove agent…", danger: true, run: () => void confirmModal({
+        title: `Remove ${pane.spec.name}?`,
+        message: pane.running ? "It stops and its terminal closes. Its branch and the changes on it stay in git." : "Its terminal closes. Its branch and the changes on it stay in git.",
+        okLabel: "Remove",
+        danger: true,
+      }).then((r) => { if (r.ok) press("[data-kill]")(); }) },
     ], `${pane.spec.name} actions`);
     const off = () => { moreBtn.setAttribute("aria-expanded", "false"); window.removeEventListener("pointerdown", off, true); window.removeEventListener("keydown", off, true); };
     window.addEventListener("pointerdown", off, true);

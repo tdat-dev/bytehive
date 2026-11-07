@@ -10,6 +10,8 @@
   --teal:#6fd6a0; --grad:linear-gradient(#f4f4f5,#f4f4f5); --line-2:rgba(255,255,255,.12);
   --info:#9ab8ee; --run:#6fd6a0; --idle:#76767f; --err:#f2766b;
   --live:#6fd6a0; --amber:#f0bf6a; --faint:#5c5c66;
+  /* the logo's honey, for the one action a view asks for and nothing else */
+  --honey:#f5a524; --honey-hover:#ffb93e; --honey-ink:#1a1204;
   --r1:8px; --r2:10px; --r3:12px; --r4:16px;
   /* type system: sans for UI chrome, mono for technical values, display for the wordmark */
   --sans:'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
