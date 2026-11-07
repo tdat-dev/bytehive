@@ -3,7 +3,7 @@
 
 .dock-panel[data-tool="ingest"]{width:min(440px,84vw)}
 
-.igp-root{display:flex;flex-direction:column;gap:14px;outline:none}
+.igp-root{display:flex;flex-direction:column;gap:14px;padding:12px 14px;outline:none}
 
 .igp-today{font-size:12.5px;line-height:1.55;color:var(--muted);padding:0 2px}
 .igp-status{font-size:12.5px;line-height:1.55;color:var(--text);padding:0 2px}
@@ -21,8 +21,6 @@
 .igp-btn{min-height:26px;padding:0 10px;border-radius:var(--r1);border:1px solid var(--line);
   font-size:12px;color:var(--text);cursor:pointer;flex:none}
 .igp-btn:hover{background:var(--surface-2,rgba(255,255,255,.08))}
-.igp-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
-.igp-primary:hover{background:var(--accent);filter:brightness(1.08)}
 
 .igp-link{min-height:24px;padding:0 2px;font-size:12.5px;color:var(--accent);cursor:pointer;
   text-decoration:underline;text-underline-offset:2px}

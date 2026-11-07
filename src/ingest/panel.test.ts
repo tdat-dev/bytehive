@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlockedList } from "./blocked";
 import type { RecentResult } from "./index";
-import { answerText, createIngestPanel, todayLine, type PanelApi } from "./panel";
+import { answerText, createIngestPanel, senderName, stamp, todayLine, type PanelApi } from "./panel";
 import type { LogStats } from "./log";
 import type { BlockedEntry, ToolResult } from "./types";
 
@@ -67,6 +67,21 @@ describe("the words", () => {
   it("reads a cost as money and a failure as a failure", () => {
     expect(answerText(cost)).toBe("$0.54");
     expect(answerText({ ...cost, status: "error", error: "unknown model" })).toBe("Failed: unknown model");
+  });
+});
+
+describe("the row labels", () => {
+  it("only calls a person's own sources You", () => {
+    expect(senderName(undefined, "kanban")).toBe("You");
+    expect(senderName(undefined, "phone")).toBe("You");
+    expect(senderName(undefined, "fleet")).toBe("An agent");
+    expect(senderName("Ana", "fleet")).toBe("Ana");
+  });
+
+  it("dates a message held on another day", () => {
+    const now = new Date(2026, 10, 7, 14, 0, 0).getTime();
+    expect(stamp(new Date(2026, 10, 7, 9, 5, 1).getTime(), now)).toBe("09:05:01");
+    expect(stamp(new Date(2026, 10, 5, 9, 5, 1).getTime(), now)).toBe("Nov 5 09:05:01");
   });
 });
 

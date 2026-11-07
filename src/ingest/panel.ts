@@ -10,7 +10,7 @@ import type { DockContext } from "../dockstore";
 import { blockedList, blockedRemove, blockedResend, blockedRestore, ingestRecent, ingestStats, onIngest, type RecentResult } from "./index";
 import type { BlockedList } from "./blocked";
 import type { LogStats } from "./log";
-import type { BlockedEntry, ToolResult } from "./types";
+import type { BlockedEntry, Source, ToolResult } from "./types";
 
 export interface PanelApi {
   enabled(): boolean;
@@ -83,10 +83,23 @@ function foldable(text: string): HTMLButtonElement {
   return b;
 }
 
-function who(from: string | undefined, to: string): HTMLElement {
+/** Who sent it: Kanban and the phone are you; an unnamed agent is not. */
+export function senderName(from: string | undefined, source: Source): string {
+  if (from) return from;
+  return source === "kanban" || source === "phone" ? "You" : "An agent";
+}
+
+function who(from: string, to: string): HTMLElement {
   const line = el("span", "flow-who");
-  line.append(el("b", "", from ?? "You"), el("span", "flow-arw", "→"), el("span", "flow-to", to));
+  line.append(el("b", "", from), el("span", "flow-arw", "→"), el("span", "flow-to", to));
   return line;
+}
+
+/** Held messages outlive the day they were held, so an old one shows its date. */
+export function stamp(ts: number, now = Date.now()): string {
+  const d = new Date(ts);
+  if (d.toDateString() === new Date(now).toDateString()) return fmtTime(ts);
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${fmtTime(ts)}`;
 }
 
 const defaultApi = (openSettings: () => void): PanelApi => ({
@@ -119,14 +132,13 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     row.dataset.id = entry.id;
 
     const head = el("div", "igp-head");
-    const time = el("time", "flow-time", fmtTime(entry.at));
-    head.append(who(entry.from, entry.toName ?? "agent"), time);
+    head.append(who(senderName(entry.from, entry.source), entry.toName ?? "agent"), el("time", "flow-time", stamp(entry.at)));
 
     const actions = el("div", "igp-actions");
     actions.append(
       el("span", "igp-why", REASONS[entry.reason] ?? entry.reason),
       button("igp-btn", "Delete", () => void remove(entry, index)),
-      button("igp-btn igp-primary", "Send anyway", () => void resend(entry, index)),
+      button("igp-btn igp-send", "Send anyway", () => void resend(entry, index)),
     );
 
     row.append(head, foldable(entry.text), actions);
@@ -136,7 +148,7 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
   function answerRow(r: RecentResult): HTMLElement {
     const row = el("div", "flow-row");
     const head = el("div", "igp-head");
-    head.append(who(r.from, r.toName ?? "agent"), el("time", "flow-time", fmtTime(r.at)));
+    head.append(who(senderName(r.from, r.source), r.toName ?? "agent"), el("time", "flow-time", stamp(r.at)));
     const line = el("p", "igp-answer");
     line.append(el("b", "", TOOLS[r.result.metadata.tool] ?? r.result.metadata.tool), ` ${answerText(r.result)}`);
     if (r.cached) line.append(el("span", "igp-why", " from cache, 0 tokens"));
@@ -146,7 +158,7 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
 
   /** Focus stays where the row was: the next one down, else the panel. */
   function focusRow(index: number): void {
-    const rows = root?.querySelectorAll<HTMLElement>(".igp-held .flow-row .igp-primary");
+    const rows = root?.querySelectorAll<HTMLElement>(".igp-held .flow-row .igp-send");
     const next = rows?.[Math.min(index, (rows?.length ?? 1) - 1)];
     (next ?? root)?.focus();
   }

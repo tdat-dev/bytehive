@@ -282,7 +282,7 @@ Không có đường nào để một lỗi của gate làm mất tin: hoặc ti
 ## 10. Trả kết quả cho ai
 
 - Người gửi là agent: gửi một dòng kết quả ngắn vào pane của agent đó, đi thẳng `sendMessage`, không qua gate (nguồn nội bộ `ingest-result`). Tin này tốn ít context nhưng vẫn tốn, nên chỉ gửi khi có tool thực sự chạy.
-- Người gửi là bạn (Kanban, điện thoại): toast có kết quả và nút copy; lịch sử 50 tin gần nhất nằm trong panel Ingest.
+- Người gửi là bạn (Kanban, điện thoại): toast có kết quả; lịch sử 50 tin gần nhất nằm trong panel Ingest, giữ trong bộ nhớ cho tới khi đóng app. Panel mở bằng Ctrl+Shift+G, Ctrl K hoặc trang Help.
 - Tin bị chặn: toast cho người gửi biết lý do. Không tự động gửi lại.
 
 ## 11. Giao diện
@@ -290,7 +290,7 @@ Không có đường nào để một lỗi của gate làm mất tin: hoặc ti
 Panel Ingest nằm trong dock, cùng chỗ Kanban và Pomodoro:
 
 - Hàng đầu: số tin hôm nay, số cache hit, số bị chặn, số lần gọi API, token đã dùng.
-- Danh sách tin bị chặn: nguồn, người gửi, agent nhận, lý do, thời gian, nút `Send again` và `Delete`.
+- Danh sách tin bị chặn: người gửi, agent nhận, lý do, thời gian, nút `Send anyway` và `Delete` (có Undo). Tin gửi lại đi thẳng tới agent, không qua gate, và chỉ rời danh sách khi tới được agent.
 - Danh sách kết quả gần đây: intent, kết quả, đường đi (`rule`, `api`, `cache`).
 - Nút mở Settings: các khóa ở mục 7 và form nhà cung cấp gồm Base URL, Model, API key, JSON mode, nút Test gọi thử một tin mẫu.
 
