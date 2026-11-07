@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { dispatchPrompt } from "./dispatch";
+import { cardGist, dispatchPrompt } from "./dispatch";
 import { mkCard } from "./board";
+
+describe("cardGist", () => {
+  it("is the card's own words, with nothing dispatch added", () => {
+    expect(cardGist(mkCard("cảm ơn nhé"))).toBe("cảm ơn nhé");
+  });
+
+  it("keeps the description and open items, so a real card still reads as work", () => {
+    const card = mkCard("thanks");
+    card.desc = "then fix the login redirect";
+    card.checklist = [{ id: "i1", text: "add test", done: false }];
+    expect(cardGist(card)).toContain("fix the login redirect");
+    expect(cardGist(card)).toContain("add test");
+  });
+});
 
 describe("dispatchPrompt", () => {
   it("contains the task text and the board-tool instructions", () => {

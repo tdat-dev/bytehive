@@ -184,12 +184,12 @@ export function initBridges(): void {
         }))
       : [],
   );
-  setAgentSenderById((id, text, submit) => {
+  setAgentSenderById((id, text, submit, gist) => {
     const pane = activeWs?.panes.get(id);
     if (!pane || !pane.running) return false;
     // A draft left in the box (submit off) is yours to finish, not a message yet.
     const dir = activeWs?.dir;
-    if (submit && dir) void sendGated(dir, { source: "kanban", to: pane.id, toName: pane.spec.name, text }).catch(() => {});
+    if (submit && dir) void sendGated(dir, { source: "kanban", to: pane.id, toName: pane.spec.name, text, gist }).catch(() => {});
     else void sendMessage(pane.id, text, submit).catch(() => {});
     pane.term.focus();
     return true;

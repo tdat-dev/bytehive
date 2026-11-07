@@ -62,6 +62,7 @@ export interface RecentResult {
   to: string;
   toName?: string;
   text: string;
+  gist?: string;
   result: ToolResult;
   cached: boolean;
 }

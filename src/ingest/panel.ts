@@ -159,7 +159,7 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     const actions = el("div", "igp-actions");
     actions.append(el("span", "igp-why", REASONS[entry.reason] ?? entry.reason), del, send);
 
-    row.append(head, foldable(entry.text, entry.id, opened), actions);
+    row.append(head, foldable(entry.gist ?? entry.text, entry.id, opened), actions);
     return row;
   }
 
@@ -170,7 +170,7 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     const line = el("p", "igp-answer");
     line.append(el("b", "", TOOLS[r.result.metadata.tool] ?? r.result.metadata.tool), ` ${answerText(r.result)}`);
     if (r.cached) line.append(el("span", "igp-why", " from cache, 0 tokens"));
-    row.append(head, line, foldable(r.text, `answer:${r.at}:${index}`, opened));
+    row.append(head, line, foldable(r.gist ?? r.text, `answer:${r.at}:${index}`, opened));
     return row;
   }
 

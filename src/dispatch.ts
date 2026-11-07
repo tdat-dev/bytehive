@@ -16,6 +16,12 @@ export function cardToAgentText(card: Card): string {
   return lines.join("\n");
 }
 
+/** The card's own words, without the prompt around them, for the message gate:
+ *  a card titled "thanks" is small talk however much dispatch wraps it. */
+export function cardGist(card: Card): string {
+  return cardToAgentText(card).replace(/^Task: /, "");
+}
+
 /** Full dispatch prompt: the task plus board-reporting instructions. Agents
  *  with the bytehive MCP tools keep the board in step; agents without them
  *  just do the task. */

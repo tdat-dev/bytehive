@@ -15,6 +15,9 @@ export interface Request {
   /** That agent's name, for the panel and the toast. */
   toName?: string;
   text: string;
+  /** What a person wrote, when `text` wraps it in instructions (a Kanban
+   *  dispatch). The gate judges this and delivers `text`. */
+  gist?: string;
 }
 
 export interface ToolResult {
@@ -66,6 +69,7 @@ export interface BlockedEntry {
   to: string;
   toName?: string;
   text: string;
+  gist?: string;
   reason: string;
   at: number;
 }

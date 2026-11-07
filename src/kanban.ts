@@ -51,7 +51,7 @@ import {
   sendToAgentById,
   focusPane,
 } from "./agentbridge";
-import { dispatchPrompt } from "./dispatch";
+import { cardGist, dispatchPrompt } from "./dispatch";
 import { planConductor, type ConductorMode } from "./conductor";
 import {
   planPipeline,
@@ -412,7 +412,7 @@ export function createKanban() {
     for (const d of plan.dispatches) {
       const found = findCard(d.cardId);
       if (!found) continue;
-      if (sendToAgentById(d.agentId, dispatchPrompt(found.card), true))
+      if (sendToAgentById(d.agentId, dispatchPrompt(found.card), true, cardGist(found.card)))
         assignCard(d.cardId, d.agentName, true);
     }
   }
@@ -441,7 +441,7 @@ export function createKanban() {
       // A To-do card enters the first work stage; a work-stage card stays put.
       const destStage = lc(d.fromTitle) === lc(PIPE_ENTRY) ? DEFAULT_PIPELINE[0].title : d.fromTitle;
       const prompt = pipelinePrompt(dispatchPrompt(found.card), DEFAULT_PIPELINE, destStage);
-      if (!sendToAgentById(d.agentId, prompt, true)) continue;
+      if (!sendToAgentById(d.agentId, prompt, true, cardGist(found.card))) continue;
       await withBoard((b) => {
         const f = findCardIn(b, d.cardId);
         if (!f) return;
@@ -1165,7 +1165,7 @@ export function createKanban() {
       sel.addEventListener("change", () => {
         const a = running.find((x) => x.id === sel.value);
         if (!a) return;
-        if (sendToAgentById(a.id, dispatchPrompt(card), true)) {
+        if (sendToAgentById(a.id, dispatchPrompt(card), true, cardGist(card))) {
           assignCard(card.id, a.name, true);
         }
         sel.value = "";

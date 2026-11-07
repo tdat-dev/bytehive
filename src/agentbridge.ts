@@ -30,7 +30,7 @@ export interface AgentInfo {
 }
 
 let fleet: (() => AgentInfo[]) | null = null;
-let senderById: ((id: string, text: string, submit: boolean) => boolean) | null = null;
+let senderById: ((id: string, text: string, submit: boolean, gist?: string) => boolean) | null = null;
 let paneFocuser: ((id: string) => boolean) | null = null;
 
 /** main.ts registers the running panes of the active workspace. */
@@ -42,11 +42,11 @@ export function listAgents(): AgentInfo[] {
 }
 
 /** Types into a SPECIFIC pane's PTY (dispatch picks the agent, not focus). */
-export function setAgentSenderById(fn: (id: string, text: string, submit: boolean) => boolean): void {
+export function setAgentSenderById(fn: (id: string, text: string, submit: boolean, gist?: string) => boolean): void {
   senderById = fn;
 }
-export function sendToAgentById(id: string, text: string, submit: boolean): boolean {
-  return senderById ? senderById(id, text, submit) : false;
+export function sendToAgentById(id: string, text: string, submit: boolean, gist?: string): boolean {
+  return senderById ? senderById(id, text, submit, gist) : false;
 }
 
 /** Focus a pane's terminal (assignee chip click). */

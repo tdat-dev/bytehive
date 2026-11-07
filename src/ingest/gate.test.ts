@@ -222,6 +222,40 @@ describe("the gate's edges", () => {
     expect(t.sent[0].text).toBe(CASE_1);
   });
 
+  describe("a card wrapped in dispatch instructions", () => {
+    const wrapped = (title: string) =>
+      `Task: ${title}\n\nWhen you start, move this card to "Doing" with the bytehive MCP tool card_move (card: "${title}"). When finished, call card_done with a one-line summary.`;
+
+    it("judges what the person wrote, not the wrapper", async () => {
+      const t = setup();
+      const out = await t.gate.send({ source: "kanban", to: "a1", text: wrapped("cảm ơn nhé"), gist: "cảm ơn nhé" });
+      expect(out).toMatchObject({ kind: "blocked", reason: "smalltalk" });
+      expect(t.sent).toHaveLength(0);
+      expect(t.calls()).toBe(0);
+    });
+
+    it("keeps the whole prompt, so Send anyway delivers what dispatch built", async () => {
+      const t = setup();
+      await t.gate.send({ source: "kanban", to: "a1", text: wrapped("cảm ơn nhé"), gist: "cảm ơn nhé" });
+      expect(t.blocked[0].text).toBe(wrapped("cảm ơn nhé"));
+      expect(t.blocked[0].gist).toBe("cảm ơn nhé");
+    });
+
+    it("delivers the full prompt for a real task", async () => {
+      const t = setup();
+      const out = await t.gate.send({ source: "kanban", to: "a1", text: wrapped("sửa lỗi test"), gist: "sửa lỗi test" });
+      expect(out.kind).toBe("sent");
+      expect(t.sent[0].text).toBe(wrapped("sửa lỗi test"));
+    });
+
+    it("answers a cost card from the card's own words", async () => {
+      const t = setup();
+      const out = await t.gate.send({ source: "kanban", to: "a1", text: wrapped(CASE_1), gist: CASE_1 });
+      expect(out.kind).toBe("answered");
+      expect(t.sent).toHaveLength(0);
+    });
+  });
+
   it("changes nothing while the switch is off", async () => {
     const t = setup({
       settings: () => ({ enabled: false, ttlDays: 7, dailyCallCap: 500, dailyTokenCap: 500_000, loopWindowMin: 10 }),
