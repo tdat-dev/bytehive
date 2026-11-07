@@ -64,7 +64,7 @@ vi.mock("./sessionfollow", () => ({ startSessionFollow: () => {}, stopSessionFol
 vi.mock("./company/engine", () => ({ companyNeeds: () => 0, onCompanyChange: () => () => {} }));
 
 import { workspaces, setActiveWs } from "./appstate";
-import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox } from "./inbox";
+import { groupTasks, projectGroups, headline, rowLine, lineCounts, ago, togglePin, fillPins, gridOrder, railGroups, shortLabel, isYesNo, initInbox, setInbox, setSplit, stageAgent, openChanges, closeChanges, changesOpenFor } from "./inbox";
 import type { Workspace, Pane } from "./panetypes";
 import { setPref } from "./prefs";
 
@@ -215,6 +215,31 @@ describe("inbox DOM", () => {
     const ws = { id: "ws-1", name: "bytehive", gridEl, panes: new Map(panes.map((p) => [p.id, p])) } as unknown as Workspace;
     workspaces.clear(); workspaces.set("ws-1", ws); setActiveWs(ws);
     setInbox(false);
+  });
+
+  it("puts an agent on the stage for the office, out of the Grid", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    setInbox(true);
+    setSplit(true);
+    expect(stageAgent("e")).toBe(true);
+    expect(panes[1].el.classList.contains("focused")).toBe(true);
+    expect(document.querySelector('[data-dock="split"]')?.getAttribute("aria-pressed") ?? "false").toBe("false");
+    expect(stageAgent("gone")).toBe(false);
+  });
+
+  it("opens an agent's changes for the office, and says whose are open", () => {
+    state.tasks = [task("a", "Ana", "working"), task("e", "Eli", "working")];
+    setInbox(true);
+    expect(changesOpenFor()).toBeNull();
+    openChanges("e");
+    expect(panes[1].el.classList.contains("focused")).toBe(true);
+    expect(changesOpenFor()).toBe("e");
+    openChanges("e");
+    expect(changesOpenFor()).toBe("e");
+    closeChanges();
+    expect(changesOpenFor()).toBeNull();
+    openChanges("gone");
+    expect(changesOpenFor()).toBeNull();
   });
 
   it("shows the Founder in a project where it sits alone, with no empty state", () => {

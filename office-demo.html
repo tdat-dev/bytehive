@@ -1,7 +1,21 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Office demo</title>
-<link rel="stylesheet" href="/src/styles/index.css"></head>
-<body class="inbox-ui"><div id="demo" style="position:fixed;inset:0"></div>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Office demo</title>
+<link rel="stylesheet" href="/src/styles/index.css">
+<style>
+  .demo-term { box-sizing: border-box; height: 100%; margin: 0; padding: 14px 16px; border-radius: 14px; background: #0a0a0c; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); color: #c8ccd6; font: 13px/1.6 var(--mono); }
+  .demo-term:focus { outline: none; }
+  #demoMessage { position: fixed; inset: 0; z-index: 90; margin: 0; padding: 24px; background: var(--ib-ground); color: var(--ib-ink); font: 14px/1.5 var(--sans); text-align: left; }
+  #demoDrawer { padding: 16px; font-size: 13px; line-height: 1.5; }
+  #demoDrawer button { align-self: flex-start; margin-top: 12px; }
+  #demoDrawer[hidden], #demoMessage[hidden] { display: none; }
+</style></head>
+<body class="inbox-ui">
+<div class="app code-hidden" id="app">
+  <header class="topbar"><div class="tb-left"></div><div class="tb-center"></div><div class="tb-right"></div></header>
+  <main class="main" id="demoStage"></main>
+</div>
+<aside class="inbox-review" id="demoDrawer" hidden>Stands in for the Changes drawer.<button type="button" class="kb-tool">Close</button></aside>
+<button type="button" id="demoMessage" hidden>The Inbox would be here. Press to go back to the office.</button>
 <script type="module" src="/src/company/office/demo.ts"></script></body>
 </html>

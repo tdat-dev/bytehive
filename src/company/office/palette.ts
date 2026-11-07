@@ -11,14 +11,15 @@ export const OFFICE = {
 
 export const CHIP_BG = "#14161c";
 export const PANEL_BG = "#15161a";
+export const TAG_INK = "#eceae4";
 
 export const TEXT_PAIRS: Array<[string, string, string, number]> = [
-  ["tag text on a chip", "#eceae4", CHIP_BG, 4.5],
+  ["tag text on a chip", TAG_INK, CHIP_BG, 4.5],
   ["tag detail on a chip", "#b4b4bc", CHIP_BG, 4.5],
   ["needs tag on a chip", OFFICE.honey, CHIP_BG, 4.5],
   ["rail text on the panel", "#f4f4f5", PANEL_BG, 4.5],
   ["rail detail on the panel", "#b4b4bc", PANEL_BG, 4.5],
-  ["breadcrumb on the sky", "#eceae4", OFFICE.sky, 4.5],
+  ["breadcrumb on the sky", TAG_INK, OFFICE.sky, 4.5],
   ["bubble mark on honey", "#14161c", OFFICE.honey, 4.5],
   ["focus ring on the sky", OFFICE.honey, OFFICE.sky, 3],
 ];

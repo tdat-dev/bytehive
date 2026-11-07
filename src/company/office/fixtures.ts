@@ -190,7 +190,10 @@ export function demoSource(o: DemoOptions = {}): OfficeSource {
       d.jobs = [job({ id, title: ask, ask, status: "planning", tokensUsed: 0 }), ...d.jobs];
       changed();
     },
-    messageFloor: async () => {},
+    async messageFloor(floorId) {
+      const here = d.company.people.filter((p) => p.floor === floorId);
+      if (!here.length) throw new Error(`Nobody on ${floorId} can get a message.`);
+    },
     approve: (id) => update(id, { status: "running" }),
     reject: (id, note) => update(id, { status: "rejected", summary: note }),
     raiseCap: (id, extra) => update(id, { status: "running", tokenCap: (d.jobs.find((j) => j.id === id)?.tokenCap ?? 0) + extra }),

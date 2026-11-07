@@ -5,7 +5,7 @@ import {
   ACESFilmicToneMapping, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, PCFSoftShadowMap, PerspectiveCamera,
   Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Object3D,
 } from "three";
-import { FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt } from "./build";
+import { BOARD_EDGE, FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt } from "./build";
 import { FOUNDER_DESK, FOV, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
 import { sceneKey, type OfficeFloor, type OfficeModel, type OfficePerson, type OfficeState } from "./model";
 import { BUILDING, frameDelay, type Level } from "./nav";
@@ -13,13 +13,14 @@ import { OFFICE } from "./palette";
 import { animate, isPerson, planeAt, pose, spotOf, type PlaneSpot } from "./people";
 
 export interface SceneOptions {
-  reducedMotion: boolean;
+  reducedMotion: boolean; // read at every use: the owner can change it while the scene runs
   dpr: number;
   onLost(): void;       // context lost
   onRestored(): void;   // context back, picture drawn unless the scene is hidden
   clock?(): number;     // what `Flight.at` is measured against. Date.now, unless a demo holds time still
 }
-export interface Anchor { id: string; kind: "floor" | "person" | "top"; x: number; y: number; visible: boolean } // CSS pixels in the canvas
+/** CSS pixels in the canvas. `clear`: a bubble hangs this far below the point, and no tag should cover it. */
+export interface Anchor { id: string; kind: "floor" | "person" | "top" | "board"; x: number; y: number; visible: boolean; clear?: number }
 export interface SceneStats { calls: number; triangles: number; frames: number; lost: number; restored: number; lastRestoreMs: number | null; drawW: number; drawH: number }
 export interface OfficeScene {
   setModel(m: OfficeModel): void;
@@ -307,7 +308,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       proxy(FLOOR_BOX.x, spot.y + FLOOR_BOX.h / 2, 0, FLOOR_BOX.w, FLOOR_BOX.h, FLOOR_BOX.d, { floorId: spot.id });
       for (const d of spot.desks) personProxy(d, spot.y, { personId: d.personId, floorId: spot.id });
     }
-    if (m.founder) personProxy(FOUNDER_DESK, t.roofY, { personId: m.founder.id });
+    // All of the top is the Founder's: there is no floor up there to stop at.
+    if (m.founder) proxy(FLOOR_BOX.x, t.roofY + FLOOR_BOX.h / 2, 0, FLOOR_BOX.w, FLOOR_BOX.h, FLOOR_BOX.d, { personId: m.founder.id });
     proxies.updateMatrixWorld(true);
   }
 
@@ -394,19 +396,24 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     return pickFrom(ray.intersectObjects(proxies.children, false).map((h) => ({ ...(h.object.userData as Omit<PickHit, "distance">), distance: h.distance })));
   }
 
+  /** A name goes over the head, and over the bubble when there is one: that is what says it needs you. */
+  const tagHeight = (s: { head: number; bubble: number }, state: OfficeState) => (pose(state, 0, 0).bubble ? s.bubble + BUBBLE_BOX.h / 2 : s.head + HEAD_ROOM);
+
   function anchors(): Anchor[] {
     if (!tower || !model) return [];
     const at = (id: string, kind: Anchor["kind"], x: number, y: number, z: number): Anchor => ({ id, kind, ...cssPoint(new Vector3(x, y, z).project(camera), width, height) });
+    const someone = (id: string, s: { x: number; z: number; head: number; bubble: number }, y: number): Anchor => {
+      const a = at(id, "person", s.x, y + tagHeight(s, stateOf(id)), s.z);
+      if (!pose(stateOf(id), 0, 0).bubble) return a;
+      return { ...a, clear: at(id, "person", s.x, y + s.head + HEAD_ROOM, s.z).y - a.y };
+    };
     const out = tower.floors.flatMap((spot) => [
       at(spot.id, "floor", FLOOR_EDGE.x, spot.y + TAG_Y, FLOOR_EDGE.z),
-      ...spot.desks.map((d) => {
-        const s = spotOf(d, stateOf(d.personId));
-        return at(d.personId, "person", s.x, spot.y + s.head, s.z);
-      }),
+      ...(model!.floors.find((f) => f.id === spot.id)?.board ? [at(spot.id, "board", BOARD_EDGE.x, spot.y + BOARD_EDGE.y, BOARD_EDGE.z)] : []),
+      ...spot.desks.map((d) => someone(d.personId, spotOf(d, stateOf(d.personId)), spot.y)),
     ]);
     if (model.founder) {
-      const s = spotOf(FOUNDER_DESK, model.founder.state);
-      out.push(at(model.founder.id, "person", s.x, tower.roofY + s.head, s.z));
+      out.push(someone(model.founder.id, spotOf(FOUNDER_DESK, model.founder.state), tower.roofY));
     }
     out.push(at("top", "top", FLOOR_EDGE.x, tower.roofY + TAG_Y, FLOOR_EDGE.z));
     return out;

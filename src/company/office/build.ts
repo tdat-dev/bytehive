@@ -26,6 +26,8 @@ const PLATE_TOP = GROUND - SLAB;
 const MAX_STICKIES = 12;
 const BOARD_X = 3.1;
 const BOARD_Y = 1.32;
+/** Where the board's counts go, off its right edge, on the wall. */
+export const BOARD_EDGE = { x: BOARD_X + 1.35, y: BOARD_Y, z: -ROOM_D / 2 + WALL };
 /** The roof sign. `logo` sizes the picture to the plate: the cell's radius is 11.2 of the logo's 24. */
 const SIGN = { x: 6.5, z: 2.75, r: 1.05, thick: 0.34, post: 1.05, turn: 0.42, logo: (0.94 * 24) / 11.2 };
 

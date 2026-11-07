@@ -1,8 +1,9 @@
 /* src/company/office/office.css
- * The Needs you rail and the job box. Colours come from the app's tokens; the --ib-*
- * names exist only in the Inbox, so every one has the dock's token behind it. */
+ * The Needs you rail, the job box and the office around them. Colours come from the app's
+ * tokens; the --ib-* names exist only in the Inbox, so every one has the dock's token behind it. */
 .co-rail, .co-box { display: flex; flex-direction: column; gap: 10px; color: var(--ib-ink, var(--text)); }
 .co-rail h3 { margin: 0; font-size: 13px; font-weight: 600; display: flex; align-items: baseline; gap: 6px; }
+.co-rail h3:first-of-type { color: var(--ib-needs, var(--amber)); }
 .co-rail ul { list-style: none; margin: 0; padding: 0; }
 .co-n { font-size: 12px; font-weight: 600; color: var(--ib-needs, var(--amber)); }
 .co-n:empty { display: none; }
@@ -18,9 +19,8 @@
 .co-row b { font-weight: 600; font-size: 12.5px; overflow-wrap: anywhere; }
 .co-row span { color: var(--ib-ink-2, var(--muted)); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .co-row div { display: flex; gap: 6px; margin-top: 2px; }
-/* Only a row that needs you carries the honey. */
-.co-needs .co-row { padding-left: 10px; border-left: 2px solid var(--ib-needs, var(--amber)); }
 .co-go { display: block; width: 100%; padding: 2px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
+.co-go b::after { content: " \203A"; color: var(--ib-ink-2, var(--muted)); }
 .co-go:hover b { text-decoration: underline; text-underline-offset: 2px; }
 .co-go:focus-visible { outline: 2px solid var(--ib-needs, var(--amber)); outline-offset: 2px; }
 .co-plan { margin: 2px 0; font-size: 12px; line-height: 1.5; }
@@ -28,3 +28,96 @@
 .co-plan dd { margin: 0; color: var(--ib-ink, var(--text)); overflow-wrap: anywhere; }
 .co-plan .co-prompt { white-space: pre-wrap; padding: 6px 8px; border: 1px solid var(--ib-line, var(--line)); border-radius: var(--r1); background: var(--surface-0); }
 .co-none { color: var(--ib-ink-2, var(--muted)); font-size: 12px; padding: 4px 0; }
+
+/* The office layer. Over .topbar (100), under the hint (180), the dock panel (290), modals
+ * and the window controls (300). Sky, honey, chip, panel and ink come from palette.ts,
+ * set on #office by the shell. The scene is the picture; this stays quiet around it. */
+:root { --office-desk-w: clamp(340px, 34vw, 520px); --office-bar-h: 44px; --office-rail-w: 320px; --office-z: 120; }
+.of {
+  position: fixed; top: 0; bottom: 0; left: 0; width: 100vw; z-index: var(--office-z); overflow: hidden;
+  display: grid; grid-template: "bar bar" var(--office-bar-h) "stage rail" minmax(0, 1fr) / minmax(0, 1fr) var(--office-rail-w);
+  background: var(--of-sky); color: var(--of-ink); font-family: var(--sans);
+  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.of[hidden], .of [hidden] { display: none !important; }
+.of[data-level="desk"] { width: var(--office-desk-w); grid-template: "bar" var(--office-bar-h) "stage" minmax(160px, 38%) "rail" minmax(0, 1fr) / minmax(0, 1fr); }
+.of :focus-visible { outline: 2px solid var(--of-honey); outline-offset: 2px; }
+.of h2, .of h3, .of p { margin: 0; }
+
+.of-bar { grid-area: bar; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 0 150px 0 12px; background: var(--of-chip); border-bottom: 1px solid var(--ib-line, var(--line)); }
+.of[data-level="desk"] .of-bar { padding-right: 12px; }
+.of-crumbs { min-width: 0; }
+.of-crumbs ol { display: flex; align-items: center; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.of-crumbs li { display: flex; align-items: center; min-width: 0; }
+.of-crumbs li + li::before { content: "\203A"; padding: 0 2px; color: var(--ib-ink-3, var(--muted)); }
+.of-crumbs button, .of-crumbs span { max-width: 220px; padding: 6px; border: 0; border-radius: 6px; background: none; font: 500 13px/1.2 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.of-crumbs button { color: var(--ib-ink-2, var(--muted)); cursor: pointer; }
+.of-crumbs button:hover { color: var(--of-ink); background: var(--ib-raise, var(--surface-2)); }
+.of-crumbs span { color: var(--of-honey); font-weight: 600; }
+.of-inbox { flex: none; height: 28px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r1); background: none; color: var(--of-ink); font: 500 12.5px/1 var(--sans); cursor: pointer; }
+.of-inbox:hover { background: var(--ib-raise, var(--surface-2)); }
+
+.of-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--of-sky); }
+.of-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.of-canvas:focus { outline: none; }
+.of-note { position: absolute; top: 16px; left: 16px; max-width: calc(100% - 32px); padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--r1); background: var(--of-chip); font-size: 13px; line-height: 1.5; }
+
+.of-tags { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.of-tags.is-moving { visibility: hidden; }
+.of-tag { position: absolute; top: 0; left: 0; box-sizing: border-box; display: block; height: 26px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--of-chip); color: var(--of-ink); font: 500 12px/24px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
+button.of-tag { cursor: pointer; }
+button.of-tag:hover { border-color: var(--of-ink); }
+.of-tag b { font-weight: 600; }
+/* A long project name gives way before what comes after it: that is what needs you. */
+.of-tag-floor b { display: inline-block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.of-tag span { margin-left: 2px; color: var(--ib-ink-2, var(--muted)); }
+.of-tag em { margin-left: 2px; color: var(--of-honey); font-style: normal; }
+.of-tag.is-needs { border-color: var(--of-honey); }
+.of-tag-person { max-width: calc(18ch + 18px); }
+.of-tag-person.is-needs, .of-tag-person.is-needs span { color: var(--of-honey); }
+
+.of-job, .of-msg { position: absolute; bottom: 16px; left: 16px; box-sizing: border-box; width: clamp(240px, calc((100vw - var(--office-rail-w)) / 2), 300px); padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--r3); background: var(--of-panel); }
+.of-msg { display: flex; flex-direction: column; gap: 6px; }
+.of-msg label { font-size: 12px; color: var(--ib-ink-2, var(--muted)); }
+.of-msg textarea { resize: vertical; font: inherit; font-size: 12.5px; color: var(--ib-ink, var(--text)); background: var(--surface-0); border: 1px solid var(--ib-line, var(--line-strong)); border-radius: var(--r1); padding: 8px 10px; }
+.of-msg-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.of-sent { font-size: 12px; color: var(--ib-ink-2, var(--muted)); }
+
+.of-rail { grid-area: rail; box-sizing: border-box; min-height: 0; padding: 14px 16px 20px; overflow-y: auto; overscroll-behavior: contain; background: var(--of-panel); box-shadow: inset 1px 0 0 var(--ib-line, var(--line)); }
+.of[data-level="desk"] .of-rail { box-shadow: inset 0 1px 0 var(--ib-line, var(--line)), inset -1px 0 0 var(--ib-line, var(--line)); }
+
+/* What stands on the app's stage at a Desk, over the terminal. */
+.of-cover { position: fixed; top: var(--office-bar-h); right: 0; bottom: 0; left: var(--office-desk-w); box-sizing: border-box; overflow-y: auto; background: var(--ib-ground, var(--bg)); }
+.of-wake-cover { display: grid; place-items: center; padding: 24px; }
+.of-wake { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; box-sizing: border-box; width: min(360px, 100%); padding: 20px; border: 1px solid var(--line-strong); border-radius: var(--r3); background: var(--of-panel); }
+.of-wake p:first-child { font-size: 14px; line-height: 1.5; }
+.of-wake .co-send { align-self: flex-start; }
+.of-wake .co-send[aria-disabled="true"] { opacity: .5; cursor: default; }
+.of-report { padding: 24px 32px 40px; font-size: 13.5px; line-height: 1.55; }
+.of-report:focus { outline: none; }
+.of-report h2 { font-size: 16px; font-weight: 600; }
+.of-report code { font: 12.5px/1.5 var(--mono); color: var(--ib-ink, var(--text)); }
+.of-meta { margin-top: 2px; font-size: 12.5px; color: var(--ib-ink-2, var(--muted)); }
+.of-empty { margin-top: 12px; color: var(--ib-ink-2, var(--muted)); }
+.of-card { display: flex; flex-direction: column; gap: 4px; max-width: 72ch; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--ib-line, var(--line)); }
+.of-card h3 { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.of-ticks, .of-files { margin: 6px 0 0; padding: 0; list-style: none; }
+.of-ticks li { display: flex; gap: 8px; color: var(--ib-ink-2, var(--muted)); }
+.of-ticks li[data-done="true"] { color: var(--ib-ink, var(--text)); }
+.of-ticks li > span:first-child { flex: none; width: 14px; }
+.of-files li { font: 12.5px/1.6 var(--mono); color: var(--ib-ink-2, var(--muted)); overflow-wrap: anywhere; }
+.of-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* A Desk: the column takes the queue's place, and the rest is the app. */
+body.inbox-ui.office-desk { --ib-q: var(--office-desk-w); --ib-dock-h: 16px; }
+body.inbox-ui.office-desk .app { grid-template-rows: var(--office-bar-h) 1fr; }
+body.inbox-ui.office-desk .topbar { padding-left: calc(var(--office-desk-w) + 8px); }
+body.inbox-ui.office-desk .tb-left, body.inbox-ui.office-desk .inbox-queue, body.inbox-ui.office-desk .inbox-dock, body.inbox-ui.office-desk .inbox-head { display: none; }
+.of-tabs { display: flex; align-items: center; gap: 2px; }
+.of-tab { height: 30px; padding: 0 12px; border: 0; border-radius: var(--r1); background: none; color: var(--ib-ink-2, var(--muted)); font: 500 13px/1 var(--sans); cursor: pointer; }
+.of-tab:hover { color: var(--ib-ink, var(--text)); }
+.of-tab[aria-selected="true"] { background: var(--ib-raise, var(--surface-2)); color: var(--ib-ink, var(--text)); }
+.of-tab:focus-visible { outline: 2px solid var(--ib-needs, var(--amber)); outline-offset: 2px; }
+
+@media (max-width: 1000px) { :root { --office-rail-w: 280px; } }
+@media (prefers-reduced-motion: reduce) { .of { transition: none; } }

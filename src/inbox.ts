@@ -311,6 +311,23 @@ export function openTask(t: Task): void {
   render();
 }
 
+/** Put an agent on the stage, full size. For the office's Desk. */
+export function stageAgent(paneId: string): boolean {
+  const t = taskOf(paneId);
+  if (!t) return false;
+  if (splitOn) setSplit(false);
+  openTask(t);
+  return true;
+}
+
+/** An agent's changes, on the stage. */
+export function openChanges(paneId: string): void {
+  if (stagePane()?.id !== paneId && !stageAgent(paneId)) return;
+  if (reviewer?.paneId !== paneId) openReview();
+}
+export function closeChanges(): void { if (reviewer?.paneId) reviewer.close(); }
+export const changesOpenFor = (): string | null => reviewer?.paneId ?? null;
+
 /** Make a pane the one the decision card and Alt+number talk to, without
  *  moving or refitting anything (Split keeps every terminal where it is). */
 function setCurrent(pane: Pane): void {
