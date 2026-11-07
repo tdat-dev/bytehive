@@ -209,7 +209,23 @@ function part(name: string, g: BufferGeometry, m: Material, cast = true): Mesh {
 
 interface Parts { body: Object3D; trunk: Object3D; legs: Object3D; armL: Object3D; armR: Object3D; bubble: Object3D | null }
 
-export type PeopleKit = Pick<Kit, "matte" | "bubble" | "badge">;
+export type PeopleKit = Pick<Kit, "matte" | "bubble" | "badge"> & { shapes?: Map<string, Shapes> };
+
+/** A person's geometry. It takes longer to make than to draw, and it only changes with their looks,
+ *  so a state change takes it from here: the kit keeps one per look, and frees them at the end. */
+interface Shapes { torso: BufferGeometry; legs: BufferGeometry; armL: BufferGeometry; armR: BufferGeometry }
+
+function shapesOf(p: OfficePerson, kit: PeopleKit): { shapes: Shapes; shared: boolean } {
+  const make = (): Shapes => ({ torso: torsoGeometry(p), legs: legsGeometry(), armL: armGeometry(p, "L"), armR: armGeometry(p, "R") });
+  if (!kit.shapes) return { shapes: make(), shared: false };
+  const key = [p.id, p.shirt, p.hair, p.rank, p.prop].join(":");
+  let shapes = kit.shapes.get(key);
+  if (!shapes) {
+    shapes = make();
+    kit.shapes.set(key, shapes);
+  }
+  return { shapes, shared: true };
+}
 
 /** What the mark is at scale 1, to size it the same on screen at every level. */
 export const MARK_UNITS = 1;
@@ -224,13 +240,16 @@ export function buildPerson(p: OfficePerson, kit: PeopleKit, marked = false): Ob
   trunk.name = "trunk";
 
   const badge = new PlaneGeometry(0.17, 0.17).rotateY(Math.PI).translate(0, BADGE.y, -BADGE.z);
-  const armL = part("armL", armGeometry(p, "L"), kit.matte);
-  const armR = part("armR", armGeometry(p, "R"), kit.matte);
+  // Arms cast nothing: a person's shadow reads the same, and it is 40 draw calls at 20 people.
+  const { shapes, shared } = shapesOf(p, kit);
+  const own = (m: Mesh) => { m.userData.owned = !shared; return m; };
+  const armL = own(part("armL", shapes.armL, kit.matte, false));
+  const armR = own(part("armR", shapes.armR, kit.matte, false));
   armL.position.set(-SHOULDER.x, SHOULDER.y, 0);
   armR.position.set(SHOULDER.x, SHOULDER.y, 0);
-  trunk.add(part("torso", torsoGeometry(p), kit.matte), part("badge", badge, kit.badge(p.cli), false), armL, armR);
+  trunk.add(own(part("torso", shapes.torso, kit.matte)), part("badge", badge, kit.badge(p.cli), false), armL, armR);
 
-  const legs = part("legs", legsGeometry(), kit.matte);
+  const legs = own(part("legs", shapes.legs, kit.matte));
   body.add(trunk, legs);
   root.add(body);
 

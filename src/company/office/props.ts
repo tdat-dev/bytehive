@@ -177,6 +177,41 @@ function beanbags(accent: string): Prop {
   return { solid: [moved(bag(dim(accent, 0.8), 0.52), -0.9, 0.36, 0.64), moved(bag(shift(accent, "#e9dfcc", 0.45), 0.48), 0.92, 0.33, 0.72), ...table], foot: { w: 2.5, d: 1.2 } };
 }
 
+/** A small round table with stools: where two people talk it over. */
+function meetingTable(accent: string): Prop {
+  const stool = (x: number, z: number) => [moved(tint(new CylinderGeometry(0.2, 0.2, 0.08, 14), accent), x, 0.46, z), moved(tint(new CylinderGeometry(0.03, 0.05, 0.44, 8), OFFICE.deskBody), x, 0.22, z)];
+  return {
+    solid: [
+      moved(tint(new CylinderGeometry(0.62, 0.62, 0.06, 22), OFFICE.deskTop), 0, 0.76, 0.86),
+      moved(tint(new CylinderGeometry(0.05, 0.08, 0.72, 10), OFFICE.deskBody), 0, 0.37, 0.86),
+      moved(tint(new CylinderGeometry(0.3, 0.32, 0.03, 16), OFFICE.deskBody), 0, 0.02, 0.86),
+      moved(box(0.3, 0.015, 0.22, OFFICE.paper), -0.12, 0.8, 0.8, 0.3),
+      moved(tint(new CylinderGeometry(0.055, 0.05, 0.1, 10), "#e9e4d8"), 0.24, 0.84, 0.96),
+      ...stool(-0.95, 0.72), ...stool(0.96, 0.82), ...stool(0.1, 0.1),
+    ],
+    foot: { w: 2.2, d: 1.5 },
+  };
+}
+
+/** A low cabinet with things growing on it. */
+function plantCabinet(rand: () => number): Prop {
+  const top = 0.74;
+  const pots = [-0.86, -0.3, 0.3, 0.86].map((x, i) => {
+    const pot = moved(ramp(tint(new CylinderGeometry(0.15, 0.11, 0.22, 12), i % 2 ? "#d9d2c4" : OFFICE.pot), "#7a5a48", i % 2 ? "#e4dccd" : OFFICE.pot), x, top + 0.11, 0.32);
+    const leaf = moved(tint(new SphereGeometry(0.17 + rand() * 0.09, 9, 7), i % 2 ? OFFICE.plant : OFFICE.plantDeep), x, top + 0.34 + rand() * 0.08, 0.32);
+    return [pot, leaf];
+  });
+  return {
+    solid: [
+      moved(soft(2.4, top, 0.6, 0.04, "#3a3038"), 0, top / 2, 0.32),
+      moved(box(2.44, 0.05, 0.64, OFFICE.deskTop), 0, top + 0.02, 0.32),
+      ...[-0.8, 0, 0.8].map((x) => moved(box(0.02, top - 0.14, 0.01, "#2a2730"), x, top / 2, 0.625)),
+      ...pots.flat(),
+    ],
+    foot: { w: 2.5, d: 0.72 },
+  };
+}
+
 function floorLamp(on: boolean): Prop {
   const shade = tint(new CylinderGeometry(0.2, 0.3, 0.32, 16), on ? "#ffdca8" : "#b9b2a4");
   return {
@@ -321,8 +356,8 @@ const shuffled = <T>(list: readonly T[], rand: () => number): T[] => {
 
 const spin = (x: number, z: number, turn: number) => ({ x: x * Math.cos(turn) + z * Math.sin(turn), z: -x * Math.sin(turn) + z * Math.cos(turn) });
 
-/** The colour of a floor: the same name, the same colour. */
-export const accentOf = (name: string): string => ACCENTS[hashOf(name) % ACCENTS.length];
+/** The colour of a floor: from its name, and stepped by its height so two floors in a row differ. */
+export const accentOf = (name: string, index = 0): string => ACCENTS[(hashOf(name) + index * 3) % ACCENTS.length];
 
 interface RoomPlan { id: string; index: number; lit: boolean; board: boolean }
 
@@ -330,7 +365,7 @@ interface RoomPlan { id: string; index: number; lit: boolean; board: boolean }
 export function furnish(room: RoomPlan): Furnished {
   const hash = hashOf(room.id);
   const rand = seeded(hash * 31 + room.index * 7919);
-  const accent = accentOf(room.id);
+  const accent = accentOf(room.id, room.index);
   const out: Furnished = { solid: [], lit: [], thrown: [], lamps: [], blockers: [], accent };
 
   const put = (p: Prop, x: number, z: number, turn = 0) => {
@@ -354,7 +389,7 @@ export function furnish(room: RoomPlan): Furnished {
   // The back wall: left, middle, and right unless the board has it. Each room draws its own.
   // From the viewer's corner the left of the back wall is behind the people, and what stands
   // there stays low, or it fights them for the eye. Anything tall goes on the far right.
-  const low = shuffled<() => Prop>([() => sofa(accent), () => beanbags(accent), coffeeCounter], rand);
+  const low = shuffled<() => Prop>([() => sofa(accent), () => beanbags(accent), coffeeCounter, () => meetingTable(accent), () => plantCabinet(rand)], rand);
   const tall = shuffled<() => Prop>([() => bookshelf(rand, 2.5, 2.7, 4), rack, () => arcade(accent)], rand);
   const slots = [-3.25 + rand() * 0.3, 0.2 + rand() * 0.3, 3.45];
   const hung: Array<() => Prop> = shuffled([() => wallArt(accent, rand), clock, () => wallArt(accent, rand)], rand);
@@ -373,7 +408,7 @@ export function furnish(room: RoomPlan): Furnished {
 
   out.solid.push(...hexRug(shift(accent, "#8a7566", 0.38), 0, 0.06, 2.9));
   if (rand() < 0.45) put(rand() < 0.5 ? plant(rand, 1.5) : snakePlant(), -4.6, 3.05);
-  if (hash % 3 === 0) put(cat(["#3a3d4a", "#d8d2c8", "#8a8f9c"][hash % 3 === 0 ? (hash >>> 3) % 3 : 0]), 4.4, 2.5, 0.6);
+  if (rand() < 0.6) put(cat(["#3a3d4a", "#d8d2c8", "#8a8f9c"][hash % 3]), 2.9, 2.75, 0.6);
 
   // The lamps. Nobody in, and it is the sky that lights the room, and one lamp left on.
   const kind = (["dome", "globe", "cone"] as PendantKind[])[hash % 3];
@@ -385,7 +420,7 @@ export function furnish(room: RoomPlan): Furnished {
     if (room.lit) out.thrown.push(pool(x, 0.03, 0.1, 5.4, 4.6, "#ffcf9e", 0.09));
     if (room.lit) out.lamps.push({ x, y: PENDANT_Y - 0.1, z: 0.1, colour: rgb(WARM_LAMP), power: 1.05, reach: 2.2 });
   }
-  if (!room.lit) put(floorLamp(true), rand() < 0.5 ? -4.5 : 3.8, room.index % 2 ? -3.1 : 2.6);
+  if (!room.lit) put(floorLamp(true), -1.45, BACK_Z);
   return out;
 }
 

@@ -8,7 +8,7 @@ export const OFFICE = {
   bead: "#efc48a", plant: "#4f8f4a", plantDeep: "#2f6a4a", pot: "#b5734a", paper: "#f2ece0",
   cork: "#b98d58", noteTodo: "#f2d15e", noteDoing: "#8fc7f2", noteDone: "#8fd9a4",
   grass: "#2f5048", grassLit: "#4a6a4e", stone: "#4a4f5e", kerb: "#3a3e4d", leaf: "#2f5e57", leafDeep: "#1f4347", bark: "#3a2f33",
-  skyTop: "#0a0e24", skyHigh: "#141a3e", skyMid: "#2a2f63", skyLow: "#5a4a85", skyGlow: "#b0708a", haze: "#6c5a8c", moon: "#f3ecdc",
+  skyTop: "#0a0e24", skyHigh: "#141a3e", skyMid: "#2a2f63", skyLow: "#5a4a85", skyGlow: "#b0708a", haze: "#6c5a8c", moon: "#d9d4c8",
 } as const;
 
 /** A project's colour, for rugs, cushions and art. None of them is honey: that means your turn. */

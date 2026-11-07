@@ -15,6 +15,7 @@ export interface RoomLight { ambient: RGB; lamps: Lamp[]; blockers: Blocker[] }
 
 export const rgb = (hex: string): RGB => { const c = new Color(hex); return [c.r, c.g, c.b]; };
 
+const SHADE_REACH = 0.62;
 const smooth = (a: number, b: number, x: number) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
 
 /** How much of the room's light gets to this point, in each colour. */
@@ -36,7 +37,8 @@ export function shadeAt(blockers: Blocker[], x: number, z: number): number {
   for (const b of blockers) {
     const dx = Math.max(0, Math.abs(x - b.x) - b.w / 2);
     const dz = Math.max(0, Math.abs(z - b.z) - b.d / 2);
-    lit *= 1 - b.dark * (1 - smooth(0, 0.62, Math.hypot(dx, dz)));
+    if (dx > SHADE_REACH || dz > SHADE_REACH) continue;
+    lit *= 1 - b.dark * (1 - smooth(0, SHADE_REACH, Math.hypot(dx, dz)));
   }
   return lit;
 }

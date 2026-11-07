@@ -454,17 +454,18 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       const k = floorKey(f, spot, marked);
       const built = floors.get(f.id);
       if (built?.key === k) return;
+      const group = buildFloor(f, spot, kit, marked, built?.group);
       if (built) drop(built.group);
-      const group = buildFloor(f, spot, kit, marked);
       scene.add(group);
       floors.set(f.id, { key: k, group });
       rebuilt = true;
     });
     const topKey = JSON.stringify([t.roofY, t.floors.map((f) => f.y), m.founder && lookKey(m.founder), m.founder && marked.has(m.founder.id)]);
     if (top?.key !== topKey) {
+      const group = buildTop(m, t, kit, marked, top?.group);
       if (top) drop(top.group);
-      top = { key: topKey, group: buildTop(m, t, kit, marked) };
-      scene.add(top.group);
+      top = { key: topKey, group };
+      scene.add(group);
       rebuilt = true;
     }
 

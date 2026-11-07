@@ -11,11 +11,17 @@ export const DESK_TOP = 0.78;
 export function tint(g: BufferGeometry, hex: string, top?: string): BufferGeometry {
   const flat = g.index ? g.toNonIndexed() : g;
   flat.deleteAttribute("uv");
-  const normal = flat.getAttribute("normal");
+  const normal = flat.getAttribute("normal").array;
   const body = new Color(hex);
   const up = new Color(top ?? hex);
-  const colors = new Float32Array(normal.count * 3);
-  for (let i = 0; i < normal.count; i += 1) (normal.getY(i) > 0.9 ? up : body).toArray(colors, i * 3);
+  const colors = new Float32Array(normal.length);
+  for (let i = 0; i < normal.length; i += 3) {
+    const high = top !== undefined && normal[i + 1] > 0.9;
+    const c = high ? up : body;
+    colors[i] = c.r;
+    colors[i + 1] = c.g;
+    colors[i + 2] = c.b;
+  }
   flat.setAttribute("color", new BufferAttribute(colors, 3));
   return flat;
 }
@@ -24,7 +30,20 @@ export const moved = (g: BufferGeometry, x: number, y: number, z: number, turn =
   g.clone().applyMatrix4(new Matrix4().makeRotationY(turn).setPosition(x, y, z));
 export const merged = (parts: BufferGeometry[]): BufferGeometry => mergeGeometries(parts, false);
 export const box = (w: number, h: number, d: number, hex: string) => tint(new BoxGeometry(w, h, d), hex);
-export const soft = (w: number, h: number, d: number, r: number, hex: string) => tint(new RoundedBoxGeometry(w, h, d, 2, r), hex);
+
+/** Rounded boxes take a while to make, and a room asks for the same few again and again. */
+const softShapes = new Map<string, BufferGeometry>();
+
+export function soft(w: number, h: number, d: number, r: number, hex: string): BufferGeometry {
+  const key = `${w},${h},${d},${r}`;
+  let shape = softShapes.get(key);
+  if (!shape) {
+    shape = new RoundedBoxGeometry(w, h, d, 2, r).toNonIndexed();
+    shape.deleteAttribute("uv");
+    softShapes.set(key, shape);
+  }
+  return tint(shape.clone(), hex);
+}
 
 /** Colours each vertex from where it is and which way it faces. */
 export function paint(g: BufferGeometry, at: (x: number, y: number, z: number, nx: number, ny: number, nz: number) => Color): BufferGeometry {

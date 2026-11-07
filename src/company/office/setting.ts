@@ -17,7 +17,7 @@ const FACING = Math.atan2(VIEW.x, VIEW.z);
 const SKY = { z: -330, w: 1000, y0: -92, y1: 72 };
 /** Where the sky's painted light sits, as a share of the sheet from the bottom. */
 const SKY_GLOW = 0.3;
-const MOON = { x: -49, y: 3, r: 3.2 };
+const MOON = { x: -50, y: 4, r: 2.7 };
 const TOWN = { near: -30, far: -74, edge: -92 };
 
 type Painter = (c: OffscreenCanvasRenderingContext2D, w: number, h: number) => void;
@@ -75,8 +75,8 @@ function starField(): BufferGeometry {
 /** The moon, low on the left of the tower, with its light on the air round it. */
 function moonGeometry(): BufferGeometry {
   const face = tint(new CircleGeometry(MOON.r, 40), OFFICE.moon);
-  const shade = tint(new CircleGeometry(MOON.r * 0.24, 16), "#e7dfcd");
-  const shade2 = tint(new CircleGeometry(MOON.r * 0.15, 14), "#e7dfcd");
+  const shade = tint(new CircleGeometry(MOON.r * 0.24, 16), "#c9c4b8");
+  const shade2 = tint(new CircleGeometry(MOON.r * 0.15, 14), "#c9c4b8");
   return merged([face, moved(shade, -MOON.r * 0.26, MOON.r * 0.22, 0.05), moved(shade2, MOON.r * 0.3, -MOON.r * 0.33, 0.05)]);
 }
 
@@ -231,7 +231,7 @@ export function createSetting(o: { outdoor: MeshStandardMaterial; thrown: MeshBa
   const flat = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, dithering: true });
   const moon = new Mesh(moved(moonGeometry(), MOON.x, MOON.y, SKY.z + 5), flat);
   moon.renderOrder = -2;
-  const halo = new Mesh(flare(MOON.x, MOON.y, SKY.z + 4, 34, "#8f9ad8", 0.42), o.thrown);
+  const halo = new Mesh(flare(MOON.x, MOON.y, SKY.z + 4, 30, "#8f9ad8", 0.3), o.thrown);
   halo.renderOrder = -2;
 
   const town = new Mesh(townGeometry(), flat);

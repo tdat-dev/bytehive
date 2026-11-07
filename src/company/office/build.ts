@@ -110,6 +110,7 @@ export interface Kit {
   logoPlate: BufferGeometry;
   /** One material for each CLI on a badge. */
   badge(cli: string): Material;
+  shapes: PeopleKit["shapes"];
   ground: Group;
   /** The rooms' light on the ground: off when no room is lit. */
   groundLight: Group;
@@ -198,14 +199,17 @@ export function createKit(loaded: () => void = () => {}): Kit {
   const plane = planeGeometry();
   const logoPlate = new PlaneGeometry(SIGN.r * SIGN.logo, SIGN.r * SIGN.logo);
   const setting = createSetting({ outdoor: matte, thrown: deskLight });
+  const shapes: NonNullable<PeopleKit["shapes"]> = new Map();
 
   const geometries = [shell, slab, desk, chair, chairBack, boardFrame, lamp.solid, lamp.lit, glowWork, glowLamp, haze, plane, logoPlate];
   const materials: Material[] = [matte, indoor, night, glow, glass, deskLight, hazeLight, paper, bubble, logo];
   return {
-    matte, indoor, night, glow, glass, shell, slab, desk, chair, chairBack, boardFrame, lamp, deskLight, hazeLight, haze, glowWork, glowLamp, plane, paper, bubble, logo, logoPlate, badge,
+    matte, indoor, night, glow, glass, shell, slab, desk, chair, chairBack, boardFrame, lamp, deskLight, hazeLight, haze, glowWork, glowLamp, plane, paper, bubble, logo, logoPlate, badge, shapes,
     ground: setting.group, groundLight: setting.light, far: setting.far,
     dispose() {
       for (const g of geometries) g.dispose();
+      for (const s of shapes.values()) for (const g of Object.values(s)) g.dispose();
+      shapes.clear();
       for (const m of [...materials, ...badges.values()]) m.dispose();
       deskLightMap.dispose();
       setting.dispose();
@@ -326,6 +330,7 @@ function deskFor(d: Seat, p: OfficePerson | undefined, papers: number, kit: Kit)
   }
   const prop = p ? deskProp(p.prop) : null;
   if (prop) solid.push(onDesk(prop));
+  if (p) solid.push(onDesk(deskThing(hashOf(p.id))));
   if (papers) solid.push(onDesk(paperStack(papers, !!prop)));
   if (look.lamp) {
     solid.push(onDesk(kit.lamp.solid));
@@ -333,6 +338,19 @@ function deskFor(d: Seat, p: OfficePerson | undefined, papers: number, kit: Kit)
     thrown.push(onDesk(kit.glowLamp));
   }
   return { solid, lit, thrown };
+}
+
+/** Something of their own by the screen, so no two desks match. */
+function deskThing(seed: number): BufferGeometry {
+  const x = -0.5;
+  const z = -0.22;
+  const y = DESK_TOP;
+  switch (seed % 4) {
+    case 0: return merged([moved(tint(new CylinderGeometry(0.07, 0.055, 0.1, 10), "#d9d2c4"), x, y + 0.05, z), moved(tint(new SphereGeometry(0.1, 8, 6), OFFICE.plant), x, y + 0.16, z)]);
+    case 1: return merged([moved(box(0.2, 0.26, 0.02, "#2a2730"), x, y + 0.13, z, 0.3), moved(tint(new PlaneGeometry(0.16, 0.21), "#b7c6dc"), x + 0.004, y + 0.13, z + 0.012, 0.3)]);
+    case 2: return merged([0, 1, 2].map((i) => moved(box(0.26, 0.05, 0.2, ["#c4605a", "#3f8f8a", "#e9dfcc"][i]), x, y + 0.03 + i * 0.05, z, i * 0.2 - 0.2)));
+    default: return merged([moved(tint(new CylinderGeometry(0.06, 0.05, 0.13, 10), "#3a3d4a"), x, y + 0.065, z), moved(box(0.012, 0.18, 0.012, "#c4605a"), x + 0.015, y + 0.15, z), moved(box(0.012, 0.16, 0.012, "#8fb8f2"), x - 0.02, y + 0.14, z + 0.01)]);
+  }
 }
 
 function noteParts(board: BoardCounts | null): BufferGeometry[] {
@@ -362,51 +380,25 @@ export function disposeBuilt(group: Group): void {
   group.traverse((o) => { if (o instanceof Mesh && o.userData.owned) (o.geometry as BufferGeometry).dispose(); });
 }
 
-export function buildFloor(f: OfficeFloor, spot: FloorSpot, kit: Kit, marked: ReadonlySet<string> = new Set()): Group {
+/** What does not change while people work: the shell, the room and its light. It takes
+ *  far longer to build than the desks, so a floor keeps it when only someone's state moves. */
+function buildRoom(f: OfficeFloor, spot: FloorSpot, kit: Kit): { group: Group; light: RoomLight; inRoom: MeshStandardMaterial } {
   const group = new Group();
-  group.position.y = spot.y;
-
   const shell = new Mesh(kit.shell, kit.matte);
   shell.receiveShadow = true;
   shell.castShadow = true;
   group.add(shell);
 
   const index = Math.round((spot.y - GROUND) / STOREY);
-  const board = !!f.board;
-  const room = furnish({ id: f.id, index, lit: f.lit, board });
+  const room = furnish({ id: f.id, index, lit: f.lit, board: !!f.board });
   const inRoom = f.lit ? kit.indoor : kit.night;
-  const people: PeopleKit = { matte: inRoom, bubble: kit.bubble, badge: kit.badge };
-  const solid = room.solid;
-  const lit = room.lit;
-  const thrown = room.thrown;
-  const blockers = [...room.blockers];
-
-  const papersOn = paperDesk(f);
-  for (const d of spot.desks) {
-    const p = f.people.find((x) => x.id === d.personId);
-    const desk = deskFor(d, p, d.personId === papersOn ? f.papers : 0, kit);
-    solid.push(...desk.solid);
-    lit.push(...desk.lit);
-    thrown.push(...desk.thrown);
-    blockers.push(...deskBlockers(d, chairSpot(d)));
-    if (p) group.add(person(p, d, 0, people, marked.has(p.id)));
-  }
-  if (board) {
-    // The notes are what the board is for, so on a lit floor they do not take light.
-    const z = -ROOM_D / 2 + WALL / 2 + 0.04;
-    solid.push(moved(kit.boardFrame, BOARD_X, BOARD_Y, z));
-    (f.lit ? lit : solid).push(moved(merged([moved(tint(new PlaneGeometry(2.44, 1.14), OFFICE.cork), 0, 0, 0.034), ...noteParts(f.board)]), BOARD_X, BOARD_Y, z));
-  }
-
+  const blockers = [...room.blockers, ...spot.desks.flatMap((d) => deskBlockers(d, chairSpot(d)))];
   const light: RoomLight = { ambient: roomAmbient(f.lit), lamps: room.lamps, blockers };
-  lit.push(wallGrid(light, f.lit));
-  solid.push(hexFloor(light, f.lit, room.accent, hashOf(f.id)));
-  const mergedSolid = merged(solid.map((g) => (g.index ? g.toNonIndexed() : g)));
-  // The floor already has its light: bake the rest. Tiles are the last of the merge.
-  group.add(mesh(bakeAllBut(mergedSolid, light), inRoom, { cast: true, receive: true }));
-  group.add(mesh(merged(lit), kit.glow));
-  if (thrown.length) {
-    const t = mesh(merged(thrown), kit.deskLight);
+  const tiles = hexFloor(light, f.lit, room.accent, hashOf(f.id));
+  group.add(mesh(merged([bake(merged(room.solid.map((g) => (g.index ? g.toNonIndexed() : g))), light), tiles]), inRoom, { cast: true, receive: true }));
+  group.add(mesh(merged([...room.lit, wallGrid(light, f.lit)]), kit.glow));
+  if (room.thrown.length) {
+    const t = mesh(merged(room.thrown), kit.deskLight);
     t.renderOrder = 1;
     group.add(t);
   }
@@ -415,24 +407,55 @@ export function buildFloor(f: OfficeFloor, spot: FloorSpot, kit: Kit, marked: Re
     air.renderOrder = 2;
     group.add(air);
   }
-  return group;
+  return { group, light, inRoom };
 }
 
-/** Floor tiles sit at y under 0.01 and hold their light already. */
-function bakeAllBut(g: BufferGeometry, room: RoomLight): BufferGeometry {
-  const pos = g.getAttribute("position");
-  const floorKeep = new Float32Array(pos.count * 3);
-  const colour = g.getAttribute("color");
-  const flat: number[] = [];
-  for (let i = 0; i < pos.count; i += 1) {
-    if (pos.getY(i) < 0.01) {
-      flat.push(i);
-      floorKeep.set([colour.getX(i), colour.getY(i), colour.getZ(i)], i * 3);
-    }
+interface BuiltRoom { key: string; group: Group; light: RoomLight; inRoom: MeshStandardMaterial }
+
+const roomKey = (f: OfficeFloor, spot: FloorSpot) => JSON.stringify([f.id, spot.y, f.lit, !!f.board, spot.desks.map((d) => [d.x, d.z, d.rot])]);
+
+/** A floor. `was` is the floor it replaces: its room moves over if nothing about it changed. */
+export function buildFloor(f: OfficeFloor, spot: FloorSpot, kit: Kit, marked: ReadonlySet<string> = new Set(), was?: Group): Group {
+  const group = new Group();
+  group.position.y = spot.y;
+
+  const key = roomKey(f, spot);
+  const kept = was?.userData.room as BuiltRoom | undefined;
+  const room: BuiltRoom = kept?.key === key ? kept : { key, ...buildRoom(f, spot, kit) };
+  if (was && room === kept) {
+    was.remove(room.group);
+    was.userData.room = undefined;
   }
-  bake(g, room);
-  for (const i of flat) colour.setXYZ(i, floorKeep[i * 3], floorKeep[i * 3 + 1], floorKeep[i * 3 + 2]);
-  return g;
+  group.userData.room = room;
+  group.add(room.group);
+
+  const people: PeopleKit = { matte: room.inRoom, bubble: kit.bubble, badge: kit.badge, shapes: kit.shapes };
+  const solid: BufferGeometry[] = [];
+  const lit: BufferGeometry[] = [];
+  const thrown: BufferGeometry[] = [];
+  const papersOn = paperDesk(f);
+  for (const d of spot.desks) {
+    const p = f.people.find((x) => x.id === d.personId);
+    const desk = deskFor(d, p, d.personId === papersOn ? f.papers : 0, kit);
+    solid.push(...desk.solid);
+    lit.push(...desk.lit);
+    thrown.push(...desk.thrown);
+    if (p) group.add(person(p, d, 0, people, marked.has(p.id)));
+  }
+  if (f.board) {
+    // The notes are what the board is for, so on a lit floor they do not take light.
+    const z = -ROOM_D / 2 + WALL / 2 + 0.04;
+    solid.push(moved(kit.boardFrame, BOARD_X, BOARD_Y, z));
+    (f.lit ? lit : solid).push(moved(merged([moved(tint(new PlaneGeometry(2.44, 1.14), OFFICE.cork), 0, 0, 0.034), ...noteParts(f.board)]), BOARD_X, BOARD_Y, z));
+  }
+  if (solid.length) group.add(mesh(bake(merged(solid), room.light), room.inRoom, { cast: true, receive: true }));
+  if (lit.length) group.add(mesh(merged(lit), kit.glow));
+  if (thrown.length) {
+    const t = mesh(merged(thrown), kit.deskLight);
+    t.renderOrder = 1;
+    group.add(t);
+  }
+  return group;
 }
 
 /** A string of bulbs hanging from a to b. */
@@ -457,8 +480,8 @@ function stringLights(a: [number, number, number], b: [number, number, number], 
   return { lit, thrown, wire };
 }
 
-/** The roof deck, the penthouse, the lift and the mast: all that depends on the height. */
-export function buildTop(m: OfficeModel, t: Tower, kit: Kit, marked: ReadonlySet<string> = new Set()): Group {
+/** The top of the tower but the Founder's desk: all that depends on the height alone. */
+function buildRoof(t: Tower, kit: Kit): Group {
   const group = new Group();
   const solid: BufferGeometry[] = [];
   const lit: BufferGeometry[] = [];
@@ -539,13 +562,6 @@ export function buildTop(m: OfficeModel, t: Tower, kit: Kit, marked: ReadonlySet
   planter(4.7, edge.f - 0.42, 2.8, 0.56);
   planter(edge.l + 0.44, -1.2, 0.56, 3);
 
-  // The Founder's desk, out front.
-  const desk = deskFor(FOUNDER_DESK, m.founder ?? undefined, 0, kit);
-  solid.push(...desk.solid.map((g) => moved(g, 0, y, 0)));
-  lit.push(...desk.lit.map((g) => moved(g, 0, y, 0)));
-  thrown.push(...desk.thrown.map((g) => moved(g, 0, y, 0)));
-  if (m.founder) group.add(person(m.founder, FOUNDER_DESK, y, { matte: kit.indoor, bubble: kit.bubble, badge: kit.badge }, marked.has(m.founder.id)));
-
   // The sign: a thick hexagon on the penthouse roof, up against the sky, turned a little from the view.
   const plate = tint(new CylinderGeometry(SIGN.r, SIGN.r, SIGN.thick, 6), OFFICE.steel).rotateX(Math.PI / 2).rotateY(SIGN.turn);
   const roofTop = y + house.h + 0.38;
@@ -603,17 +619,45 @@ export function buildTop(m: OfficeModel, t: Tower, kit: Kit, marked: ReadonlySet
   return group;
 }
 
+/** The roof, and the Founder at their desk out front. `was` is the top it replaces. */
+export function buildTop(m: OfficeModel, t: Tower, kit: Kit, marked: ReadonlySet<string> = new Set(), was?: Group): Group {
+  const group = new Group();
+  const key = JSON.stringify([t.roofY, t.floors.map((f) => f.y)]);
+  const kept = was?.userData.roof as { key: string; group: Group } | undefined;
+  const roof = kept?.key === key ? kept : { key, group: buildRoof(t, kit) };
+  if (was && roof === kept) {
+    was.remove(roof.group);
+    was.userData.roof = undefined;
+  }
+  group.userData.roof = roof;
+  group.add(roof.group);
+
+  const y = t.roofY;
+  const desk = deskFor(FOUNDER_DESK, m.founder ?? undefined, 0, kit);
+  group.add(mesh(merged(desk.solid.map((g) => moved(g, 0, y, 0))), kit.matte, { cast: true, receive: true }));
+  group.add(mesh(merged(desk.lit.map((g) => moved(g, 0, y, 0))), kit.glow));
+  if (desk.thrown.length) {
+    const glows = mesh(merged(desk.thrown.map((g) => moved(g, 0, y, 0))), kit.deskLight);
+    glows.renderOrder = 1;
+    group.add(glows);
+  }
+  if (m.founder) group.add(person(m.founder, FOUNDER_DESK, y, { matte: kit.indoor, bubble: kit.bubble, badge: kit.badge, shapes: kit.shapes }, marked.has(m.founder.id)));
+  return group;
+}
+
 /** The car, lit from inside: it is the one thing on the outside of the tower that moves. */
 function liftCar(half: number): BufferGeometry {
   const w = half * 1.5;
   const h = 2.5;
   const frame = "#23262f";
-  const wall = (turn: number) => ramp(tint(new PlaneGeometry(w - 0.12, h - 0.26, 1, 4), "#000000"), "#4a3a30", "#d6a772").rotateY(turn);
+  const wall = (turn: number) => ramp(tint(new PlaneGeometry(w - 0.12, h - 0.26, 1, 4), "#000000"), "#332824", "#8a6448").rotateY(turn);
   return merged([
     moved(box(w, 0.13, w, frame), 0, 0.065, 0),
     moved(box(w, 0.16, w, frame), 0, h, 0),
     moved(wall(Math.PI / 2), w / 2, h / 2, 0),
     moved(wall(0), 0, h / 2, w / 2),
+    moved(box(w * 0.8, 0.05, 0.02, OFFICE.glow), 0, h - 0.13, w / 2 + 0.012),
+    moved(box(0.02, 0.05, w * 0.8, OFFICE.glow), w / 2 + 0.012, h - 0.13, 0),
     moved(box(0.03, h, 0.04, frame), w / 2 + 0.01, h / 2, 0),
     moved(box(0.04, h, 0.03, frame), 0, h / 2, w / 2 + 0.01),
     moved(box(0.05, h, 0.05, frame), w / 2, h / 2, w / 2),
