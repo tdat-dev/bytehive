@@ -33,7 +33,7 @@ import { tokens } from "./transcript";
 import { sourceOf } from "./chatsource";
 import { agentUsage, onAgentCost } from "./agentcost";
 import { cliMark } from "./clibrand";
-import { planHtml, startPlanMeter, stopPlanMeter } from "./planmeter";
+import { planHtml, setPlanOpen, startPlanMeter, stopPlanMeter } from "./planmeter";
 import { keepLines } from "./terminal";
 import { handOff, handOverToAgent, handoffTargets, openTargets, startLimitGuard, stopLimitGuard } from "./limitguard";
 import { startFinishWatch, stopFinishWatch } from "./finishwatch";
@@ -760,7 +760,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
     `</div>` + planHtml(now);
   // Rebuilding every second would take the keyboard focus (and a click in
   // progress) away from the list; only a real change rebuilds it.
-  const sig = html.replace(/<span class="iq-ago"[^>]*>[^<]*<\/span>/g, "");
+  const sig = html.replace(/<span class="iq-ago"[^>]*>[^<]*<\/span>/g, "").replace('<details class="iq-plan" open>', '<details class="iq-plan">');
   if (sig === queueSig) {
     for (const el of queueEl.querySelectorAll<HTMLElement>(".iq-ago")) el.textContent = ago(now - Number(el.dataset.since));
     return;
@@ -770,8 +770,13 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
   const back = had?.dataset.id ? `.iq-row[data-id="${CSS.escape(had.dataset.id)}"]` : null;
   queueEl.innerHTML = html;
   if (back) queueEl.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
+  // The agent you just picked stays in view, clear of the limits line. Only on a
+  // change of agent: a rebuild must not move a list you are scrolling.
+  if (current !== shownCurrent) queueEl.querySelector<HTMLElement>('.iq-row[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" });
+  shownCurrent = current;
 }
 let queueSig = "";
+let shownCurrent: string | null | undefined;
 
 /** Merged agents are done: one button takes them all off the list. */
 function clearMergedHtml(list: Task[]): string {
@@ -1280,6 +1285,10 @@ function mount(): void {
   reviewer = createReviewDrawer(app, render);
 
   // Right-click an agent in the queue for everything you can do with it.
+  // toggle doesn't bubble, so the list listens on the way down
+  queueEl.addEventListener("toggle", (e) => {
+    if ((e.target as HTMLElement).matches(".iq-plan")) setPlanOpen((e.target as HTMLDetailsElement).open);
+  }, true);
   queueEl.addEventListener("contextmenu", (e) => {
     const row = (e.target as HTMLElement).closest<HTMLElement>(".iq-row");
     const t = row && allTasks().find((x) => x.paneId === row.dataset.id);

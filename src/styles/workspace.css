@@ -17,6 +17,8 @@
 /* home button — back to launcher, agents keep running */
 .tb-home{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);flex:none;margin-right:5px;transition:background .14s,color .14s}
 .tb-home:hover{background:var(--surface-1);color:var(--accent)}
+.tb-home svg{width:24px;height:24px}
+.tb-home .hc{display:none}
 
 /* tabs — pill style (Arc/Warp), one per workspace */
 .tabstrip{display:flex;align-items:center;gap:3px;min-width:0;overflow-x:auto;overflow-y:hidden}

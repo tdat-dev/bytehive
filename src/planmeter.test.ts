@@ -46,6 +46,9 @@ describe("the plan's limits", () => {
     const el = document.createElement("div");
     el.innerHTML = planHtml(NOW);
     expect(el.querySelector(".pl-h")!.textContent).toBe("Claude Max limits");
+    // folded, the line still says how full each plan is
+    expect(el.querySelector("details.iq-plan")!.hasAttribute("open")).toBe(false);
+    expect(el.querySelector(".pl-sum")!.textContent).toMatch(/^Limits.*Claude \d+%/);
     expect([...el.querySelectorAll(".pl-row")].map((r) => `${r.querySelector(".pl-l")!.textContent} ${r.querySelector(".pl-p")!.textContent}`)).toEqual(["5 hours 2%", "This week 4%"]);
     stopPlanMeter();
     // an API key user: nothing to show

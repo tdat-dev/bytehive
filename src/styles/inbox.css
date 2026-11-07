@@ -18,7 +18,7 @@ body.inbox-ui {
   --ib-del: var(--danger);
   --ib-float: var(--lift);
   --ib-q: 320px;
-  --ib-dock-h: 84px;
+  --ib-dock-h: 64px;
   --rail-w: 0px;
   background: var(--ib-ground);
 }
@@ -26,7 +26,7 @@ body.inbox-ui {
 /* layout: queue | stage | code panel; the right tool rail and the fleet composer step aside */
 body.inbox-ui .app {
   grid-template-columns: var(--ib-q) 1fr var(--code-w, 380px) 0px;
-  grid-template-rows: 68px 1fr;
+  grid-template-rows: 54px 1fr;
   background: radial-gradient(1100px 460px at 62% -12%, rgba(255, 196, 120, 0.07), transparent 60%), var(--ib-ground);
 }
 body.inbox-ui .app > .main { grid-column: 2; grid-row: 2; padding: 0 16px var(--ib-dock-h) 0; background: transparent; }
@@ -46,8 +46,8 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 
 /* the sentence that says what needs you */
 .inbox-head {
-  font: 500 24px/1.2 var(--sans);
-  letter-spacing: -0.02em;
+  font: 500 17px/1.2 var(--sans);
+  letter-spacing: -0.01em;
   color: var(--ib-ink-3);
   white-space: nowrap;
   overflow: hidden;
@@ -57,12 +57,22 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .inbox-head b { color: var(--ib-ink); font-weight: 600; }
 
 /* ---------- the plan's limits, at the foot of the list ---------- */
-.inbox-queue:has(.iq-plan) { display: flex; flex-direction: column; }
+.inbox-queue:has(.iq-plan) { display: flex; flex-direction: column; scroll-padding-bottom: 52px; }
 .iq-plan {
-  position: sticky; bottom: -12px; margin: auto -8px -12px; padding: 12px 14px 14px;
-  display: grid; gap: 12px; background: var(--ib-panel); box-shadow: 0 -1px 0 var(--ib-line);
+  position: sticky; bottom: -12px; margin: auto -8px -12px; padding: 0 14px;
+  background: var(--ib-panel); box-shadow: 0 -1px 0 var(--ib-line);
   border-radius: 0 0 18px 18px;
 }
+.pl-sum { display: flex; align-items: center; gap: 8px; min-height: 38px; list-style: none; cursor: pointer; font-size: 12.5px; color: var(--ib-ink-3); }
+.pl-sum::-webkit-details-marker { display: none; }
+.pl-sum:hover { color: var(--ib-ink-2); }
+.pl-sum:focus-visible { outline: 2px solid #fff; outline-offset: -2px; border-radius: 8px; }
+.iq-plan:not([open]) .iq-chev { transform: none; }
+.pl-sum b { margin-right: auto; font-weight: 500; }
+.pl-s { font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.pl-s.high { color: var(--ib-needs); }
+.pl-s.full { color: var(--ib-del); }
+.pl-body { display: grid; gap: 12px; padding: 2px 0 14px; }
 .pl-sec { display: grid; gap: 12px; }
 .pl-sec + .pl-sec { padding-top: 12px; border-top: 1px solid var(--ib-line); }
 .pl-h { margin: 0; font: 600 11.5px var(--sans); color: var(--ib-ink-3); display: flex; gap: 6px; align-items: baseline; }
@@ -114,7 +124,7 @@ body.inbox-ui #btnToggleCode { display: none !important; }
   gap: 2px 10px;
   align-items: center;
   width: 100%;
-  padding: 10px;
+  padding: 8px 10px;
   border-radius: 12px;
   text-align: left;
   color: var(--ib-ink);
@@ -166,7 +176,9 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-proj { display: flex; align-items: center; gap: 2px; padding: 8px 4px 4px; }
 .iq-proj .iq-ph { flex: 1; min-width: 0; }
 /* the project's memory, beside its name */
-.iq-mem { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--ib-ink-3); opacity: 0.7; }
+.iq-mem { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--ib-ink-3); opacity: 0; }
+.iq-proj:hover .iq-mem { opacity: 0.7; }
+@media (hover: none) { .iq-mem { opacity: 0.7; } }
 .iq-mem:hover { opacity: 1; color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .iq-mem:focus-visible { opacity: 1; outline: 2px solid #fff; outline-offset: 1px; }
 /* the project's name folds its agents; a count says who needs you even folded */
@@ -184,6 +196,8 @@ body.inbox-ui #btnToggleCode { display: none !important; }
   font: 600 11px var(--mono); color: #1a1204; background: var(--ib-needs);
 }
 .iq-ph .iq-n { flex: none; font: 400 12px var(--mono); color: var(--ib-ink-3); }
+/* open, the rows are the count */
+.iq-group:not(.folded) .iq-ph .iq-n { display: none; }
 /* who needs you is marked where it is, never moved to the top */
 .iq-row.st-needs { background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--ib-needs-line); }
 .iq-row.st-needs:hover { background: oklch(0.83 0.13 75 / 0.17); }
@@ -214,6 +228,7 @@ body.inbox-ui .grid.canvas.has-focus .pane.focused {
   height: 100% !important;
   border-radius: 18px;
   background: var(--ib-panel) !important;
+  border-color: transparent;
   box-shadow: inset 0 0 0 1px var(--ib-line);
   animation: none;
 }
@@ -280,24 +295,22 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused[data-role="director"]
 body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { padding: 4px 24px 12px; }
 .ib-pill {
   display: inline-flex; align-items: center; gap: 7px;
-  height: 28px; padding: 0 12px;
-  border-radius: 999px;
+  height: 28px;
   font: 500 12.5px var(--sans);
   white-space: nowrap;
-  color: var(--ib-ink-2);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--ib-ink-3);
 }
 .ib-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.ib-pill.st-needs { color: var(--ib-needs); background: var(--ib-needs-bg); }
+.ib-pill.st-needs { color: var(--ib-needs); }
 .ib-pill.st-needs::before { border-radius: 2px; transform: rotate(45deg); }
-.ib-pill.st-review { color: var(--ib-review); background: oklch(0.79 0.09 250 / 0.12); }
-.ib-pill.st-working { color: var(--ib-work); background: oklch(0.8 0.13 155 / 0.12); }
+.ib-pill.st-review { color: var(--ib-review); }
+.ib-pill.st-working { color: var(--ib-work); }
 
 /* ---------- floating dock ---------- */
 .inbox-dock {
   position: fixed;
   left: 50%;
-  bottom: 18px;
+  bottom: 14px;
   transform: translateX(-50%);
   z-index: 200;
   display: flex;
@@ -306,7 +319,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   max-width: calc(100vw - 32px);
 }
 .id-seg {
-  display: flex; gap: 2px; padding: 4px;
+  display: flex; gap: 2px; padding: 3px;
   border-radius: 999px;
   background: var(--ib-raise);
   box-shadow: var(--ib-float);
@@ -314,7 +327,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .id-seg button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .id-seg button {
   display: inline-flex; align-items: center; gap: 7px;
-  height: 32px; padding: 0 14px;
+  height: 30px; padding: 0 12px;
   border-radius: 999px;
   font: 500 13px var(--sans);
   color: var(--ib-ink-2);
@@ -324,7 +337,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .id-search {
   display: flex; align-items: center; gap: 10px;
   width: min(400px, 30vw);
-  height: 40px; padding: 0 8px 0 14px;
+  height: 36px; padding: 0 8px 0 14px;
   border-radius: 999px;
   background: var(--ib-raise);
   box-shadow: var(--ib-float);
@@ -341,22 +354,22 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .id-new {
-  height: 40px; padding: 0 18px;
+  height: 36px; padding: 0 16px;
   border-radius: 999px;
-  background: #fff; color: #000;
+  background: var(--honey); color: var(--honey-ink);
   font: 600 13px var(--sans);
-  box-shadow: var(--ib-float);
 }
-.id-new:hover { background: #e9e9ec; }
+.id-new:hover { background: var(--honey-hover); }
+/* a stopped agent on the stage wants Resume: one honey button per view */
+body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new { background: var(--ib-raise); color: var(--ib-ink); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { background: #24252b; }
 .id-gear {
-  width: 40px; height: 40px;
+  flex: none; width: 32px; height: 36px;
   display: grid; place-items: center;
-  border-radius: 999px;
-  background: var(--ib-raise);
-  box-shadow: var(--ib-float);
-  color: var(--ib-ink-2);
+  border-radius: 10px;
+  color: var(--ib-ink-3);
 }
-.id-gear:hover { color: var(--ib-ink); background: #1d1e23; }
+.id-gear:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .inbox-dock button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ---------- the Review chip, floating over the bottom of the stage ---------- */
@@ -784,14 +797,15 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
    means nothing here */
 body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
 .id-new { white-space: nowrap; }
-.ib-acts { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }
+/* plain words: a filled track made the honey button read as the selected tab */
+.ib-acts { display: inline-flex; align-items: center; gap: 2px; }
 .ib-act { height: 26px; padding: 0 12px; border-radius: 999px; font: 500 12.5px var(--sans); color: var(--ib-ink-2); white-space: nowrap; }
 .ib-act:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .ib-act[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
 .ib-act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* the one thing to do with a stopped agent */
-.ib-act.ib-go { color: #050506; background: var(--ib-ink); }
-.ib-act.ib-go:hover { background: #fff; }
+.ib-act.ib-go { margin-right: 6px; color: var(--honey-ink); background: var(--honey); }
+.ib-act.ib-go:hover { color: var(--honey-ink); background: var(--honey-hover); }
 body.inbox-ui .grid.canvas.inbox-split .ib-acts { display: none; }
 
 /* ---------- Split cards (as in the design): name · CLI over a quiet second
@@ -955,10 +969,10 @@ body:not(.anim-paused) .st-brand .logo-glow:is(.live, :hover) .hc { animation: h
   display: inline-flex; align-items: center; gap: 8px;
   height: 36px; padding: 0 12px 0 16px;
   border-radius: 999px;
-  background: #fff; color: #000;
+  background: var(--honey); color: var(--honey-ink);
   font: 600 13.5px var(--sans);
 }
-.st-go:hover { background: #e9e9ec; }
+.st-go:hover { background: var(--honey-hover); }
 .st-go:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .st-go kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); color: #555; }
 
@@ -1148,16 +1162,20 @@ body.inbox-ui .app.editor-max::before { background: rgba(0, 0, 0, 0.6); }
 .iq-row:hover .iq-tm, .iq-row:focus-visible .iq-tm { visibility: hidden; }
 .iq-more:hover { color: var(--ib-ink); background: #24252b; }
 @media (hover: none) { .iq-more { opacity: 1; } .iq-tm { visibility: hidden; } }
-/* Resume on a stopped row: always there, one click starts it again */
+/* Resume on a stopped row: one click starts it again. It shows on the row you
+   point at or tab to, since seven of them say nothing seven times. */
 .iq-resume {
-  position: absolute; right: 8px; bottom: 8px;
+  position: absolute; right: 8px; bottom: 6px;
   height: 24px; padding: 0 10px; border-radius: 999px;
   display: inline-flex; align-items: center;
   font: 500 12px var(--sans); color: var(--ib-ink);
-  background: rgba(255, 255, 255, 0.1);
+  background: #2a2b31;
+  opacity: 0; transition: opacity 0.12s;
 }
-.iq-resume:hover { color: #050506; background: var(--ib-ink); }
-.iq-row.st-stopped .iq-s { padding-right: 72px; }
+.iq-row:hover .iq-resume, .iq-row:focus-visible .iq-resume { opacity: 1; }
+@media (hover: none) { .iq-resume { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .iq-resume { transition: none; } }
+.iq-resume:hover { color: var(--honey-ink); background: var(--honey); }
 .st-help { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 4px 2px; font-size: 13px; color: var(--ib-ink-3); }
 .st-help:hover { color: var(--ib-ink); }
 .st-help:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
