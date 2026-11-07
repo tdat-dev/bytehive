@@ -8,6 +8,7 @@ import { paletteFor, backgroundAlpha, type TermPalette } from "./termtheme";
 import { createBgFilter } from "./ansibg";
 import { openMenu } from "./ctxmenu";
 import { createPacer } from "./calm";
+import { skipIdleSelectionRedraw } from "./xtermpause";
 
 /** How a pane paints: which palette, and whether the CLI's own background
  *  plate is stripped out of the byte stream on the way in. */
@@ -200,6 +201,7 @@ export function mountTerminal(
     );
   }
   term.open(container);
+  skipIdleSelectionRedraw(term); // a pane out of sight must not rebuild its rows on every scroll (xtermpause.ts)
   fit.fit();
 
   // GPU renderer, but only while under the context budget — past it we keep the
