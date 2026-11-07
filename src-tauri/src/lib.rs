@@ -76,8 +76,39 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Chromium switches that keep a hidden window working. The window is hidden to
+/// WebView2 when minimized (see on_window_event below), and Chromium then runs a
+/// page's timers once a second, and after five minutes once a minute. xterm
+/// parses what it is given from a timer, so a minimized ByteHive with agents
+/// printing stopped parsing, its backlog grew in the renderer (measured: +260 MB
+/// in a minute) and, with output flow control, held every program back.
+/// Frames still stop when hidden; only the timers keep their pace.
+///
+/// They go in through the environment rather than a window's own config because
+/// every window that shares the profile (detached tabs, previews) must start
+/// WebView2 with the same arguments, and the ones made from JS cannot set them.
+/// The `--disable-features` list repeats wry's own defaults, since the last such
+/// switch wins.
+const WEBVIEW_KEEP_AWAKE: &str = "--disable-background-timer-throttling --disable-renderer-backgrounding --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,IntensiveWakeUpThrottling";
+
+/// The value for WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS given what is there already
+/// (a developer may have set it, for the remote debugging port).
+pub fn webview_args(existing: Option<&str>) -> String {
+    match existing.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(e) if e.contains(WEBVIEW_KEEP_AWAKE) => e.to_string(),
+        Some(e) => format!("{e} {WEBVIEW_KEEP_AWAKE}"),
+        None => WEBVIEW_KEEP_AWAKE.to_string(),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    {
+        // Before any window: single-threaded here, and every webview reads it when it starts.
+        let key = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+        std::env::set_var(key, webview_args(std::env::var(key).ok().as_deref()));
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -208,4 +239,35 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod webview_args_tests {
+    use super::{webview_args, WEBVIEW_KEEP_AWAKE};
+
+    #[test]
+    fn the_switches_go_in_when_nothing_was_set() {
+        assert_eq!(webview_args(None), WEBVIEW_KEEP_AWAKE);
+        assert_eq!(webview_args(Some("  ")), WEBVIEW_KEEP_AWAKE);
+    }
+
+    #[test]
+    fn a_developers_own_arguments_are_kept_in_front() {
+        let a = webview_args(Some("--remote-debugging-port=9333"));
+        assert_eq!(a, format!("--remote-debugging-port=9333 {WEBVIEW_KEEP_AWAKE}"));
+    }
+
+    #[test]
+    fn running_it_twice_does_not_repeat_the_switches() {
+        let once = webview_args(None);
+        assert_eq!(webview_args(Some(&once)), once);
+    }
+
+    #[test]
+    fn timers_keep_running_hidden_and_wrys_own_defaults_stay() {
+        for must in ["--disable-background-timer-throttling", "--disable-renderer-backgrounding", "IntensiveWakeUpThrottling", "msWebOOUI", "msPdfOOUI", "msSmartScreenProtection"] {
+            assert!(WEBVIEW_KEEP_AWAKE.contains(must), "{must}");
+        }
+        assert_eq!(WEBVIEW_KEEP_AWAKE.matches("--disable-features=").count(), 1, "the last such switch wins, so there must be one");
+    }
 }
