@@ -40,13 +40,13 @@
 .editor-host .ed-tab.dirty .ed-dot{background:var(--accent);border-color:var(--accent);box-shadow:none}
 .editor-host .ed-tab.dirty .ed-tab-name{color:var(--text)}
 
-/* conflict banner — amber, sits under the tab */
+/* conflict banner, amber, sits under the tab */
 .editor-host .ed-banner{flex:none;display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);font-size:var(--fs-meta);color:var(--honey);background:var(--honey-soft);border-bottom:1px solid var(--honey-line)}
 .editor-host .ed-banner[hidden]{display:none}
 .editor-host .ed-banner button{font:inherit;font-size:var(--fs-meta);padding:var(--s1) var(--s2);border-radius:var(--r-control);border:1px solid var(--line-strong);background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:border-color var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
 .editor-host .ed-banner button:hover{border-color:var(--honey);color:var(--honey)}
 
-/* empty state — calm, centered, with a glyph */
+/* empty state, calm, centered, with a glyph */
 .editor-host .ed-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s3);color:var(--muted-2);font-size:var(--fs-meta)}
 .editor-host .ed-empty[hidden]{display:none}
 .editor-host .ed-empty svg{color:var(--line-strong)}

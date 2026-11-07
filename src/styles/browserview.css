@@ -7,7 +7,7 @@
 .bv.big{width:min(72vw,1080px)}
 .bv-head{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s2) var(--s2) var(--s3);min-width:0}
 .bv-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--live);box-shadow:0 0 0 3px color-mix(in oklab,var(--live) 22%,transparent)}
-.bv.paused .bv-dot{background:var(--amber);box-shadow:0 0 0 3px color-mix(in oklab,var(--amber) 22%,transparent)}
+.bv.paused .bv-dot{background:var(--stop);box-shadow:none}
 .bv-t{flex:1;min-width:0;font-size:var(--fs-meta);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bv-t b{color:var(--text);font-weight:600}
 .bv-ic{width:26px;height:26px;border-radius:var(--r-control);display:grid;place-items:center;color:var(--muted);flex:none}

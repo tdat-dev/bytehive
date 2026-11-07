@@ -1,5 +1,5 @@
 /* File tree rows in the code panel's upper pane. The tree renders as one flat
-   list — depth is expressed by --d (padding + indent guides), so multi-select
+   list, depth is expressed by --d (padding + indent guides), so multi-select
    and keyboard navigation walk a simple linear row order. */
 .file-tree{font-size:var(--fs-meta);color:var(--text-2);padding:var(--s1) var(--s1) var(--s2);outline:none}
 .tw-msg{padding:var(--s6) var(--s4);color:var(--muted-2);font-size:var(--fs-meta);line-height:1.5;text-align:center}
@@ -14,7 +14,7 @@
 .tw-row.sel::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:var(--r-control);background:var(--accent)}
 /* keyboard cursor: visible even when the row isn't part of the selection */
 .file-tree:focus-visible .tw-row.cur{box-shadow:var(--ring-line)}
-/* cut to the clipboard — greyed until pasted, the way Explorer marks it */
+/* cut to the clipboard, greyed until pasted, the way Explorer marks it */
 .tw-row.cut{opacity:.45}
 
 .tw-chev{flex:none;color:var(--muted-2);transition:transform var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
@@ -29,7 +29,7 @@
 /* where a filter hit actually lives */
 .tw-path{margin-left:var(--s2);min-width:0;font-size:var(--fs-meta);color:var(--muted-2);overflow:hidden;text-overflow:ellipsis}
 
-/* per-language icon tints — the tree gets scanned by colour before it's read */
+/* per-language icon tints, the tree gets scanned by colour before it's read */
 .tw-c-blue{color:#519aba}
 .tw-c-yellow{color:#c9c04a}
 .tw-c-orange{color:#e0813c}
@@ -52,12 +52,12 @@ body.tree-dragging .tw-row{cursor:grabbing}
 /* cursor-following label: what's being dragged, and how much of it */
 .tw-ghost{position:fixed;z-index:var(--z-toast);display:flex;align-items:center;gap:var(--s1);max-width:260px;padding:var(--s1) var(--s2);border-radius:var(--r-card);background:var(--surface-2);border:1px solid var(--line-strong);box-shadow:var(--lift);color:var(--text-2);font-size:var(--fs-meta);white-space:nowrap;pointer-events:none}
 
-/* inline create / rename input — sits in the row, monospace like file names */
+/* inline create / rename input, sits in the row, monospace like file names */
 .tw-input{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--accent-dim);border-radius:var(--r-control);color:var(--text);font:inherit;font-size:var(--fs-meta);padding:1px var(--s1);outline:none}
 .tw-input::placeholder{color:var(--muted-2)}
 .tw-input-row{background-color:var(--surface-1)}
 
-/* failure notice (name taken, file locked) — silence would read as "nothing happened" */
+/* failure notice (name taken, file locked), silence would read as "nothing happened" */
 .tw-toast{margin:var(--s1) 2px 0;padding:var(--s2) var(--s2);border-radius:var(--r-card);background:var(--danger-soft);border:1px solid var(--danger-soft);color:var(--text-2);font-size:var(--fs-meta);line-height:1.45;white-space:normal;animation:rise var(--m-swap) var(--ease-in)}
 
 /* explorer header toolbar + filter box */

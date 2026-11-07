@@ -38,8 +38,8 @@
 .cv-a code.cv-fref { cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
 .cv-a code.cv-fref:hover { color: var(--ib-ink); text-decoration-color: currentColor; }
 
-::highlight(cv-find) { background-color: var(--honey-line); color: inherit; }
-::highlight(cv-find-now) { background-color: var(--honey-line); color: var(--ground); }
+::highlight(cv-find) { background-color: var(--review-soft); color: inherit; }
+::highlight(cv-find-now) { background-color: var(--review); color: var(--ground); }
 
 /* what you just sent, until the conversation has it */
 .cv-u.sending { flex-direction: column; align-items: flex-end; gap: var(--s1); }

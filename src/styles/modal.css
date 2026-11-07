@@ -1,7 +1,7 @@
 /* Dialogs: confirm, scheduled agents, session replays, token usage. */
 /* translateZ(0) promotes the translucent backdrop to its own GPU layer so the
    compositor blends it over the live workspace (blinking cursors, etc.) without
-   re-rastering everything each frame — avoids the WebView2 lag while a modal is
+   re-rastering everything each frame, avoids the WebView2 lag while a modal is
    open. Paired with a repaint nudge on open (see openModal in main.ts). */
 .backdrop{position:fixed;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;z-index:var(--z-dialog);transform:translateZ(0)}
 .backdrop.open{display:flex}
@@ -215,7 +215,7 @@
 @media (max-width:660px){.set-body{grid-template-columns:1fr}
   .set-nav{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}}
 
-/* (crew-templates modal styles removed — presets in the wizard replaced it) */
+/* (crew-templates modal styles removed, presets in the wizard replaced it) */
 
 select.input{appearance:none;-webkit-appearance:none;padding-right:var(--s8);cursor:pointer;
   background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(-45deg,transparent 50%,var(--muted) 50%);

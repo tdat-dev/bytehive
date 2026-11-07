@@ -69,7 +69,7 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-plan:not([open]) .iq-chev { transform: none; }
 .pl-sum b { margin-right: auto; font-weight: 500; }
 .pl-s { font: var(--t-mono); font-variant-numeric: tabular-nums; }
-.pl-s.high { color: var(--ib-needs); }
+.pl-s.high { color: var(--ink); }
 .pl-s.full { color: var(--ib-del); }
 .pl-body { display: grid; gap: var(--s3); padding: 2px 0 var(--s3); }
 .pl-sec { display: grid; gap: var(--s3); }
@@ -83,8 +83,8 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .pl-bar { grid-column: 1 / -1; height: 4px; border-radius: var(--r-word); background: var(--raised); overflow: hidden; }
 .pl-bar i { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: var(--ib-ink-2); }
 .pl-r { grid-column: 1 / -1; font-size: var(--fs-meta); color: var(--ib-ink-3); }
-.pl-row.high .pl-p { color: var(--ib-needs); }
-.pl-row.high .pl-bar i { background: var(--ib-needs); }
+.pl-row.high .pl-p { color: var(--ink); }
+.pl-row.high .pl-bar i { background: var(--ink); }
 .pl-row.full .pl-p { color: var(--ib-del); }
 .pl-row.full .pl-bar i { background: var(--ib-del); }
 
@@ -145,15 +145,15 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .cli-glyph { display: block; width: 68%; height: 68%; color: var(--mk, var(--ink-3)); }
 .cli-letter { color: var(--mk, var(--ink-3)); }
 .iq-t { font: var(--t-row); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.iq-tm { font: var(--t-meta); color: var(--ib-ink-3); }
+.iq-tm { display: inline-flex; align-items: center; gap: var(--s1); font: var(--t-meta); color: var(--ib-ink-3); }
 .iq-s { grid-column: 2 / 4; font: var(--t-body); color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iq-row.st-needs .iq-l { color: var(--ib-needs); }
 /* stopped at its plan's limit: waiting on the clock, not on you */
-.iq-row.limited .iq-l { color: var(--ib-needs); }
+.iq-row.limited .iq-l { color: var(--stop); }
 /* what its conversation has used, at API prices */
 .iq-cost { font: var(--t-mono); color: var(--ib-ink-3); }
 .iq-cost::before, .iq-full::before { content: "·"; margin: 0 var(--s1); font-family: var(--sans); color: var(--ib-ink-3); }
-.iq-full { font: var(--t-mono); color: var(--ib-needs); }
+.iq-full { font: var(--t-mono); color: var(--ink-2); }
 /* short of room, the state keeps its words: the cost only takes what room is left */
 .iq-s .iq-cost, .iq-s .iq-full { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iq-s .iq-cost { flex: 1 1 0; }
@@ -506,7 +506,8 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 }
 .inbox-review kbd { font: var(--t-mono); color: var(--ib-ink-3); border: 1px solid var(--line); border-radius: var(--r-control); padding: 2px var(--s1); background: var(--raised); }
 .inbox-review .ir-msg { margin: 0; font-size: var(--fs-meta); line-height: 1.5; color: var(--ib-ink-3); }
-.inbox-review .ir-msg.err, .inbox-review .ir-msg.warn { color: var(--ib-needs); }
+.inbox-review .ir-msg.err { color: var(--danger); }
+.inbox-review .ir-msg.warn { color: var(--ink); }
 .inbox-review .ir-msg.busy { color: var(--ib-ink-2); }
 .inbox-review .rempty { padding: var(--s6) var(--s4); font-size: var(--fs-body); line-height: 1.5; color: var(--ib-ink-3); }
 .inbox-review .rempty strong { display: block; margin-bottom: var(--s1); font-weight: 500; color: var(--ib-ink-2); }
@@ -556,7 +557,7 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 .rc-t { margin: 0; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rc-do { margin: 0; font-size: var(--fs-body); color: var(--ib-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rc.st-working .rc-do { color: var(--ib-work); }
-.rc.limited .rc-do { color: var(--ib-needs); }
+.rc.limited .rc-do { color: var(--stop); }
 .rc-do .iq-ln { margin-left: var(--s2); }
 .rc-say {
   margin: 0; color: var(--ib-ink-2); white-space: pre-line; overflow-wrap: anywhere;
@@ -1049,7 +1050,6 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
 }
 .iq-row:hover .iq-resume, .iq-row:focus-visible .iq-resume { opacity: 1; }
 @media (hover: none) { .iq-resume { opacity: 1; } }
-.iq-resume:hover { color: var(--honey-ink); background: var(--honey); }
 .st-help { display: inline-flex; align-items: center; gap: var(--s2); margin-top: var(--s3); padding: var(--s1) 2px; font-size: var(--fs-body); color: var(--ib-ink-3); }
 .st-help:hover { color: var(--ib-ink); }
 .st-help:focus-visible { border-radius: var(--r-control); }
@@ -1079,8 +1079,8 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
 }
 
 /* a new agent: how much of its CLI's plan is left, when little */
-.st-room { margin: var(--s2) var(--s1) 0; font-size: var(--fs-meta); color: var(--ib-needs); }
-.im-room { margin: var(--s1) 0 var(--s3); color: var(--ib-needs); }
+.st-room { margin: var(--s2) var(--s1) 0; font-size: var(--fs-meta); color: var(--ink-2); }
+.im-room { margin: var(--s1) 0 var(--s3); color: var(--ink-2); }
 
 /* ---------- project memory (memoryview.ts): what a project's agents share ---------- */
 .inbox-modal.mm { width: min(720px, 100%); max-height: 80vh; }

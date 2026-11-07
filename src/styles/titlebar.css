@@ -1,4 +1,4 @@
-/* Frameless custom title bar — window controls (min/max/close) + drag region. */
+/* Frameless custom title bar, window controls (min/max/close) + drag region. */
 .win-ctrls{position:fixed;top:0;right:0;z-index:var(--z-sheet);display:flex;height:38px}
 .wc{position:relative;width:46px;height:38px;display:grid;place-items:center;color:var(--muted-2);background:transparent;overflow:hidden;transition:color var(--m-press) var(--ease-in)}
 .wc::before{content:"";position:absolute;inset:0;background:var(--over);opacity:0;transition:opacity var(--m-swap) var(--ease-in)}

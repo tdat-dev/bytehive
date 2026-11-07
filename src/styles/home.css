@@ -1,5 +1,5 @@
 /* Home: the frame the start screen (inboxstart.ts) draws into. */
-/* "Back to workspace" pill — only on Home when tabs are still alive. */
+/* "Back to workspace" pill, only on Home when tabs are still alive. */
 .home-resume{position:fixed;top:9px;left:50%;transform:translateX(-50%);z-index:var(--z-rail);
   display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r-card);
   border:1px solid var(--line-strong);background:var(--scrim);

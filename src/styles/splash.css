@@ -1,4 +1,4 @@
-/* Intro splash — plays once per launch (~1.7s). Layered for a premium feel:
+/* Intro splash, plays once per launch (~1.7s). Layered for a premium feel:
    an aurora + dot-grid build depth, the logo arrives and its comb cells light up
    a flash blooms on completion, a light burst + rings + a
    signal field radiate, then the splash fades while Home focuses in. Effects
@@ -12,7 +12,7 @@
 @keyframes introOut{to{opacity:0;visibility:hidden}}
 
 /* ---- depth layers ---- */
-/* (no animated blur anywhere — the soft radial gradients give the glow, and we
+/* (no animated blur anywhere, the soft radial gradients give the glow, and we
     animate only transform/opacity so everything stays GPU-composited.) */
 .intro-aurora{position:absolute;width:680px;height:680px;border-radius:50%;opacity:0;will-change:opacity,transform;
   background:radial-gradient(circle, rgba(245,165,36,.20), rgba(255,216,92,.06) 45%, transparent 70%);
@@ -28,7 +28,7 @@
 
 .intro-stage{position:relative;width:260px;height:260px;display:grid;place-items:center}
 
-/* ---- light burst — radiating spokes of energy ---- */
+/* ---- light burst, radiating spokes of energy ---- */
 .intro-burst{position:absolute;width:320px;height:320px;border-radius:50%;opacity:0;
   will-change:opacity,transform;
   background:repeating-conic-gradient(from 0deg,
@@ -66,7 +66,7 @@
   animation:introFlash .5s ease-out .56s forwards}
 @keyframes introFlash{0%{opacity:0;transform:scale(.5)}30%{opacity:.95;transform:scale(1.05)}100%{opacity:0;transform:scale(1.5)}}
 
-/* ---- signal field — nodes radiate from the mark like an orchestrated fleet ---- */
+/* ---- signal field, nodes radiate from the mark like an orchestrated fleet ---- */
 .intro-signals{position:absolute;inset:0;display:grid;place-items:center}
 .intro-signals .sig{position:absolute;width:7px;height:7px;border-radius:50%;background:#ffd85c;
   box-shadow:0 0 9px #ffd85c,0 0 3px #fff;opacity:0;transform:translate(0,0) scale(0);

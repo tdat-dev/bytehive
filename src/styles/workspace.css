@@ -14,13 +14,13 @@
 .tb-left, .tb-right{display:flex;align-items:center;gap:var(--s2);flex:1}
 .tb-right{justify-content:flex-end}
 .tb-center{display:flex;align-items:center;justify-content:center;gap:var(--s1);flex:2;min-width:0}
-/* home button — back to launcher, agents keep running */
+/* home button, back to launcher, agents keep running */
 .tb-home{width:30px;height:30px;border-radius:var(--r-control);display:grid;place-items:center;color:var(--muted);flex:none;margin-right:var(--s1);transition:background var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
 .tb-home:hover{background:var(--surface-1);color:var(--accent)}
 .tb-home svg{width:24px;height:24px}
 .tb-home .hc{display:none}
 
-/* tabs — pill style (Arc/Warp), one per workspace */
+/* tabs, pill style (Arc/Warp), one per workspace */
 .tabstrip{display:flex;align-items:center;gap:var(--s1);min-width:0;overflow-x:auto;overflow-y:hidden}
 .tabstrip::-webkit-scrollbar{height:0}
 .tab{display:inline-flex;align-items:center;gap:var(--s2);height:28px;padding:0 var(--s2) 0 var(--s3);border-radius:var(--r-control);color:var(--muted);background:transparent;font-size:var(--fs-meta);font-weight:500;white-space:nowrap;flex:none;cursor:pointer;transition:background var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
@@ -47,7 +47,7 @@
 /* count chip on the "Resume all" button */
 .ra-count:not(:empty){display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 var(--s1);margin-left:1px;border-radius:var(--r-control);background:var(--accent-glow,var(--over));color:var(--accent);font-size:var(--fs-meta);font-weight:600;line-height:1}
 
-/* Still the positioning context — the panes, the sigil canvas, the focus rail
+/* Still the positioning context, the panes, the sigil canvas, the focus rail
    and the delegation overlay are all absolutely placed inside it. What is gone
    is the floating Tidy pill: it sat at right:16/top:14, i.e. on top of the
    top-right pane's own rename/focus/kill buttons, and won every click. Tidy and
@@ -65,7 +65,7 @@
    the only divider. A faint ambient glow behind the grid shines through the
    translucent panes (the glass). Bottom padding reserves broadcast-bar room. */
 .main{overflow:hidden;padding:0 0 56px 0;box-sizing:border-box;background:var(--ground)}
-/* dynamic tiling — panes fill the whole area; --cols/--rows set per pane count */
+/* dynamic tiling, panes fill the whole area; --cols/--rows set per pane count */
 .grid{display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(0,1fr));gap:1px;height:100%;background:var(--raised)}
 
 /* ---------- pane (flush glass tile: slim header bar + terminal) ---------- */
@@ -89,14 +89,14 @@
 .pctrl.danger:hover{background:var(--danger-soft);color:var(--err)}
 /* The inset lives on .xterm, NOT here. addon-fit derives rows/cols from this
    host's box but only subtracts padding declared on .xterm itself, so padding
-   on the host is invisible to it — it proposed ~2 rows and ~2 cols too many and
+   on the host is invisible to it, it proposed ~2 rows and ~2 cols too many and
    .pane's overflow:hidden sliced the last line in half (a 399px host with a
    22px cell got 18 rows where 16 fit). The mask fades across the inset only:
    a percentage stop scales with the pane and erased real output at the top. */
 .term-host{flex:1;min-height:0;background:transparent;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px);mask-image:linear-gradient(180deg,transparent,#000 8px)}
 /* Inset kept tight (was 14/16): every 2 px of vertical padding is a fraction of
    a terminal row, and a 2x2 tidy has none to spare. The mask fade above must
-   stay equal to the top padding — any taller and it eats the first row. */
+   stay equal to the top padding, any taller and it eats the first row. */
 .term-host .xterm{height:100%;padding:var(--s2) var(--s3)}
 .term-host .xterm-viewport{overflow-y:auto}
 /* Kill the opaque plate xterm's OWN stylesheet puts on this element:
@@ -104,7 +104,7 @@
    on OS X so the scroll bar appears fully opaque". xterm 6 moved the themed
    background to .xterm-scrollable-element (it carries our inline
    rgba(11,13,18,0) correctly) but left this rule behind, so it is now dead
-   black painted ABOVE .pane — it swallowed the wallpaper whole and a
+   black painted ABOVE .pane, it swallowed the wallpaper whole and a
    see-through pane screenshotted as #000000. Invisible until P1: against the
    old opaque #0b0d12 palette, pure black is 3% off and nobody could tell.
 
@@ -130,7 +130,7 @@
 .grid.reordering .pane{transition:transform var(--m-press) var(--ease-in)}
 
 /* ---------- find in output ---------- */
-/* floating overlay too — sits below the pill, top-right, over the terminal */
+/* floating overlay too, sits below the pill, top-right, over the terminal */
 .pane-find{position:absolute;top:60px;right:16px;z-index:3;width:min(340px,calc(100% - 24px));display:flex;align-items:center;gap:var(--s1);padding:var(--s1) var(--s1) var(--s1) var(--s2);background:var(--surface-2);border:0;border-radius:var(--r-control);box-shadow:var(--lift), var(--ring-line);flex:none}
 .pane-find[hidden]{display:none}
 .pane-find-in{flex:1;min-width:0;height:28px;background:transparent;border:0;border-radius:var(--r-control);padding:0 var(--s2);color:var(--text);font-family:var(--sans);font-size:var(--fs-body)}

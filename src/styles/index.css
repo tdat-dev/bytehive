@@ -1,4 +1,4 @@
-/* ByteHive styles — one import per feature. tokens first (vars + reset). */
+/* ByteHive styles, one import per feature. tokens first (vars + reset). */
 @import "./tokens.css";
 @import "./fonts.css";
 @import "./titlebar.css";

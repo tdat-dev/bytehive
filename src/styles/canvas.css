@@ -28,12 +28,12 @@
   z-index: 2;
   /* Square: tiled panes sit flush (canvas.ts tiles at gap 0), and a rounded
      corner would cut four notches of wallpaper into every join. The focus
-     stage — the one pane that stands alone — takes its radius back below. */
+     stage, the one pane that stands alone, takes its radius back below. */
   border-radius: 0;
   overflow: hidden;
   /* The plate behind the glyphs, handed down by background.ts so the frame and
      the terminal agree. At the default "Glass" opacity it is fully transparent
-     and the wallpaper reads straight through the pane — the border, the title
+     and the wallpaper reads straight through the pane, the border, the title
      bar and the text are all that remain. */
   background: var(--pane-plate, var(--scrim));
   border: 1px solid var(--line-2);
@@ -55,7 +55,7 @@
 .grid.canvas[data-glass="1"][data-tone="dark"] .pane.run:not(.focused) {
   background-color: var(--over);
 }
-/* Legibility floor — a tight halo in the opposite tone, so text survives the
+/* Legibility floor, a tight halo in the opposite tone, so text survives the
    patch of image that happens to match its own colour. This reaches the DOM
    renderer only, which is exactly the one in use while a pane is see-through
    (terminal.ts drops the WebGL addon then). */
@@ -77,7 +77,7 @@
   border-color: var(--line);
   box-shadow: var(--lift);
 }
-/* canvas mode has its own free-drag lift — override the generic dim+dashed
+/* canvas mode has its own free-drag lift, override the generic dim+dashed
    drag styling from workspace.css (tiling grid reorder), which reads wrong here. */
 .grid.canvas .pane.dragging {
   transform: scale(1.015);
@@ -125,13 +125,13 @@
      the compositor redraw that blur every frame for every running agent */
 }
 .grid.canvas .pb-dot.work {
-  background: var(--honey);
+  background: var(--work);
   box-shadow: none;
 }
 .grid.canvas .pb-dot.done {
   background: var(--teal);
 }
-/* per-agent avatar — hidden while tiled; becomes the mockup's stage-head avatar
+/* per-agent avatar, hidden while tiled; becomes the mockup's stage-head avatar
    (and the status dot hides) when the pane is the focused stage. */
 .grid.canvas .pb-av {
   display: none;
@@ -179,7 +179,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* "⋯ more" overflow — holds the extra controls (search/record/restart) so the
+/* "⋯ more" overflow, holds the extra controls (search/record/restart) so the
    header shows the mockup's exact three (rename · focus · kill) by default. */
 .grid.canvas .pb-more { position: relative; display: flex; }
 .grid.canvas .pb-more-menu {
@@ -217,17 +217,17 @@
 
 /* ---------- the director (the pane that hands out the work) ----------
    One agent in the fleet dispatches to the others, and spotting it has to be
-   instant — in a 3x3 tidy, in a screenshot, from across the desk. The weight is
+   instant, in a 3x3 tidy, in a screenshot, from across the desk. The weight is
    bought with SOLID CHROME, not glow, gradient or motion: every other header
    here is translucent glass carrying muted text, so a filled accent plate is
    the loudest contrast the system already owns, and it costs one paint.
 
    No animation on purpose. A pane that pulses forever sits in the corner of the
-   eye all day, and this is a room full of running terminals — the thing that
+   eye all day, and this is a room full of running terminals, the thing that
    never stops moving stops being read. Nothing below changes a box's size or
    position either: the flush gap-0 tiling survives untouched. */
 .grid.canvas .pane[data-role="director"] {
-  /* Replaces the hairline, does not add to it — no reflow, no seam. */
+  /* Replaces the hairline, does not add to it, no reflow, no seam. */
   border-color: var(--accent);
   /* Above its flush neighbours so the accent edge draws whole (2 = normal pane,
      4 = the pane holding the keyboard, which still wins). */
@@ -258,7 +258,7 @@
 .grid.canvas .pane[data-role="director"] .pctrl.danger:hover {
   background: var(--danger-soft);
 }
-/* A status dot loses its edge on a plate this bright — ring it in the ink. */
+/* A status dot loses its edge on a plate this bright, ring it in the ink. */
 .grid.canvas .pane[data-role="director"] .pb-dot,
 .grid.canvas .pane[data-role="director"].run .pb-dot {
   box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--accent-ink) 60%, transparent);
@@ -300,13 +300,13 @@
   width: calc(100% - var(--rail-w, 74px) - 16px) !important;
   height: calc(100% - 24px) !important;
   /* lifted stage: bigger radius, a ring in the focused agent's hue, deep shadow,
-     and a zoom-in on entry — the mockup's focus-stage feel. */
+     and a zoom-in on entry, the mockup's focus-stage feel. */
   border-radius: var(--r-dialog);
   box-shadow: var(--lift);
   transform-origin: var(--ox, 50%) var(--oy, 50%);
   animation: rise var(--m-panel) var(--ease-in);
 }
-/* keep the controls (esp. the back button) visible while focused — beats the
+/* keep the controls (esp. the back button) visible while focused, beats the
    two opacity:0 rules the pane bar inherits (.ctrls + .grid.canvas .pb-ctrls). */
 .grid.canvas.has-focus .pane.focused .pb-ctrls { opacity: 1 !important; }
 /* the stage header reads bigger than a tiled pane's slim bar */
@@ -317,7 +317,7 @@
    When a pane fills the stage it must SHOUT whose it is (the whole point of
    opening it large): a bigger avatar that carries a live status ring, the name
    at reading size, and a muted subtitle naming the workspace + where it works.
-   Nothing here changes the tiled bar — it's all scoped to .pane.focused. */
+   Nothing here changes the tiled bar, it's all scoped to .pane.focused. */
 .grid.canvas.has-focus .pane.focused .pb-av {
   width: 34px;
   height: 34px;

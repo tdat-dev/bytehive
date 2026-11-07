@@ -1,4 +1,4 @@
-/* Dock — right-edge icon rail + slide-in tool panels (Kanban / Pomodoro / Diff).
+/* Dock, right-edge icon rail + slide-in tool panels (Kanban / Pomodoro / Diff).
    Built on the app tokens (tokens.css). The .app grid reserves the 48px rail
    column (see workspace.css); the panel is an overlay anchored above the
    broadcast bar via --bcast-h (set from JS). */
@@ -19,7 +19,7 @@
 .dr-btn svg{width:19px;height:19px}
 .dr-btn:hover{background:var(--surface-1);color:var(--text-2)}
 .dr-btn.on{background:var(--surface-2);color:var(--accent)}
-/* active indicator — lime bar on the inner edge */
+/* active indicator, lime bar on the inner edge */
 .dr-btn.on::before{
   content:"";position:absolute;left:-8px;top:9px;bottom:9px;width:2.5px;border-radius:var(--r-control);
   background:var(--accent);box-shadow:none;
@@ -90,7 +90,7 @@
 .kb-root{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .kb-empty{padding:var(--s8) var(--s4);text-align:center;color:var(--muted-2);font-size:var(--fs-meta)}
 
-/* board — horizontally scrolling lists */
+/* board, horizontally scrolling lists */
 .kb-board{flex:1;min-height:0;display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s3);overflow-x:auto;overflow-y:hidden}
 .kb-board::-webkit-scrollbar{height:9px}
 .kb-list{
@@ -136,7 +136,7 @@
 .kb-badge svg{flex:none;opacity:.85}
 .kb-badge.ok{color:var(--run)}
 .kb-badge.due{padding:1px var(--s1);border-radius:var(--r-control);background:var(--surface-3)}
-.kb-badge.due.soon{color:var(--honey)}
+.kb-badge.due.soon{color:var(--ink)}
 .kb-badge.due.over{color:var(--err);background:var(--danger-soft)}
 
 .kb-composer{padding:var(--s1) var(--s2) var(--s2)}

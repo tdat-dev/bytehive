@@ -1,4 +1,4 @@
-/* Fleet monitor — the dock panel listing every agent across all workspaces,
+/* Fleet monitor, the dock panel listing every agent across all workspaces,
  * plus the "needs you" count badge on the rail button. */
 
 .fleet-root{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s1) 2px}

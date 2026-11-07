@@ -1,4 +1,4 @@
-/* Flow — the dock panel listing every fleet hand-off (who sent what to whom).
+/* Flow, the dock panel listing every fleet hand-off (who sent what to whom).
  * Rows are static: no entrance animation, because a live log that animates on
  * every arrival is a distraction while you are reading an older one. */
 

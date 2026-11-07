@@ -33,7 +33,7 @@ body.splitting{cursor:col-resize;user-select:none}
 .app.editor-max .code-panel .editor-host{border-top:none;border-radius:var(--r-dialog)}
 .app.editor-max .code-panel .ed-tab{border-radius:var(--r-dialog) var(--r-dialog) 0 0}
 
-/* topbar pane-toggle buttons — mapped to the edge they control: the sidebar
+/* topbar pane-toggle buttons, mapped to the edge they control: the sidebar
    toggle sits far-left (by Home), the code-panel toggle far-right (by the
    window controls), so the button's position tells you which panel it opens. */
 .tb-pane{width:30px;height:30px;border-radius:var(--r-card);display:grid;place-items:center;color:var(--muted-2);flex:none;transition:background var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
