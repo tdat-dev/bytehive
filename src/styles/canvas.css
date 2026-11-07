@@ -97,10 +97,10 @@
 .grid.canvas .pane-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s2);
   height: 32px;
   flex: none;
-  padding: 0 7px 0 11px;
+  padding: 0 var(--s2) 0 var(--s3);
   /* Its own plate, independent of the pane's: the dot, the name and the buttons
      are chrome, and they have to stay readable and hittable over any wallpaper
      even when the body below them is fully see-through. */
@@ -173,7 +173,7 @@
   font-family: var(--mono);
   font-size: var(--fs-meta);
   color: var(--muted);
-  padding: 2px 6px;
+  padding: 2px var(--s1);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-control);
   flex: none;
@@ -191,7 +191,7 @@
   right: 0;
   display: flex;
   gap: 1px;
-  padding: 4px;
+  padding: var(--s1);
   background: var(--surface-2);
   border: 0;
   border-radius: var(--r-card);
@@ -274,7 +274,7 @@
   font-weight: 600;
   color: var(--accent-ink);
   background: color-mix(in oklab, var(--accent-ink) 15%, transparent);
-  padding: 2px 6px;
+  padding: 2px var(--s1);
   border-radius: var(--r-control);
   flex: none;
   white-space: nowrap;

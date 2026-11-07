@@ -1,7 +1,7 @@
 /* Home: the frame the start screen (inboxstart.ts) draws into. */
 /* "Back to workspace" pill — only on Home when tabs are still alive. */
 .home-resume{position:fixed;top:9px;left:50%;transform:translateX(-50%);z-index:var(--z-rail);
-  display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:var(--r-card);
+  display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);border-radius:var(--r-card);
   border:1px solid var(--line-strong);background:var(--scrim);
   color:var(--text-2);font-size:var(--fs-meta);font-weight:500;cursor:pointer;transition:border-color var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in), background var(--m-press) var(--ease-in)}
 .home-resume:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}

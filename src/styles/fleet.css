@@ -1,20 +1,20 @@
 /* Fleet monitor — the dock panel listing every agent across all workspaces,
  * plus the "needs you" count badge on the rail button. */
 
-.fleet-root{display:flex;flex-direction:column;gap:10px;padding:4px 2px}
+.fleet-root{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s1) 2px}
 
 .fleet-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:10px;padding:48px 20px;text-align:center;color:var(--muted-2)}
+  gap:var(--s2);padding:var(--s12) var(--s4);text-align:center;color:var(--muted-2)}
 .fleet-empty p{font-size:var(--fs-meta);line-height:1.6}
 
-.fleet-sum{font-size:var(--fs-meta);color:var(--muted);padding:2px 6px}
+.fleet-sum{font-size:var(--fs-meta);color:var(--muted);padding:2px var(--s1)}
 .fleet-sum-n{color:var(--text);font-weight:600}
 .fleet-sum-needs{color:var(--accent)}
 .fleet-sum-active{color:var(--run)}
 
-.fleet-list{display:flex;flex-direction:column;gap:5px}
+.fleet-list{display:flex;flex-direction:column;gap:var(--s1)}
 .fleet-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;
-  gap:8px 10px;width:100%;text-align:left;padding:8px 10px;border-radius:var(--r-card);
+  gap:var(--s2) var(--s2);width:100%;text-align:left;padding:var(--s2) var(--s2);border-radius:var(--r-card);
   background:var(--surface-1);border:1px solid var(--line);cursor:pointer;
   transition:background var(--m-press) var(--ease-in), border-color var(--m-press) var(--ease-in)}
 .fleet-row:hover{background:var(--surface-2);border-color:var(--line-strong)}
@@ -25,7 +25,7 @@
   text-overflow:ellipsis;white-space:nowrap}
 .fleet-ws{grid-column:2;font-size:var(--fs-meta);color:var(--muted-2);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
-.fleet-st{grid-column:3;grid-row:1 / span 2;font-size:var(--fs-meta);padding:2px 7px;
+.fleet-st{grid-column:3;grid-row:1 / span 2;font-size:var(--fs-meta);padding:2px var(--s2);
   border-radius:var(--r-control);white-space:nowrap;
   color:var(--muted);background:var(--surface-3)}
 .fleet-up{grid-column:4;grid-row:1 / span 2;font-size:var(--fs-meta);color:var(--muted-2);
@@ -46,7 +46,7 @@
 /* rail count badge */
 .dr-btn{position:relative}
 .fleet-badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;
-  padding:0 4px;border-radius:var(--r-control);background:var(--accent);color:var(--accent-ink);
+  padding:0 var(--s1);border-radius:var(--r-control);background:var(--accent);color:var(--accent-ink);
   font-size:var(--fs-meta);font-weight:600;line-height:16px;text-align:center;
   box-shadow:0 0 0 2px var(--bg)}
 .fleet-badge[hidden]{display:none}

@@ -2,23 +2,23 @@
  * Rows are static: no entrance animation, because a live log that animates on
  * every arrival is a distraction while you are reading an older one. */
 
-.flow-root{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 2px}
+.flow-root{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:var(--s1) 2px}
 
 .flow-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:10px;padding:48px 20px;text-align:center;color:var(--muted-2)}
+  gap:var(--s2);padding:var(--s12) var(--s4);text-align:center;color:var(--muted-2)}
 .flow-empty p{font-size:var(--fs-meta);line-height:1.6}
 .flow-empty[hidden]{display:none}
 
-.flow-list{display:flex;flex-direction:column;gap:6px}
+.flow-list{display:flex;flex-direction:column;gap:var(--s1)}
 
-.flow-row{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:var(--r-card);
+.flow-row{display:flex;flex-direction:column;gap:var(--s1);padding:var(--s2) var(--s2);border-radius:var(--r-card);
   background:var(--surface-1);border:1px solid var(--line)}
 
-.flow-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;
+.flow-head{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:var(--s2);
   width:100%;text-align:left;cursor:pointer}
 .flow-av{width:20px;height:20px;border-radius:var(--r-control);flex:none;display:grid;place-items:center;
   font-size:var(--fs-meta);font-weight:600;color:var(--accent-ink);background:var(--muted-2)}
-.flow-who{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--fs-meta);color:var(--muted)}
+.flow-who{display:flex;align-items:center;gap:var(--s1);min-width:0;font-size:var(--fs-meta);color:var(--muted)}
 .flow-who b{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .flow-arw{font-family:var(--mono);color:var(--accent);flex:none}
 .flow-to{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -1,10 +1,10 @@
 /* File tree rows in the code panel's upper pane. The tree renders as one flat
    list — depth is expressed by --d (padding + indent guides), so multi-select
    and keyboard navigation walk a simple linear row order. */
-.file-tree{font-size:var(--fs-meta);color:var(--text-2);padding:4px 6px 8px;outline:none}
-.tw-msg{padding:22px 16px;color:var(--muted-2);font-size:var(--fs-meta);line-height:1.5;text-align:center}
+.file-tree{font-size:var(--fs-meta);color:var(--text-2);padding:var(--s1) var(--s1) var(--s2);outline:none}
+.tw-msg{padding:var(--s6) var(--s4);color:var(--muted-2);font-size:var(--fs-meta);line-height:1.5;text-align:center}
 
-.tw-row{display:flex;align-items:center;gap:5px;height:24px;cursor:pointer;white-space:nowrap;user-select:none;border-radius:var(--r-control);position:relative;
+.tw-row{display:flex;align-items:center;gap:var(--s1);height:24px;cursor:pointer;white-space:nowrap;user-select:none;border-radius:var(--r-control);position:relative;
   padding:0 6px 0 calc(6px + var(--d,0) * 12px);
   /* one hairline per indent level, like VS Code's indent guides */
   background-image:repeating-linear-gradient(to right,var(--line) 0 1px,transparent 1px 12px);
@@ -27,7 +27,7 @@
 .tw-name{overflow:hidden;text-overflow:ellipsis;font-weight:450}
 .tw-dir .tw-name{color:var(--text-2);font-weight:500}
 /* where a filter hit actually lives */
-.tw-path{margin-left:7px;min-width:0;font-size:var(--fs-meta);color:var(--muted-2);overflow:hidden;text-overflow:ellipsis}
+.tw-path{margin-left:var(--s2);min-width:0;font-size:var(--fs-meta);color:var(--muted-2);overflow:hidden;text-overflow:ellipsis}
 
 /* per-language icon tints — the tree gets scanned by colour before it's read */
 .tw-c-blue{color:#519aba}
@@ -50,20 +50,20 @@ body.tree-dragging .tw-row{cursor:grabbing}
 .tw-row.drop{background-color:var(--accent-glow);box-shadow:var(--ring-line)}
 .file-tree.drop-root{box-shadow:var(--ring-line);border-radius:var(--r-card)}
 /* cursor-following label: what's being dragged, and how much of it */
-.tw-ghost{position:fixed;z-index:var(--z-toast);display:flex;align-items:center;gap:6px;max-width:260px;padding:4px 9px;border-radius:var(--r-card);background:var(--surface-2);border:1px solid var(--line-strong);box-shadow:var(--lift);color:var(--text-2);font-size:var(--fs-meta);white-space:nowrap;pointer-events:none}
+.tw-ghost{position:fixed;z-index:var(--z-toast);display:flex;align-items:center;gap:var(--s1);max-width:260px;padding:var(--s1) var(--s2);border-radius:var(--r-card);background:var(--surface-2);border:1px solid var(--line-strong);box-shadow:var(--lift);color:var(--text-2);font-size:var(--fs-meta);white-space:nowrap;pointer-events:none}
 
 /* inline create / rename input — sits in the row, monospace like file names */
-.tw-input{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--accent-dim);border-radius:var(--r-control);color:var(--text);font:inherit;font-size:var(--fs-meta);padding:1px 6px;outline:none}
+.tw-input{flex:1;min-width:0;background:var(--surface-0);border:1px solid var(--accent-dim);border-radius:var(--r-control);color:var(--text);font:inherit;font-size:var(--fs-meta);padding:1px var(--s1);outline:none}
 .tw-input::placeholder{color:var(--muted-2)}
 .tw-input-row{background-color:var(--surface-1)}
 
 /* failure notice (name taken, file locked) — silence would read as "nothing happened" */
-.tw-toast{margin:6px 2px 0;padding:7px 9px;border-radius:var(--r-card);background:var(--danger-soft);border:1px solid var(--danger-soft);color:var(--text-2);font-size:var(--fs-meta);line-height:1.45;white-space:normal;animation:rise var(--m-swap) var(--ease-in)}
+.tw-toast{margin:var(--s1) 2px 0;padding:var(--s2) var(--s2);border-radius:var(--r-card);background:var(--danger-soft);border:1px solid var(--danger-soft);color:var(--text-2);font-size:var(--fs-meta);line-height:1.45;white-space:normal;animation:rise var(--m-swap) var(--ease-in)}
 
 /* explorer header toolbar + filter box */
 .cp-tools{display:flex;align-items:center;gap:1px;margin-left:auto;margin-right:2px}
 .cp-btn.on{color:var(--accent);background:var(--accent-glow)}
-.cp-filterbar{flex:none;display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);color:var(--muted-2)}
+.cp-filterbar{flex:none;display:flex;align-items:center;gap:var(--s1);padding:var(--s1) var(--s2);border-bottom:1px solid var(--line);color:var(--muted-2)}
 .cp-filterbar svg{flex:none}
 .cp-filter{flex:1;min-width:0;background:transparent;border:0;outline:none;color:var(--text);font:inherit;font-size:var(--fs-meta)}
 .cp-filter::placeholder{color:var(--muted-2)}
@@ -72,10 +72,10 @@ body.tree-dragging .tw-row{cursor:grabbing}
 .file-tree.filtering .tw-row{background-image:none}
 
 /* right-click context menu */
-.ctx-menu{position:fixed;z-index:var(--z-popover);min-width:200px;padding:5px;background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--r-card);box-shadow:var(--lift);display:flex;flex-direction:column;gap:1px;animation:rise var(--m-swap) var(--ease-in)}
-.ctx-item{display:flex;align-items:center;justify-content:space-between;gap:16px;height:30px;padding:0 10px;border-radius:var(--r-control);color:var(--text-2);font-size:var(--fs-meta);text-align:left;transition:background var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
+.ctx-menu{position:fixed;z-index:var(--z-popover);min-width:200px;padding:var(--s1);background:var(--surface-2);border:1px solid var(--line-strong);border-radius:var(--r-card);box-shadow:var(--lift);display:flex;flex-direction:column;gap:1px;animation:rise var(--m-swap) var(--ease-in)}
+.ctx-item{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);height:30px;padding:0 var(--s2);border-radius:var(--r-control);color:var(--text-2);font-size:var(--fs-meta);text-align:left;transition:background var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
 .ctx-item:hover{background:var(--surface-3);color:var(--text)}
 .ctx-item.danger{color:var(--err)}
 .ctx-item.danger:hover{background:var(--danger-soft)}
 .ctx-key{font-family:var(--mono);font-size:var(--fs-meta);color:var(--muted-2);}
-.ctx-sep{height:1px;margin:4px 6px;background:var(--line)}
+.ctx-sep{height:1px;margin:var(--s1) var(--s1);background:var(--line)}

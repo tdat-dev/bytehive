@@ -7,7 +7,7 @@ select.sm-native { display: none !important; }
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--s2);
   min-width: 0;
   cursor: pointer;
   text-align: left;
@@ -19,11 +19,11 @@ select.sm-native { display: none !important; }
 .sm-btn:disabled { opacity: 0.5; cursor: default; }
 
 /* in the start screen's composer the chip is the field, so the button is bare */
-.st-chip .sm-btn { height: 100%; padding: 0; background: none; border: 0; color: inherit; font: inherit; gap: 6px; }
+.st-chip .sm-btn { height: 100%; padding: 0; background: none; border: 0; color: inherit; font: inherit; gap: var(--s1); }
 .st-chip:has(.sm-btn.open) { background: var(--over); color: var(--ib-ink, var(--ink)); }
 
 /* Settings and dialog fields draw their own box; only the arrow is ours */
-.sm-btn.set-select, .sm-btn.input { padding-right: 12px; }
+.sm-btn.set-select, .sm-btn.input { padding-right: var(--s3); }
 .sm-btn.input { font-family: var(--sans); font-size: var(--fs-body); color: var(--text); }
 .sm-btn.set-select:hover, .sm-btn.input:hover { background-color: var(--over); }
 .sm-btn.rpl-speed { flex: none; min-width: 64px; font-family: var(--mono); }
@@ -34,7 +34,7 @@ select.sm-native { display: none !important; }
   max-width: min(360px, calc(100vw - 24px));
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 5px;
+  padding: var(--s1);
   border-radius: var(--r-dialog);
   background: var(--raised);
   box-shadow: var(--lift), var(--ring-line);
@@ -50,9 +50,9 @@ select.sm-native { display: none !important; }
 .sm-opt {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s2);
   min-height: 34px;
-  padding: 6px 12px 6px 8px;
+  padding: var(--s1) var(--s3) var(--s1) var(--s2);
   border-radius: var(--r-card);
   cursor: pointer;
   user-select: none;
@@ -64,8 +64,8 @@ select.sm-native { display: none !important; }
 .sm-lab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sm-opt[aria-selected="true"] .sm-lab { font-weight: 600; }
 .sm-sub { font: var(--t-mono); color: var(--ib-ink-3, var(--ink-3)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sm-note { flex: none; margin-left: 12px; font-size: var(--fs-meta); color: var(--ib-ink-3, var(--ink-3)); }
-.sm-sep { height: 1px; margin: 5px 8px; background: var(--raised); }
+.sm-note { flex: none; margin-left: var(--s3); font-size: var(--fs-meta); color: var(--ib-ink-3, var(--ink-3)); }
+.sm-sep { height: 1px; margin: var(--s1) var(--s2); background: var(--raised); }
 
 
 /* The right-click menu (ctxmenu.ts): the same floating list, with actions. */
@@ -73,7 +73,7 @@ select.sm-native { display: none !important; }
   position: fixed;
   z-index: var(--z-toast);
   min-width: 210px;
-  padding: 5px;
+  padding: var(--s1);
   border-radius: var(--r-dialog);
   background: var(--raised);
   box-shadow: var(--lift), var(--ring-line);
@@ -86,10 +86,10 @@ select.sm-native { display: none !important; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--s4);
   width: 100%;
   min-height: 32px;
-  padding: 6px 12px;
+  padding: var(--s1) var(--s3);
   border: 0;
   border-radius: var(--r-card);
   background: none;
@@ -104,4 +104,4 @@ select.sm-native { display: none !important; }
 .cm-item.danger.on { background: var(--danger-soft); }
 .cm-item[aria-disabled="true"] { color: var(--ib-ink-3, var(--ink-3)); cursor: default; }
 .cm-item kbd { font: var(--t-mono); color: var(--ib-ink-3, var(--ink-3)); }
-.cm-sep { height: 1px; margin: 5px 8px; background: var(--raised); }
+.cm-sep { height: 1px; margin: var(--s1) var(--s2); background: var(--raised); }

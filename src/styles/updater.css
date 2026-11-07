@@ -2,8 +2,8 @@
    version is out, with a progress bar while it downloads. Non-blocking. */
 .upd-toast{
   position:fixed;right:18px;bottom:18px;z-index:var(--z-toast);
-  display:flex;gap:12px;width:340px;max-width:calc(100vw - 36px);
-  padding:16px;
+  display:flex;gap:var(--s3);width:340px;max-width:calc(100vw - 36px);
+  padding:var(--s4);
   background:var(--surface-2);
   border:0;border-radius:var(--r-dialog);
   box-shadow:var(--lift), var(--ring-line);
@@ -17,8 +17,8 @@
 .upd-mark{flex:none;width:36px;height:36px;display:grid;place-items:center}
 .upd-mark svg{width:30px;height:auto}
 
-.upd-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.upd-head{display:flex;align-items:center;gap:8px}
+.upd-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--s1)}
+.upd-head{display:flex;align-items:center;gap:var(--s2)}
 .upd-head b{font-size:var(--fs-lead);font-weight:600;}
 .upd-x{
   margin-left:auto;flex:none;width:26px;height:26px;border-radius:var(--r-control);
@@ -28,22 +28,22 @@
 .upd-ver{font-size:var(--fs-meta);color:var(--muted);font-family:var(--mono)}
 
 /* download progress (hidden until the update starts) */
-.upd-bar{height:4px;border-radius:var(--r-control);background:var(--raised);overflow:hidden;margin:8px 0 2px}
+.upd-bar{height:4px;border-radius:var(--r-control);background:var(--raised);overflow:hidden;margin:var(--s2) 0 2px}
 .upd-bar[hidden]{display:none}
 .upd-bar>span{display:block;height:100%;width:0;border-radius:var(--r-control);background:var(--run);}
 .upd-size{font-size:var(--fs-meta);color:var(--muted);font-family:var(--mono);text-align:right;margin-top:1px}
 .upd-size[hidden]{display:none}
 
-.upd-actions{display:flex;gap:8px;margin-top:10px}
+.upd-actions{display:flex;gap:var(--s2);margin-top:var(--s2)}
 .upd-actions[hidden]{display:none}
 .upd-later{
-  flex:none;height:32px;padding:0 14px;border-radius:var(--r-control);border:0;
+  flex:none;height:32px;padding:0 var(--s3);border-radius:var(--r-control);border:0;
   background:var(--raised);color:var(--text-2);font-size:var(--fs-meta);font-weight:600;
 }
 .upd-later:hover{background:var(--over);color:var(--text)}
 .upd-go{
-  margin-left:auto;display:inline-flex;align-items:center;gap:6px;
-  height:32px;padding:0 14px;border-radius:var(--r-control);border:0;
+  margin-left:auto;display:inline-flex;align-items:center;gap:var(--s1);
+  height:32px;padding:0 var(--s3);border-radius:var(--r-control);border:0;
   background:var(--ink);color:var(--ground);font-size:var(--fs-meta);font-weight:600;
 }
 .upd-go:hover{background:var(--ink)}
