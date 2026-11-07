@@ -20,8 +20,6 @@
 /* shared section eyebrow used by the rail head + code-panel head */
 .cp-head{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 var(--s1) 0 var(--s3);flex:none;border-bottom:1px solid var(--line)}
 .cp-eyebrow{font-family:var(--mono);font-size:var(--fs-meta);font-weight:600;color:var(--muted-2)}
-.cp-btn{width:24px;height:24px;border-radius:var(--r-control);display:grid;place-items:center;color:var(--muted-2);transition:background var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
-.cp-btn:hover{background:var(--surface-2);color:var(--text-2)}
 
 .code-panel .file-tree{flex:0 0 46%;min-height:0;overflow:auto}
 .code-panel .editor-host{flex:1;min-height:0;overflow:hidden;position:relative;border-top:1px solid var(--line)}

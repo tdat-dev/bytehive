@@ -34,7 +34,7 @@ function render() {
     const sub = [p.email || "Not signed in", short(p.browser)].join(" · ");
     const right = c
       ? `<span class="bp-on"><i aria-hidden="true"></i>Connected</span>`
-      : `<button type="button" class="sbtn" data-setup="${i}" aria-label="Set up ${esc(p.name)}">Set up</button>`;
+      : `<button type="button" class="btn secondary" data-setup="${i}" aria-label="Set up ${esc(p.name)}">Set up</button>`;
     return `<li class="bp-row${c ? " on" : ""}"><span class="bp-av" aria-hidden="true">${esc((p.name.trim()[0] ?? "?").toUpperCase())}</span><span class="bp-txt"><b>${esc(p.name)}</b><span>${esc(sub)}</span></span>${right}</li>`;
   });
   // Connected profiles we can't name (not signed in to the browser).

@@ -80,7 +80,7 @@ export function openHelp(openTool: (id: string) => void): void {
   back.className = "inbox-modal-back hp-back";
   back.innerHTML = `<div class="inbox-modal hp" role="dialog" aria-modal="true" aria-labelledby="hpTitle">
     <header class="im-head"><div><h2 id="hpTitle">What ByteHive can do</h2><p class="im-sub">The things without a button of their own. All of them are in Ctrl K too. Keys work with focus outside a terminal: inside one, they are its CLI's.</p></div>
-      <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
+      <button type="button" class="btn quiet icon im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
     <div class="hp-body">
       <section class="hp-sec hp-tools" aria-label="Tools"><h3>Tools</h3><div class="hp-grid">${TOOLS.map((t) =>
         `<button type="button" class="hp-tool" data-tool="${esc(t.id)}"><b>${esc(t.name)}</b><span>${esc(t.what)}</span>${t.keys ? `<i>${caps(t.keys)}</i>` : ""}</button>`).join("")}</div></section>
@@ -97,7 +97,8 @@ export function openHelp(openTool: (id: string) => void): void {
     if (id) { back.remove(); openTool(id); }
   });
   back.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
-  back.querySelector<HTMLElement>("[data-close]")?.focus();
+  const page = back.querySelector<HTMLElement>(".inbox-modal");
+  if (page) { page.tabIndex = -1; page.focus(); }
 }
 
 /** Open a tool from the help page or Ctrl K: the dock panels by id, and the

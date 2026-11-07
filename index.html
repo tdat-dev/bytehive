@@ -57,7 +57,7 @@
 <!-- ===================== HOME ===================== -->
 <div class="home" id="home">
   <div class="drag-strip" data-tauri-drag-region></div>
-  <button class="home-resume" id="homeResume" hidden>
+  <button class="btn secondary home-resume" id="homeResume" hidden>
     <svg class="i" aria-hidden="true"><use href="#i-arrow-left"/></svg>
     <span>Back to your agents</span><span class="hr-count" id="homeResumeCount"></span>
   </button>
@@ -75,10 +75,10 @@
     
     <div class="tb-right">
       <!-- Keys don't leave a focused terminal, so these are the way to the tools. -->
-      <button class="tb-door" id="doorJump" title="Jump to an agent or run a command  ·  Ctrl+K">Jump</button>
-      <button class="tb-door" id="doorBoard" title="Board  ·  Ctrl+Shift+K">Board</button>
-      <button class="tb-door" id="doorOffice" title="Office  ·  Ctrl+Shift+O">Office</button>
-      <button class="tb-btn" id="btnResumeAll" hidden title="Resume every stopped agent"><svg class="i" aria-hidden="true"><use href="#i-rotate-ccw"/></svg> Resume all<span class="ra-count" id="btnResumeAllCount"></span></button>
+      <button class="btn quiet" id="doorJump" title="Jump to an agent or run a command  ·  Ctrl+K">Jump</button>
+      <button class="btn quiet" id="doorBoard" title="Board  ·  Ctrl+Shift+K">Board</button>
+      <button class="btn quiet" id="doorOffice" title="Office  ·  Ctrl+Shift+O">Office</button>
+      <button class="btn secondary" id="btnResumeAll" hidden title="Resume every stopped agent"><svg class="i" aria-hidden="true"><use href="#i-rotate-ccw"/></svg> Resume all<span class="ra-count" id="btnResumeAllCount"></span></button>
 
       <!-- Canvas controls. These used to float over the canvas top-right, which
            is exactly where the top-right pane keeps its own header buttons — the
@@ -103,13 +103,13 @@
     <header class="cp-head">
       <span class="cp-eyebrow">Explorer</span>
       <div class="cp-tools" id="cpTools">
-        <button class="cp-btn" id="cpNewFile" aria-label="New file" title="New file"><svg class="i" aria-hidden="true"><use href="#i-file-plus"/></svg></button>
-        <button class="cp-btn" id="cpNewFolder" aria-label="New folder" title="New folder"><svg class="i" aria-hidden="true"><use href="#i-folder-plus"/></svg></button>
-        <button class="cp-btn" id="cpRefresh" aria-label="Refresh" title="Refresh"><svg class="i" aria-hidden="true"><use href="#i-refresh-cw"/></svg></button>
-        <button class="cp-btn" id="cpCollapse" aria-label="Collapse all folders" title="Collapse all folders"><svg class="i" aria-hidden="true"><use href="#i-chevrons-down-up"/></svg></button>
-        <button class="cp-btn" id="cpHidden" aria-label="Show hidden and build folders" title="Show hidden &amp; build folders (.git, node_modules, target)"><svg class="i" aria-hidden="true"><use href="#i-eye"/></svg></button>
+        <button class="btn quiet icon sm" id="cpNewFile" aria-label="New file" title="New file"><svg class="i" aria-hidden="true"><use href="#i-file-plus"/></svg></button>
+        <button class="btn quiet icon sm" id="cpNewFolder" aria-label="New folder" title="New folder"><svg class="i" aria-hidden="true"><use href="#i-folder-plus"/></svg></button>
+        <button class="btn quiet icon sm" id="cpRefresh" aria-label="Refresh" title="Refresh"><svg class="i" aria-hidden="true"><use href="#i-refresh-cw"/></svg></button>
+        <button class="btn quiet icon sm" id="cpCollapse" aria-label="Collapse all folders" title="Collapse all folders"><svg class="i" aria-hidden="true"><use href="#i-chevrons-down-up"/></svg></button>
+        <button class="btn quiet icon sm" id="cpHidden" aria-label="Show hidden and build folders" title="Show hidden &amp; build folders (.git, node_modules, target)"><svg class="i" aria-hidden="true"><use href="#i-eye"/></svg></button>
       </div>
-      <button class="cp-btn" id="cpClose" aria-label="Hide code panel" title="Hide code panel (Ctrl+Shift+E)"><svg class="i" aria-hidden="true"><use href="#i-chevrons-right"/></svg></button>
+      <button class="btn quiet icon sm" id="cpClose" aria-label="Hide code panel" title="Hide code panel (Ctrl+Shift+E)"><svg class="i" aria-hidden="true"><use href="#i-chevrons-right"/></svg></button>
     </header>
     <div class="cp-filterbar">
       <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
@@ -137,8 +137,8 @@
       </label>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" id="cfCancel">Cancel</button>
-      <button class="btn" id="cfOk">Confirm</button>
+      <button class="btn secondary" id="cfCancel">Cancel</button>
+      <button class="btn primary" id="cfOk">Confirm</button>
     </div>
   </div>
 </div>
@@ -148,7 +148,7 @@
   <div class="set-shell" role="dialog" aria-modal="true" aria-label="Settings">
     <header class="set-head">
       <span class="set-title">Settings</span>
-      <button class="set-x" id="setClose" type="button" aria-label="Close" title="Close · Esc"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+      <button class="btn quiet icon" id="setClose" type="button" aria-label="Close" title="Close · Esc"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </header>
     <div class="set-body">
       <nav class="set-nav" aria-label="Settings sections">
@@ -191,7 +191,7 @@
           <label class="toggle"><input type="checkbox" id="prefTips"><span class="tg"></span><span class="sr-txt"><b>Show tips</b><span>A one-line tip the first time a feature is useful: the right-click menu, the Grid, reviewing changes. Each shows once.</span></span></label>
           <div class="srow">
             <div class="sr-txt"><b>Tips you have seen</b><span>Bring them back, one at a time, as they become useful again. Press ? any time for the full list.</span></div>
-            <button type="button" class="sbtn" id="prefTipsAgain">Show tips again</button>
+            <button type="button" class="btn secondary" id="prefTipsAgain">Show tips again</button>
           </div>
           <div class="srow">
             <div class="sr-txt"><b>Agents in the Grid</b><span>Most agents the Grid shows: the one you work with as a terminal, the others as cards beside it, taken from the top of the list.</span></div>
@@ -218,11 +218,11 @@
             <div class="bp-setup" id="bpSetup" hidden>
               <b class="bp-h">Add ByteHive for Chrome to <span data-bp-name></span></b>
               <ol>
-                <li><span>ByteHive opened this profile in <span data-bp-browser></span>. In its address bar, go to <code>chrome://extensions</code>.</span><button type="button" class="bp-copy" data-copy="chrome://extensions">Copy</button></li>
+                <li><span>ByteHive opened this profile in <span data-bp-browser></span>. In its address bar, go to <code>chrome://extensions</code>.</span><button type="button" class="btn secondary sm" data-copy="chrome://extensions">Copy</button></li>
                 <li><span>Turn on <b>Developer mode</b>, top right of that page.</span></li>
-                <li><span>Click <b>Load unpacked</b> and choose this folder: <code data-bp-dir></code></span><button type="button" class="bp-copy" data-copy="dir">Copy</button></li>
+                <li><span>Click <b>Load unpacked</b> and choose this folder: <code data-bp-dir></code></span><button type="button" class="btn secondary sm" data-copy="dir">Copy</button></li>
               </ol>
-              <div class="bp-foot"><span class="bp-wait"><i aria-hidden="true"></i>This profile shows Connected by itself once it's in.</span><button type="button" class="bp-copy" data-bp-done>Hide steps</button></div>
+              <div class="bp-foot"><span class="bp-wait"><i aria-hidden="true"></i>This profile shows Connected by itself once it's in.</span><button type="button" class="btn secondary sm" data-bp-done>Hide steps</button></div>
             </div>
           </div>
           <label class="toggle"><input type="checkbox" id="prefBrowserAsk"><span class="tg"></span><span class="sr-txt"><b>Ask me before an agent sends, posts, pays or deletes</b><span>A click on a button like Send, Post, Pay or Delete waits for your OK here in ByteHive. Logins and CAPTCHAs are always left to you.</span></span></label>
@@ -232,22 +232,22 @@
           <label class="toggle"><input type="checkbox" id="setDashOn"><span class="tg"></span><span class="sr-txt"><b>Remote fleet dashboard</b><span id="setDashUrl">View &amp; drive the fleet from your phone's browser.</span></span></label>
           <div class="srow">
             <div class="sr-txt"><b>Password</b><span id="setDashPwNote">None yet. Other devices need one before they can connect.</span></div>
-            <button type="button" class="sbtn" id="setDashPwSet">Set password</button>
-            <button type="button" class="sbtn" id="setDashPwClear" hidden>Remove</button>
+            <button type="button" class="btn secondary" id="setDashPwSet">Set password</button>
+            <button type="button" class="btn secondary" id="setDashPwClear" hidden>Remove</button>
           </div>
           <form class="srow col dash-pw" id="setDashPwForm" hidden>
             <div class="sr-txt"><b id="setDashPwTitle">Set a password</b><span>Anyone opening the dashboard signs in with it, this computer included. At least 10 characters.</span></div>
             <input class="input" type="password" id="setDashPw1" autocomplete="new-password" placeholder="Password" aria-label="Password">
             <input class="input" type="password" id="setDashPw2" autocomplete="new-password" placeholder="Same password again" aria-label="Same password again">
-            <div class="dash-pw-foot"><span class="dash-pw-err" id="setDashPwErr" role="alert"></span><button type="button" class="sbtn" id="setDashPwCancel">Cancel</button><button type="submit" class="sbtn" id="setDashPwSave">Save password</button></div>
+            <div class="dash-pw-foot"><span class="dash-pw-err" id="setDashPwErr" role="alert"></span><button type="button" class="btn secondary" id="setDashPwCancel">Cancel</button><button type="submit" class="btn secondary" id="setDashPwSave">Save password</button></div>
           </form>
           <label class="toggle"><input type="checkbox" id="setDashLan"><span class="tg"></span><span class="sr-txt"><b>Allow other devices (LAN)</b><span id="setDashLanNote">Set a password first. Without one, anyone on your network could type into your agents. On your Wi-Fi the password goes unencrypted: use it only on a network you trust.</span></span></label>
         </section>
         <section class="sec" data-sec="sessions">
           <h3>Sessions</h3>
-          <div class="srow"><div class="sr-txt"><b>Scheduled agents</b><span>Start a saved preset at a set time. Save one from New agent → Save as preset.</span></div><button class="sbtn" type="button" id="setOpenSched">Manage</button></div>
-          <div class="srow"><div class="sr-txt"><b>Session replays</b><span>Watch back recorded agent sessions. Record one from ··· on an agent's header.</span></div><button class="sbtn" type="button" id="setOpenReplays">Open</button></div>
-          <div class="srow"><div class="sr-txt"><b>Token usage &amp; cost</b><span>Claude tokens used in this project, with an estimated cost.</span></div><button class="sbtn" type="button" id="setOpenUsage">View</button></div>
+          <div class="srow"><div class="sr-txt"><b>Scheduled agents</b><span>Start a saved preset at a set time. Save one from New agent → Save as preset.</span></div><button class="btn secondary" type="button" id="setOpenSched">Manage</button></div>
+          <div class="srow"><div class="sr-txt"><b>Session replays</b><span>Watch back recorded agent sessions. Record one from ··· on an agent's header.</span></div><button class="btn secondary" type="button" id="setOpenReplays">Open</button></div>
+          <div class="srow"><div class="sr-txt"><b>Token usage &amp; cost</b><span>Claude tokens used in this project, with an estimated cost.</span></div><button class="btn secondary" type="button" id="setOpenUsage">View</button></div>
         </section>
         <section class="sec" data-sec="system">
           <h3>System</h3>
@@ -257,8 +257,8 @@
             <select class="input" id="setOfficeQuality" aria-label="Office quality"><option value="auto">Auto</option><option value="low">Low</option><option value="high">High</option></select>
           </div>
           <label class="toggle"><input type="checkbox" id="setHideTray"><span class="tg"></span><span class="sr-txt"><b>Hide to tray</b><span>Minimizing tucks ByteHive into the system tray; agents keep running.</span></span></label>
-          <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">ByteHive</span></div><button class="sbtn" type="button" id="setCheckUpdate">Check for updates</button></div>
-          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="sbtn" type="button" id="prefReset">Reset</button></div>
+          <div class="srow"><div class="sr-txt"><b>Updates</b><span id="setVersion">ByteHive</span></div><button class="btn secondary" type="button" id="setCheckUpdate">Check for updates</button></div>
+          <div class="srow"><div class="sr-txt"><b>Reset settings</b><span>Agents, Inbox, text size and the tray go back to how ByteHive ships. Projects, agents and the remote dashboard are not touched.</span></div><button class="btn secondary" type="button" id="prefReset">Reset</button></div>
         </section>
       </div>
     </div>
@@ -269,7 +269,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label="Scheduled agents">
     <div class="modal-head">
       <span class="t">Scheduled agents</span>
-      <button class="x" id="schedClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+      <button class="btn quiet icon" id="schedClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="modal-body">
       <div class="sched-add">
@@ -279,13 +279,13 @@
           <option value="daily">Daily</option>
           <option value="once">Once</option>
         </select>
-        <button class="btn" id="schedAdd">Add</button>
+        <button class="btn primary" id="schedAdd">Add</button>
       </div>
       <p class="sched-empty" id="schedEmpty" hidden>No presets yet. In New agent, set up the agent and choose Save as preset, then schedule it here.</p>
       <div class="sched-list" id="schedList"></div>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" id="schedCloseBtn">Close</button>
+      <button class="btn secondary" id="schedCloseBtn">Close</button>
     </div>
   </div>
 </div>
@@ -295,7 +295,7 @@
     <div class="modal-head">
       <span class="t">Token usage &amp; cost</span>
       <span class="replay-crumb" id="usageCrumb"></span>
-      <button class="x" id="usageClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+      <button class="btn quiet icon" id="usageClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="modal-body">
       <div class="usage-wrap" id="usageWrap"></div>
@@ -303,7 +303,7 @@
       <p class="usage-note">Estimated from Claude Code's session transcripts. Claude agents only; other CLIs aren't counted. Prices are approximate, so treat the total as a guide, not a bill.</p>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" id="usageCloseBtn">Close</button>
+      <button class="btn secondary" id="usageCloseBtn">Close</button>
     </div>
   </div>
 </div>
@@ -313,7 +313,7 @@
     <div class="modal-head">
       <span class="t">Session replays</span>
       <span class="replay-crumb" id="replayCrumb"></span>
-      <button class="x" id="replayClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+      <button class="btn quiet icon" id="replayClose" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="modal-body replay-body">
       <div class="replay-list" id="replayList"></div>
@@ -334,8 +334,8 @@
       </div>
     </div>
     <div class="modal-foot">
-      <button class="btn-ghost" id="replayBack" hidden>← Back to list</button>
-      <button class="btn-ghost" id="replayCloseBtn">Close</button>
+      <button class="btn secondary" id="replayBack" hidden>← Back to list</button>
+      <button class="btn secondary" id="replayCloseBtn">Close</button>
     </div>
   </div>
 </div>
@@ -346,14 +346,14 @@
   <div class="upd-body">
     <div class="upd-head">
       <b id="updTitle">New version available</b>
-      <button class="upd-x" id="updDismiss" aria-label="Dismiss">&times;</button>
+      <button class="btn quiet icon sm upd-x" id="updDismiss" aria-label="Dismiss">&times;</button>
     </div>
     <span class="upd-ver" id="updVer">ByteHive</span>
     <div class="upd-bar" id="updBar" hidden><span id="updBarFill"></span></div>
     <div class="upd-size" id="updSize" hidden></div>
     <div class="upd-actions" id="updActions">
-      <button class="upd-later" id="updLater">Later</button>
-      <button class="upd-go" id="updGo">Update <svg class="i" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+      <button class="btn quiet" id="updLater">Later</button>
+      <button class="btn secondary" id="updGo">Update <svg class="i" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
     </div>
   </div>
 </div>

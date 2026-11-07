@@ -37,8 +37,6 @@ body.inbox-ui .tb-center { justify-content: flex-start; gap: var(--s2); min-widt
 body.inbox-ui .tb-right { flex: none; }
 .srow .hk-input { width: 150px; flex: none; }
 .sr-txt .sr-bad { color: var(--err); }
-.tb-door { height: 28px; padding: 0 var(--s2); border: 0; border-radius: var(--r-control); background: none; color: var(--ib-ink-2, var(--muted)); font: var(--t-row); cursor: pointer; white-space: nowrap; }
-.tb-door:hover { background: var(--ib-raise, var(--surface-2)); color: var(--ib-ink, var(--text)); }
 /* the code-panel toggle stays in the DOM (Files in Ctrl K clicks it) but not on screen */
 body.inbox-ui .tb-right .tb-div,
 body.inbox-ui #btnToggleCode { display: none !important; }
@@ -120,16 +118,17 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-row {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
-  gap: 2px var(--s2);
+  gap: 0 var(--s2);
   align-items: center;
   width: 100%;
-  padding: var(--s2) var(--s2);
+  min-height: 48px;
+  padding: var(--s1) var(--s2);
   border-radius: var(--r-card);
   text-align: left;
   color: var(--ib-ink);
 }
 .iq-row:hover { background: var(--raised); }
-.iq-row[aria-current="true"] { background: var(--ib-raise); box-shadow: var(--ring-line); }
+.iq-row[aria-current="true"] { background: var(--over); }
 .iq-mk {
   grid-row: 1 / 3;
   align-self: start;
@@ -139,18 +138,15 @@ body.inbox-ui #btnToggleCode { display: none !important; }
   font: var(--t-row);
   color: var(--ground);
 }
-/* an agent's CLI logo (clibrand.ts) on a dark tile of its colour */
-.iq-mk, .pal-mk:not(.letter), .pb-av {
-  background: color-mix(in oklch, var(--mk, var(--ink-3)) 22%, var(--ground));
-  box-shadow: var(--ring-line);
-}
+/* an agent's CLI logo (clibrand.ts) on a plain tile: its colour stays in the logo */
+.iq-mk, .pal-mk:not(.letter), .pb-av { background: var(--raised); box-shadow: var(--ring-line); }
 .cli-logo { display: block; width: 68%; height: 68%; object-fit: contain; pointer-events: none; user-select: none; }
 .cli-logo.tile { width: 100%; height: 100%; border-radius: inherit; }
 .cli-glyph { display: block; width: 68%; height: 68%; color: var(--mk, var(--ink-3)); }
 .cli-letter { color: var(--mk, var(--ink-3)); }
-.iq-t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.iq-tm { font: var(--t-mono); color: var(--ib-ink-3); }
-.iq-s { grid-column: 2 / 4; font-size: var(--fs-meta); color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iq-t { font: var(--t-row); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iq-tm { font: var(--t-meta); color: var(--ib-ink-3); }
+.iq-s { grid-column: 2 / 4; font: var(--t-body); color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iq-row.st-needs .iq-l { color: var(--ib-needs); }
 /* stopped at its plan's limit: waiting on the clock, not on you */
 .iq-row.limited .iq-l { color: var(--ib-needs); }
@@ -196,9 +192,11 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 /* open, the rows are the count */
 .iq-group:not(.folded) .iq-ph .iq-n { display: none; }
 /* who needs you is marked where it is, never moved to the top */
-.iq-row.st-needs { background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--honey-line); }
-.iq-row.st-needs:hover { background: var(--honey-soft); }
-.iq-row.st-needs[aria-current="true"] { background: var(--honey-soft); box-shadow: inset 0 0 0 1px var(--honey-line); }
+.iq-row.st-needs { background: var(--honey-soft); }
+.iq-row.st-needs .iq-s { color: var(--ink-2); }
+.iq-row.st-needs:hover { background: color-mix(in srgb, var(--honey) 20%, transparent); }
+/* selected is --over, never honey: the glyph and the word still say who waits */
+.iq-row.st-needs[aria-current="true"] { background: var(--over); }
 /* the agent's state as a glyph on its mark, cut out of the row it sits on */
 .iq-mk { position: relative; }
 .iq-g { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--panel); }
@@ -217,7 +215,7 @@ body.inbox-ui .grid.canvas.has-focus .pane.focused {
   width: 100% !important;
   height: 100% !important;
   border-radius: var(--r-dialog);
-  background: var(--ib-panel) !important;
+  background: var(--ground) !important;
   border-color: transparent;
   box-shadow: var(--ring-line);
   animation: none;
@@ -230,7 +228,7 @@ body.inbox-ui .grid.canvas.has-focus.inbox-split .pane.split-pin {
   top: var(--sy) !important;
   width: var(--sw) !important;
   height: var(--sh) !important;
-  background: var(--ib-panel) !important;
+  background: var(--ground) !important;
   animation: none;
 }
 body.inbox-ui .grid.canvas .pane.split-pin .pane-bar { background: transparent; border-bottom: 0; }
@@ -306,14 +304,14 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   max-width: calc(100vw - 32px);
 }
 .id-seg {
-  display: flex; gap: 2px; padding: var(--s1);
+  display: flex; gap: 2px; padding: 2px;
   border-radius: var(--r-control);
   background: var(--ib-raise);
   box-shadow: var(--lift);
 }
 .id-seg button {
   display: inline-flex; align-items: center; gap: var(--s2);
-  height: 30px; padding: 0 var(--s3);
+  height: 28px; padding: 0 var(--s3);
   border-radius: var(--r-control);
   font: var(--t-row);
   color: var(--ib-ink-2);
@@ -323,7 +321,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
 .id-search {
   display: flex; align-items: center; gap: var(--s2);
   width: min(400px, 30vw);
-  height: 36px; padding: 0 var(--s2) 0 var(--s3);
+  height: 32px; padding: 0 var(--s2) 0 var(--s3);
   border-radius: var(--r-control);
   background: var(--ib-raise);
   box-shadow: var(--lift);
@@ -339,23 +337,9 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   color: var(--ib-ink-3);
   box-shadow: var(--ring-line);
 }
-.id-new {
-  height: 36px; padding: 0 var(--s4);
-  border-radius: var(--r-control);
-  background: var(--honey); color: var(--honey-ink);
-  font: var(--t-row);
-}
-.id-new:hover { background: var(--honey-hover); }
 /* a stopped agent on the stage wants Resume: one honey button per view */
 body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new { background: var(--ib-raise); color: var(--ib-ink); box-shadow: var(--ring-line); }
 body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { background: var(--over); }
-.id-gear {
-  flex: none; width: 32px; height: 36px;
-  display: grid; place-items: center;
-  border-radius: var(--r-card);
-  color: var(--ib-ink-3);
-}
-.id-gear:hover { color: var(--ib-ink); background: var(--raised); }
 
 /* ---------- the Review chip, floating over the bottom of the stage ---------- */
 .inbox-ask {
@@ -378,9 +362,8 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 .ia-opt { width: auto; padding: 0 var(--s3); height: 36px; gap: var(--s2); border-radius: var(--r-control); font-weight: 600; }
 .ia-acts .ia-opt.always { background: transparent; }
 .ia-acts .ia-opt.deny { background: var(--danger-soft); }
-.ia-acts .ia-opt.allow { background: var(--ink); color: var(--ground); }
-.ia-acts .ia-opt.allow .ia-k { color: var(--honey-ink); box-shadow: var(--ring-line); }
-.ia-acts .ia-opt.allow:hover { background: var(--ink); }
+.ia-acts .ia-opt.allow { background: var(--honey); color: var(--honey-ink); }
+.ia-acts .ia-opt.allow:hover { background: var(--honey-hover); }
 .ia-acts .ia-opt.always:hover { background: var(--raised); }
 .ia-acts .ia-opt.deny:hover { background: var(--danger-soft); }
 .ia-acts .ia-k { white-space: nowrap; }
@@ -434,8 +417,6 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 .ir-title b { font-weight: 600; font-size: var(--fs-lead); }
 .ir-where { font: var(--t-mono); color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ir-acts { display: flex; gap: var(--s1); }
-.ir-close { height: 28px; padding: 0 var(--s3); border-radius: var(--r-control); background: var(--raised); color: var(--ib-ink-2); font-size: var(--fs-meta); }
-.ir-close:hover { background: var(--over); color: var(--ib-ink); }
 .ir-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 /* the drawer's inside is the design's review panel: head, files, one file's
    diff, and the three ways to end the job at the foot */
@@ -492,8 +473,6 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 var(--s1); border-radius: var(--r-control);
   font: var(--t-mono); color: var(--ib-ink); background: var(--over);
 }
-.inbox-review .hbtn { height: 30px; padding: 0 var(--s3); border: 0; border-radius: var(--r-control); font: var(--t-meta); color: var(--ib-ink-2); background: var(--raised); white-space: nowrap; }
-.inbox-review .hbtn:hover { background: var(--over); color: var(--ib-ink); }
 .inbox-review .dl .c { color: var(--ib-ink-2); }
 .inbox-review .dl.add { background: var(--work-soft); }
 .inbox-review .dl.add .c { color: var(--ink); }
@@ -519,24 +498,12 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
   .inbox-review .lbl { display: none; }
   .inbox-review .checks { margin-top: var(--s2); }
   .inbox-review .rfoot { gap: var(--s2); padding: var(--s2) var(--s4) var(--s3); }
-  .inbox-review .btn { height: 32px; }
   /* room for a two-line message (a conflict, say) without losing the buttons */
   .inbox-review .files { min-height: 36px; }
   .inbox-review .diff { min-height: 60px; }
   .inbox-review .ir-msg { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 }
-.inbox-review .btn {
-  height: 36px; padding: 0 var(--s3); border: 0; border-radius: var(--r-control);
-  display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap;
-  font: var(--t-row); color: var(--ib-ink); background: var(--raised);
-}
-.inbox-review .btn:hover:not(:disabled) { background: var(--over); }
-.inbox-review .btn.primary { background: var(--ink); color: var(--ground); }
-.inbox-review .btn.primary:hover:not(:disabled) { background: var(--ink); }
-.inbox-review .btn.danger { color: var(--ib-del); }
-.inbox-review .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .inbox-review kbd { font: var(--t-mono); color: var(--ib-ink-3); border: 1px solid var(--line); border-radius: var(--r-control); padding: 2px var(--s1); background: var(--raised); }
-.inbox-review .btn.primary kbd { background: transparent; color: var(--honey-ink); border-color: var(--line); }
 .inbox-review .ir-msg { margin: 0; font-size: var(--fs-meta); line-height: 1.5; color: var(--ib-ink-3); }
 .inbox-review .ir-msg.err, .inbox-review .ir-msg.warn { color: var(--ib-needs); }
 .inbox-review .ir-msg.busy { color: var(--ib-ink-2); }
@@ -547,8 +514,7 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 
 /* merged: done, so it steps back in the list; one button clears them */
 .iq-row.st-merged .iq-t, .iq-row.st-merged .iq-s { opacity: 0.6; }
-.iq-clear { display: block; margin: var(--s2) var(--s2) var(--s1); height: 30px; padding: 0 var(--s3); border-radius: var(--r-control); font-size: var(--fs-meta); color: var(--ib-ink-2); background: var(--raised); }
-.iq-clear:hover { background: var(--over); color: var(--ib-ink); }
+.iq-clear { display: block; margin: var(--s2) var(--s2) var(--s1); }
 
 @media (max-width: 1000px) {
   .inbox-review { width: auto; left: 16px; }
@@ -556,10 +522,6 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
   .inbox-ask { margin: 0 var(--s4) var(--s6) var(--s2); }
 }
 
-/* the old lime accent has no place in the Cinema palette */
-body.inbox-ui #btnResumeAll { height: 32px; padding: 0 var(--s3); border-radius: var(--r-control); background: var(--raised); color: var(--ib-ink); border-color: transparent; box-shadow: none; }
-body.inbox-ui #btnResumeAll:disabled { opacity: 0.5; cursor: default; }
-body.inbox-ui #btnResumeAll:hover { background: var(--over); }
 
 /* ---------- the Grid's cards: every agent but the one in the terminal, as
    plain text that reads at any width (inbox.ts renderRail) ---------- */
@@ -571,19 +533,19 @@ body.inbox-ui #btnResumeAll:hover { background: var(--over); }
   scrollbar-width: thin;
 }
 .rc {
-  display: grid; gap: var(--s2); padding: var(--s3) var(--s4) var(--s4);
-  border-radius: var(--r-dialog); background: var(--ib-panel);
+  display: grid; gap: var(--s2); padding: var(--s3);
+  border-radius: var(--r-card); background: var(--raised);
   box-shadow: var(--ring-line);
   font: var(--t-lead); color: var(--ib-ink);
   cursor: pointer; transition: background var(--m-press) var(--ease-in);
 }
-.rc:hover { background: var(--ib-raise); }
+.rc:hover { background: var(--over); }
 /* a project's name above its cards, when the Grid holds more than one */
 .rc-g { grid-column: 1 / -1; display: flex; align-items: baseline; gap: var(--s2); min-width: 0; padding: var(--s1) var(--s1) 0; }
 .rc-g:first-child { padding-top: 0; }
 .rc-g b { font: var(--t-row); color: var(--ib-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rc-g span { font-size: var(--fs-meta); color: var(--ib-ink-3); white-space: nowrap; }
-.rc.st-needs { box-shadow: inset 0 0 0 1px var(--honey-line); background: color-mix(in oklch, var(--ib-needs) 5%, var(--ib-panel)); }
+.rc.st-needs { box-shadow: none; background: var(--honey-soft); }
 .rc-h { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .rc-h .iq-mk { width: 26px; height: 26px; flex: none; }
 .rc-n { font-weight: 600; font-size: var(--fs-lead); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -608,9 +570,10 @@ body.inbox-ui #btnResumeAll:hover { background: var(--over); }
 .rc-opts .ia-opt { width: auto; height: 30px; padding: 0 var(--s3); border-radius: var(--r-control); font: var(--t-row); background: var(--raised); color: var(--ib-ink); }
 .rc-opts .ia-opt.always { background: transparent; color: var(--ib-ink-2); }
 .rc-opts .ia-opt.deny { background: var(--danger-soft); color: var(--ib-del); }
-.rc-opts .ia-opt.allow { background: var(--ink); color: var(--ground); }
+.rc-opts .ia-opt.allow { background: var(--honey); color: var(--honey-ink); }
+.rc.st-needs ~ .rc.st-needs .rc-opts .ia-opt.allow { background: var(--raised); color: var(--ink); box-shadow: var(--ring-control); }
 .rc-opts .ia-opt:hover { background: var(--over); }
-.rc-opts .ia-opt.allow:hover { background: var(--ink); }
+.rc-opts .ia-opt.allow:hover { background: var(--honey-hover); }
 
 /* Grid on a small screen: the list steps aside so two terminals have room to read (inbox.ts widenGrid) */
 body.inbox-ui.ib-grid-wide .app { grid-template-columns: 0px 1fr var(--code-w, 380px) 0px; }
@@ -666,8 +629,6 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
 .im-head h2 { margin: 0; font-size: var(--fs-page); font-weight: 600; letter-spacing:-.01em; }
 .im-sub { margin: var(--s1) 0 0; font-size: var(--fs-meta); color: var(--ib-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .im-mono { font-family: var(--mono); }
-.im-x { width: 30px; height: 30px; border-radius: var(--r-control); color: var(--ib-ink-3); background: var(--raised); }
-.im-x:hover { color: var(--ib-ink); background: var(--over); }
 .im-label { display: block; margin: 0 0 var(--s2); padding: 0; font-size: var(--fs-meta); font-weight: 500; color: var(--ib-ink-2); }
 .im-field { border: 0; margin: 0; padding: 0; min-width: 0; }
 .inbox-modal textarea {
@@ -721,10 +682,6 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
 .im-hint[hidden] { display: none; }
 .im-check { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-body); color: var(--ib-ink-2); }
 .im-foot { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s1); }
-.im-btn { height: 36px; padding: 0 var(--s4); border-radius: var(--r-control); font: var(--t-row); color: var(--ib-ink-2); background: var(--raised); }
-.im-btn:hover { color: var(--ib-ink); background: var(--over); }
-.im-btn.primary { background: var(--ink); color: var(--ground); }
-.im-btn.primary:hover { background: var(--ink); }
 
 .pal-back { padding-top: 12vh; }
 .inbox-pal {
@@ -771,15 +728,10 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
 /* fewer things on screen: the counts live in the headline, "back to canvas"
    means nothing here */
 body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
-.id-new { white-space: nowrap; }
 /* plain words: a filled track made the honey button read as the selected tab */
 .ib-acts { display: inline-flex; align-items: center; gap: 2px; }
-.ib-act { height: 26px; padding: 0 var(--s3); border-radius: var(--r-control); font: var(--t-row); color: var(--ib-ink-2); white-space: nowrap; }
-.ib-act:hover { color: var(--ib-ink); background: var(--raised); }
-.ib-act[aria-pressed="true"] { background: var(--over); color: var(--ib-ink); }
 /* the one thing to do with a stopped agent */
-.ib-act.ib-go { margin-right: var(--s1); color: var(--honey-ink); background: var(--honey); }
-.ib-act.ib-go:hover { color: var(--honey-ink); background: var(--honey-hover); }
+.ib-act.ib-go { margin-right: var(--s1); }
 body.inbox-ui .grid.canvas.inbox-split .ib-acts { display: none; }
 
 /* ---------- Split cards (as in the design): name · CLI over a quiet second
@@ -816,8 +768,6 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-sp { display: none; }
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .ib-pill { grid-row: 1 / 3; grid-column: 5; }
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .ib-acts { display: inline-flex; grid-row: 1 / 3; grid-column: 6; background: none; padding: 0; }
 body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .pb-ctrls { display: none; }
-.ib-icon { width: 30px; height: 30px; border-radius: var(--r-control); color: var(--ib-ink-3); font-size: var(--fs-lead); }
-.ib-icon:hover { color: var(--ib-ink); background: var(--raised); }
 /* ---------- the job as the headline of an agent ---------- */
 .iq-s { display: flex; align-items: baseline; gap: 0 var(--s1); }
 .iq-s .iq-p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -914,15 +864,6 @@ body.inbox-ui .inbox-start {
 .st-custom:focus { outline: none; box-shadow: var(--ring-line); }
 .st-custom[hidden] { display: none; }
 .st-sp { flex: 1; }
-.st-go {
-  display: inline-flex; align-items: center; gap: var(--s2);
-  height: 36px; padding: 0 var(--s3) 0 var(--s4);
-  border-radius: var(--r-control);
-  background: var(--honey); color: var(--honey-ink);
-  font: var(--t-row);
-}
-.st-go:hover { background: var(--honey-hover); }
-.st-go kbd { font: var(--t-mono); padding: 1px var(--s1); border-radius: var(--r-control); box-shadow: var(--ring-line); color: var(--honey-ink); }
 
 /* jobs to try */
 .st-try { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0 0; }
@@ -945,10 +886,10 @@ body.inbox-ui .inbox-start {
 .st-w {
   display: grid; grid-template-columns: 14px auto auto minmax(0, 1fr) auto; align-items: center; gap: var(--s2);
   padding: var(--s3) var(--s3); border-radius: var(--r-dialog); text-align: left;
-  background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--honey-line);
+  background: var(--ib-needs-bg);
   color: var(--ib-ink);
 }
-.st-w:hover { box-shadow: inset 0 0 0 1px var(--honey-line); }
+.st-w:hover { background: color-mix(in srgb, var(--honey) 20%, transparent); }
 .st-w b { font-weight: 600; }
 .st-wp { font-size: var(--fs-meta); color: var(--ib-ink-3); }
 .st-wl { font-size: var(--fs-body); color: var(--ib-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1018,8 +959,6 @@ body.inbox-ui .set-shell .seg button { border-radius: var(--r-control); min-widt
 body.inbox-ui .set-shell .seg button.on { background: var(--over); }
 body.inbox-ui .set-shell .stepper button { border-radius: var(--r-control); }
 body.inbox-ui .set-shell .stepper .n { min-width: 40px; }
-body.inbox-ui .set-shell .sbtn { border: 0; border-radius: var(--r-control); background: var(--raised); }
-body.inbox-ui .set-shell .sbtn:hover { background: var(--over); }
 .set-select {
   flex: none;
   height: 34px;
@@ -1032,9 +971,6 @@ body.inbox-ui .set-shell .sbtn:hover { background: var(--over); }
 }
 
 .im-sp { flex: 1; }
-.im-btn.quiet { background: transparent; color: var(--ib-ink-3); }
-.im-btn.quiet:hover { color: var(--ib-ink); background: var(--raised); }
-.im-btn:disabled { opacity: 0.6; cursor: default; }
 
 /* the pill back to your agents, on the start screen */
 body.inbox-ui .home-resume { border: 0; border-radius: var(--r-control); background: var(--ib-raise); box-shadow: var(--lift); color: var(--ib-ink);  font-family: var(--sans); }
@@ -1052,8 +988,6 @@ body.inbox-ui .app > .code-panel {
 body.inbox-ui .app.code-hidden > .code-panel { margin: 0; box-shadow: none; }
 body.inbox-ui .code-panel .cp-head { height: 48px; padding: 0 var(--s2) 0 var(--s4); }
 body.inbox-ui .code-panel .cp-eyebrow { font: var(--t-row); color: var(--ib-ink); }
-body.inbox-ui .code-panel .cp-btn { width: 28px; height: 28px; border-radius: var(--r-control); color: var(--ib-ink-3); }
-body.inbox-ui .code-panel .cp-btn:hover { background: var(--raised); color: var(--ib-ink); }
 body.inbox-ui .code-split::after { background: var(--over); }
 body.inbox-ui .app.editor-max .code-panel { margin: 0; border-radius: var(--r-dialog); box-shadow: var(--lift), var(--ring-line); background: var(--ib-panel); }
 body.inbox-ui .app.editor-max::before { background: var(--scrim); }
@@ -1086,7 +1020,6 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
 .hp-tool i { font-style: normal; display: flex; gap: var(--s1); margin-top: var(--s1); }
 .hp-tool i kbd { height: 18px; min-width: 18px; padding: 0 var(--s1); font-size: var(--fs-meta); color: var(--ib-ink-3); }
 @media (max-width: 640px) { .hp-row { grid-template-columns: 1fr; gap: var(--s1); } }
-.id-help { font: var(--t-title); }
 
 /* ⋯ on a queue row: the right-click menu, findable. Shows on hover, on the
    current row, and while the row has keyboard focus. */
@@ -1154,9 +1087,6 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
 .mm .im-sub b { font-weight: 600; color: var(--ib-ink-2); }
 /* one tab per project: every project's memory from the same panel */
 .mm-tabs { display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; margin-top: -4px; }
-.mm-tab { flex: none; height: 30px; padding: 0 var(--s3); border-radius: var(--r-control); font: var(--t-row); color: var(--ib-ink-3); background: var(--raised); }
-.mm-tab:hover { color: var(--ib-ink); background: var(--raised); }
-.mm-tab[aria-current="true"] { color: var(--ground); background: var(--ink); }
 .mm-add { display: flex; align-items: flex-end; gap: var(--s2); }
 .mm-add textarea, .mm-edit textarea, .mm-ask textarea { min-height: 0; margin-top: 0; }
 .mm-add textarea { flex: 1; }
@@ -1167,9 +1097,6 @@ body.inbox-ui .app.editor-max::before { background: var(--scrim); }
 .mm-t { font-size: var(--fs-lead); line-height: 1.55; color: var(--ib-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .mm-m { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s1); font-size: var(--fs-meta); color: var(--ib-ink-3); }
 .mm-id { font: var(--t-mono); }
-.mm-b { height: 26px; padding: 0 var(--s2); border-radius: var(--r-control); font: var(--t-row); color: var(--ib-ink-3); }
-.mm-b:hover { color: var(--ib-ink); background: var(--raised); }
-.mm-b.danger:hover { color: var(--ib-del); background: var(--danger-soft); }
 .mm-b:focus-visible { color: var(--ib-ink); }
 /* the Ask and Edit buttons stay quiet until you reach the fact */
 @media (hover: hover) { .mm-e .mm-b { opacity: 0; } .mm-e:hover .mm-b, .mm-e:focus-within .mm-b { opacity: 1; } }

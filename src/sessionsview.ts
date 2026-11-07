@@ -323,7 +323,7 @@ export function createSessionsView() {
         <aside class="sv-side">
           <header class="sv-head">
             <div class="sv-ht"><h2>Sessions</h2><span class="sv-count" aria-live="polite"></span></div>
-            <button type="button" class="ir-close" data-sv-close aria-label="Close sessions" title="Close (Esc)">Close</button>
+            <button type="button" class="btn quiet sm ir-close" data-sv-close aria-label="Close sessions" title="Close (Esc)">Close</button>
           </header>
           <div class="sv-scope" role="group" aria-label="Which sessions">
             <button type="button" data-scope="project" aria-pressed="${scope === "project"}" ${dir ? "" : "disabled"} title="${esc(dir ?? "")}">${esc(name ?? "This project")}</button>

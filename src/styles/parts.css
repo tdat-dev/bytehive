@@ -5,7 +5,8 @@
    than an outline, for the halo; the outline stays for Windows' contrast themes,
    which drop the shadow and paint the outline. Important, because a part must not
    lose its ring to a screen's own shadow. */
-:focus-visible{outline:2px solid transparent;outline-offset:2px;box-shadow:var(--ring) !important}
+:focus-visible:not([tabindex="-1"]){outline:2px solid transparent;outline-offset:2px;box-shadow:var(--ring) !important}
+[tabindex="-1"]:focus{outline:none}
 /* a field shows its caret and its border; the ring is for things you press */
 input:not([type=checkbox],[type=radio],[type=range]):focus-visible,textarea:focus-visible,[contenteditable]:focus-visible,select:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var(--ink) !important}
 /* the terminal and the editor own their caret and their focus */
@@ -62,4 +63,16 @@ input:focus-visible + .tg,input:focus-visible + .pt-sw,input:focus-visible + .cf
 .btn.icon.sm{width:24px}
 .btn:disabled,.btn:disabled:hover,.btn.primary:disabled,.btn.secondary:disabled{background:transparent;color:var(--ink-off);box-shadow:none;cursor:default;transform:none}
 .btn[aria-busy="true"]{cursor:progress}
-.btn kbd{font:var(--t-mono);color:inherit;opacity:.72}
+.btn kbd,.inbox-review .btn kbd{padding:0;border:0;background:none;box-shadow:none;font:var(--t-mono);color:inherit;opacity:.72}
+
+/* Fields: one height, one fill, a border that reaches 3:1. */
+.input,.im-custom,.st-custom,.set-select,.mm-to select,.kb-url{height:32px;padding:0 var(--s3);border:0;border-radius:var(--r-control);background:var(--raised);box-shadow:var(--ring-control);color:var(--ink);font:var(--t-body)}
+.inbox-modal textarea,.inbox-review .note,.tname-edit,.kb-list-edit{background:var(--raised);box-shadow:var(--ring-control);border:0;border-radius:var(--r-control)}
+.input::placeholder,textarea::placeholder{color:var(--ink-3)}
+
+/* Selected is --over, never honey. */
+:is(.sn.on,.pal-it.on,.inbox-review .file.cur,.id-seg button[aria-pressed="true"],.seg button.on,.im-seg input:checked + span,.im-choice input:checked + span,.iq-chip[aria-pressed="true"],.set-seg button.on,.chip.on){background:var(--over);color:var(--ink);box-shadow:none}
+
+/* Cards: raised, a hairline, 10 and 12. A card never holds a card. */
+:is(.st-proj,.st-steps li,.cmp-col,.hp-tool){border-radius:var(--r-card);background:var(--raised);box-shadow:var(--ring-line);padding:var(--s3)}
+:is(.st-proj,.hp-tool):hover{background:var(--over)}

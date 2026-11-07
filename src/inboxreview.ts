@@ -122,7 +122,8 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     el.addEventListener("input", onInput);
     el.addEventListener("keydown", onKey);
     render();
-    el.querySelector<HTMLElement>(".ir-close")?.focus({ preventScroll: true });
+    el.tabIndex = -1;
+    el.focus({ preventScroll: true });
     void load(pane, my);
   }
 
@@ -175,7 +176,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     if (own && check?.kind === "ok") chip = `<span class="check">${glyph("merged")}Merges cleanly into ${esc(check.base)}</span>`;
     else if (own && conflict) chip = `<span class="check"><span class="d" aria-hidden="true">!</span>Conflicts with ${esc(conflict.base)} in ${conflict.files.length} file${conflict.files.length === 1 ? "" : "s"}</span>`;
     return `<div class="rhead">
-      <button class="hbtn ir-close" type="button" data-act="close" title="Close (Esc)">Close</button>
+      <button class="btn quiet sm ir-close" type="button" data-act="close" title="Close (Esc)">Close</button>
       <p class="lbl">${own ? "Changes on this branch" : `${esc(pane.spec.name)}'s changes in the project folder`}</p>
       <h2>${esc(count)}${files?.length ? ` <span class="num a">+${t.add}</span><span class="num d">−${t.del}</span>` : ""}</h2>
       ${where ? `<p class="br" title="${esc(where)}">${esc(where)}</p>` : ""}
@@ -199,7 +200,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     return `<div class="rc-note" data-cid="${esc(c.id)}">
       <p class="rc-where">${where}</p>
       <p class="rc-text">${esc(c.text)}</p>
-      <div class="rc-acts"><button type="button" class="hbtn" data-act="rc-edit" data-cid="${esc(c.id)}" aria-label="Edit comment on ${where}">Edit</button><button type="button" class="hbtn" data-act="rc-del" data-cid="${esc(c.id)}" aria-label="Remove comment on ${where}">Remove</button></div>
+      <div class="rc-acts"><button type="button" class="btn secondary sm" data-act="rc-edit" data-cid="${esc(c.id)}" aria-label="Edit comment on ${where}">Edit</button><button type="button" class="btn secondary sm" data-act="rc-del" data-cid="${esc(c.id)}" aria-label="Remove comment on ${where}">Remove</button></div>
     </div>`;
   }
 
@@ -209,7 +210,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     return `<div class="rc-box">
       <label class="rc-where" for="rcText">Comment on ${where}</label>
       <textarea id="rcText" class="note" placeholder="What should change here?">${esc(e.text)}</textarea>
-      <div class="rc-acts"><span class="rc-hint"><kbd>Ctrl Enter</kbd> saves, <kbd>Esc</kbd> cancels</span><button type="button" class="hbtn" data-act="rc-cancel">Cancel</button><button type="button" class="btn primary" data-act="rc-save">${e.id ? "Save" : "Comment"}</button></div>
+      <div class="rc-acts"><span class="rc-hint"><kbd>Ctrl Enter</kbd> saves, <kbd>Esc</kbd> cancels</span><button type="button" class="btn secondary sm" data-act="rc-cancel">Cancel</button><button type="button" class="btn primary" data-act="rc-save">${e.id ? "Save" : "Comment"}</button></div>
     </div>`;
   }
 
@@ -239,7 +240,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       }
     }
     const total = f.hunks.reduce((k, h) => k + h.lines.length, 0);
-    if (!showAll && total > MAX_LINES) html += `<button type="button" class="hbtn ir-more" data-act="all">Show all ${total} lines</button>`;
+    if (!showAll && total > MAX_LINES) html += `<button type="button" class="btn secondary sm ir-more" data-act="all">Show all ${total} lines</button>`;
     return `<div class="diff" aria-label="Diff of ${esc(f.path)}. Arrow keys move between lines; Enter comments on one, Shift+Enter on a run of lines.">${html}</div>`;
   }
 
@@ -260,7 +261,7 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     if (leftOut.length) line += `<p class="ir-msg" role="status">${leftOut.length} file${leftOut.length === 1 ? "" : "s"} left out: ${esc(leftOut.join(", "))}</p>`;
     const off = busy ? " disabled" : "";
     const n = commentsOf(pane.id).length;
-    const back = `<button type="button" class="btn" data-act="back"${off}${n ? ` aria-label="Send back with ${n} comment${n === 1 ? "" : "s"}"` : ""}>Send back${n ? ` <span class="rc-n" aria-hidden="true">${n}</span>` : ""}</button>`;
+    const back = `<button type="button" class="btn secondary" data-act="back"${off}${n ? ` aria-label="Send back with ${n} comment${n === 1 ? "" : "s"}"` : ""}>Send back${n ? ` <span class="rc-n" aria-hidden="true">${n}</span>` : ""}</button>`;
     const acts = own
       ? `<button type="button" class="btn primary" data-act="merge"${off}>Merge into ${into} <kbd>M</kbd></button>
          ${back}
@@ -286,8 +287,8 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
     const t = taskOf(pane.id);
     let body: string;
     if (t?.status.state === "merged") {
-      body = `<div class="rempty"><strong>Merged into ${esc(t.mergedInto ?? "main")}</strong>Its worktree and branch are removed. Clear it from the list, or give ${esc(pane.spec.name)} a new task.
-        <button type="button" class="btn" data-act="clear">Clear from list</button></div>`;
+      body = `<div class="rempty"><strong>Merged into ${esc(t.mergedInto ?? "main")}</strong>${pane.spec.worktree ? "Its worktree was kept, with what the merge could not take." : "Its worktree and branch are removed."} Clear it from the list, or give ${esc(pane.spec.name)} a new task.
+        <button type="button" class="btn secondary" data-act="clear">Clear from list</button></div>`;
     } else if (files === null) {
       body = `<div class="rempty" role="status">Reading the changes…</div>`;
     } else if (!files.length) {

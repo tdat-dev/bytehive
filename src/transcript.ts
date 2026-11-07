@@ -316,7 +316,7 @@ export function openImage(pics: ChatImage[], start: number, what: string): void 
   el.className = "inbox-modal-back cv-lb";
   el.innerHTML = `<div class="cv-lb-box" role="dialog" aria-modal="true" aria-label="${esc(what)}">
       <header class="cv-lb-bar"><span class="cv-lb-t">${esc(what)}</span><span class="cv-lb-n"></span>
-        <button type="button" class="im-x" data-lb-close aria-label="Close" title="Close (Esc)">${ICON_CLOSE}</button></header>
+        <button type="button" class="btn quiet icon im-x" data-lb-close aria-label="Close" title="Close (Esc)">${ICON_CLOSE}</button></header>
       <div class="cv-lb-stage">
         <button type="button" class="cv-lb-nav prev" data-lb="-1" aria-label="Previous picture"><svg class="i" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
         <img class="cv-lb-img" src="${urlOf(pics[k])}" alt="${esc(what)}">

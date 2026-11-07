@@ -198,7 +198,7 @@ async function renderReplayList(dir: string): Promise<void> {
     row.innerHTML =
       `<span class="replay-rl"><b>${escHtml(r.agent)}</b><span>${escHtml(when)}</span></span>` +
       `<span class="replay-rdur">${escHtml(fmtSize(r.size))}</span>` +
-      `<button class="replay-rdel" aria-label="Delete recording">✕</button>`;
+      `<button class="btn quiet icon sm" aria-label="Delete recording">✕</button>`;
     row.addEventListener("click", (e) => {
       if ((e.target as HTMLElement).closest(".replay-rdel")) return;
       void rplOpen(r.path, `${r.agent} · ${when}`);

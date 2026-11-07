@@ -44,23 +44,9 @@
 .tname-edit{background:var(--surface-3);border:1px solid var(--line-strong);color:var(--text);border-radius:var(--r-control);font:inherit;font-size:var(--fs-meta);padding:1px var(--s1);width:130px;outline:none}
 .tname-edit:focus{border-color:var(--accent-dim)}
 
-/* compact "+ Agent" button — secondary, lime on hover */
-.tb-btn{display:inline-flex;align-items:center;gap:var(--s1);height:30px;padding:0 var(--s3);border-radius:var(--r-control);border:1px solid var(--line-strong);background:var(--surface-1);color:var(--text-2);font-weight:600;font-size:var(--fs-meta);flex:none;transition:border-color var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in), background var(--m-press) var(--ease-in)}
-.tb-btn:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
-.tb-btn svg{color:var(--accent)}
 /* count chip on the "Resume all" button */
 .ra-count:not(:empty){display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 var(--s1);margin-left:1px;border-radius:var(--r-control);background:var(--accent-glow,var(--over));color:var(--accent);font-size:var(--fs-meta);font-weight:600;line-height:1}
-/* "Resume all" is the one contextual action — it only appears when agents are
-   parked (e.g. after reopening the app). Give it a soft accent treatment so it
-   reads as the recommended thing to do, distinct from the neutral chrome. */
-#btnResumeAll{border-color:color-mix(in oklab,var(--accent) 32%,var(--line-strong));background:var(--accent-glow);color:var(--accent)}
-#btnResumeAll:hover{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 15%,transparent);color:var(--accent)}
-#btnResumeAll svg{color:var(--accent)}
-#btnResumeAll .ra-count:not(:empty){background:color-mix(in oklab,var(--accent) 26%,transparent)}
 
-/* live stats + clock (numbers in mono) */
-.tb-btn-icon{width:30px;height:30px;border-radius:var(--r-control);display:grid;place-items:center;color:var(--text-2);background:var(--surface-1);border:1px solid var(--line-strong);transition:border-color var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in), background var(--m-press) var(--ease-in);flex:none}
-.tb-btn-icon:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
 /* Still the positioning context — the panes, the sigil canvas, the focus rail
    and the delegation overlay are all absolutely placed inside it. What is gone
    is the floating Tidy pill: it sat at right:16/top:14, i.e. on top of the
@@ -152,8 +138,6 @@
 .pane-find-in:focus{outline:none}
 .pane-find-in::placeholder{color:var(--muted-2)}
 .pane-find-count{font-family:var(--mono);font-size:var(--fs-meta);font-variant-numeric:tabular-nums;color:var(--muted);min-width:34px;text-align:right}
-.pane-find-btn{width:28px;height:28px;border-radius:var(--r-control);display:grid;place-items:center;color:var(--muted);font-size:var(--fs-title);line-height:1;flex:none;transition:background var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in)}
-.pane-find-btn:hover{background:var(--surface-3);color:var(--text)}
 
 /* empty workspace → centered spawn prompt (solid bg: the grid behind is line-colored) */
 .tile-spawn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s3);border:1px dashed var(--line-strong);border-radius:var(--r-control);color:var(--muted);background:var(--surface-0);transition:border-color var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in), background var(--m-press) var(--ease-in)}

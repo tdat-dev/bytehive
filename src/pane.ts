@@ -167,9 +167,9 @@ function buildPaneEl(
     <div class="pane-find" data-find hidden>
       <input class="pane-find-in" data-find-in type="text" placeholder="Find in output…" spellcheck="false" />
       <span class="pane-find-count" data-find-count></span>
-      <button class="pane-find-btn" data-find-prev aria-label="Previous match">&#8249;</button>
-      <button class="pane-find-btn" data-find-next aria-label="Next match">&#8250;</button>
-      <button class="pane-find-btn" data-find-close aria-label="Close search">${KILL_SVG}</button>
+      <button class="btn quiet icon sm" data-find-prev aria-label="Previous match">&#8249;</button>
+      <button class="btn quiet icon sm" data-find-next aria-label="Next match">&#8250;</button>
+      <button class="btn quiet icon sm" data-find-close aria-label="Close search">${KILL_SVG}</button>
     </div>
     <div class="term-host" data-host></div>`;
   return el;

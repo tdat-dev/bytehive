@@ -67,7 +67,7 @@ export function openNewAgent(opts: { count?: number } = {}): void {
     <form class="inbox-modal na" role="dialog" aria-modal="true" aria-labelledby="naTitle">
       <header class="im-head">
         <div><h2 id="naTitle">New agent</h2><p class="im-sub">In ${esc(ws.name)}${ws.dir ? ` · <span class="im-mono">${esc(ws.dir)}</span>` : ""}</p></div>
-        <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button>
+        <button type="button" class="btn quiet icon im-x" data-close aria-label="Close">${ICON_CLOSE}</button>
       </header>
       <label class="im-label" for="naTask">What should it do?</label>
       <textarea id="naTask" rows="4" placeholder="Fix the flaky upload test and add a regression test. Leave empty to give it a job later."></textarea>
@@ -90,10 +90,10 @@ export function openNewAgent(opts: { count?: number } = {}): void {
       </div>
       <label class="im-check"><input type="checkbox" id="naSkip"${loadCrew().skipPerms ? " checked" : ""}> Don't ask before running commands or editing files</label>
       <footer class="im-foot">
-        <button type="button" class="im-btn quiet" data-save title="Keep this setup so Settings → Sessions → Scheduled agents can start it at a set time">Save as preset</button>
+        <button type="button" class="btn quiet" data-save title="Keep this setup so Settings → Sessions → Scheduled agents can start it at a set time">Save as preset</button>
         <span class="im-sp"></span>
-        <button type="button" class="im-btn" data-close>Cancel</button>
-        <button type="submit" class="im-btn primary" data-start title="Start (Ctrl+Enter)" aria-keyshortcuts="Control+Enter">${startLabel(preset)}</button>
+        <button type="button" class="btn secondary" data-close>Cancel</button>
+        <button type="submit" class="btn primary" data-start title="Start (Ctrl+Enter)" aria-keyshortcuts="Control+Enter">${startLabel(preset)}</button>
       </footer>
     </form>`;
   document.body.appendChild(el);

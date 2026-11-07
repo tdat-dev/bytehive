@@ -88,10 +88,10 @@ export function openMemory(o: MemoryViewOpts): void {
   back.className = "inbox-modal-back mm-back";
   back.innerHTML = `<div class="inbox-modal mm" role="dialog" aria-modal="true" aria-labelledby="mmTitle">
     <header class="im-head"><div><h2 id="mmTitle">Project memory</h2><p class="im-sub">What every agent in <b>${esc(o.project)}</b> knows when it starts. Agents add to it as they learn.</p></div>
-      <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
+      <button type="button" class="btn quiet icon im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
     ${o.projects && o.projects.length > 1 ? `<nav class="mm-tabs" aria-label="Projects">${o.projects.map((p) =>
-      `<button type="button" class="mm-tab" data-proj-tab="${esc(p.id)}"${p.id === o.current ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</nav>` : ""}
-    <form class="mm-add"><label class="mm-sr" for="mmNew">Add a fact</label><textarea id="mmNew" rows="2" placeholder="Add a fact every agent here should know: a convention, a decision, where something lives…"></textarea><button type="submit" class="im-btn primary">Add</button></form>
+      `<button type="button" class="btn quiet sm mm-tab" data-proj-tab="${esc(p.id)}"${p.id === o.current ? ' aria-current="true"' : ""}>${esc(p.name)}</button>`).join("")}</nav>` : ""}
+    <form class="mm-add"><label class="mm-sr" for="mmNew">Add a fact</label><textarea id="mmNew" rows="2" placeholder="Add a fact every agent here should know: a convention, a decision, where something lives…"></textarea><button type="submit" class="btn primary">Add</button></form>
     <div class="mm-body" aria-live="polite"></div>
     <footer class="mm-foot"></footer>
   </div>`;
@@ -103,12 +103,12 @@ export function openMemory(o: MemoryViewOpts): void {
 
   const askForm = (id: string) => {
     const agents = o.agents();
-    if (!agents.length) return `<div class="mm-ask"><p class="mm-note">Start an agent in ${esc(o.project)} first: it checks the code and fixes ${id === "*" ? "the memory" : "this fact"} for you.</p><div class="mm-acts"><button type="button" class="im-btn quiet" data-cancel>Close</button></div></div>`;
+    if (!agents.length) return `<div class="mm-ask"><p class="mm-note">Start an agent in ${esc(o.project)} first: it checks the code and fixes ${id === "*" ? "the memory" : "this fact"} for you.</p><div class="mm-acts"><button type="button" class="btn quiet" data-cancel>Close</button></div></div>`;
     return `<form class="mm-ask" data-ask="${esc(id)}">
       <label class="mm-sr" for="mmNote">What should change</label>
       <textarea id="mmNote" rows="2" placeholder="${id === "*" ? "Anything to look at? (optional)" : "What is wrong with it? (optional)"}"></textarea>
       <div class="mm-acts"><label class="mm-to">Send to <select id="mmTo">${agents.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("")}</select></label>
-        <span class="im-sp"></span><button type="button" class="im-btn quiet" data-cancel>Cancel</button><button type="submit" class="im-btn primary">Send</button></div>
+        <span class="im-sp"></span><button type="button" class="btn quiet" data-cancel>Cancel</button><button type="submit" class="btn primary">Send</button></div>
     </form>`;
   };
 
@@ -117,13 +117,13 @@ export function openMemory(o: MemoryViewOpts): void {
     const meta = [e.by === "you" ? "You" : e.by, when].filter(Boolean).join(" · ");
     if (editing === e.id) {
       return `<li class="mm-e editing"><form class="mm-edit" data-edit="${esc(e.id)}"><label class="mm-sr" for="mmEdit">Edit ${esc(e.id)}</label><textarea id="mmEdit" rows="3">${esc(e.text)}</textarea>
-        <div class="mm-acts"><span class="im-sp"></span><button type="button" class="im-btn quiet" data-cancel>Cancel</button><button type="submit" class="im-btn primary">Save</button></div></form></li>`;
+        <div class="mm-acts"><span class="im-sp"></span><button type="button" class="btn quiet" data-cancel>Cancel</button><button type="submit" class="btn primary">Save</button></div></form></li>`;
     }
     return `<li class="mm-e" data-id="${esc(e.id)}"><div class="mm-t">${esc(e.text)}</div>
       <div class="mm-m"><span class="mm-id">${esc(e.id)}</span>${meta ? `<span>${esc(meta)}</span>` : ""}<span class="im-sp"></span>
-        <button type="button" class="mm-b" data-act="ask" title="Send this fact to an agent to check against the code and fix">Ask an agent</button>
-        <button type="button" class="mm-b" data-act="edit">Edit</button>
-        <button type="button" class="mm-b danger" data-act="delete">Delete</button></div>
+        <button type="button" class="btn quiet sm mm-b" data-act="ask" title="Send this fact to an agent to check against the code and fix">Ask an agent</button>
+        <button type="button" class="btn quiet sm mm-b" data-act="edit">Edit</button>
+        <button type="button" class="btn quiet sm danger mm-b" data-act="delete">Delete</button></div>
       ${asking === e.id ? askForm(e.id) : ""}</li>`;
   };
 
@@ -132,8 +132,8 @@ export function openMemory(o: MemoryViewOpts): void {
     body.innerHTML = (error ? `<p class="mm-err" role="alert">${esc(error)}</p>` : "") + (mem.entries.length
       ? `<ol class="mm-list">${mem.entries.map(entryHtml).join("")}</ol>`
       : `<p class="mm-empty">Nothing yet. Agents save what they learn about ${esc(o.project)} here; add your own above.</p>`);
-    foot.innerHTML = `${status ? `<span class="mm-status">${esc(status)}${undo ? ` <button type="button" class="mm-b" data-act="undo">Undo</button>` : ""}</span>` : ""}<span class="im-sp"></span>
-      ${mem.entries.length ? `<button type="button" class="im-btn" data-act="ask-all" title="An agent checks every fact against the code, fixes, merges and fills gaps">Ask an agent to check all of it</button>` : ""}`;
+    foot.innerHTML = `${status ? `<span class="mm-status">${esc(status)}${undo ? ` <button type="button" class="btn quiet sm mm-b" data-act="undo">Undo</button>` : ""}</span>` : ""}<span class="im-sp"></span>
+      ${mem.entries.length ? `<button type="button" class="btn secondary" data-act="ask-all" title="An agent checks every fact against the code, fixes, merges and fills gaps">Ask an agent to check all of it</button>` : ""}`;
     // the form for all of it sits over the footer
     back.querySelector(".mm-askall")?.remove();
     if (asking === "*") foot.insertAdjacentHTML("beforebegin", `<div class="mm-askall">${askForm("*")}</div>`);

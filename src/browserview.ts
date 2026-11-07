@@ -227,7 +227,7 @@ function renderAsks(all: Ask[]) {
       el.dataset.ask = String(a.id);
       el.setAttribute("role", "alertdialog");
       el.setAttribute("aria-label", askLine(a));
-      el.innerHTML = `<span class="bv-dot" aria-hidden="true"></span><div class="bv-ask-t"><b></b><span></span></div><div class="bv-ask-acts"><button type="button" class="bv-no" data-no>Don't allow</button><button type="button" class="bv-ok" data-ok>Allow</button></div>`;
+      el.innerHTML = `<span class="bv-dot" aria-hidden="true"></span><div class="bv-ask-t"><b></b><span></span></div><div class="bv-ask-acts"><button type="button" class="btn secondary sm bv-no" data-no>Don't allow</button><button type="button" class="btn primary sm bv-ok" data-ok>Allow</button></div>`;
       el.querySelector("b")!.textContent = askLine(a);
       el.querySelector(".bv-ask-t span")!.textContent = host(a.url) ? `on ${host(a.url)}` : "in the browser";
       return el;

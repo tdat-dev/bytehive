@@ -72,12 +72,13 @@ export function createHistoryDrawer(host: HTMLElement, onClose: () => void) {
     el.innerHTML = `
       <header class="ir-head">
         <div class="ir-title"><b>${esc(pane.spec.name)}'s history</b><span class="ir-where">Kept while ByteHive is open</span></div>
-        <button class="ir-close" type="button" aria-label="Close history" title="Close (Esc)">Close</button>
+        <button class="btn quiet sm ir-close" type="button" aria-label="Close history" title="Close (Esc)">Close</button>
       </header>
       <div class="ih-body" tabindex="0"></div>`;
     host.appendChild(el);
     el.querySelector(".ir-close")!.addEventListener("click", () => close());
-    el.querySelector<HTMLElement>(".ir-close")!.focus({ preventScroll: true });
+    el.tabIndex = -1;
+    el.focus({ preventScroll: true });
     el.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } });
     refresh();
   }

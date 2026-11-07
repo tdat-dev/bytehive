@@ -81,7 +81,7 @@ export function openSettings() {
   if (!settingsModal?.classList.contains("open")) settingsBack = document.activeElement as HTMLElement | null;
   settingsModal?.classList.add("open");
   // The keyboard lands in the dialog (Esc closes it, Tab stays in it).
-  document.getElementById("setClose")?.focus();
+  document.querySelector<HTMLElement>(".sn.on")?.focus();
 }
 /** Where the keyboard was before Settings opened; it goes back there. */
 let settingsBack: HTMLElement | null = null;

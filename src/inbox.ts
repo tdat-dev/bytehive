@@ -349,7 +349,7 @@ export const changesOpenFor = (): string | null => reviewer?.paneId ?? null;
  *  terminal, so it takes the keyboard instead, where it puts it itself on opening. */
 export function focusStage(): void {
   if (document.getElementById("app")?.hidden) return;
-  const drawer = document.querySelector<HTMLElement>(".inbox-review .ir-close");
+  const drawer = document.querySelector<HTMLElement>(".inbox-review");
   if (drawer) drawer.focus({ preventScroll: true });
   else stagePane()?.term.focus();
 }
@@ -755,7 +755,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
           <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliMark(p?.spec)}<span class="iq-g">${stateGlyph(t)}</span></span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">${icon("layout-grid", "sm")}</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
-          ${t.status.state === "stopped" ? `<span class="iq-resume" data-resume aria-hidden="true" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</span>` : ""}
+          ${t.status.state === "stopped" ? `<span class="btn secondary sm iq-resume" data-resume aria-hidden="true" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</span>` : ""}
           <span class="iq-more" data-more aria-hidden="true"><svg class="i" aria-hidden="true"><use href="#i-ellipsis"/></svg></span>
           <span class="iq-s">${t.title ? `<span class="iq-p">${esc(t.name)}</span><span class="iq-dot" aria-hidden="true">·</span>` : ""}${t.race ? `<span class="iq-race">race ${t.race.n}/${t.race.of}</span> ` : ""}<span class="iq-l">${esc(line)}</span>${lineCounts(t)}${cost}${full}</span>
         </button></li>`;
@@ -787,7 +787,7 @@ let shownCurrent: string | null | undefined;
 /** Merged agents are done: one button takes them all off the list. */
 function clearMergedHtml(list: Task[]): string {
   const n = list.filter((t) => t.status.state === "merged").length;
-  return n ? `<button type="button" class="iq-clear" data-clear-merged>Clear ${n} merged</button>` : "";
+  return n ? `<button type="button" class="btn secondary sm iq-clear" data-clear-merged>Clear ${n} merged</button>` : "";
 }
 
 /** Take merged agents off the list: their work is in, their worktree gone. */
@@ -835,11 +835,11 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       acts.className = "ib-acts";
       acts.dataset.mode = build;
       acts.innerHTML = pinned
-        ? `<button class="ib-icon" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">${ICON_EXPAND}</button><button class="ib-icon" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">${ICON_CLOSE}</button>`
+        ? `<button class="btn quiet icon sm" data-stage="full" title="Open full size" aria-label="Open ${esc(t.name)} full size">${ICON_EXPAND}</button><button class="btn quiet icon sm" data-stage="close" title="Take out of Grid" aria-label="Take ${esc(t.name)} out of the Grid">${ICON_CLOSE}</button>`
         : stopped
           // stopped: nothing to type into, one button starts it again
-          ? `<button class="ib-act ib-go" data-stage="resume" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</button>${handoffTargets(p).length || openTargets(p).length ? `<button class="ib-act" data-stage="handover" title="Another agent carries on ${esc(t.name)}'s task">Hand over</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`
-          : `<button class="ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
+          ? `<button class="btn primary sm ib-act ib-go" data-stage="resume" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</button>${handoffTargets(p).length || openTargets(p).length ? `<button class="btn quiet sm ib-act" data-stage="handover" title="Another agent carries on ${esc(t.name)}'s task">Hand over</button>` : ""}<button class="btn quiet sm ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="btn quiet sm ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>`
+          : `<button class="btn quiet sm ib-act ib-term" data-stage="cmds" title="Type / so ${esc(t.name)}'s CLI shows its own commands">Commands</button>${profileOf(p.spec.badge).modelCommand ? `<button class="btn quiet sm ib-act ib-term" data-stage="model" title="Open the CLI's own model picker">Model</button>` : ""}<button class="btn quiet sm ib-act" data-stage="review" title="What ${esc(t.name)} changed (Alt+R)">Changes</button><button class="btn quiet sm ib-act" data-stage="history" title="What ${esc(t.name)} has done (Alt+H)">History</button>${t.race ? `<button class="btn quiet sm ib-act" data-stage="compare" title="Everyone on this job, side by side">Compare ${t.race.of}</button>` : ""}`;
       pill.after(acts);
     }
     acts.querySelector('[data-stage="review"]')?.setAttribute("aria-pressed", String(reviewer?.paneId === p.id));
@@ -912,7 +912,7 @@ function renderEmpty(): void {
   if (emptyEl.dataset.sig === sig) return;
   emptyEl.dataset.sig = sig;
   emptyEl.innerHTML = `<b>No agents in ${esc(ws.name)} yet</b><span>Say what you want done and one starts on it in this folder.</span>
-    <button type="button" class="im-btn primary" data-empty-new>New agent</button>`;
+    <button type="button" class="btn primary" data-empty-new>New agent</button>`;
 }
 
 /** Tips for what just became useful; showTip keeps them one at a time. */
@@ -1020,14 +1020,14 @@ function openCompare(raceId: string): void {
   back.className = "inbox-modal-back cmp-back";
   back.innerHTML = `<div class="inbox-modal cmp" role="dialog" aria-modal="true" aria-labelledby="cmpTitle">
     <header class="im-head"><div><h2 id="cmpTitle">${esc(racers[0].title ?? "Same job")}</h2><p class="im-sub">${racers.length} agents on the same job. Review each one, merge the best, discard the rest.</p></div>
-      <button type="button" class="im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
+      <button type="button" class="btn quiet icon im-x" data-close aria-label="Close">${ICON_CLOSE}</button></header>
     <div class="cmp-grid">${racers.map((t) => {
       const p = paneOf(t);
       return `<section class="cmp-col">
         <div class="cmp-h"><span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliMark(p?.spec)}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${stateGlyph(t)}${GROUP_LABEL[t.status.state]}</span></div>
         <p class="cmp-n">${t.changedFiles == null ? "Changes unknown" : `${t.changedFiles} file${t.changedFiles === 1 ? "" : "s"} changed`}${lineCounts(t)}</p>
         <p class="cmp-l">${esc(rowLine(t))}</p>
-        <button class="im-btn${t.status.state === "review" ? " primary" : ""}" data-review="${esc(t.paneId)}">Review</button>
+        <button class="btn${t.status.state === "review" ? " primary" : " secondary"}" data-review="${esc(t.paneId)}">Review</button>
       </section>`;
     }).join("")}</div></div>`;
   document.body.appendChild(back);
@@ -1268,11 +1268,11 @@ function mount(): void {
     <button class="id-search" data-dock="search" title="Jump to an agent or run a command (Ctrl+K)">
       <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
       <span>Jump to an agent or run a command</span><kbd>Ctrl+K</kbd></button>
-    <button class="id-new" data-dock="new" title="New agent (Ctrl+Shift+T)">New agent</button>
-    <button class="id-gear" data-dock="sessions" aria-label="Sessions" title="Sessions: read back earlier conversations (Alt+O)">
+    <button class="btn secondary id-new" data-dock="new" title="New agent (Ctrl+Shift+T)">New agent</button>
+    <button class="btn quiet icon" data-dock="sessions" aria-label="Sessions" title="Sessions: read back earlier conversations (Alt+O)">
       <svg class="i" aria-hidden="true"><use href="#i-history"/></svg></button>
-    <button class="id-gear id-help" data-dock="help" aria-label="What ByteHive can do" title="What ByteHive can do (?)">?</button>
-    <button class="id-gear" data-dock="settings" aria-label="Settings" title="Settings (Ctrl+,)">
+    <button class="btn quiet icon" data-dock="help" aria-label="What ByteHive can do" title="What ByteHive can do (?)">?</button>
+    <button class="btn quiet icon" data-dock="settings" aria-label="Settings" title="Settings (Ctrl+,)">
       <svg class="i" aria-hidden="true"><use href="#i-settings"/></svg></button>`;
   app.appendChild(dockEl);
   splitBtn = dockEl.querySelector<HTMLButtonElement>('[data-dock="split"]');

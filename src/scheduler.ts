@@ -93,7 +93,7 @@ function renderSchedList(): void {
       `<span class="sched-name">${tplName ? escHtml(tplName) : "<i>preset deleted</i>"}</span>` +
       `<span class="sched-when">${escHtml(s.time)} · ${s.repeat === "daily" ? "daily" : "once"}</span>` +
       `<span class="sched-next">${escHtml(nextLabel)}</span>` +
-      `<button class="sched-del" aria-label="Delete schedule">✕</button>`;
+      `<button class="btn quiet icon sm" aria-label="Delete schedule">✕</button>`;
     row.querySelector<HTMLInputElement>("input")?.addEventListener("change", () => {
       saveSchedules(loadSchedules().map((x) => (x.id === s.id ? { ...x, enabled: !x.enabled } : x)));
       renderSchedList();

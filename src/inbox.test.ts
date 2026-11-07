@@ -280,7 +280,7 @@ describe("inbox DOM", () => {
     (document.activeElement as HTMLElement | null)?.blur();
     focusStage();
     expect(focus).not.toHaveBeenCalled();
-    expect(document.activeElement?.classList.contains("ir-close")).toBe(true);
+    expect(document.activeElement?.closest(".inbox-review")).toBeTruthy();
     closeChanges();
     focusStage();
     expect(focus).toHaveBeenCalledTimes(1);

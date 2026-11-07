@@ -279,10 +279,10 @@ export function createDiffView() {
       `<input class="dv-msg" placeholder="Commit message…" spellcheck="false" ${files.length ? "" : "disabled"}>` +
       `</div>` +
       `<div class="dv-btns">` +
-      `<button class="dv-btn" data-discard ${files.length ? "" : "disabled"}>Discard</button>` +
-      `<button class="dv-btn primary" data-commit ${files.length ? "" : "disabled"}>Commit</button>` +
+      `<button class="btn secondary sm" data-discard ${files.length ? "" : "disabled"}>Discard</button>` +
+      `<button class="btn primary sm" data-commit ${files.length ? "" : "disabled"}>Commit</button>` +
       (info?.isWorktree
-        ? `<button class="dv-btn merge" data-merge ${committed || !files.length ? "" : "disabled"} title="Merge this branch into the repo's current branch">Merge</button>`
+        ? `<button class="btn secondary sm" data-merge ${committed || !files.length ? "" : "disabled"} title="Merge this branch into the repo's current branch">Merge</button>`
         : "") +
       `</div>`;
     foot.querySelector("[data-commit]")?.addEventListener("click", () => void onCommit());

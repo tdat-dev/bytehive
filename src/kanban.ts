@@ -466,8 +466,8 @@ export function createKanban() {
       const bar = el("div", "kb-urlbar");
       bar.innerHTML =
         `<input class="kb-url" placeholder="http://localhost:5173" spellcheck="false">` +
-        `<button class="kb-add-btn">Capture</button>` +
-        `<button class="kb-url-x" aria-label="Cancel">${ICON_CLOSE}</button>`;
+        `<button class="btn secondary sm kb-add-btn">Capture</button>` +
+        `<button class="btn quiet icon sm" aria-label="Cancel">${ICON_CLOSE}</button>`;
       const input = bar.querySelector("input") as HTMLInputElement;
       input.value = initial;
       root.prepend(bar);
@@ -947,7 +947,7 @@ export function createKanban() {
     head.innerHTML =
       `<span class="kb-list-t" title="Rename list">${enc(list.title)}</span>` +
       `<span class="kb-list-n">${list.cards.length}</span>` +
-      `<button class="kb-list-x" title="Delete list" aria-label="Delete list"><svg class="i" aria-hidden="true"><use href="#i-trash-2"/></svg></button>`;
+      `<button class="btn quiet icon sm kb-list-x" title="Delete list" aria-label="Delete list"><svg class="i" aria-hidden="true"><use href="#i-trash-2"/></svg></button>`;
     // Pointerdown on the header (but not the delete button) starts a list drag.
     head.addEventListener("pointerdown", (e) => {
       const t = e.target as HTMLElement;
@@ -973,7 +973,7 @@ export function createKanban() {
     const composer = el("div", "kb-composer");
     composer.innerHTML =
       `<textarea class="kb-new" rows="1" placeholder="+ Add a card"></textarea>` +
-      `<div class="kb-composer-acts" hidden><button class="kb-add-btn">Add card</button></div>`;
+      `<div class="kb-composer-acts" hidden><button class="btn secondary sm kb-add-btn">Add card</button></div>`;
     const ta = composer.querySelector("textarea") as HTMLTextAreaElement;
     const acts = composer.querySelector(".kb-composer-acts") as HTMLElement;
     const grow = () => {
@@ -1039,7 +1039,7 @@ export function createKanban() {
 
     // "add another list" tile
     const addTile = el("div", "kb-addlist");
-    addTile.innerHTML = `<button class="kb-addlist-btn">+ Add a list</button>`;
+    addTile.innerHTML = `<button class="btn quiet kb-addlist-btn">+ Add a list</button>`;
     addTile.querySelector("button")?.addEventListener("click", () => {
       const input = document.createElement("input");
       input.className = "kb-addlist-in";
@@ -1202,7 +1202,7 @@ export function createKanban() {
         `<input type="checkbox" ${item.done ? "checked" : ""}>` +
         `<span class="kb-cl-box"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg></span>` +
         `<span class="kb-cl-text">${enc(item.text)}</span>` +
-        `<button class="kb-cl-x" aria-label="Remove">${ICON_CLOSE}</button>`;
+        `<button class="btn quiet icon sm kb-cl-x" aria-label="Remove">${ICON_CLOSE}</button>`;
       row.querySelector("input")?.addEventListener("change", () => {
         item.done = !item.done;
         patchCard(card.id, { checklist: card.checklist });

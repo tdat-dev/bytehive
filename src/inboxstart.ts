@@ -139,7 +139,7 @@ function composerHTML(): string {
         <label class="st-chip"><span class="ia-sr">How many agents</span>
           <select id="stCount">${[1, 2, 3].map((n) => `<option value="${n}"${n === count ? " selected" : ""}>${n === 1 ? "1 agent" : `${n} agents, same job`}</option>`).join("")}</select></label>
         <span class="st-sp"></span>
-        <button type="submit" class="st-go" aria-keyshortcuts="Enter">Start<kbd aria-hidden="true">↵</kbd></button>
+        <button type="submit" class="btn primary st-go" aria-keyshortcuts="Enter">Start<kbd aria-hidden="true">↵</kbd></button>
       </div>
       <p class="st-room" data-room hidden></p>
     </form>
