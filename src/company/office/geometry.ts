@@ -38,7 +38,7 @@ export function soft(w: number, h: number, d: number, r: number, hex: string): B
   const key = `${w},${h},${d},${r}`;
   let shape = softShapes.get(key);
   if (!shape) {
-    shape = new RoundedBoxGeometry(w, h, d, 1, r).toNonIndexed();
+    shape = new RoundedBoxGeometry(w, h, d, 1, r);
     shape.deleteAttribute("uv");
     softShapes.set(key, shape);
   }
