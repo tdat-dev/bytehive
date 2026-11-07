@@ -105,9 +105,10 @@ describe("terminal host layout (addon-fit contract)", () => {
     expect(rule(".term-host .xterm")).toMatch(/padding:/);
   });
 
-  it("fades exactly the top inset — a longer fade would grey out the first row", () => {
-    const fade = rule(".term-host").match(/mask-image:linear-gradient\(180deg,transparent,#000 (\d+)px\)/);
-    const padTop = rule(".term-host .xterm").match(/padding:\s*(\d+)px/);
+  it("fades exactly the top inset: a longer fade would grey out the first row", () => {
+    const fade = rule(".term-host").match(/mask-image:linear-gradient\(180deg,transparent,#000 (var\(--s\d+\))\)/);
+    const padTop = rule(".term-host .xterm").match(/padding:\s*(var\(--s\d+\))/);
+    expect(fade?.[1]).toBeTruthy();
     expect(fade?.[1]).toBe(padTop?.[1]);
   });
 
