@@ -53,7 +53,7 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .inbox-head b { color: var(--ib-ink); font-weight: 600; }
 
 /* ---------- the plan's limits, at the foot of the list ---------- */
-.inbox-queue:has(.iq-plan) { display: flex; flex-direction: column; }
+.inbox-queue:has(.iq-plan) { display: flex; flex-direction: column; scroll-padding-bottom: 52px; }
 .iq-plan {
   position: sticky; bottom: -12px; margin: auto -8px -12px; padding: 0 14px;
   background: var(--ib-panel); box-shadow: 0 -1px 0 var(--ib-line);
@@ -793,13 +793,14 @@ body.inbox-ui .grid.canvas.inbox-split .pane.split-pin .term-host .xterm { paddi
    means nothing here */
 body.inbox-ui .pane .pctrl[data-max] { display: none !important; }
 .id-new { white-space: nowrap; }
-.ib-acts { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); }
+/* plain words: a filled track made the honey button read as the selected tab */
+.ib-acts { display: inline-flex; align-items: center; gap: 2px; }
 .ib-act { height: 26px; padding: 0 12px; border-radius: 999px; font: 500 12.5px var(--sans); color: var(--ib-ink-2); white-space: nowrap; }
 .ib-act:hover { color: var(--ib-ink); background: rgba(255, 255, 255, 0.06); }
 .ib-act[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--ib-ink); }
 .ib-act:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* the one thing to do with a stopped agent */
-.ib-act.ib-go { color: var(--honey-ink); background: var(--honey); }
+.ib-act.ib-go { margin-right: 6px; color: var(--honey-ink); background: var(--honey); }
 .ib-act.ib-go:hover { color: var(--honey-ink); background: var(--honey-hover); }
 body.inbox-ui .grid.canvas.inbox-split .ib-acts { display: none; }
 

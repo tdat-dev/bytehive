@@ -720,8 +720,13 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
   const back = had?.dataset.id ? `.iq-row[data-id="${CSS.escape(had.dataset.id)}"]` : null;
   queueEl.innerHTML = html;
   if (back) queueEl.querySelector<HTMLElement>(back)?.focus({ preventScroll: true });
+  // The agent you just picked stays in view, clear of the limits line. Only on a
+  // change of agent: a rebuild must not move a list you are scrolling.
+  if (current !== shownCurrent) queueEl.querySelector<HTMLElement>('.iq-row[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" });
+  shownCurrent = current;
 }
 let queueSig = "";
+let shownCurrent: string | null | undefined;
 
 /** Merged agents are done: one button takes them all off the list. */
 function clearMergedHtml(list: Task[]): string {
