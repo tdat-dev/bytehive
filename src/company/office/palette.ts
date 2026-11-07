@@ -6,6 +6,7 @@ export const OFFICE = {
   honey: "#f5b83d", glow: "#ffd98a", glass: "#8fb3c9", steel: "#5a6068",
   deskTop: "#9a6a3c", deskBody: "#2f3138", chair: "#24262c", screenOn: "#7cc4ff", screenOff: "#1b1e24", lampNeeds: "#f5b83d",
   bead: "#efc48a", plant: "#4f8f4a", pot: "#a8703c", paper: "#f2ece0",
+  cork: "#b98d58", noteTodo: "#f2d15e", noteDoing: "#8fc7f2", noteDone: "#8fd9a4",
 } as const;
 
 export const CHIP_BG = "#14161c";

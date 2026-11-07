@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OfficeModel } from "./model";
 import { BUILDING } from "./nav";
-import { FOV, ROOM_D, ROOM_W, STOREY, flightPoint, mixShots, seatSpot, shotFor, towerLayout } from "./layout";
+import { FOUNDER_DESK, FOV, ROOM_D, ROOM_W, STOREY, chairSpot, flightPoint, mixShots, seatSpot, shotFor, towerLayout } from "./layout";
 
 const floor = (id: string, people: string[]) => ({ id, name: id, people: people.map((p, seat) => ({ id: p, seat })) });
 const model = (n: number) => ({ founder: { id: "founder" }, floors: Array.from({ length: n }, (_, i) => floor(`f${i}`, i ? ["x"] : ["a", "b"])) }) as unknown as OfficeModel;
@@ -67,6 +67,21 @@ describe("shotFor", () => {
   it("frames the roof for the Founder", () => {
     const s = shotFor({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" }, t, 1.6);
     expect(s.ty).toBeGreaterThanOrEqual(t.roofY);
+  });
+  it("looks at the Founder's desk, not the middle of the roof", () => {
+    const s = shotFor({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" }, t, 1.6);
+    expect([s.tx, s.tz]).toEqual([FOUNDER_DESK.x, FOUNDER_DESK.z]);
+  });
+});
+
+describe("chairSpot", () => {
+  it("stands on the camera's side of a desk in the back row, so its screen can be seen", () => {
+    const c = chairSpot({ x: 2, z: -1, rot: 0 });
+    expect(c.x).toBeCloseTo(2);
+    expect(c.z).toBeGreaterThan(-1);
+  });
+  it("swaps sides for the row that faces the other way", () => {
+    expect(chairSpot({ x: 2, z: 1, rot: Math.PI }).z).toBeLessThan(1);
   });
 });
 

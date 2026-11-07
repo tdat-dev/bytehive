@@ -9,14 +9,18 @@ export const ROOM_W = 11;
 export const ROOM_D = 7.4;
 export const LIFT_W = 1.7;
 export const GROUND = 0.5;
-export const FOV = 24;
+/** A long lens, as in style-a.webp: the walls stay upright, and every floor is seen from the same height. */
+export const FOV = 15;
 /** How long a message is in the air, for the paper plane. */
 export const FLIGHT_MS = 2400;
 const COLS = 3;
 const DESK_W = 3;
 const ROW_MAX = 2.6;
 const MAX_FRAMED = 6;
-const VIEW = { x: 0.62, y: 0.42, z: 1 };
+/** The ground plate seen corner on is this much wider than the tower. */
+const PLATE_MARGIN = 5.5;
+/** Measured off style-a.webp: about 50 degrees round from the front, and low. */
+const VIEW = { x: 1, y: 0.165, z: 0.84 };
 const VIEW_LEN = Math.hypot(VIEW.x, VIEW.y, VIEW.z);
 
 export interface Seat { x: number; z: number; rot: number }
@@ -24,6 +28,16 @@ export interface Desk extends Seat { personId: string }
 export interface FloorSpot { id: string; y: number; desks: Desk[] }
 export interface Tower { floors: FloorSpot[]; roofY: number; lift: { x: number; z: number; top: number }; width: number }
 export interface Shot { px: number; py: number; pz: number; tx: number; ty: number; tz: number; fov: number }
+
+/** The Founder's desk, out on the roof in front of the penthouse, facing the camera. */
+export const FOUNDER_DESK: Seat = { x: -1.6, z: 1.4, rot: Math.PI };
+/** Where a head comes to, from the floor, for anything that points at a person. */
+export const HEAD_Y = 1.5;
+const CHAIR_BACK = 0.78;
+
+/** Where the chair stands. At rot 0 it is on the camera's side of the desk, looking away:
+ *  rows fill from the back, so most screens can be seen, beside the back of a head. */
+export const chairSpot = (d: Seat): { x: number; z: number } => ({ x: d.x + Math.sin(d.rot) * CHAIR_BACK, z: d.z + Math.cos(d.rot) * CHAIR_BACK });
 
 /** Two rows of three in the usual floor. A Lead with more people, by hand, gets tighter rows. */
 export function seatSpot(seat: number, count: number): Seat {
@@ -53,15 +67,16 @@ function shot(tx: number, ty: number, tz: number, w: number, h: number, aspect: 
 }
 
 export function shotFor(l: Level, t: Tower, aspect: number): Shot {
-  if (l.kind === "desk" && !l.floorId) return shot(0, t.roofY + 1.2, 0, ROOM_W * 0.7, STOREY * 1.2, aspect);
+  if (l.kind === "desk" && !l.floorId) return shot(FOUNDER_DESK.x, t.roofY + 1.2, FOUNDER_DESK.z, ROOM_W * 0.7, STOREY * 1.2, aspect);
   const f = l.kind === "building" ? undefined : t.floors.find((x) => x.id === l.floorId);
-  if (f && l.kind === "floor") return shot(0, f.y + 1, 0, t.width, STOREY * 1.3, aspect);
+  if (f && l.kind === "floor") return shot(LIFT_W / 2, f.y + 1, 0, t.width + 2, STOREY * 1.3, aspect);
   if (f && l.kind === "desk") {
     const d = f.desks.find((x) => x.personId === l.personId);
     return shot(d?.x ?? 0, f.y + 1, d?.z ?? 0, ROOM_W * 0.62, STOREY * 1.05, aspect);
   }
-  const h = Math.min(t.roofY + STOREY, MAX_FRAMED * STOREY + STOREY);
-  return shot(0, t.roofY / 2, 0, t.width + 2, h, aspect);
+  // Round the middle of the floors, so the storey above the roof, for the mast, is one below too.
+  const h = Math.min(t.roofY, MAX_FRAMED * STOREY) + STOREY * 2;
+  return shot(LIFT_W / 2, t.roofY / 2, 0, t.width + PLATE_MARGIN, h, aspect);
 }
 
 export const mixShots = (a: Shot, b: Shot, k: number): Shot => {
