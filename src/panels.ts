@@ -2,7 +2,7 @@
 // persistence of their widths. Uses pointer events (setPointerCapture) — NOT
 // HTML5 drag — so dragging never interacts with the OS file-drop machinery.
 
-import { onAppKey } from "./appkeys";
+import { dialogUp, onAppKey } from "./appkeys";
 
 interface SplitCfg {
   key: string;
@@ -87,7 +87,7 @@ export function initPanels(): void {
 
   // Keyboard: Ctrl+Shift+E → code panel (the dock's Ctrl+Shift+* convention).
   onAppKey((e) => {
-    if (!e.ctrlKey || !e.shiftKey) return;
+    if (!e.ctrlKey || !e.shiftKey || dialogUp()) return;
     const k = e.key.toLowerCase();
     if (k === "e") {
       e.preventDefault();

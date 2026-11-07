@@ -1,11 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { onAppKey, terminalHasKeys } from "./appkeys";
+import { dialogUp, editorKeeps, onAppKey, terminalHasKeys } from "./appkeys";
 
 const press = (key: string, init: KeyboardEventInit = {}, on: Element = document.body) => {
   const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
   on.dispatchEvent(e);
   return e;
 };
+
+describe("what stands over the app", () => {
+  it("is any dialog, the palette or a menu, the same list the office uses", () => {
+    for (const html of [`<div class="backdrop open"></div>`, `<div class="inbox-modal-back"></div>`, `<div class="inbox-pal"></div>`, `<div class="sm-pop"></div>`, `<div class="cm-menu"></div>`]) {
+      document.body.innerHTML = html;
+      expect(dialogUp(), html).toBe(true);
+    }
+    document.body.innerHTML = `<div class="backdrop"></div>`;
+    expect(dialogUp()).toBe(false);
+  });
+
+  it("leaves Ctrl+Shift+K to the code editor, and only there", () => {
+    document.body.innerHTML = `<div class="cm-editor"><div class="cm-content" tabindex="0"></div></div><input>`;
+    const ctrlShift = (key: string) => new KeyboardEvent("keydown", { key, ctrlKey: true, shiftKey: true });
+    document.querySelector<HTMLElement>(".cm-content")!.focus();
+    expect(editorKeeps(ctrlShift("K"))).toBe(true);
+    expect(editorKeeps(ctrlShift("T"))).toBe(false);
+    document.querySelector("input")!.focus();
+    expect(editorKeeps(ctrlShift("K"))).toBe(false);
+  });
+});
 
 describe("onAppKey", () => {
   let off: () => void = () => {};

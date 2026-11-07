@@ -9,6 +9,18 @@ type AppKey = (e: KeyboardEvent) => void;
 const handlers: AppKey[] = [];
 let listening = false;
 
+/** Something stands over the app: no shortcut acts behind it. */
+export function dialogUp(): boolean {
+  return !!document.querySelector(".backdrop.open, .inbox-modal-back, .inbox-pal, .sm-pop, .cm-menu");
+}
+
+/** Ctrl+Shift+K deletes the line in the code editor, and L selects the matches:
+ *  shortcuts run first, so they step aside there. */
+export function editorKeeps(e: KeyboardEvent): boolean {
+  const k = e.key.toLowerCase();
+  return (k === "k" || k === "l") && !!document.activeElement?.closest(".cm-editor");
+}
+
 /** Focus is inside a terminal, so every key is its CLI's. */
 export function terminalHasKeys(): boolean {
   return !!document.activeElement?.closest(".xterm");

@@ -40,7 +40,7 @@ import { checkForUpdates } from "./updater";
 import { initTitlebar } from "./titlebar";
 import { initIdleAnimationPause } from "./power";
 import { initDock, dockSetContext, dockToggle, dockOpen } from "./dock";
-import { onAppKey } from "./appkeys";
+import { dialogUp, editorKeeps, onAppKey } from "./appkeys";
 import { initOffice, officeBoot, officeGoHome, officeToggle } from "./company/office/office";
 import { chooseFolder } from "./inboxstart";
 import { initPanels } from "./panels";
@@ -387,8 +387,8 @@ function focusedPane(): Pane | null {
 }
 
 onAppKey((e) => {
-  // Any open backdrop (confirm / settings / …) swallows shortcuts.
-  if (document.querySelector(".backdrop.open")) return;
+  // Anything standing over the app swallows shortcuts.
+  if (dialogUp()) return;
 
   if (!e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -401,7 +401,7 @@ onAppKey((e) => {
     return;
   }
 
-  if (!e.shiftKey) return;
+  if (!e.shiftKey || editorKeeps(e)) return;
   const k = e.key.toLowerCase();
   if (k === "t") {
     e.preventDefault();

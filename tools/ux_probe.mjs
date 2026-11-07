@@ -67,7 +67,7 @@ const FAKE = String.raw`
       }
       if (cmd === "pty_input") { probe.input.push(args.data); return null; }
       if (cmd === "plugin:app|version") return "0.0.0";
-      if (cmd === "folder_state") throw "no repo here";
+      if (cmd === "folder_state") return { head: "h1", files: { "notes.txt": "1:1" }, committed: [], jumped: false };
       if (cmd === "hotkey_set" && args.combo === "Win+D") throw { Failed: "Windows would not give ByteHive Win+D: another app or another ByteHive window has it." };
       if (lists.has(cmd)) return [];
       return null;
@@ -259,6 +259,9 @@ try {
   await sleep(200);
   check(await value(`!!document.querySelector(".inbox-pal")`), "Ctrl+K opens the palette with focus outside");
   await shot("palette-open");
+  await press(CTRL | SHIFT, letter("K"));
+  await sleep(200);
+  check(await value(`!document.querySelector(".open[data-tool]")`), "no app key acts behind the open palette");
   await press(0, named("Escape", "Escape", 27));
   await sleep(200);
 

@@ -2,7 +2,7 @@
 // itself (clamping, persistence per project) lives in zoom.ts; applying it to
 // the panes is pane.ts's applyZoom, injected here.
 
-import { onAppKey } from "./appkeys";
+import { dialogUp, onAppKey } from "./appkeys";
 import { getZoom, stepZoom, zoomLabel } from "./zoom";
 import { type Workspace } from "./panetypes";
 
@@ -54,7 +54,7 @@ export function initZoomUi(): void {
   // zooms. `code` rather than `key`: on the numpad and on layouts where + needs
   // Shift, `key` is unreliable.
   onAppKey((e) => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || dialogUp()) return;
     if (e.code === "Equal" || e.code === "NumpadAdd") {
       e.preventDefault();
       nudge(1, true);
