@@ -56,7 +56,7 @@ Founder ────┘                     │        │        │        │
 Đi qua gate:
 
 - `fleet_send` (`src/bridges.ts:301-310`), nguồn `fleet`.
-- Giao việc từ thẻ Kanban qua `sendToAgentById` (wiring ở `src/bridges.ts:159-192`), nguồn `kanban`. Thả kéo một thẻ vào pane là bản nháp, không gate.
+- Giao việc từ thẻ Kanban qua `sendToAgentById` (wiring ở `src/bridges.ts:159-192`), nguồn `kanban`. Thả kéo một thẻ vào pane là bản nháp, không gate. Thẻ được bọc thành prompt có `Task:` và hướng dẫn `card_move`, nên nơi gọi truyền thêm `gist` (`cardGist` trong `src/dispatch.ts`): gate xét `gist`, còn tin giao đi và tin trong Held back vẫn là prompt đầy đủ.
 - Nút "message" trên điện thoại (`src/dashboard.ts:220-232`), nguồn `phone`.
 - Relay của Founder (`src/company/engine.ts:248-263`), nguồn `founder`. Làm sau cùng vì Ana đang sửa vùng này.
 
@@ -84,7 +84,10 @@ Hợp đồng chính:
 ```ts
 type Source = "fleet" | "kanban" | "phone" | "founder" | "retry";
 
-interface Request { source: Source; from?: string; to: string; text: string }
+interface Request {
+  source: Source; from?: string; to: string; toName?: string; text: string;
+  gist?: string; // lời người viết khi text đã bị bọc; gate xét gist ?? text, giao text
+}
 
 interface ToolResult {
   status: "ok" | "error";
