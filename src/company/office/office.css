@@ -124,6 +124,8 @@ body.inbox-ui.office-desk .tb-left, body.inbox-ui.office-desk .inbox-queue, body
 
 /* Over the layer by their own z-index, and out of reach under it. */
 body.office-cover .inbox-dock, body.office-cover .inbox-ask { visibility: hidden; }
+/* A note would land on the job box. */
+body.office-cover .hint { bottom: 180px; }
 
 /* No 3D: the rail and the job box are a fourth column of the Inbox. */
 body.office-fallback.inbox-ui .app { grid-template-columns: var(--ib-q) 1fr var(--code-w, 380px) 300px; }
