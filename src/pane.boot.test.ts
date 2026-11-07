@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const io = vi.hoisted(() => ({ state: "idle", worktreeFails: false, trustFails: false, written: [] as string[], spawns: 0, spawnFails: false, gitWaits: null as Promise<void> | null }));
+const io = vi.hoisted(() => ({ state: "idle", win32: 0, worktreeFails: false, trustFails: false, written: [] as string[], spawns: 0, spawnFails: false, gitWaits: null as Promise<void> | null }));
 vi.mock("./terminal", () => ({
   mountTerminal: () => ({
     fit: () => ({ cols: 80, rows: 24 }), setAutoFit: () => {}, onTitleChange: () => {}, write: (b: Uint8Array) => { io.written.push(new TextDecoder().decode(b)); },
-    reset: () => {}, dispose: () => {}, setLook: () => {},
+    reset: () => {}, dispose: () => {}, setLook: () => {}, useWin32Keys: () => { io.win32++; },
   }),
 }));
 vi.mock("./ipc", () => ({
@@ -17,6 +17,7 @@ vi.mock("./ipc", () => ({
   claudeTrustFolder: async () => { if (io.trustFails) throw new Error("the config is locked"); },
   worktreeAdd: async () => { if (io.gitWaits) await io.gitWaits; if (io.worktreeFails) throw new Error("branch exists"); return "D:\\wt\\ana"; },
   worktreeLeave: async () => null,
+  attachPty: async () => {},
 }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "H:\\" }));
 vi.mock("./panelayout", () => ({ layoutGrid: () => {}, wirePaneRename: () => {}, toggleMax: () => {} }));
@@ -66,10 +67,22 @@ describe("the needs-you pill", () => {
     io.state = "needs";
     updateAttention();
     expect(pane.attention).toBe(true);
+    // a click is not an answer: the ask is still on screen
+    pane.el.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(pane.attention).toBe(true);
     io.state = "working";
     updateAttention();
     expect(pane.attention).toBe(false);
     workspaces.delete(ws.id);
+  });
+});
+
+describe("an agent attached from another window", () => {
+  it("keeps win32 keys, whose ask may have left the replayed scrollback", async () => {
+    io.win32 = 0;
+    const ws = project();
+    await createAgent(ws, spec(), false, { id: "a1", spawnedAt: 1 })();
+    expect(io.win32).toBe(1);
   });
 });
 

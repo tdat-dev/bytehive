@@ -23,6 +23,8 @@ export interface TerminalHandle {
   write(data: Uint8Array): void;
   fit(): { cols: number; rows: number };
   reset(): void;
+  /** Win32 key events from now on: an agent attached here asked for them before this terminal existed. */
+  useWin32Keys(): void;
   dispose(): void;
   focus(): void;
   /** Highlight + jump to the next match for `q` (empty string clears). */
@@ -395,6 +397,7 @@ export function mountTerminal(
       return { cols: term.cols, rows: term.rows };
     },
     reset: () => { pacer.flush(); term.reset(); },
+    useWin32Keys: () => { win32Keys = true; },
     dispose: () => {
       pacer.dispose();
       ro.disconnect();

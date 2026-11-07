@@ -45,6 +45,15 @@ describe("win32Key", () => {
     expect(win32Key(key("ê", 231), true)).toBeNull();
     expect(win32Key(key("€", 69, { ctrlKey: true, altKey: true }), true)).toBeNull();
   });
+  it("sends the release of a key that went as an event, whatever is still held", () => {
+    // Ctrl came up first: the K's release now looks like a plain letter
+    expect(win32Key(key("k", 75), false)).toBe("\x1b[75;0;107;0;0;1_");
+  });
+  it("leaves a dead key and an unknown key to xterm", () => {
+    expect(win32Key(key("Dead", 222), true)).toBeNull();
+    expect(win32Key(key("Unidentified", 0), true)).toBeNull();
+    expect(win32Key(key("F13", 0), true)).toBeNull();
+  });
   it("sends nothing for a modifier on its own", () => {
     for (const [k, c] of [["Control", 17], ["Shift", 16], ["Alt", 18]] as const) expect(win32Key(key(k, c), true)).toBeNull();
   });

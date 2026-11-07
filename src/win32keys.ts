@@ -37,14 +37,22 @@ function stateOf(e: KeyboardEvent): number {
     (ENHANCED_KEYS.has(e.code) ? ENHANCED : 0);
 }
 
-/** The sequence for this key, or null when it goes the usual way. No scan code:
- *  a browser doesn't give one, and conhost reads the virtual key. */
-export function win32Key(e: KeyboardEvent, down: boolean): string | null {
+/** A press that isn't a key event at all: text, or nothing yet. */
+function isText(e: KeyboardEvent): boolean {
   // An IME at work, and text a program injected (VK_PACKET).
-  if (e.isComposing || e.keyCode === 229 || e.keyCode === 231) return null;
-  if (MODIFIER_KEYS.has(e.key)) return null;
-  const printable = [...e.key].length === 1;
+  if (e.isComposing || e.keyCode === 229 || e.keyCode === 231) return true;
+  // A dead key waits for the next one, and Windows may not say what a key is.
+  if (e.key === "Dead" || e.key === "Unidentified" || !e.keyCode) return true;
+  if (MODIFIER_KEYS.has(e.key)) return true;
   // Plain text, and AltGr, which Windows reports as Ctrl+Alt.
-  if (printable && (!(e.ctrlKey || e.altKey) || (e.ctrlKey && e.altKey))) return null;
+  return [...e.key].length === 1 && (!(e.ctrlKey || e.altKey) || (e.ctrlKey && e.altKey));
+}
+
+/** The sequence for this key, or null when the press goes the usual way. A
+ *  release is only asked for a key that went as an event, and always gets its
+ *  record: Ctrl may be up by then, which would make it look like text. No scan
+ *  code: a browser doesn't give one, and conhost reads the virtual key. */
+export function win32Key(e: KeyboardEvent, down: boolean): string | null {
+  if (down && isText(e)) return null;
   return `\x1b[${e.keyCode};0;${charOf(e)};${down ? 1 : 0};${stateOf(e)};1_`;
 }

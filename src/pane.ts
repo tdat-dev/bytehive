@@ -218,7 +218,6 @@ export function createAgent(
       // dropped and ConPTY stalls (blank pane).
       if (ws.panes.has(id)) void sendInput(id, data).catch(() => {});
       pane.lastInputAt = Date.now();
-      clearAttention(pane); // the user is interacting → not waiting on them
     },
     (cols, rows) => {
       if (ws.panes.has(id)) void resizePty(id, cols, rows).catch(() => {});
@@ -291,10 +290,6 @@ export function createAgent(
   });
   onWirePaneSearch(pane);
   wirePaneRename(ws, pane);
-  // Clicking / focusing into a flagged pane means the user is now looking at it.
-  el.addEventListener("pointerdown", () => clearAttention(pane));
-  el.addEventListener("focusin", () => clearAttention(pane));
-
   saveSession();
 
   // Start the CLI in this pane. Also how a stopped or restored agent starts
@@ -445,6 +440,9 @@ export function createAgent(
     return async () => {
       if (!ws.panes.has(id)) return;
       const { cols, rows } = term.fit();
+      // ConPTY asks for win32 keys once, at the start: in a long session that
+      // has left the replayed scrollback, and it asks every time, so it holds.
+      term.useWin32Keys();
       try {
         await attachPty(id, (bytes) => {
           pane.lastOutputAt = Date.now();
@@ -589,8 +587,8 @@ export async function toggleRecord(ws: Workspace, p: Pane): Promise<void> {
 // "Agent needs you" is its task state (tasks.ts), the one truth the headline and
 // Fleet read too: a prompt on its screen, never a guess from silence. We flag it,
 // light up the pill + tab, and (if the window is in the background) fire one OS
-// notification per wait. A click or a key clears the pill until the next tick
-// reads the screen again.
+// notification per wait. It stays lit while the ask is on screen, whatever you
+// click: the pill is a word, not a button, and only answering ends the wait.
 
 /** Drop a pane's attention flag and restore its normal pill/tab styling. */
 export function clearAttention(pane: Pane) {
