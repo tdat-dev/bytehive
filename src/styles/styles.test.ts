@@ -109,3 +109,11 @@ describe("focus", () => {
   });
 });
 
+describe("licences", () => {
+  it("go out with the build and into the install", () => {
+    const conf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+    expect(conf.bundle.resources["../public/licenses/"]).toBe("licenses/");
+    expect(readdirSync("public/licenses").sort()).toEqual(["Geist-OFL.txt", "Lucide-ISC.txt"]);
+    expect(readFileSync("public/licenses/Geist-OFL.txt", "utf8")).toContain("SIL Open Font License");
+  });
+});

@@ -51,6 +51,7 @@
     },
     "resources": {
       "../browser-extension/": "browser-extension/",
+      "../public/licenses/": "licenses/",
       "resources/mcp/": "mcp-server/"
     }
   }
