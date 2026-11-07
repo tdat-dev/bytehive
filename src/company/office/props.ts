@@ -362,7 +362,7 @@ export const accentOf = (name: string, index = 0): string => ACCENTS[(hashOf(nam
 interface RoomPlan { id: string; index: number; lit: boolean; board: boolean }
 
 /** Everything in a floor but its desks, from its name and its height in the tower. */
-export function furnish(room: RoomPlan): Furnished {
+export function* furnish(room: RoomPlan): Generator<void, Furnished> {
   const hash = hashOf(room.id);
   const rand = seeded(hash * 31 + room.index * 7919);
   const accent = accentOf(room.id, room.index);
@@ -405,17 +405,24 @@ export function furnish(room: RoomPlan): Furnished {
     // Nobody is in, and the room can be a room.
     put(low[0](), slots[0], BACK_Z);
     put(hung[0](), slots[0], BACK_Z);
+    yield;
     put(low[1](), slots[1], BACK_Z);
     put(hung[1](), slots[1], BACK_Z);
+    yield;
     if (!room.board) put(tall[0](), slots[2], BACK_Z);
+    yield;
+    yield;
     put(onWall[0](), LEFT_X, -1.5, Math.PI / 2);
     const standing: Array<() => Prop> = shuffled([() => bookshelf(rand, 1.9, 2.3, 3), () => plant(rand, 2.1), () => arcade(accent), coatRack], rand);
     put(standing[0](), LEFT_X, 1.6, Math.PI / 2);
+    yield;
     put(rand() < 0.5 ? snakePlant() : plant(rand, 1.7), LEFT_X + 0.1, -2.75, Math.PI / 2);
     out.solid.push(...hexRug(shift(accent, "#6a6a72", 0.42), 0, 0.06, 2.7));
     if (rand() < 0.45) put(rand() < 0.5 ? plant(rand, 1.5) : snakePlant(), -4.2, 2.75);
   }
   if (rand() < 0.5) put(cat(["#3a3d4a", "#d8d2c8", "#8a8f9c"][hash % 3]), 3.2, 2.7, 0.6);
+
+  yield;
 
   // The lamps. Nobody in, and it is the sky that lights the room, and one lamp left on.
   const kind = (["dome", "globe", "cone"] as PendantKind[])[hash % 3];
@@ -429,6 +436,15 @@ export function furnish(room: RoomPlan): Furnished {
   }
   if (!room.lit) put(floorLamp(true), -1.25, BACK_Z);
   return out;
+}
+
+/** The same, all at once. */
+export function furnished(room: RoomPlan): Furnished {
+  const steps = furnish(room);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
 }
 
 /** The colours of a room's walls and tiles, lit or left for the night. */

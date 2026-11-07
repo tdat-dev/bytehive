@@ -16,7 +16,7 @@ import type { BoardCounts, OfficeFloor, OfficeModel, OfficePerson } from "./mode
 import { OFFICE } from "./palette";
 import { buildPerson, deskGlow, deskProp, lampGeometry, paperDesk, paperStack, planeGeometry, pose, screenLight, seatPerson, type PeopleKit, type Pose } from "./people";
 import { ROOM_H, furnish, roomAmbient } from "./props";
-import { createSetting } from "./setting";
+import { createSetting, type Setting } from "./setting";
 import { badgeInk, createTextures } from "./textures";
 
 const WALL = 0.34;
@@ -80,14 +80,8 @@ const poolPaint: Painter = (c, w, h) => {
 
 /* ---- the kit: everything shared across floors ---- */
 
-export interface Kit {
-  /** Outside: the shell, the roof, the plot. Cool, and in the dusk. */
-  matte: MeshStandardMaterial;
-  /** A room with the lamps on, and one left for the night. */
-  indoor: MeshStandardMaterial;
-  night: MeshStandardMaterial;
-  glow: MeshBasicMaterial;
-  glass: MeshStandardMaterial;
+/** The shapes every floor shares. They take a while, so they are made with the first floor, not with the kit. */
+interface KitParts {
   shell: BufferGeometry;
   slab: BufferGeometry;
   desk: BufferGeometry;
@@ -95,10 +89,22 @@ export interface Kit {
   chairBack: BufferGeometry;
   boardFrame: BufferGeometry;
   lamp: { solid: BufferGeometry; lit: BufferGeometry };
-  /** Light thrown on things and glowing in the air, in the colour on its vertices. Quality turns it off whole. */
-  deskLight: MeshBasicMaterial;
   glowWork: BufferGeometry;
   glowLamp: BufferGeometry;
+}
+
+export interface Kit extends KitParts {
+  /** Makes the shared shapes, a little at a time. Does nothing the second time. */
+  parts(): Generator<void, void>;
+  /** Outside: the shell, the roof, the plot. Cool, and in the dusk. */
+  matte: MeshStandardMaterial;
+  /** A room with the lamps on, and one left for the night. */
+  indoor: MeshStandardMaterial;
+  night: MeshStandardMaterial;
+  glow: MeshBasicMaterial;
+  glass: MeshStandardMaterial;
+  /** Light thrown on things and glowing in the air, in the colour on its vertices. Quality turns it off whole. */
+  deskLight: MeshBasicMaterial;
   /** What a lit room gives to the air in front of it, seen from far off. The eye reads it as a glow. */
   hazeLight: MeshBasicMaterial;
   haze: BufferGeometry;
@@ -119,6 +125,12 @@ export interface Kit {
   far: Group;
   /** What stays lit at a Floor. */
   focus: FocusBand;
+  /** Rooms and roofs finished ahead of the floor that will take them, by what they depend on. */
+  ready: Map<string, unknown>;
+  /** The sky at once, the rest of the setting a little at a time. */
+  setting: Pick<Setting, "sky" | "rest">;
+  /** Every material the office draws with, for compiling their shaders ahead of the first frame. */
+  looks(): Material[];
   dispose(): void;
 }
 
@@ -194,26 +206,37 @@ export function createKit(loaded: () => void = () => {}): Kit {
     return m;
   };
 
-  const { shell, slab } = shellGeometry();
-  const desk = deskGeometry();
-  const chair = chairGeometry();
-  const chairBack = chairBackGeometry();
-  const boardFrame = boardGeometry();
-  const lamp = lampGeometry();
-  const glowWork = deskGlow("work");
-  const glowLamp = deskGlow("lamp");
   const plane = planeGeometry();
   const logoPlate = new PlaneGeometry(SIGN.r * SIGN.logo, SIGN.r * SIGN.logo);
   const setting = createSetting({ outdoor: matte, thrown: deskLight });
   const shapes: NonNullable<PeopleKit["shapes"]> = new Map();
+  const ready = new Map<string, unknown>();
 
-  const geometries = [shell, slab, desk, chair, chairBack, boardFrame, lamp.solid, lamp.lit, glowWork, glowLamp, haze, plane, logoPlate];
+  const geometries = [haze, plane, logoPlate];
   const materials: Material[] = [matte, indoor, night, glow, glass, deskLight, hazeLight, paper, bubble, logo];
-  return {
-    matte, indoor, night, glow, glass, shell, slab, desk, chair, chairBack, boardFrame, lamp, deskLight, hazeLight, haze, glowWork, glowLamp, plane, paper, bubble, logo, logoPlate, badge, shapes,
-    ground: setting.group, groundLight: setting.light, far: setting.far, focus,
+  const kit: Kit = {
+    matte, indoor, night, glow, glass, deskLight, hazeLight, haze, plane, paper, bubble, logo, logoPlate, badge, shapes,
+    ...({} as KitParts),
+    *parts() {
+      if (kit.shell) return;
+      Object.assign(kit, shellGeometry());
+      yield;
+      kit.desk = deskGeometry();
+      yield;
+      kit.chair = chairGeometry();
+      kit.chairBack = chairBackGeometry();
+      kit.boardFrame = boardGeometry();
+      kit.lamp = lampGeometry();
+      kit.glowWork = deskGlow("work");
+      kit.glowLamp = deskGlow("lamp");
+      geometries.push(kit.shell, kit.slab, kit.desk, kit.chair, kit.chairBack, kit.boardFrame, kit.lamp.solid, kit.lamp.lit, kit.glowWork, kit.glowLamp);
+    },
+    ground: setting.group, groundLight: setting.light, far: setting.far, focus, ready, setting,
+    looks: () => [...materials, ...setting.looks, ...badges.values()],
     dispose() {
       for (const g of geometries) g.dispose();
+      for (const r of ready.values()) disposeBuilt(r instanceof Group ? r : (r as BuiltRoom).group);
+      ready.clear();
       for (const s of shapes.values()) for (const g of Object.values(s)) g.dispose();
       shapes.clear();
       for (const m of [...materials, ...badges.values()]) m.dispose();
@@ -223,6 +246,7 @@ export function createKit(loaded: () => void = () => {}): Kit {
       badges.clear();
     },
   };
+  return kit;
 }
 
 /* ---- a room's surfaces, with its light on them ---- */
@@ -388,7 +412,7 @@ export function disposeBuilt(group: Group): void {
 
 /** What does not change while people work: the shell, the room and its light. It takes
  *  far longer to build than the desks, so a floor keeps it when only someone's state moves. */
-function buildRoom(f: OfficeFloor, spot: FloorSpot, kit: Kit): { group: Group; light: RoomLight; inRoom: MeshStandardMaterial } {
+function* roomSteps(f: OfficeFloor, spot: FloorSpot, kit: Kit, key: string): Generator<void, BuiltRoom> {
   const group = new Group();
   const shell = new Mesh(kit.shell, kit.matte);
   shell.receiveShadow = true;
@@ -396,13 +420,19 @@ function buildRoom(f: OfficeFloor, spot: FloorSpot, kit: Kit): { group: Group; l
   group.add(shell);
 
   const index = Math.round((spot.y - GROUND) / STOREY);
-  const room = furnish({ id: f.id, index, lit: f.lit, board: !!f.board });
+  const room = yield* furnish({ id: f.id, index, lit: f.lit, board: !!f.board });
   const inRoom = f.lit ? kit.indoor : kit.night;
   const blockers = [...room.blockers, ...spot.desks.flatMap((d) => deskBlockers(d, chairSpot(d)))];
   const light: RoomLight = { ambient: roomAmbient(f.lit), lamps: room.lamps, blockers };
+  yield;
   const tiles = hexFloor(light, f.lit, room.accent, hashOf(f.id));
-  group.add(mesh(merged([bake(merged(room.solid.map((g) => (g.index ? g.toNonIndexed() : g))), light), tiles]), inRoom, { cast: true, receive: true }));
+  yield;
+  const things = bake(merged(room.solid.map((g) => (g.index ? g.toNonIndexed() : g))), light);
+  yield;
+  group.add(mesh(merged([things, tiles]), inRoom, { cast: true, receive: true }));
+  yield;
   group.add(mesh(merged([...room.lit, wallGrid(light, f.lit)]), kit.glow));
+  yield;
   if (room.thrown.length) {
     const t = mesh(merged(room.thrown), kit.deskLight);
     t.renderOrder = 1;
@@ -413,21 +443,40 @@ function buildRoom(f: OfficeFloor, spot: FloorSpot, kit: Kit): { group: Group; l
     air.renderOrder = 2;
     group.add(air);
   }
-  return { group, light, inRoom };
+  return { key, group, light, inRoom };
 }
 
 interface BuiltRoom { key: string; group: Group; light: RoomLight; inRoom: MeshStandardMaterial }
 
-const roomKey = (f: OfficeFloor, spot: FloorSpot) => JSON.stringify([f.id, spot.y, f.lit, !!f.board, spot.desks.map((d) => [d.x, d.z, d.rot])]);
+export const roomKey = (f: OfficeFloor, spot: FloorSpot) => JSON.stringify([f.id, spot.y, f.lit, !!f.board, spot.desks.map((d) => [d.x, d.z, d.rot])]);
+
+/** Runs steps to the end at once, for whoever cannot wait. */
+function finished<T>(steps: Generator<void, T>): T {
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Gets a room ready a little at a time, so opening the office never holds a frame up.
+ *  `buildFloor` takes it from there. */
+export function* prepareFloor(f: OfficeFloor, spot: FloorSpot, kit: Kit): Generator<void, void> {
+  yield* kit.parts();
+  const key = roomKey(f, spot);
+  if (!kit.ready.has(key)) kit.ready.set(key, yield* roomSteps(f, spot, kit, key));
+}
 
 /** A floor. `was` is the floor it replaces: its room moves over if nothing about it changed. */
 export function buildFloor(f: OfficeFloor, spot: FloorSpot, kit: Kit, marked: ReadonlySet<string> = new Set(), was?: Group): Group {
+  finished(kit.parts());
   const group = new Group();
   group.position.y = spot.y;
 
   const key = roomKey(f, spot);
   const kept = was?.userData.room as BuiltRoom | undefined;
-  const room: BuiltRoom = kept?.key === key ? kept : { key, ...buildRoom(f, spot, kit) };
+  const ready = kit.ready.get(key) as BuiltRoom | undefined;
+  kit.ready.delete(key);
+  const room: BuiltRoom = kept?.key === key ? kept : ready ?? finished(roomSteps(f, spot, kit, key));
   if (was && room === kept) {
     was.remove(room.group);
     was.userData.room = undefined;
@@ -487,7 +536,7 @@ function stringLights(a: [number, number, number], b: [number, number, number], 
 }
 
 /** The top of the tower but the Founder's desk: all that depends on the height alone. */
-function buildRoof(t: Tower, kit: Kit): Group {
+function* roofSteps(t: Tower, kit: Kit): Generator<void, Group> {
   const group = new Group();
   const solid: BufferGeometry[] = [];
   const lit: BufferGeometry[] = [];
@@ -509,6 +558,8 @@ function buildRoof(t: Tower, kit: Kit): Group {
     const z = -ROOM_D / 2 + 0.1 + (i + 0.5) * (ROOM_D / planks);
     solid.push(moved(box(deckW, 0.04, ROOM_D / planks - 0.03, i % 3 ? "#4a3a33" : "#544237"), SLAB_X, y + 0.02, z));
   }
+
+  yield;
 
   // Glass rail on three sides, with a steel top.
   const edge = { l: -ROOM_W / 2 - 0.05, r: SLAB_X + SLAB_W / 2 - 0.3, f: SLAB_D / 2 - 0.3, b: -SLAB_D / 2 + 0.3 };
@@ -545,6 +596,8 @@ function buildRoof(t: Tower, kit: Kit): Group {
   solid.push(moved(box(0.02, pane.h, 0.05, OFFICE.deskTop), side + 0.055, pane.y, pane.z));
   thrown.push(pool(door.x + 0.3, y + 0.05, front + 1, 3.4, 2.6, "#ffc98a", 0.5), pool(paneF.x, y + 0.05, front + 1.2, 4, 2.8, "#ffc98a", 0.4));
 
+  yield;
+
   // String lights over the deck, from the eaves to two posts at the rail.
   const post = (x: number, z: number) => solid.push(moved(tint(new CylinderGeometry(0.035, 0.045, 3.4, 8), OFFICE.deskBody), x, y + 1.7, z));
   const postL = [edge.l + 0.2, y + 3.35, edge.f - 0.2] as [number, number, number];
@@ -559,6 +612,8 @@ function buildRoof(t: Tower, kit: Kit): Group {
     thrown.push(...s.thrown);
   }
 
+  yield;
+
   // Planters along the rail, and two chairs by the far end.
   const planter = (x: number, z: number, w: number, d: number) => {
     solid.push(moved(soft(w, 0.5, d, 0.05, "#3a3a44"), x, y + 0.27, z));
@@ -567,6 +622,8 @@ function buildRoof(t: Tower, kit: Kit): Group {
   };
   planter(4.7, edge.f - 0.42, 2.8, 0.56);
   planter(edge.l + 0.44, -1.2, 0.56, 3);
+
+  yield;
 
   // The sign: a thick hexagon on the penthouse roof, up against the sky, turned a little from the view.
   const plate = tint(new CylinderGeometry(SIGN.r, SIGN.r, SIGN.thick, 6), OFFICE.steel).rotateX(Math.PI / 2).rotateY(SIGN.turn);
@@ -578,6 +635,8 @@ function buildRoof(t: Tower, kit: Kit): Group {
   logo.position.set(SIGN.x + Math.sin(SIGN.turn) * (SIGN.thick / 2 + 0.01), signY, SIGN.z + Math.cos(SIGN.turn) * (SIGN.thick / 2 + 0.01));
   logo.rotation.y = SIGN.turn;
   group.add(logo);
+
+  yield;
 
   // The lift: posts from the ground to just over the roof, a glass box, a lamp at each floor,
   // and the mast from there up to the top of the tower. The car goes on its own, as it moves.
@@ -613,8 +672,10 @@ function buildRoof(t: Tower, kit: Kit): Group {
   car.position.set(x, bottom + 0.05, z);
   car.userData.stops = [bottom + 0.05, ...t.floors.slice(1).map((f) => f.y)];
   group.add(car);
+  yield;
 
   group.add(mesh(merged(solid.map((g) => (g.index ? g.toNonIndexed() : g))), kit.matte, { cast: true, receive: true }));
+  yield;
   group.add(mesh(merged(lit), kit.glow));
   const glass = mesh(merged(clear), kit.glass);
   glass.renderOrder = 2;
@@ -625,12 +686,24 @@ function buildRoof(t: Tower, kit: Kit): Group {
   return group;
 }
 
+export const roofKey = (t: Tower) => JSON.stringify([t.roofY, t.floors.map((f) => f.y)]);
+
+/** As `prepareFloor`, for the roof. */
+export function* prepareTop(t: Tower, kit: Kit): Generator<void, void> {
+  yield* kit.parts();
+  const key = roofKey(t);
+  if (!kit.ready.has(key)) kit.ready.set(key, yield* roofSteps(t, kit));
+}
+
 /** The roof, and the Founder at their desk out front. `was` is the top it replaces. */
 export function buildTop(m: OfficeModel, t: Tower, kit: Kit, marked: ReadonlySet<string> = new Set(), was?: Group): Group {
+  finished(kit.parts());
   const group = new Group();
-  const key = JSON.stringify([t.roofY, t.floors.map((f) => f.y)]);
+  const key = roofKey(t);
   const kept = was?.userData.roof as { key: string; group: Group } | undefined;
-  const roof = kept?.key === key ? kept : { key, group: buildRoof(t, kit) };
+  const ready = kit.ready.get(key) as Group | undefined;
+  kit.ready.delete(key);
+  const roof = kept?.key === key ? kept : { key, group: ready ?? finished(roofSteps(t, kit)) };
   if (was && roof === kept) {
     was.remove(roof.group);
     was.userData.roof = undefined;

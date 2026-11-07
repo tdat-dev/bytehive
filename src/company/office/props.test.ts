@@ -5,10 +5,10 @@ import { risingAt, risingGeometry } from "./life";
 import { bake, lightAt, shadeAt, type RoomLight } from "./light";
 import { ROOM_D, ROOM_W } from "./layout";
 import { OFFICE } from "./palette";
-import { accentOf, furnish, roomAmbient } from "./props";
+import { accentOf, furnished, roomAmbient } from "./props";
 
 const NAMES = ["bytehive", "gcare", "vanta", "oldsite", "scratch", "project-6", "project-7", "project-8"];
-const room = (id: string, index = 0, lit = true, board = false) => furnish({ id, index, lit, board });
+const room = (id: string, index = 0, lit = true, board = false) => furnished({ id, index, lit, board });
 
 /** A room's shape as one string: two rooms that match give the same one. */
 const shapeOf = (g: BufferGeometry[]) => {

@@ -15,6 +15,7 @@ vi.mock("three", async (real) => {
   const three = await real<typeof import("three")>();
   class WebGLRenderer {
     shadowMap = { enabled: false, type: 0, autoUpdate: true, needsUpdate: false };
+    debug = { checkShaderErrors: true };
     info = { render: { calls: 0, triangles: 0 } };
     getDrawingBufferSize(v: { x: number; y: number }) { return v; }
     setSize(w: number, h: number) { calls.push(`size ${w}x${h}`); }
@@ -38,6 +39,10 @@ vi.mock("./build", async (real) => ({
   createKit: () => ({ ground: new Group(), groundLight: new Group(), dispose: () => { calls.push("kit"); } }),
   buildFloor: vi.fn(() => new Group()),
   buildTop: vi.fn(() => new Group()),
+  // eslint-disable-next-line require-yield
+  prepareFloor: function* () {},
+  // eslint-disable-next-line require-yield
+  prepareTop: function* () {},
 }));
 
 let queued: FrameRequestCallback[];
@@ -136,6 +141,36 @@ describe("going away", () => {
     canvas.dispatchEvent(new Event("webglcontextrestored"));
     expect(onLost).not.toHaveBeenCalled();
     expect(onRestored).not.toHaveBeenCalled();
+  });
+});
+
+describe("opening", () => {
+  it("makes rooms between frames, never inside setModel", () => {
+    const { scene } = mount();
+    scene.resize(800, 600);
+    scene.setModel(demoModel({ quiet: true }));
+    expect(buildFloor).not.toHaveBeenCalled();
+    runFrames(2);
+    expect(buildFloor).toHaveBeenCalled();
+    expect(buildTop).toHaveBeenCalled();
+  });
+  it("goes on with the newest model if one comes while it works", () => {
+    const { scene } = mount();
+    scene.resize(800, 600);
+    scene.setModel(demoModel({ quiet: true }));
+    scene.setModel(demoModel());
+    runFrames(2);
+    const last = vi.mocked(buildFloor).mock.calls.at(-1)![0];
+    expect(demoModel().floors.map((f) => f.id)).toContain(last.id);
+    expect(() => runFrames(3)).not.toThrow();
+  });
+  it("stops making rooms once it is gone", () => {
+    const { scene } = mount();
+    scene.resize(800, 600);
+    scene.setModel(demoModel({ quiet: true }));
+    scene.dispose();
+    runFrames(2);
+    expect(buildFloor).not.toHaveBeenCalled();
   });
 });
 

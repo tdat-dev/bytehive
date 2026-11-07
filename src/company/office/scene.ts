@@ -2,10 +2,10 @@
  * it and call setModel again and the picture is the same. It reads nothing from the
  * page but the canvas it is given, so it can move to a Worker with an OffscreenCanvas. */
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, PCFSoftShadowMap, PerspectiveCamera,
+  ACESFilmicToneMapping, BoxGeometry, BufferAttribute, BufferGeometry, Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, PCFSoftShadowMap, PerspectiveCamera, Points, PointsMaterial,
   Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Object3D,
 } from "three";
-import { BOARD_EDGE, FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt } from "./build";
+import { BOARD_EDGE, FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt, prepareFloor, prepareTop, roofKey, roomKey } from "./build";
 import { FLIGHT_MS, FOUNDER_DESK, FOV, SLAB as FOCUS_SLAB, STOREY, VIEW, liftAt, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
 import { sceneKey, type OfficeFloor, type OfficeModel, type OfficePerson, type OfficeState } from "./model";
 import { risingAt, risingGeometry, risingMaterial, risingMesh } from "./life";
@@ -48,6 +48,8 @@ const MOVE_MS = 560;
 /** How long the scene keeps its GPU memory once nobody can see it. */
 const AWAY_MS = 120_000;
 const HOVER_RISE = 0.14;
+/** How long the slow part of a model may run before the frame gets its turn. */
+const SLICE_MS = 12;
 /** How far sky and town shift at the edge of the canvas, in scene units. */
 const PARALLAX = { x: 1.6, y: 0.7 };
 const PICK_LAYER = 1;
@@ -140,6 +142,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   let tier = startTier(setting, battery);
   let seen = lookOf(tier);
   renderer.setPixelRatio(Math.min(o.dpr, seen.maxDpr));
+  renderer.debug.checkShaderErrors = false;
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -162,6 +165,11 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   const clock = o.clock ?? Date.now;
   const kit = createKit(() => invalidate());
   scene.add(kit.ground);
+  kit.setting?.sky();
+  let settingRest: Generator<void, void> | null = kit.setting?.rest() ?? null;
+  let compiled = !renderer.compileAsync || !kit.looks;
+  let building: Generator<void, void> | null = null;
+  let pumpTimer: ReturnType<typeof setTimeout> | null = null;
   const floors = new Map<string, { key: string; group: Group }>();
   let top: { key: string; group: Group } | null = null;
 
@@ -273,7 +281,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   function frame(t: number): void {
     raf = null;
-    if (lost || !visible) return;
+    if (lost || !visible || !compiled) return;
     if (tween) {
       if (lastFrameAt) gaps.push(t - lastFrameAt);
       lastFrameAt = t;
@@ -458,6 +466,85 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     disposeBuilt(group);
   }
 
+  async function compileLooks(): Promise<void> {
+    const probe = new Scene();
+    const g = new BufferGeometry();
+    for (const [name, size] of [["position", 3], ["normal", 3], ["uv", 2], ["color", 3]] as const) g.setAttribute(name, new BufferAttribute(new Float32Array(3 * size), size));
+    for (const m of kit.looks()) probe.add(m instanceof PointsMaterial ? new Points(g, m) : new Mesh(g, m));
+    probe.add(new Mesh(g, risingLook));
+    await renderer.compileAsync(probe, camera, scene);
+    // The first use asks the driver about each program, and that waits on it: one at a time, between frames.
+    for (const m of [...kit.looks(), risingLook]) {
+      (renderer.properties.get(m) as { currentProgram?: { getUniforms(): unknown } }).currentProgram?.getUniforms();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    g.dispose();
+  }
+
+  function placeFloor(f: OfficeFloor, spot: FloorSpot, key: string): void {
+    const built = floors.get(f.id);
+    const group = buildFloor(f, spot, kit, marked, built?.group);
+    if (built) drop(built.group);
+    scene.add(group);
+    floors.set(f.id, { key, group });
+  }
+
+  function placeTop(m: OfficeModel, t: Tower, key: string): void {
+    const group = buildTop(m, t, kit, marked, top?.group);
+    if (top) drop(top.group);
+    top = { key, group };
+    scene.add(group);
+  }
+
+  /** What follows from what is built so far. */
+  function settled(m: OfficeModel, t: Tower): void {
+    cast = [...floors.values(), ...(top ? [top] : [])].flatMap(({ group }) => group.children.filter(isPerson));
+    liftCar = top?.group.getObjectByName("liftCar") ?? null;
+    sizeMarks();
+    noteFinishes(m);
+    placeRising(m, t);
+  }
+
+  function shadowsChanged(t: Tower): void {
+    fitSun(t);
+    renderer.shadowMap.needsUpdate = seen.shadows;
+  }
+
+  /** The slow part of a model: rooms and roof that do not exist yet. Nearest what the camera looks at first. */
+  function* slowWork(m: OfficeModel, t: Tower, rooms: Array<{ f: OfficeFloor; spot: FloorSpot; key: string }>, roof: string | null): Generator<void, void> {
+    const aimY = shotFor(level, t, width / height).ty;
+    for (const { f, spot, key } of [...rooms].sort((a, b) => Math.abs(a.spot.y - aimY) - Math.abs(b.spot.y - aimY))) {
+      yield* prepareFloor(f, spot, kit);
+      placeFloor(f, spot, key);
+      settled(m, t);
+      yield;
+    }
+    if (roof !== null) {
+      yield* prepareTop(t, kit);
+      placeTop(m, t, roof);
+      settled(m, t);
+      yield;
+    }
+    if (settingRest) yield* settingRest;
+    settingRest = null;
+    shadowsChanged(t);
+  }
+
+  /** Runs the slow part in short slices between frames: it must never hold a frame or a keystroke up. */
+  function pump(): void {
+    pumpTimer = null;
+    if (disposed || !building) return;
+    const until = performance.now() + SLICE_MS;
+    do {
+      if (building.next().done) {
+        building = null;
+        break;
+      }
+    } while (performance.now() < until);
+    invalidate();
+    if (building) pumpTimer = setTimeout(pump, 0);
+  }
+
   function setModel(m: OfficeModel): void {
     const key = sceneKey(m);
     if (disposed || key === lastKey) return;
@@ -474,38 +561,35 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       floors.delete(id);
       rebuilt = true;
     }
+    // A floor that keeps its room is quick, and goes now. Rooms to make wait their turn.
+    const rooms: Array<{ f: OfficeFloor; spot: FloorSpot; key: string }> = [];
     m.floors.forEach((f, i) => {
       const spot = t.floors[i];
       const k = floorKey(f, spot, marked);
       const built = floors.get(f.id);
       if (built?.key === k) return;
-      const group = buildFloor(f, spot, kit, marked, built?.group);
-      if (built) drop(built.group);
-      scene.add(group);
-      floors.set(f.id, { key: k, group });
-      rebuilt = true;
+      if ((built?.group.userData.room as { key: string } | undefined)?.key === roomKey(f, spot)) {
+        placeFloor(f, spot, k);
+        rebuilt = true;
+      } else rooms.push({ f, spot, key: k });
     });
     const topKey = JSON.stringify([t.roofY, t.floors.map((f) => f.y), m.founder && lookKey(m.founder), m.founder && marked.has(m.founder.id)]);
+    let roof: string | null = null;
     if (top?.key !== topKey) {
-      const group = buildTop(m, t, kit, marked, top?.group);
-      if (top) drop(top.group);
-      top = { key: topKey, group };
-      scene.add(group);
-      rebuilt = true;
+      if ((top?.group.userData.roof as { key: string } | undefined)?.key === roofKey(t)) {
+        placeTop(m, t, topKey);
+        rebuilt = true;
+      } else roof = topKey;
     }
 
-    cast = [...floors.values(), ...(top ? [top] : [])].flatMap(({ group }) => group.children.filter(isPerson));
-    liftCar = top?.group.getObjectByName("liftCar") ?? null;
-    sizeMarks();
-    noteFinishes(m);
-    placeRising(m, t);
-    placeProxies(m, t);
-    kit.groundLight.visible = m.floors.some((f) => f.lit);
+    settled(m, t);
+    if (kit.groundLight) kit.groundLight.visible = m.floors.some((f) => f.lit);
     anyoneWorking = [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].some((p) => p.state === "working" || p.printing);
-    if (rebuilt) {
-      fitSun(t);
-      renderer.shadowMap.needsUpdate = true;
-    }
+    placeProxies(m, t);
+    if (rooms.length || roof !== null || settingRest) {
+      building = slowWork(m, t, rooms, roof);
+      pumpTimer ??= setTimeout(pump, 0);
+    } else if (rebuilt) shadowsChanged(t);
     const to = shotFor(level, t, width / height);
     if (!shot || !sameShot(to, tween?.to ?? shot)) aim(!shot);
     else invalidate();
@@ -677,6 +761,15 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     applyTier(startTier(setting, battery));
   });
   const offQuality = onQuality(setQuality);
+  // A shader compiled on first use holds the frame until it is done, half a second and more
+  // on this card. Asked for ahead, the driver does it aside while the rooms are being built.
+  if (!compiled) setTimeout(() => {
+    if (disposed) return;
+    void compileLooks().finally(() => {
+      compiled = true;
+      invalidate();
+    });
+  }, 0);
   if (kit.deskLight) kit.deskLight.visible = seen.glow;
   if (kit.hazeLight) kit.hazeLight.visible = seen.glow;
 
@@ -690,6 +783,7 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       if (disposed) return;
       disposed = true;
       halt();
+      if (pumpTimer !== null) clearTimeout(pumpTimer);
       if (awayTimer !== null) clearTimeout(awayTimer);
       offBattery();
       offQuality();

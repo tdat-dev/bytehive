@@ -110,15 +110,19 @@ function townRow(l: Layer, rand: () => number, windows: BufferGeometry[]): Buffe
   return out;
 }
 
-function townGeometry(): BufferGeometry {
+function* townParts(out: BufferGeometry[]): Generator<void, void> {
   const rand = seeded(23);
   const windows: BufferGeometry[] = [];
-  const rows = [
-    townRow({ z: TOWN.far, low: 5, high: 17, top: "#2c3244", foot: OFFICE.haze, lit: 0.04, glow: 0.55 }, rand, windows),
-    townRow({ z: (TOWN.far + TOWN.near) / 2, low: 3.5, high: 11, top: "#20252f", foot: "#363c4e", lit: 0.07, glow: 0.7 }, rand, windows),
-    townRow({ z: TOWN.near, low: 2.2, high: 6.5, top: "#161a24", foot: "#2a2f3e", lit: 0.09, glow: 0.85 }, rand, windows),
+  const layers: Layer[] = [
+    { z: TOWN.far, low: 5, high: 17, top: "#2c3244", foot: OFFICE.haze, lit: 0.04, glow: 0.55 },
+    { z: (TOWN.far + TOWN.near) / 2, low: 3.5, high: 11, top: "#20252f", foot: "#363c4e", lit: 0.07, glow: 0.7 },
+    { z: TOWN.near, low: 2.2, high: 6.5, top: "#161a24", foot: "#2a2f3e", lit: 0.09, glow: 0.85 },
   ];
-  return merged([...rows.flat(), ...windows]);
+  for (const l of layers) {
+    out.push(...townRow(l, rand, windows));
+    yield;
+  }
+  out.push(...windows);
 }
 
 /** The floor of the world, into the mist at the foot of the town. */
@@ -188,20 +192,24 @@ function shrub(rand: () => number, x: number, z: number, r: number): BufferGeome
   return merged([moved(blob(1), x, r * 0.7, z), moved(blob(0.74), x + r * (0.5 + rand() * 0.4), r * 0.5, z + r * 0.3), moved(blob(0.66), x - r * 0.6, r * 0.45, z - r * 0.2)]);
 }
 
-/** The plot: lawn, kerb, stones, trees and a bench, in one mesh that takes the shadows. */
-function plotGeometry(): BufferGeometry {
+/** The plot: lawn, kerb, stones, trees and a bench, for one mesh that takes the shadows. */
+function* plotParts(parts: BufferGeometry[]): Generator<void, void> {
   const rand = seeded(41);
   const lawn = moved(tint(roundedSlab(PLOT.w, PLOT.d, 0.55, 1.6), OFFICE.kerb, OFFICE.grass), PLOT.x, PLATE_TOP - 0.08, PLOT.z);
   const foot = moved(tint(roundedSlab(ROOM_W + LIFT_W + 2.6, ROOM_D + 2.6, 0.42, 0.5), OFFICE.shellEdge, OFFICE.stone), LIFT_W / 2, PLATE_TOP, 0);
   const tower = (t: { x: number; z: number }) => { const l = Math.hypot(t.x, t.z); return { x: -t.x / l, z: -t.z / l }; };
-  const parts = [lawn, foot];
-  for (const t of TREES) parts.push(moved(tree(rand, tower(t), t.h), t.x, PLATE_TOP - 0.08, t.z));
+  parts.push(lawn, foot);
+  yield;
+  for (const t of TREES) {
+    parts.push(moved(tree(rand, tower(t), t.h), t.x, PLATE_TOP - 0.08, t.z));
+    yield;
+  }
   for (const [x, z] of PATH) parts.push(moved(hexStone(0, 0, 0.42 + rand() * 0.08, OFFICE.stone), x, PLATE_TOP - 0.05, z));
   parts.push(moved(bench(), 9.9, PLATE_TOP - 0.08, 3, -Math.PI / 2));
   for (const l of LAMPS) parts.push(moved(streetLamp(), l.x, PLATE_TOP - 0.08, l.z));
+  yield;
   for (let i = 0; i < 9; i += 1) parts.push(moved(shrub(rand, 0, 0, 0.34 + rand() * 0.24), -5.2 + i * 1.04 + rand() * 0.2, PLATE_TOP - 0.08, ROOM_D / 2 + 1.95 + rand() * 0.3));
   for (let i = 0; i < 3; i += 1) parts.push(moved(shrub(rand, 0, 0, 0.44), 8.5 + i * 0.7, PLATE_TOP - 0.08, 0.6 + i * 1.1));
-  return merged(parts);
 }
 
 export interface Setting {
@@ -210,6 +218,12 @@ export interface Setting {
   light: Group;
   /** What sits behind everything, for the small shift a moving mouse gives it. */
   far: Group;
+  /** Every material here, for compiling their shaders ahead of the first frame. */
+  looks: Material[];
+  /** The sky first: it is what the first frame needs. */
+  sky(): void;
+  /** All the rest, a little at a time. */
+  rest(): Generator<void, void>;
   dispose(): void;
 }
 
@@ -217,52 +231,70 @@ export function createSetting(o: { outdoor: MeshStandardMaterial; thrown: MeshBa
   const group = new Group();
   const far = new Group();
   const light = new Group();
-
-  const sheet = new PlaneGeometry(SKY.w, SKY.y1 - SKY.y0).translate(0, (SKY.y0 + SKY.y1) / 2, SKY.z);
-  const skyMap = painted(1024, 512, paintSky);
-  const sky = new MeshBasicMaterial({ map: skyMap, toneMapped: false, dithering: true, depthWrite: false, fog: false });
-  const skyMesh = new Mesh(sheet, sky);
-  skyMesh.renderOrder = -3;
-
-  const starMaterial = new PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, toneMapped: false, transparent: true, depthWrite: false, blending: AdditiveBlending });
-  const stars = new Points(starField(), starMaterial);
-  stars.renderOrder = -2;
-
-  const flat = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, dithering: true });
-  const moon = new Mesh(moved(moonGeometry(), MOON.x, MOON.y, SKY.z + 5), flat);
-  moon.renderOrder = -2;
-  const halo = new Mesh(flare(MOON.x, MOON.y, SKY.z + 4, 16, "#7f8aa8", 0.16), o.thrown);
-  halo.renderOrder = -2;
-
-  const town = new Mesh(townGeometry(), flat);
-  const field = new Mesh(fieldGeometry(), flat);
-  far.add(skyMesh, stars, moon, halo, town);
   far.rotation.y = FACING;
   const floor = new Group();
-  floor.add(field);
   floor.rotation.y = FACING;
+  group.add(far, floor, light);
+  const owned: Array<BufferGeometry | Material | Texture> = [];
+  const flat = new MeshBasicMaterial({ vertexColors: true, toneMapped: false, dithering: true });
+  owned.push(flat);
+  const looks: Material[] = [flat];
 
-  const plot = new Mesh(plotGeometry(), o.outdoor);
-  plot.castShadow = true;
-  plot.receiveShadow = true;
+  function sky(): void {
+    const sheet = new PlaneGeometry(SKY.w, SKY.y1 - SKY.y0).translate(0, (SKY.y0 + SKY.y1) / 2, SKY.z);
+    const skyMap = painted(1024, 512, paintSky);
+    const air = new MeshBasicMaterial({ map: skyMap, toneMapped: false, dithering: true, depthWrite: false, fog: false });
+    const skyMesh = new Mesh(sheet, air);
+    skyMesh.renderOrder = -3;
+    const starMaterial = new PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, toneMapped: false, transparent: true, depthWrite: false, blending: AdditiveBlending });
+    const stars = new Points(starField(), starMaterial);
+    stars.renderOrder = -2;
+    const moon = new Mesh(moved(moonGeometry(), MOON.x, MOON.y, SKY.z + 5), flat);
+    moon.renderOrder = -2;
+    const halo = new Mesh(flare(MOON.x, MOON.y, SKY.z + 4, 16, "#7f8aa8", 0.16), o.thrown);
+    halo.renderOrder = -2;
+    far.add(skyMesh, stars, moon, halo);
+    owned.push(sheet, skyMap, air, starMaterial, stars.geometry, moon.geometry, halo.geometry);
+    looks.push(air, starMaterial);
+  }
 
-  const glows = merged([
-    ...LAMPS.flatMap((l) => [flare(l.x, PLATE_TOP + STREET_LAMP_H + 0.5, l.z, 3.4, "#ffe2c0", 0.4), pool(l.x, PLATE_TOP - 0.02, l.z, 8, 8, "#ffd9b0", 0.26)]),
-  ]);
-  const lamps = new Mesh(glows, o.thrown);
-  lamps.renderOrder = 1;
-  const globes = new Mesh(merged(LAMPS.map((l) => moved(tint(new SphereGeometry(0.24, 12, 9), OFFICE.glow), l.x, PLATE_TOP + STREET_LAMP_H + 0.5, l.z))), new MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
+  function* rest(): Generator<void, void> {
+    const field = new Mesh(fieldGeometry(), flat);
+    floor.add(field);
+    owned.push(field.geometry);
+    yield;
 
-  // The rooms' light on the ground in front, and on the lawn round it.
-  const spill = merged([
-    pool(LIFT_W / 2, PLATE_TOP + 0.01, ROOM_D / 2 + 2, ROOM_W + LIFT_W + 5, 6.4, "#ffb066", 0.34),
-    pool(ROOM_W / 2 + LIFT_W + 2, PLATE_TOP + 0.01, 0, 6, ROOM_D + 4, "#ffb066", 0.24),
-  ]);
-  const spilled = new Mesh(spill, o.thrown);
-  spilled.renderOrder = 1;
-  light.add(spilled);
+    const parts: BufferGeometry[] = [];
+    yield* plotParts(parts);
+    const plot = new Mesh(merged(parts), o.outdoor);
+    plot.castShadow = true;
+    plot.receiveShadow = true;
+    yield;
 
-  group.add(far, floor, plot, lamps, globes, light);
-  const owned: Array<BufferGeometry | Material | Texture> = [sheet, skyMap, sky, starMaterial, stars.geometry, flat, moon.geometry, halo.geometry, town.geometry, field.geometry, plot.geometry, glows, globes.geometry, globes.material as Material, spill];
-  return { group, light, far, dispose() { for (const x of owned) x.dispose(); } };
+    const glows = merged([
+      ...LAMPS.flatMap((l) => [flare(l.x, PLATE_TOP + STREET_LAMP_H + 0.5, l.z, 3.4, "#ffe2c0", 0.4), pool(l.x, PLATE_TOP - 0.02, l.z, 8, 8, "#ffd9b0", 0.26)]),
+    ]);
+    const lamps = new Mesh(glows, o.thrown);
+    lamps.renderOrder = 1;
+    const globes = new Mesh(merged(LAMPS.map((l) => moved(tint(new SphereGeometry(0.24, 12, 9), OFFICE.glow), l.x, PLATE_TOP + STREET_LAMP_H + 0.5, l.z))), flat);
+    // The rooms' light on the ground in front, and on the lawn round it.
+    const spill = merged([
+      pool(LIFT_W / 2, PLATE_TOP + 0.01, ROOM_D / 2 + 2, ROOM_W + LIFT_W + 5, 6.4, "#ffb066", 0.34),
+      pool(ROOM_W / 2 + LIFT_W + 2, PLATE_TOP + 0.01, 0, 6, ROOM_D + 4, "#ffb066", 0.24),
+    ]);
+    const spilled = new Mesh(spill, o.thrown);
+    spilled.renderOrder = 1;
+    light.add(spilled);
+    group.add(plot, lamps, globes);
+    owned.push(plot.geometry, glows, globes.geometry, spill);
+    yield;
+
+    const rows: BufferGeometry[] = [];
+    yield* townParts(rows);
+    const town = new Mesh(merged(rows), flat);
+    far.add(town);
+    owned.push(town.geometry);
+  }
+
+  return { group, light, far, looks, sky, rest, dispose() { for (const x of owned) x.dispose(); } };
 }
