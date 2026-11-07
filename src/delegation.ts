@@ -15,6 +15,8 @@ import { workspaces } from "./appstate";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const LIFETIME_MS = 2600;
 const TOAST_LIFETIME_MS = 2600;
+/** Long enough to read the toast and reach its button. */
+const TOAST_ACTION_LIFETIME_MS = 9000;
 const TOAST_MESSAGE_MAX = 90;
 
 const overlays = new WeakMap<Workspace, SVGSVGElement>();
@@ -34,7 +36,7 @@ function ensureStyle(): void {
 @keyframes deleg-flow{to{stroke-dashoffset:-14}}
 @keyframes deleg-fade{0%{opacity:0}12%{opacity:1}75%{opacity:1}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.deleg-path{animation:none}.deleg-dot{display:none}}
-.deleg-toast{position:fixed;right:16px;bottom:100px;z-index:250;display:flex;align-items:center;gap:10px;
+.deleg-toast{position:fixed;right:16px;bottom:100px;z-index:9999;display:flex;align-items:center;gap:10px;
   max-width:380px;padding:11px 16px;border-radius:14px;background:var(--surface-2);
   border:0;box-shadow:0 24px 60px rgba(0,0,0,.65),inset 0 0 0 1px rgba(255,255,255,.1);
   font-size:13px;color:var(--text);opacity:0;transform:translateY(8px);pointer-events:none;
@@ -44,6 +46,12 @@ function ensureStyle(): void {
   font-size:11px;font-weight:700;color:var(--accent-ink);background:var(--muted-2)}
 .deleg-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
 .deleg-toast-arw{font-family:var(--mono);color:var(--muted)}
+.deleg-toast-act{flex:none;min-height:26px;padding:0 10px;border-radius:8px;font-size:12px;color:var(--text);
+  box-shadow:inset 0 0 0 1px var(--line-strong);cursor:pointer}
+.deleg-toast-act[hidden]{display:none}
+.deleg-toast.on .deleg-toast-act{pointer-events:auto}
+.deleg-toast-act:hover{background:rgba(255,255,255,.08)}
+.deleg-toast-act:focus-visible{outline:2px solid #fff;outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.deleg-toast{transition:none}}
 `;
   document.head.appendChild(style);
@@ -172,14 +180,15 @@ export function showDelegation(ws: Workspace, fromName: string | null, toPanes: 
 let toastEl: HTMLElement | null = null;
 let toastAvEl: HTMLElement | null = null;
 let toastTextEl: HTMLElement | null = null;
+let toastActEl: HTMLButtonElement | null = null;
 let toastHideTimer: number | undefined;
 
 /** The singleton toast element, created (or re-created, if a prior one was
  *  somehow removed from the DOM) on first use. Not scoped to a workspace —
  *  the toast is a viewport-level notification, unlike the canvas arc. */
-function ensureToast(): { root: HTMLElement; av: HTMLElement; text: HTMLElement } {
-  if (toastEl && toastAvEl && toastTextEl && document.body.contains(toastEl)) {
-    return { root: toastEl, av: toastAvEl, text: toastTextEl };
+function ensureToast(): { root: HTMLElement; av: HTMLElement; text: HTMLElement; act: HTMLButtonElement } {
+  if (toastEl && toastAvEl && toastTextEl && toastActEl && document.body.contains(toastEl)) {
+    return { root: toastEl, av: toastAvEl, text: toastTextEl, act: toastActEl };
   }
   ensureStyle();
   const root = document.createElement("div");
@@ -188,12 +197,17 @@ function ensureToast(): { root: HTMLElement; av: HTMLElement; text: HTMLElement 
   av.className = "deleg-toast-av";
   const text = document.createElement("span");
   text.className = "deleg-toast-text";
-  root.append(av, text);
+  const act = document.createElement("button");
+  act.type = "button";
+  act.className = "deleg-toast-act";
+  act.hidden = true;
+  root.append(av, text, act);
   document.body.appendChild(root);
   toastEl = root;
   toastAvEl = av;
   toastTextEl = text;
-  return { root, av, text };
+  toastActEl = act;
+  return { root, av, text, act };
 }
 
 /** Find a pane's colour by agent name across every open workspace — the
@@ -223,10 +237,11 @@ function truncate(s: string, max: number): string {
  *  <message>". Reuses one element across calls, self-injecting into
  *  `document.body`. No-op (never throws) when `fromName` is null/blank or
  *  there are no targets — same rule as `showDelegation`; the caller's
- *  delivery must never depend on this succeeding. */
-export function showDelegationToast(fromName: string | null, toNames: string[], message: string): void {
+ *  delivery must never depend on this succeeding. With `action` the toast
+ *  carries one button and stays up long enough to press it. */
+export function showDelegationToast(fromName: string | null, toNames: string[], message: string, action?: { label: string; run: () => void }): void {
   if (!fromName || !fromName.trim() || toNames.length === 0) return;
-  const { root, av, text } = ensureToast();
+  const { root, av, text, act } = ensureToast();
   const from = fromName.trim();
   const color = findPaneColor(from);
   av.textContent = from.slice(0, 1).toUpperCase() || "?";
@@ -235,7 +250,15 @@ export function showDelegationToast(fromName: string | null, toNames: string[], 
   text.innerHTML =
     `${escapeHtml(from)} <span class="deleg-toast-arw">&rarr;</span> ${escapeHtml(toLabel)}: ` +
     escapeHtml(truncate(message, TOAST_MESSAGE_MAX));
+  act.hidden = !action;
+  act.textContent = action?.label ?? "";
+  act.onclick = action
+    ? () => {
+        root.classList.remove("on");
+        action.run();
+      }
+    : null;
   root.classList.add("on");
   window.clearTimeout(toastHideTimer);
-  toastHideTimer = window.setTimeout(() => root.classList.remove("on"), TOAST_LIFETIME_MS);
+  toastHideTimer = window.setTimeout(() => root.classList.remove("on"), action ? TOAST_ACTION_LIFETIME_MS : TOAST_LIFETIME_MS);
 }

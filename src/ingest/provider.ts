@@ -20,12 +20,18 @@ export function parseClassified(content: string): Classified | null {
   return { is_actionable: o.is_actionable, data: (o.data as Record<string, unknown> | null) ?? null };
 }
 
-/** One call to the endpoint in Settings. Any failure is a miss, not a block. */
+/** Rust sends a failure as {"Failed": reason}, so String(e) would only say [object Object]. */
+export function failureOf(e: unknown): string {
+  const failed = (e as { Failed?: unknown } | null)?.Failed;
+  return typeof failed === "string" ? failed : String(e);
+}
+
+/** One call to the classifier. Any failure is a miss, not a block. */
 export async function classifyWithProvider(text: string): Promise<ClassifyReply> {
   try {
     const reply = await ingestClassify(text);
     return { result: parseClassified(reply.content), usage: reply.usage };
   } catch (e) {
-    return { result: null, error: String(e) };
+    return { result: null, error: failureOf(e) };
   }
 }

@@ -1026,7 +1026,7 @@ export function paletteItems(): PaletteItem[] {
     act("Settings", () => openSettings(), "Ctrl+,"),
     act("Pomodoro timer", () => openTool("pomodoro"), "Ctrl+Shift+J"),
     act("Flow", () => openTool("flow"), "Ctrl+Shift+M", "Every hand-off between agents"),
-    act("Ingest", () => openTool("ingest"), "Ctrl+Shift+G", "Messages held back before reaching an agent"),
+    act("Ingest", () => openTool("ingest"), undefined, "Messages held back before reaching an agent"),
     act("Fleet", () => openTool("fleet"), "Ctrl+Shift+L", "Every agent in every project"),
     act("Scheduled agents", () => openTool("schedule"), undefined, "Start a preset at a set time"),
     act("Replays", () => openTool("replays"), undefined, "Watch a recorded session back"),

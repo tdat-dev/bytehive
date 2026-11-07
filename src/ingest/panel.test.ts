@@ -2,42 +2,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlockedList } from "./blocked";
 import type { RecentResult } from "./index";
-import { answerText, createIngestPanel, senderName, stamp, todayLine, type PanelApi } from "./panel";
-import type { LogStats } from "./log";
+import { answerText, createIngestPanel, senderName, stamp, type PanelApi } from "./panel";
 import type { BlockedEntry, ToolResult } from "./types";
 
 vi.mock("./index", () => ({}));
 
-const stats = (over: Partial<LogStats> = {}): LogStats => ({ messages: 0, cacheHits: 0, blocked: 0, calls: 0, tokens: 0, saved: 0, ...over });
 const held = (id: string, at: number): BlockedEntry => ({ id, hash: "h", source: "fleet", from: "Ana", to: "p1", toName: "Bob", text: `text ${id}`, reason: "smalltalk", at });
 const cost: ToolResult = { status: "ok", values: { usd: 0.54 }, timestamp: 1, metadata: { tool: "estimate_cost", version: "1", cacheable: true } };
 
 function setup(over: Partial<PanelApi> = {}, entries: BlockedEntry[] = [], recent: RecentResult[] = []) {
   let items = entries;
   const api: PanelApi = {
-    enabled: () => true,
     list: async (): Promise<BlockedList> => ({ entries: items, damaged: false }),
-    stats: async () => stats(),
     recent: () => recent,
     resend: async (_d, e) => {
       items = items.filter((x) => x.id !== e.id);
       return true;
     },
-    remove: async (_d, id) => {
-      const hit = items.find((x) => x.id === id) ?? null;
-      items = items.filter((x) => x.id !== id);
-      return hit;
-    },
-    restore: async (_d, e) => {
-      items = [...items, e].sort((a, b) => a.at - b.at);
-    },
     subscribe: () => () => {},
-    openSettings: vi.fn(),
     ...over,
   };
   const body = document.createElement("div");
   document.body.replaceChildren(body);
-  const panel = createIngestPanel(api.openSettings, api);
+  const panel = createIngestPanel(api);
   panel.mount(body);
   return { api, body, panel };
 }
@@ -56,13 +43,6 @@ const press = (body: HTMLElement, label: string, nth = 0) =>
 beforeEach(() => document.body.replaceChildren());
 
 describe("the words", () => {
-  it("says the day in one sentence, in the right number", () => {
-    expect(todayLine(stats())).toBe("No messages through the gate today.");
-    expect(todayLine(stats({ messages: 1, calls: 1, tokens: 1 }))).toBe("Today: 1 message, 0 were held, 0 from cache, 1 classifier call using 1 token.");
-    expect(todayLine(stats({ messages: 14, blocked: 3, cacheHits: 2, calls: 5, tokens: 1840 }))).toBe(
-      "Today: 14 messages, 3 were held, 2 from cache, 5 classifier calls using 1,840 tokens.",
-    );
-  });
 
   it("reads a cost as money and a failure as a failure", () => {
     expect(answerText(cost)).toBe("$0.54");
@@ -99,14 +79,6 @@ describe("the panel", () => {
     expect(t.body.querySelector(".igp-h")).toBeNull();
   });
 
-  it("explains the switch being off and leads to Settings", async () => {
-    const t = setup({ enabled: () => false });
-    await opened(t);
-    expect(t.body.textContent).toContain("The gate is off");
-    press(t.body, "Open Settings");
-    expect(t.api.openSettings).toHaveBeenCalled();
-  });
-
   it("shows held messages oldest first like Flow, so a new one never moves a row under the pointer", async () => {
     const t = setup({}, [held("a", 1), held("b", 2)]);
     await opened(t);
@@ -115,6 +87,13 @@ describe("the panel", () => {
     expect(rows[0].textContent).toContain("Ana");
     expect(rows[0].textContent).toContain("Bob");
     expect(rows[0].textContent).toContain("Small talk");
+  });
+
+  it("gives a held message one action, not a list of chores", async () => {
+    const t = setup({}, [held("a", 1)]);
+    await opened(t);
+    const row = t.body.querySelector(".igp-held .flow-row") as HTMLElement;
+    expect([...row.querySelectorAll("button:not(.flow-text)")].map((b) => b.textContent)).toEqual(["Send anyway"]);
   });
 
   it("sends a message anyway, removes the row and moves focus to the next one", async () => {
@@ -136,20 +115,6 @@ describe("the panel", () => {
     await settle();
     expect(t.body.querySelectorAll(".igp-held .flow-row")).toHaveLength(1);
     expect(t.body.textContent).toContain("Couldn't reach Bob");
-  });
-
-  it("deletes a row and can bring it back", async () => {
-    const t = setup({}, [held("a", 1)]);
-    await opened(t);
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    expect(t.body.querySelectorAll(".igp-held .flow-row")).toHaveLength(0);
-    press(t.body, "Undo");
-    await settle();
-    await settle();
-    expect(t.body.querySelectorAll(".igp-held .flow-row")).toHaveLength(1);
-    expect(t.body.textContent).toContain("Message restored.");
   });
 
   it("offers another try when the files can't be read", async () => {
@@ -183,7 +148,6 @@ describe("the panel", () => {
     await opened(t);
     press(t.body, "Send anyway");
     press(t.body, "Send anyway");
-    press(t.body, "Delete");
     await settle();
     expect(resend).toHaveBeenCalledTimes(1);
     expect(t.body.textContent).toContain("Sending to Bob");
@@ -194,24 +158,6 @@ describe("the panel", () => {
     expect(t.body.textContent).toContain("Sent to Bob.");
   });
 
-  it("after Delete, focus lands on the next Delete, never on a send", async () => {
-    const t = setup({}, [held("a", 1), held("b", 2)]);
-    await opened(t);
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    expect(document.activeElement?.textContent).toBe("Delete");
-  });
-
-  it("after the last Delete, focus lands on Undo", async () => {
-    const t = setup({}, [held("a", 1)]);
-    await opened(t);
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    expect(document.activeElement?.textContent).toBe("Undo");
-  });
-
   it("keeps focus on the row when a send fails", async () => {
     const t = setup({ resend: async () => false }, [held("a", 1)]);
     await opened(t);
@@ -219,72 +165,6 @@ describe("the panel", () => {
     await settle();
     await settle();
     expect(document.activeElement?.textContent).toBe("Send anyway");
-  });
-
-  it("puts focus back on the restored row after Undo", async () => {
-    const t = setup({}, [held("a", 1)]);
-    await opened(t);
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    press(t.body, "Undo");
-    await settle();
-    await settle();
-    expect(document.activeElement?.closest<HTMLElement>(".flow-row")?.dataset.id).toBe("a");
-  });
-
-  it("Undo brings back every message deleted in a row", async () => {
-    const t = setup({}, [held("a", 1), held("b", 2)]);
-    await opened(t);
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    expect(t.body.textContent).toContain("2 messages deleted.");
-    press(t.body, "Undo");
-    await settle();
-    await settle();
-    expect(t.body.querySelectorAll(".igp-held .flow-row")).toHaveLength(2);
-  });
-
-  it("keeps Undo when the panel is closed and opened again", async () => {
-    const t = setup({}, [held("a", 1)]);
-    await opened(t);
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    t.panel.hide();
-    t.panel.show();
-    await settle();
-    press(t.body, "Undo");
-    await settle();
-    await settle();
-    expect(t.body.querySelectorAll(".igp-held .flow-row")).toHaveLength(1);
-  });
-
-  it("says so when Undo fails, and lets you try again", async () => {
-    let fail = true;
-    const restore = vi.fn(async () => {
-      if (fail) throw new Error("disk");
-    });
-    const t = setup({ restore }, [held("a", 1)]);
-    await opened(t);
-    press(t.body, "Delete");
-    await settle();
-    await settle();
-    press(t.body, "Undo");
-    await settle();
-    await settle();
-    expect(t.body.textContent).toContain("Couldn't restore");
-    expect(document.activeElement?.textContent).toBe("Undo");
-    fail = false;
-    press(t.body, "Undo");
-    await settle();
-    await settle();
-    expect(restore).toHaveBeenCalledTimes(2);
-    expect(t.body.textContent).toContain("Message restored.");
   });
 
   it("a live redraw keeps focus and opened text", async () => {

@@ -1,28 +1,21 @@
-/* Ingest: the dock panel for what the gate did today. Messages it held back can
- * be sent anyway or deleted; answers it computed stay listed until the app
- * closes. Rows share Flow's anatomy and order, oldest first, so a new one never
+/* Ingest: what the gate held back and what it answered. A held message has one
+ * action, Send anyway; old ones clear themselves and the day's numbers stay in
+ * the log. Rows share Flow's anatomy and order, oldest first, so a new one never
  * moves a row under the pointer. Nothing polls: the panel redraws when it opens
  * and when the gate reports a change, keeping focus and opened text. */
 
 import { fmtTime } from "../flow";
-import { getPrefs } from "../prefs";
 import { money } from "../pricing";
 import type { DockContext } from "../dockstore";
-import { blockedList, blockedRemove, blockedResend, blockedRestore, ingestRecent, ingestStats, onIngest, type RecentResult } from "./index";
+import { blockedList, blockedResend, ingestRecent, onIngest, type RecentResult } from "./index";
 import type { BlockedList } from "./blocked";
-import type { LogStats } from "./log";
 import type { BlockedEntry, Source, ToolResult } from "./types";
 
 export interface PanelApi {
-  enabled(): boolean;
   list(dir: string): Promise<BlockedList>;
-  stats(dir: string): Promise<LogStats>;
   recent(dir: string): readonly RecentResult[];
   resend(dir: string, entry: BlockedEntry): Promise<boolean>;
-  remove(dir: string, id: string): Promise<BlockedEntry | null>;
-  restore(dir: string, entry: BlockedEntry): Promise<void>;
   subscribe(fn: () => void): () => void;
-  openSettings(): void;
 }
 
 const REASONS: Record<string, string> = {
@@ -37,17 +30,6 @@ const TOOLS: Record<string, string> = {
   convert_currency: "Currency",
   remaining_budget: "Budget left",
 };
-
-const count = (n: number, one: string, many = one + "s"): string => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-
-/** The day in one sentence. Tokens saved stay out: they are only an estimate. */
-export function todayLine(s: LogStats): string {
-  if (s.messages === 0) return "No messages through the gate today.";
-  return (
-    `Today: ${count(s.messages, "message")}, ${s.blocked} ${s.blocked === 1 ? "was" : "were"} held, ${s.cacheHits} from cache, ` +
-    `${count(s.calls, "classifier call")} using ${count(s.tokens, "token")}.`
-  );
-}
 
 /** What a computed answer says, in the words a person would read it. */
 export function answerText(r: ToolResult): string {
@@ -114,34 +96,26 @@ export function stamp(ts: number, now = Date.now()): string {
   return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${fmtTime(ts)}`;
 }
 
-const defaultApi = (openSettings: () => void): PanelApi => ({
-  enabled: () => getPrefs().ingest,
+const defaultApi = (): PanelApi => ({
   list: blockedList,
-  stats: ingestStats,
   recent: ingestRecent,
   resend: blockedResend,
-  remove: blockedRemove,
-  restore: blockedRestore,
   subscribe: onIngest,
-  openSettings,
 });
 
-export function createIngestPanel(openSettings: () => void, api: PanelApi = defaultApi(openSettings)) {
+export function createIngestPanel(api: PanelApi = defaultApi()) {
   let root: HTMLElement | null = null;
   let dir: string | null = null;
   let open = false;
   let drawn = 0;
-  /** Rows with a send or delete under way: pressing again must not repeat it. */
+  /** Rows with a send under way: pressing again must not repeat it. */
   const busy = new Set<string>();
   const opened = new Set<string>();
-  /** Deleted and still restorable, until Undo or a change of project. */
-  let deleted: BlockedEntry[] = [];
   const status = el("p", "igp-status");
   status.setAttribute("role", "status");
 
-  function say(text: string, undo?: () => void): void {
+  function say(text: string): void {
     status.replaceChildren(text);
-    if (undo) status.append(" ", button("igp-link", "Undo", undo, "undo"));
   }
 
   function marked(mark: string): HTMLElement | undefined {
@@ -152,12 +126,11 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     const row = el("div", "flow-row");
     row.dataset.id = entry.id;
 
-    const del = button("igp-btn igp-del", "Delete", () => void remove(entry, index), `del:${entry.id}`);
     const send = button("igp-btn igp-send", "Send anyway", () => void resend(entry, index), `send:${entry.id}`);
-    del.disabled = send.disabled = busy.has(entry.id);
+    send.disabled = busy.has(entry.id);
 
     const foot = el("div", "igp-foot");
-    foot.append(meta(senderName(entry.from, entry.source), entry.toName ?? "agent", entry.at, REASONS[entry.reason] ?? entry.reason), del, send);
+    foot.append(meta(senderName(entry.from, entry.source), entry.toName ?? "agent", entry.at, REASONS[entry.reason] ?? entry.reason), send);
 
     row.append(foldable(entry.gist ?? entry.text, entry.id, opened), foot);
     return row;
@@ -171,20 +144,18 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     return row;
   }
 
-  /** The same control on the row now at `index`, else Undo, else the panel. */
-  function focusRow(index: number, selector: string): void {
-    const rows = root?.querySelectorAll<HTMLElement>(`.igp-held .flow-row ${selector}`);
+  /** The Send anyway on the row now at `index`, else the panel. */
+  function focusRow(index: number): void {
+    const rows = root?.querySelectorAll<HTMLElement>(".igp-held .igp-send");
     const next = rows?.length ? rows[Math.min(index, rows.length - 1)] : undefined;
-    (next ?? marked("undo") ?? root)?.focus();
+    (next ?? root)?.focus();
   }
 
   function setBusy(id: string, on: boolean): void {
     if (on) busy.add(id);
     else busy.delete(id);
-    for (const mark of [`del:${id}`, `send:${id}`]) {
-      const b = marked(mark) as HTMLButtonElement | undefined;
-      if (b) b.disabled = on;
-    }
+    const b = marked(`send:${id}`) as HTMLButtonElement | undefined;
+    if (b) b.disabled = on;
   }
 
   async function resend(entry: BlockedEntry, index: number): Promise<void> {
@@ -196,42 +167,8 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     setBusy(entry.id, false);
     say(ok ? `Sent to ${name}.` : `Couldn't reach ${name}, so the message is still here.`);
     await draw();
-    if (ok) focusRow(index, ".igp-send");
+    if (ok) focusRow(index);
     else marked(`send:${entry.id}`)?.focus();
-  }
-
-  function undo(): void {
-    if (!dir) return;
-    const here = dir;
-    const items = deleted;
-    deleted = [];
-    void Promise.all(items.map((e) => api.restore(here, e))).then(
-      async () => {
-        say(items.length === 1 ? "Message restored." : `${items.length} messages restored.`);
-        await draw();
-        marked(`del:${items[items.length - 1].id}`)?.focus();
-      },
-      () => {
-        deleted = items;
-        say("Couldn't restore it.", undo);
-        marked("undo")?.focus();
-      },
-    );
-  }
-
-  async function remove(entry: BlockedEntry, index: number): Promise<void> {
-    if (!dir || busy.has(entry.id)) return;
-    setBusy(entry.id, true);
-    try {
-      const gone = await api.remove(dir, entry.id);
-      if (gone) deleted.push(gone);
-      say(deleted.length === 1 ? "Message deleted." : `${deleted.length} messages deleted.`, undo);
-    } catch {
-      say("Couldn't delete it, so the message is still here.");
-    }
-    setBusy(entry.id, false);
-    await draw();
-    focusRow(index, ".igp-del");
   }
 
   /** Redraw from the files. A slower read that started earlier never wins. */
@@ -244,9 +181,8 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     }
     const here = dir;
     let held: BlockedList;
-    let today: LogStats;
     try {
-      [held, today] = await Promise.all([api.list(here), api.stats(here)]);
+      held = await api.list(here);
     } catch {
       if (ticket !== drawn) return;
       const failed = el("div", "flow-empty", "Couldn't read this project's gate files.");
@@ -257,11 +193,6 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     if (ticket !== drawn) return;
 
     const parts: HTMLElement[] = [status];
-    if (!api.enabled()) {
-      const off = el("p", "igp-today", "The gate is off, so every message goes straight to its agent. ");
-      off.append(button("igp-link", "Open Settings", () => api.openSettings()));
-      parts.push(off);
-    }
 
     const heldSec = el("section", "igp-sec igp-held");
     heldSec.setAttribute("aria-label", "Held back");
@@ -286,7 +217,6 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
       sec.append(el("h3", "igp-h", `Answered by code (${answers.length})`), list);
       parts.push(sec);
     }
-    if (api.enabled()) parts.push(el("p", "igp-today", todayLine(today)));
 
     const active = document.activeElement as HTMLElement | null;
     const mark = active && root.contains(active) ? active.dataset.mark : undefined;
@@ -307,14 +237,11 @@ export function createIngestPanel(openSettings: () => void, api: PanelApi = defa
     },
     hide() {
       open = false;
-      if (deleted.length === 0) say("");
+      say("");
     },
     setContext(ctx: DockContext | null) {
       const next = ctx?.dir ?? null;
-      if (next !== dir) {
-        deleted = [];
-        say("");
-      }
+      if (next !== dir) say("");
       dir = next;
       void draw();
     },

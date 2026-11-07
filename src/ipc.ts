@@ -421,21 +421,9 @@ export async function codexPlanUsage(): Promise<PlanUsage | null> {
   return invoke<PlanUsage | null>("codex_plan_usage");
 }
 
-/** The ingestion gate's classifier endpoint. The key is never part of this shape. */
+/** Whether the ingestion gate's classifier has a key. The key itself never comes back. */
 export interface IngestProvider {
-  baseUrl: string;
-  model: string;
-  jsonMode: "schema" | "prompt";
   hasKey: boolean;
-  timeoutMs: number;
-}
-
-export interface IngestProviderInput {
-  baseUrl: string;
-  model: string;
-  apiKey?: string;
-  jsonMode?: "schema" | "prompt";
-  timeoutMs?: number;
 }
 
 export interface IngestReply {
@@ -448,8 +436,8 @@ export async function ingestProviderGet(): Promise<IngestProvider> {
   return invoke<IngestProvider>("ingest_provider_get");
 }
 
-/** An empty or missing key keeps the stored one, since the page never sees it. */
-export async function ingestProviderSave(input: IngestProviderInput): Promise<IngestProvider> {
+/** An empty key keeps the stored one, since the page never sees it. */
+export async function ingestProviderSave(input: { apiKey: string }): Promise<IngestProvider> {
   return invoke<IngestProvider>("ingest_provider_save", { input });
 }
 

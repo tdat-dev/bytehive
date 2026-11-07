@@ -196,32 +196,8 @@
         </section>
         <section class="sec" data-sec="ingest">
           <h3>Ingest</h3>
-          <label class="toggle"><input type="checkbox" id="prefIngest"><span class="tg"></span><span class="sr-txt"><b>Hold back small talk</b><span>Small talk and repeats wait in Ingest, and code answers cost questions. Off, every message goes straight through.</span></span></label>
-          <details class="ing-fold" id="ingClassifier">
-            <summary><span class="sr-txt"><b>Classifier</b><span id="ingClassifierSum">Not set up</span></span></summary>
-            <div class="ing-form">
-              <p class="ing-hint">An OpenAI-compatible endpoint. It never uses the sign-in or quota of your agents. The key stays on this computer and is never shown again.</p>
-              <label class="ing-field"><span>Endpoint</span><input class="input" id="ingBaseUrl" type="url" placeholder="https://9router.zoldify.com/v1" spellcheck="false"></label>
-              <label class="ing-field"><span>Model</span><input class="input" id="ingModel" type="text" placeholder="cx/gpt-6-luna" spellcheck="false"></label>
-              <label class="ing-field"><span>API key</span><input class="input" id="ingKey" type="password" autocomplete="off"></label>
-              <label class="ing-field"><span>Answer format</span><select class="input" id="ingJsonMode">
-                <option value="schema">Strict JSON schema</option>
-                <option value="prompt">Prompt only (provider has no schema support)</option>
-              </select></label>
-              <div class="ing-foot">
-                <span class="ing-note" id="ingNote" role="status"></span>
-                <button type="button" class="sbtn" id="ingTest">Test saved settings</button>
-                <button type="button" class="sbtn" id="ingSave">Save</button>
-              </div>
-            </div>
-          </details>
-          <details class="ing-fold">
-            <summary><span class="sr-txt"><b>Limits</b><span id="ingLimitsSum"></span></span></summary>
-          <div class="srow"><div class="sr-txt"><b>Cache lifetime</b><span>Days an answered cost question stays cached. A change to the price table clears old answers on its own.</span></div><input class="input ing-num" id="ingTtlDays" type="number" min="1" max="30" aria-label="Cache days"></div>
-          <div class="srow"><div class="sr-txt"><b>Classifier calls a day</b><span>Past this, a message goes straight to the agent instead of the API.</span></div><input class="input ing-num" id="ingDailyCalls" type="number" min="0" max="5000" aria-label="Daily calls"></div>
-          <div class="srow"><div class="sr-txt"><b>Classifier tokens a day</b><span>Same idea, counted from the provider's own usage numbers.</span></div><input class="input ing-num" id="ingDailyTokens" type="number" min="0" max="5000000" aria-label="Daily tokens"></div>
-          <div class="srow"><div class="sr-txt"><b>Repeat window</b><span>Minutes the same agent-to-agent message is held back. Messages from you are never held by this.</span></div><input class="input ing-num" id="ingLoopMin" type="number" min="1" max="120" aria-label="Repeat minutes"></div>
-          </details>
+          <label class="toggle"><input type="checkbox" id="prefIngest"><span class="tg"></span><span class="sr-txt"><b>Hold back small talk</b><span>Small talk and repeats don't reach the agent, and code answers cost questions. Off, every message goes straight through.</span></span></label>
+          <div class="srow"><div class="sr-txt"><label for="ingKey"><b>Classifier key</b></label><span class="ing-note" id="ingNote" role="status"></span></div><input class="input ing-key" id="ingKey" type="password" autocomplete="off"></div>
         </section>
         <section class="sec" data-sec="terminal">
           <h3>Terminal</h3>

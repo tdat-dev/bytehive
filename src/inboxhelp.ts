@@ -52,7 +52,6 @@ export const HELP: HelpSection[] = [
 export const TOOLS: HelpTool[] = [
   { id: "kanban", name: "Board", what: "Cards the agents move as they plan and finish work.", keys: ["Ctrl", "Shift", "K"] },
   { id: "flow", name: "Flow", what: "Every hand-off between agents, in order, with the message kept.", keys: ["Ctrl", "Shift", "M"] },
-  { id: "ingest", name: "Ingest", what: "Messages held back before reaching an agent, and answers worked out by code.", keys: ["Ctrl", "Shift", "G"] },
   { id: "company", name: "Company", what: "Give the Founder a job and see what needs you.", keys: ["Ctrl", "Shift", "O"] },
   { id: "fleet", name: "Fleet", what: "Every agent in every project at a glance.", keys: ["Ctrl", "Shift", "L"] },
   { id: "pomodoro", name: "Pomodoro", what: "A focus timer while the agents work.", keys: ["Ctrl", "Shift", "J"] },

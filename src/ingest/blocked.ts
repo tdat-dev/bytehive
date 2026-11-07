@@ -15,6 +15,8 @@ export interface BlockedList {
 }
 
 const CAP = 100;
+/** Small talk nobody rescued in a week is not going to be. */
+const KEEP_MS = 7 * 86_400_000;
 
 /** The pane to deliver a held message to now: the one it was meant for, or the
  *  same agent under a new pane after a restart. Null when that agent isn't
@@ -27,7 +29,10 @@ export function liveTarget(panes: Array<{ id: string; name: string; running: boo
 export class BlockedStore {
   private tail: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly io: BlockedIO) {}
+  constructor(
+    private readonly io: BlockedIO,
+    private readonly now: () => number = Date.now,
+  ) {}
 
   private turn<T>(work: () => Promise<T>): Promise<T> {
     const run = this.tail.then(work, work);
@@ -40,7 +45,8 @@ export class BlockedStore {
     if (!text) return { entries: [], damaged: false };
     try {
       const file = JSON.parse(text) as { entries?: BlockedEntry[] };
-      if (Array.isArray(file.entries)) return { entries: file.entries, damaged: false };
+      // A held card stays: it still sits on the board waiting for this message.
+      if (Array.isArray(file.entries)) return { entries: file.entries.filter((e) => e.card || this.now() - e.at < KEEP_MS), damaged: false };
     } catch {
       /* reported below */
     }

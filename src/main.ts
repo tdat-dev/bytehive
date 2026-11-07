@@ -419,9 +419,6 @@ document.addEventListener("keydown", (e) => {
   } else if (k === "o") {
     e.preventDefault();
     dockToggle("company");
-  } else if (k === "g") {
-    e.preventDefault();
-    dockToggle("ingest");
   }
 });
 

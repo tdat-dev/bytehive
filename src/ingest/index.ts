@@ -11,7 +11,7 @@ import { BlockedStore, liveTarget, type BlockedList } from "./blocked";
 import { ResultCache } from "./cache";
 import { Gate } from "./gate";
 import { sha256 } from "./hash";
-import { IngestLog, type LogStats } from "./log";
+import { IngestLog } from "./log";
 import { classifyWithProvider } from "./provider";
 import { defaultTools } from "./tools";
 import type { BlockedEntry, GateSettings, Outcome, Request, ToolResult } from "./types";
@@ -36,14 +36,14 @@ function fileIO(root: string, rel: string) {
   };
 }
 
+/** Only the switch is a choice. The limits are safe values, not settings. */
 export function ingestSettings(): GateSettings {
-  const p = getPrefs();
   return {
-    enabled: p.ingest,
-    ttlDays: p.ingestTtlDays,
-    dailyCallCap: p.ingestDailyCalls,
-    dailyTokenCap: p.ingestDailyTokens,
-    loopWindowMin: p.ingestLoopMin,
+    enabled: getPrefs().ingest,
+    ttlDays: 7,
+    dailyCallCap: 500,
+    dailyTokenCap: 500_000,
+    loopWindowMin: 10,
   };
 }
 
@@ -162,7 +162,8 @@ export async function sendGated(dir: string, req: Request): Promise<Outcome> {
     recents.set(dir, list.slice(-RECENT_MAX));
     if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], resultLine(out.result).replace("[ingest] ", ""));
   } else if (out.kind === "blocked") {
-    if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], "Held back. Open Ingest to send it anyway.");
+    const name = req.toName ?? "agent";
+    if (!req.fromPane) showDelegationToast("Ingest", [name], "Held back.", { label: "Send anyway", run: () => void sendHeld(dir, out.id, name) });
   } else if (out.kind === "failed") {
     if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], "Couldn't deliver it.");
   }
@@ -177,10 +178,6 @@ export function onIngest(fn: () => void): () => void {
 }
 
 export const blockedList = (dir: string): Promise<BlockedList> => storeFor(dir).list();
-
-export const blockedRemove = (dir: string, id: string): Promise<BlockedEntry | null> => storeFor(dir).remove(id);
-
-export const blockedRestore = (dir: string, entry: BlockedEntry): Promise<void> => storeFor(dir).add(entry);
 
 /** Deliver a held message as it was written, past the gate. It stays on the
  *  list unless it really reached the agent. */
@@ -197,10 +194,13 @@ export async function blockedResend(dir: string, entry: BlockedEntry): Promise<b
   return true;
 }
 
-export async function ingestStats(dir: string): Promise<LogStats> {
-  const log = logFor(dir);
-  await log.load();
-  return log.stats();
+/** Send anyway from the toast, which only knows the message's id. */
+async function sendHeld(dir: string, id: string, name: string): Promise<void> {
+  const entry = (await blockedList(dir)).entries.find((e) => e.id === id);
+  if (!entry) return;
+  const ok = await blockedResend(dir, entry).catch(() => false);
+  showDelegationToast("Ingest", [name], ok ? "Sent." : "Couldn't reach it, so the message is still held.");
+  changed();
 }
 
 export const ingestRecent = (dir: string): readonly RecentResult[] => recents.get(dir) ?? [];

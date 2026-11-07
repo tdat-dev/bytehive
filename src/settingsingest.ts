@@ -1,13 +1,14 @@
-// Settings > Ingest: the classifier endpoint and the gate's limits. The key is
-// written once through Rust and never read back, so the field always opens
-// empty and says whether one is stored.
-import { ingestClassify, ingestProviderGet, ingestProviderSave, type IngestProvider } from "./ipc";
+// Settings > Ingest: the switch and the classifier key. Everything else about
+// the classifier is decided in Rust. The key is written once and never read
+// back, so the field always opens empty and says whether one is stored.
+import { failureOf } from "./ingest/provider";
+import { ingestClassify, ingestProviderGet, ingestProviderSave } from "./ipc";
 import { getPrefs, setPref } from "./prefs";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const field = (id: string) => $<HTMLInputElement>(id);
-const select = (id: string) => $<HTMLSelectElement>(id);
-const button = (id: string) => $<HTMLButtonElement>(id);
+
+const NO_KEY = "Without one, only the built-in rules run. It stays on this computer.";
 
 function note(text: string, kind: "" | "ok" | "err" = ""): void {
   const el = $("ingNote");
@@ -16,91 +17,48 @@ function note(text: string, kind: "" | "ok" | "err" = ""): void {
   el.className = "ing-note" + (kind ? " " + kind : "");
 }
 
-function show(p: IngestProvider): void {
-  const base = field("ingBaseUrl");
-  if (base) base.value = p.baseUrl;
-  const model = field("ingModel");
-  if (model) model.value = p.model;
-  const mode = select("ingJsonMode");
-  if (mode) mode.value = p.jsonMode;
+/** What a failed check means, in words that say what to do about it. */
+export function keyProblem(e: unknown): string {
+  const error = failureOf(e);
+  if (/http_40[13]/.test(error)) return "That key was refused.";
+  if (/timeout|network/.test(error)) return "Couldn't reach the classifier.";
+  return "The classifier didn't answer.";
+}
+
+function showKey(hasKey: boolean): void {
   const key = field("ingKey");
   if (key) {
     key.value = "";
-    key.placeholder = p.hasKey ? "Saved. Leave empty to keep it." : "";
+    key.placeholder = hasKey ? "Saved" : "";
   }
-  const sum = $("ingClassifierSum");
-  if (sum) sum.textContent = classifierLine(p);
-  // Nothing saved yet: the form is the next step, so it opens by itself.
-  const fold = $<HTMLDetailsElement>("ingClassifier");
-  if (fold && !p.hasKey) fold.open = true;
-}
-
-/** The classifier in one line: where it points, or that it isn't set up. */
-export function classifierLine(p: Pick<IngestProvider, "baseUrl" | "model" | "hasKey">): string {
-  if (!p.baseUrl || !p.hasKey) return "Not set up";
-  let host = p.baseUrl;
-  try { host = new URL(p.baseUrl).host; } catch { /* shown as typed */ }
-  return p.model ? `${p.model} at ${host}` : host;
-}
-
-function setNumber(id: string, value: number): void {
-  const el = field(id);
-  if (el && document.activeElement !== el) el.value = String(value);
-}
-
-function showLimits(): void {
-  const p = getPrefs();
-  setNumber("ingTtlDays", p.ingestTtlDays);
-  setNumber("ingDailyCalls", p.ingestDailyCalls);
-  setNumber("ingDailyTokens", p.ingestDailyTokens);
-  setNumber("ingLoopMin", p.ingestLoopMin);
-  const on = field("prefIngest");
-  if (on) on.checked = p.ingest;
-  const sum = $("ingLimitsSum");
-  if (sum) sum.textContent = `${p.ingestDailyCalls.toLocaleString("en-US")} classifier calls a day, cached ${p.ingestTtlDays} days`;
+  note(hasKey ? "Saved on this computer." : NO_KEY);
 }
 
 export function syncIngestView(): void {
-  showLimits();
+  const on = field("prefIngest");
+  if (on) on.checked = getPrefs().ingest;
   void ingestProviderGet()
-    .then(show)
-    .catch((e) => note(String(e), "err"));
+    .then((p) => showKey(p.hasKey))
+    .catch(() => note(NO_KEY));
 }
 
-async function save(): Promise<boolean> {
-  const btn = button("ingSave");
-  if (btn) btn.disabled = true;
+/** A new key is saved and tried at once, so there is nothing else to press. */
+async function saveKey(): Promise<void> {
+  const key = field("ingKey");
+  const apiKey = key?.value.trim();
+  if (!key || !apiKey) return;
+  key.disabled = true;
+  note("Checking...");
   try {
-    const provider = await ingestProviderSave({
-      baseUrl: field("ingBaseUrl")?.value.trim() ?? "",
-      model: field("ingModel")?.value.trim() ?? "",
-      apiKey: field("ingKey")?.value.trim() || undefined,
-      jsonMode: (select("ingJsonMode")?.value as "schema" | "prompt" | undefined) ?? "schema",
-    });
-    show(provider);
-    note("Saved.", "ok");
-    return true;
+    await ingestProviderSave({ apiKey });
+    key.value = "";
+    key.placeholder = "Saved";
+    await ingestClassify("cảm ơn nhé");
+    note("Working.", "ok");
   } catch (e) {
-    note(String(e), "err");
-    return false;
+    note(keyProblem(e), "err");
   } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function test(): Promise<void> {
-  const btn = button("ingTest");
-  if (!btn) return;
-  btn.disabled = true;
-  note("Saving and testing...");
-  try {
-    if (!(await save())) return;
-    const reply = await ingestClassify("cảm ơn nhé");
-    note(`Answer: ${reply.content} (${reply.usage.in} in, ${reply.usage.out} out)`, "ok");
-  } catch (e) {
-    note(String(e), "err");
-  } finally {
-    btn.disabled = false;
+    key.disabled = false;
   }
 }
 
@@ -109,18 +67,9 @@ export function initIngestView(): void {
   field("prefIngest")?.addEventListener("change", (e) => {
     setPref("ingest", (e.target as HTMLInputElement).checked);
   });
-  const limits: Array<["ingTtlDays" | "ingDailyCalls" | "ingDailyTokens" | "ingLoopMin", "ingestTtlDays" | "ingestDailyCalls" | "ingestDailyTokens" | "ingestLoopMin"]> = [
-    ["ingTtlDays", "ingestTtlDays"],
-    ["ingDailyCalls", "ingestDailyCalls"],
-    ["ingDailyTokens", "ingestDailyTokens"],
-    ["ingLoopMin", "ingestLoopMin"],
-  ];
-  for (const [id, key] of limits) {
-    field(id)?.addEventListener("change", () => {
-      setPref(key, Number(field(id)?.value));
-      showLimits();
-    });
-  }
-  button("ingSave")?.addEventListener("click", () => void save());
-  button("ingTest")?.addEventListener("click", () => void test());
+  const key = field("ingKey");
+  key?.addEventListener("change", () => void saveKey());
+  key?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") key.blur();
+  });
 }

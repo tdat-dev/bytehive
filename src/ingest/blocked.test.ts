@@ -14,6 +14,8 @@ function memory(start: string | null = null) {
   };
 }
 
+const clock = () => 10;
+
 describe("liveTarget", () => {
   const held = { ...entry("x"), to: "old-id", toName: "Bob" };
 
@@ -33,17 +35,17 @@ describe("liveTarget", () => {
 
 describe("BlockedStore", () => {
   it("starts empty when there is no file", async () => {
-    expect(await new BlockedStore(memory()).list()).toEqual({ entries: [], damaged: false });
+    expect(await new BlockedStore(memory(), clock).list()).toEqual({ entries: [], damaged: false });
   });
 
   it("keeps both of two blocks that land together", async () => {
-    const s = new BlockedStore(memory());
+    const s = new BlockedStore(memory(), clock);
     await Promise.all([s.add(entry("a")), s.add(entry("b", 2))]);
     expect((await s.list()).entries.map((e) => e.id)).toEqual(["a", "b"]);
   });
 
   it("hands back what it removes, and null the second time", async () => {
-    const s = new BlockedStore(memory());
+    const s = new BlockedStore(memory(), clock);
     await s.add(entry("a"));
     expect((await s.remove("a"))?.text).toBe("a");
     expect(await s.remove("a")).toBeNull();
@@ -51,7 +53,7 @@ describe("BlockedStore", () => {
   });
 
   it("puts a restored entry back in time order", async () => {
-    const s = new BlockedStore(memory());
+    const s = new BlockedStore(memory(), clock);
     await s.add(entry("old", 1));
     await s.add(entry("new", 3));
     const gone = await s.remove("old");
@@ -60,14 +62,28 @@ describe("BlockedStore", () => {
   });
 
   it("adding an entry it already holds does not double it", async () => {
-    const s = new BlockedStore(memory());
+    const s = new BlockedStore(memory(), clock);
     await s.add(entry("a"));
     await s.add(entry("a"));
     expect((await s.list()).entries).toHaveLength(1);
   });
 
   it("says so when the file is damaged instead of showing an empty list", async () => {
-    expect(await new BlockedStore(memory("{not json")).list()).toEqual({ entries: [], damaged: true });
+    expect(await new BlockedStore(memory("{not json"), clock).list()).toEqual({ entries: [], damaged: true });
+  });
+
+  it("lets an old message go and keeps a recent one", async () => {
+    const week = 7 * 86_400_000;
+    const s = new BlockedStore(memory(), () => week + 100);
+    await s.add(entry("old", 99));
+    await s.add(entry("recent", 101));
+    expect((await s.list()).entries.map((e) => e.id)).toEqual(["recent"]);
+  });
+
+  it("keeps a card's message however old, since the card still waits for it", async () => {
+    const s = new BlockedStore(memory(), () => 30 * 86_400_000);
+    await s.add({ ...entry("card", 1), card: { id: "c1" } });
+    expect((await s.list()).entries.map((e) => e.id)).toEqual(["card"]);
   });
 
   it("a failed write does not stop the next one", async () => {
@@ -82,7 +98,7 @@ describe("BlockedStore", () => {
         }
         await m.write(t);
       },
-    });
+    }, clock);
     await expect(s.add(entry("a"))).rejects.toThrow("disk");
     await s.add(entry("b"));
     expect((await s.list()).entries.map((e) => e.id)).toEqual(["b"]);

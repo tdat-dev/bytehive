@@ -1,6 +1,7 @@
-//! The ingestion gate's classifier. One POST to an OpenAI-compatible endpoint,
-//! picked by the user in Settings, with the key kept here and never sent to the
-//! page. No agent CLI is called, so no plan quota is touched.
+//! The ingestion gate's classifier. One POST to an OpenAI-compatible endpoint.
+//! Settings only takes the key; endpoint and model are the defaults below, or
+//! whatever is in ~/.bytehive/ingest-provider.json. The key stays here and is
+//! never sent to the page. No agent CLI is called, so no plan quota is touched.
 
 use crate::error::CommandError;
 use serde::{Deserialize, Serialize};
@@ -59,11 +60,7 @@ impl Default for ProviderConfig {
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderView {
-    pub base_url: String,
-    pub model: String,
-    pub json_mode: String,
     pub has_key: bool,
-    pub timeout_ms: u64,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -83,14 +80,8 @@ pub struct ClassifyReply {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveInput {
-    pub base_url: String,
-    pub model: String,
     #[serde(default)]
     pub api_key: Option<String>,
-    #[serde(default)]
-    pub json_mode: Option<String>,
-    #[serde(default)]
-    pub timeout_ms: Option<u64>,
 }
 
 #[tauri::command]
@@ -101,79 +92,74 @@ pub fn ingest_provider_get() -> Result<ProviderView, CommandError> {
 #[tauri::command]
 pub fn ingest_provider_save(input: SaveInput) -> Result<ProviderView, CommandError> {
     let old = read_config().unwrap_or_default();
-    let next = merge(&old, input)?;
+    let next = merge(&old, input);
     write_config(&next)?;
     Ok(view(&next))
 }
 
 #[tauri::command]
 pub async fn ingest_classify(text: String) -> Result<ClassifyReply, CommandError> {
-    let cfg = read_config()?;
+    let mut cfg = read_config()?;
     if cfg.base_url.trim().is_empty() || cfg.model.trim().is_empty() {
         return Err(CommandError::Failed("provider_unconfigured".into()));
     }
-    let body = build_body(&cfg, &text);
     let _ = rustls::crypto::ring::default_provider().install_default();
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    let mut request = CLIENT
-        .get_or_init(reqwest::Client::new)
-        .post(endpoint(&cfg.base_url))
-        .timeout(Duration::from_millis(cfg.timeout_ms.max(1000)))
-        .json(&body);
-    if let Some(key) = cfg.api_key.as_deref().filter(|k| !k.trim().is_empty()) {
-        request = request.bearer_auth(key);
+    let mut res = post(&cfg, &text).await?;
+    let mut learned = false;
+    if refuses_schema(&cfg.json_mode, res.status().as_u16()) {
+        cfg.json_mode = "prompt".into();
+        res = post(&cfg, &text).await?;
+        learned = res.status().is_success();
     }
-    let res = request.send().await.map_err(|e| {
-        if e.is_timeout() {
-            CommandError::Failed("timeout".into())
-        } else {
-            CommandError::Failed("network".into())
-        }
-    })?;
     let status = res.status();
     if !status.is_success() {
         return Err(CommandError::Failed(format!("http_{}", status.as_u16())));
+    }
+    if learned {
+        // Remembered only once it worked, so one bad request can't change the mode.
+        let _ = write_config(&cfg);
     }
     let value: Value = res.json().await.map_err(|_| CommandError::Failed("bad_response".into()))?;
     reply_from(&value, &cfg.model)
 }
 
-fn view(cfg: &ProviderConfig) -> ProviderView {
-    ProviderView {
-        base_url: cfg.base_url.clone(),
-        model: cfg.model.clone(),
-        json_mode: cfg.json_mode.clone(),
-        has_key: cfg.api_key.as_deref().is_some_and(|k| !k.trim().is_empty()),
-        timeout_ms: cfg.timeout_ms,
+async fn post(cfg: &ProviderConfig, text: &str) -> Result<reqwest::Response, CommandError> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let mut request = CLIENT
+        .get_or_init(reqwest::Client::new)
+        .post(endpoint(&cfg.base_url))
+        .timeout(Duration::from_millis(cfg.timeout_ms.max(1000)))
+        .json(&build_body(cfg, text));
+    if let Some(key) = cfg.api_key.as_deref().filter(|k| !k.trim().is_empty()) {
+        request = request.bearer_auth(key);
     }
+    request.send().await.map_err(|e| {
+        if e.is_timeout() {
+            CommandError::Failed("timeout".into())
+        } else {
+            CommandError::Failed("network".into())
+        }
+    })
 }
 
-/// Merge a form save into the stored config. An empty key means keep the old
-/// one, since the page never receives the key back.
-fn merge(old: &ProviderConfig, input: SaveInput) -> Result<ProviderConfig, CommandError> {
-    let base_url = input.base_url.trim().trim_end_matches('/').to_string();
-    if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
-        return Err(CommandError::Failed("base URL must start with http:// or https://".into()));
-    }
-    let model = input.model.trim().to_string();
-    if model.is_empty() {
-        return Err(CommandError::Failed("model is required".into()));
-    }
-    let json_mode = input.json_mode.unwrap_or_else(|| old.json_mode.clone());
-    if json_mode != "schema" && json_mode != "prompt" {
-        return Err(CommandError::Failed("json mode must be schema or prompt".into()));
-    }
+/// A provider without schema support rejects the request outright. It answers
+/// the same question in plain JSON, so nobody has to pick a format.
+fn refuses_schema(json_mode: &str, status: u16) -> bool {
+    json_mode == "schema" && matches!(status, 400 | 422)
+}
+
+fn view(cfg: &ProviderConfig) -> ProviderView {
+    ProviderView { has_key: cfg.api_key.as_deref().is_some_and(|k| !k.trim().is_empty()) }
+}
+
+/// Put a new key into the stored config and leave the rest alone. An empty key
+/// means keep the old one, since the page never receives the key back.
+fn merge(old: &ProviderConfig, input: SaveInput) -> ProviderConfig {
     let api_key = match input.api_key {
         Some(k) if !k.trim().is_empty() => Some(k.trim().to_string()),
         _ => old.api_key.clone(),
     };
-    Ok(ProviderConfig {
-        base_url,
-        model,
-        api_key,
-        json_mode,
-        timeout_ms: input.timeout_ms.unwrap_or(old.timeout_ms).clamp(1000, 120_000),
-    })
+    ProviderConfig { api_key, ..old.clone() }
 }
 
 fn endpoint(base_url: &str) -> String {
@@ -314,33 +300,28 @@ mod tests {
 
     #[test]
     fn an_empty_key_keeps_the_old_one() {
-        let next = merge(
-            &cfg(),
-            SaveInput {
-                base_url: "https://9router.zoldify.com/v1/".into(),
-                model: "cx/gpt-6-luna".into(),
-                api_key: Some("  ".into()),
-                json_mode: None,
-                timeout_ms: None,
-            },
-        )
-        .unwrap();
+        let next = merge(&cfg(), SaveInput { api_key: Some("  ".into()) });
         assert_eq!(next.api_key.as_deref(), Some("sk-test"));
-        assert_eq!(next.base_url, "https://9router.zoldify.com/v1");
     }
 
     #[test]
-    fn a_plain_http_url_and_a_model_are_required() {
-        let bad_url = merge(
-            &cfg(),
-            SaveInput { base_url: "file:///x".into(), model: "m".into(), api_key: None, json_mode: None, timeout_ms: None },
-        );
-        assert!(bad_url.is_err());
-        let no_model = merge(
-            &cfg(),
-            SaveInput { base_url: "https://x/v1".into(), model: " ".into(), api_key: None, json_mode: None, timeout_ms: None },
-        );
-        assert!(no_model.is_err());
+    fn a_new_key_changes_nothing_else() {
+        let mut old = cfg();
+        old.base_url = "https://mine.example/v1".into();
+        old.json_mode = "prompt".into();
+        let next = merge(&old, SaveInput { api_key: Some(" sk-new ".into()) });
+        assert_eq!(next.api_key.as_deref(), Some("sk-new"));
+        assert_eq!(next.base_url, "https://mine.example/v1");
+        assert_eq!(next.json_mode, "prompt");
+    }
+
+    #[test]
+    fn only_a_rejected_schema_request_falls_back() {
+        assert!(refuses_schema("schema", 400));
+        assert!(refuses_schema("schema", 422));
+        assert!(!refuses_schema("prompt", 400));
+        assert!(!refuses_schema("schema", 401));
+        assert!(!refuses_schema("schema", 500));
     }
 
     #[test]
