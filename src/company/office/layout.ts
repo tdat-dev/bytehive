@@ -126,6 +126,21 @@ export const mixShots = (a: Shot, b: Shot, k: number): Shot => {
   return { px: at(a.px, b.px), py: at(a.py, b.py), pz: at(a.pz, b.pz), tx: at(a.tx, b.tx), ty: at(a.ty, b.ty), tz: at(a.tz, b.tz), fov: at(a.fov, b.fov) };
 };
 
+const LEG_MS = 11_000;
+const GLIDE_MS = 4_200;
+const stopOf = (leg: number, n: number) => (Math.imul(leg + 1, 2654435761) >>> 8) % n;
+const smoothed = (k: number) => k * k * (3 - 2 * k);
+
+/** Where the lift's car is at this time: resting at a floor, or gliding to the next. All from the clock. */
+export function liftAt(now: number, stops: number[]): number {
+  if (stops.length < 2) return stops[0] ?? 0;
+  const leg = Math.floor(now / LEG_MS);
+  const from = stops[stopOf(leg, stops.length)];
+  const to = stops[stopOf(leg + 1, stops.length)];
+  const k = Math.min(1, (now - leg * LEG_MS) / GLIDE_MS);
+  return k >= 1 ? to : from + (to - from) * smoothed(k);
+}
+
 const CRUISE = 1.6;
 
 /** A paper plane's place at `k` from 0 to 1: out to the lift, along it, in to the floor. */

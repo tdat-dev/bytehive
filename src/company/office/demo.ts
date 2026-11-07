@@ -33,6 +33,8 @@ const stopped = air > 0 || flag("still") ? leftAt + (air || 0.5) * FLIGHT_MS : n
 /** The options object stays the shell's: it writes reduced motion there when the setting changes. */
 const demoOptions = (o: SceneOptions): SceneOptions => {
   if (flag("still") && !air) o.reducedMotion = true;
+  const quality = query.get("quality");
+  if (quality === "low" || quality === "high" || quality === "auto") o.quality = quality;
   if (stopped !== null) o.clock = () => stopped;
   return o;
 };

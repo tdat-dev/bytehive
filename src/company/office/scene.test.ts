@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { stickies } from "./build";
 import { OFFICE } from "./palette";
-import { cssPoint, easeInOutCubic, goodRenderer, pickFrom } from "./scene";
+import { cssPoint, easeEnter, goodRenderer, pickFrom } from "./scene";
 
 describe("goodRenderer", () => {
   it.each([
@@ -23,15 +23,18 @@ describe("the scene can move to a Worker", () => {
   });
 });
 
-describe("easeInOutCubic", () => {
-  it("starts and ends in place, and passes the middle in the middle", () => {
-    expect(easeInOutCubic(0)).toBe(0);
-    expect(easeInOutCubic(1)).toBe(1);
-    expect(easeInOutCubic(0.5)).toBeCloseTo(0.5);
+describe("easeEnter", () => {
+  it("is the app's entrance curve, cubic-bezier(0, 0, 0, 1)", () => {
+    expect(easeEnter(0)).toBe(0);
+    expect(easeEnter(1)).toBe(1);
+    expect(easeEnter(0.125)).toBeCloseTo(0.5);
   });
-  it("is slow at both ends", () => {
-    expect(easeInOutCubic(0.1)).toBeLessThan(0.1);
-    expect(easeInOutCubic(0.9)).toBeGreaterThan(0.9);
+  it("is quick away and settles, with no overshoot", () => {
+    expect(easeEnter(0.1)).toBeGreaterThan(0.1);
+    for (let k = 0; k < 1; k += 0.01) {
+      expect(easeEnter(k)).toBeLessThanOrEqual(1);
+      expect(easeEnter(k + 0.01)).toBeGreaterThanOrEqual(easeEnter(k));
+    }
   });
 });
 

@@ -36,7 +36,8 @@ export function clay(look: ClayLook): MeshStandardMaterial {
         float clayUp = mod(vClayY - ${f(GROUND)}, ${f(STOREY)});
         float clayLow = 1.0 - clayFoot * (1.0 - smoothstep(0.0, 0.85, clayUp));
         diffuseColor.rgb *= clayLow;
-        float clayEdge = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 2.6);
+        float clayFlat = abs(dot(normal, normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)));
+        float clayEdge = pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 2.6) * (1.0 - clayFlat * clayFlat);
         totalEmissiveRadiance += diffuseColor.rgb * clayRoom * (0.72 + 0.28 * smoothstep(0.0, ${f(STOREY - SLAB)}, clayUp)) + clayRim * clayEdge;`);
   };
   m.customProgramCacheKey = () => "clay";

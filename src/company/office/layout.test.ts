@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OfficeModel } from "./model";
 import { BUILDING } from "./nav";
-import { FOUNDER_DESK, FOV, ROOM_D, ROOM_W, STOREY, chairSpot, flightPoint, mixShots, seatSpot, shotFor, towerLayout, towerPoints, type Point, type Shot } from "./layout";
+import { FOUNDER_DESK, FOV, ROOM_D, ROOM_W, STOREY, chairSpot, flightPoint, liftAt, mixShots, seatSpot, shotFor, towerLayout, towerPoints, type Point, type Shot } from "./layout";
 
 const floor = (id: string, people: string[]) => ({ id, name: id, people: people.map((p, seat) => ({ id: p, seat })) });
 const model = (n: number) => ({ founder: { id: "founder" }, floors: Array.from({ length: n }, (_, i) => floor(`f${i}`, i ? ["x"] : ["a", "b"])) }) as unknown as OfficeModel;
@@ -123,6 +123,27 @@ describe("mixShots", () => {
     expect(mixShots(a, b, 0)).toEqual(a);
     expect(mixShots(a, b, 1).px).toBeCloseTo(b.px);
     expect(mixShots(a, b, 0.5).px).toBeCloseTo(a.px + 5);
+  });
+});
+
+describe("liftAt", () => {
+  const stops = [0, 4, 8, 12];
+  it("rests at a floor most of the time, and moves between two", () => {
+    const seen = Array.from({ length: 400 }, (_, i) => liftAt(i * 500, stops));
+    const resting = seen.filter((y) => stops.includes(y));
+    expect(resting.length).toBeGreaterThan(seen.length / 2);
+    expect(seen.length - resting.length).toBeGreaterThan(0);
+    expect(Math.min(...seen)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(12);
+  });
+  it("is the same at the same time, so nothing is kept between frames", () => {
+    expect(liftAt(123456, stops)).toBe(liftAt(123456, stops));
+  });
+  it("never jumps", () => {
+    for (let t = 0; t < 200000; t += 125) expect(Math.abs(liftAt(t + 125, stops) - liftAt(t, stops))).toBeLessThan(2);
+  });
+  it("stays at the one stop of a one floor tower", () => {
+    expect(liftAt(5000, [3])).toBe(3);
   });
 });
 

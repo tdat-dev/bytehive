@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { FLIGHT_MS, chairSpot, towerLayout, type Tower } from "./layout";
 import type { Flight, OfficeFloor, OfficePerson, OfficeState } from "./model";
 import { demoModel } from "./fixtures";
-import { applyPose, buildPerson, deskGlow, deskProp, paperDesk, paperStack, planeAt, planeGeometry, pose, screenLight, seatPerson, spotOf } from "./people";
+import { HOP_MS, applyPose, buildPerson, deskGlow, deskProp, hopAt, paperDesk, paperStack, planeAt, planeGeometry, pose, screenLight, seatPerson, spotOf } from "./people";
 
 describe("pose", () => {
   it("has a bubble for needs and only for needs", () => {
@@ -27,6 +27,11 @@ describe("pose", () => {
   it("leans back when idle, and holds still", () => {
     expect(pose("idle", 0, 0).lean).toBeGreaterThan(0);
     expect(pose("idle", 0, 0)).toEqual(pose("idle", 5000, 0));
+  });
+  it("looks up from the screen now and then, and is at the screen most of the time", () => {
+    const turns = Array.from({ length: 400 }, (_, i) => pose("working", i * 125, 0).turn);
+    expect(turns.filter((x) => x !== 0).length).toBeGreaterThan(0);
+    expect(turns.filter((x) => x === 0).length).toBeGreaterThan(turns.length / 2);
   });
   it("leaves the chair empty and the screen off when stopped", () => {
     expect(pose("stopped", 0, 0)).toMatchObject({ present: false, screen: "off", bubble: false, lamp: false });
@@ -53,6 +58,11 @@ const vertexColours = (m: Mesh) => {
 };
 
 describe("buildPerson", () => {
+  it("marks someone a Needs you row points at, even while they sit and work", () => {
+    const p = buildPerson(person({ state: "working" }), kit, true);
+    applyPose(p, pose("working", 0, 0));
+    expect(named(p, "bubble")!.visible).toBe(true);
+  });
   it("builds a bubble for someone who needs you, and for nobody else", () => {
     for (const state of ["working", "review", "idle", "stopped"] as OfficeState[]) expect(named(buildPerson(person({ state }), kit), "bubble")).toBeUndefined();
     expect(named(buildPerson(person({ state: "needs" }), kit), "bubble")).toBeDefined();
@@ -111,6 +121,18 @@ describe("applyPose", () => {
     applyPose(p, pose("idle", 0, 0));
     expect(named(p, "armL")!.rotation.x).toBeLessThan(typing);
   });
+  it("turns the top half with the pose, and leaves the legs", () => {
+    const p = buildPerson(person(), kit);
+    applyPose(p, { ...pose("working", 0, 0), turn: 0.3 });
+    expect(named(p, "trunk")!.rotation.y).toBeCloseTo(0.3);
+  });
+  it("lifts a person off the ground by what it is told, for a hop or a hover", () => {
+    const p = buildPerson(person(), kit);
+    applyPose(p, pose("working", 0, 0));
+    const low = named(p, "body")!.position.y;
+    applyPose(p, pose("working", 0, 0), 0.2);
+    expect(named(p, "body")!.position.y).toBeCloseTo(low + 0.2);
+  });
   it("stands higher than it sits, out of the chair", () => {
     const p = buildPerson(person(), kit);
     seatPerson(p, { x: 0, z: 0, rot: 0 }, 0);
@@ -141,6 +163,15 @@ describe("applyPose", () => {
       expect(f.x).toBeGreaterThan(0.5);
       expect(f.z).toBeGreaterThan(0.5);
     }
+  });
+});
+
+describe("hopAt", () => {
+  it("goes up and comes back down", () => {
+    expect(hopAt(0)).toBe(0);
+    expect(hopAt(HOP_MS / 2)).toBeGreaterThan(0.2);
+    expect(hopAt(HOP_MS)).toBe(0);
+    expect(hopAt(HOP_MS + 500)).toBe(0);
   });
 });
 

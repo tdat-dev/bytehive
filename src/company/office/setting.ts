@@ -87,11 +87,14 @@ function townRow(l: Layer, rand: () => number, windows: BufferGeometry[]): Buffe
   const out: BufferGeometry[] = [];
   let x = -260;
   while (x < 260) {
-    const w = 4 + rand() * 7;
+    const w = 3 + rand() * 6;
     const h = l.low + (l.high - l.low) * rand() ** 1.8;
     const d = 5;
     out.push(moved(ramp(box(w, h, d, l.top), l.foot, l.top), x, h / 2 + PLATE_TOP, l.z));
-    if (rand() < 0.3) out.push(moved(ramp(box(w * 0.5, 1.6 + rand() * 2, d * 0.7, l.top), l.top, l.top), x + (rand() - 0.5) * w * 0.3, h + 0.8 + PLATE_TOP, l.z));
+    const roof = rand();
+    if (roof < 0.28) out.push(moved(box(w * 0.5, 0.9 + rand() * 1.6, d * 0.7, l.top), x + (rand() - 0.5) * w * 0.3, h + 0.4 + PLATE_TOP, l.z));
+    else if (roof < 0.42) out.push(moved(tint(new CylinderGeometry(0.5, 0.5, 0.9, 8), l.top), x + (rand() - 0.5) * w * 0.5, h + 0.75 + PLATE_TOP, l.z), moved(box(0.8, 0.3, 0.8, l.top), x, h + 0.15 + PLATE_TOP, l.z));
+    else if (roof < 0.5) out.push(moved(box(0.07, 2.4, 0.07, l.top), x + w * 0.2, h + 1.2 + PLATE_TOP, l.z));
     const cols = Math.floor(w / 0.8);
     const rows = Math.floor(h / 0.95);
     for (let r = 1; r < rows; r += 1) {

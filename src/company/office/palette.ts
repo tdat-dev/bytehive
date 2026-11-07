@@ -2,7 +2,7 @@
  * text pairs on screen, which the test holds to WCAG AA. */
 export const OFFICE = {
   sky: "#191d27", ground: "#23262e", shellOut: "#3d4152", shellEdge: "#2f3241", slabTop: "#505566",
-  wallLit: "#e9b271", wallDim: "#8a5a3a", wallDark: "#4c5c94", wallNightLow: "#2a3358", floorLit: "#9a7a58", floorDark: "#3f4a78", grout: "#54402f", groutNight: "#242c4e",
+  wallLit: "#efb877", wallDim: "#6d4632", wallDark: "#4c5c94", wallNightLow: "#2a3358", floorLit: "#8a6e52", floorDark: "#3f4a78", grout: "#65493a", groutNight: "#242c4e",
   honey: "#f5b83d", glow: "#ffe2ae", glass: "#9fc3d8", steel: "#6a7180",
   deskTop: "#b07a45", deskBody: "#2f3240", chair: "#262935", screenOn: "#7cc4ff", screenOff: "#1b1e24", lampNeeds: "#f5b83d",
   bead: "#efc48a", plant: "#4f8f4a", plantDeep: "#2f6a4a", pot: "#b5734a", paper: "#f2ece0",

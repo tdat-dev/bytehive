@@ -164,7 +164,7 @@ export function createKit(loaded: () => void = () => {}): Kit {
   const pictures = createTextures(loaded);
   const deskLightMap = painted(128, 128, poolPaint);
 
-  const matte = clay({ self: "#8fa0d8", selfLevel: 0.2, rim: "#7f92d8", rimLevel: 0.16, foot: 0 });
+  const matte = clay({ self: "#8fa0d8", selfLevel: 0.2, rim: "#7f92d8", rimLevel: 0.08, foot: 0 });
   const indoor = clay({ self: "#ffcf9a", selfLevel: 0.34, rim: "#9fb4e6", rimLevel: 0.2, foot: 0.3 });
   indoor.color.set("#fff1d8");
   const night = clay({ self: "#6f7fc0", selfLevel: 0.24, rim: "#7d90d8", rimLevel: 0.12, foot: 0.26 });
@@ -239,7 +239,7 @@ function wallGrid(room: RoomLight, lit: boolean): BufferGeometry {
   const at = (x: number, y: number, z: number) => {
     const corner = Math.min(x - LEFT_X, z - BACK_Z);
     const dark = (1 - 0.5 * (1 - smooth(0, 2, corner))) * (1 - 0.42 * (1 - smooth(0, 0.9, y))) * (1 - 0.3 * smooth(ROOM_H - 0.5, ROOM_H, y));
-    const c = low.clone().lerp(top, smooth(0, ROOM_H * 0.86, y));
+    const c = low.clone().lerp(top, smooth(ROOM_H * 0.12, ROOM_H * 0.94, y));
     return times(c, lightAt(onWall, x, y, z)).multiplyScalar(dark);
   };
   return paint(tint(merged([back, left]), "#000000"), at);

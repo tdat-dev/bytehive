@@ -6,11 +6,13 @@ import {
   Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, type Object3D,
 } from "three";
 import { BOARD_EDGE, FLOOR_BOX, FLOOR_EDGE, buildFloor, buildTop, createKit, disposeBuilt } from "./build";
-import { FOUNDER_DESK, FOV, VIEW, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
+import { FLIGHT_MS, FOUNDER_DESK, FOV, VIEW, liftAt, mixShots, shotFor, towerLayout, type FloorSpot, type Seat, type Shot, type Tower } from "./layout";
 import { sceneKey, type OfficeFloor, type OfficeModel, type OfficePerson, type OfficeState } from "./model";
+import { risingAt, risingGeometry, risingMaterial, risingMesh } from "./life";
 import { BUILDING, frameDelay, type Level } from "./nav";
 import { OFFICE } from "./palette";
-import { MARK_UNITS, animate, isPerson, planeAt, spotOf, type PlaneSpot } from "./people";
+import { HOP_MS, MARK_UNITS, animate, hopAt, isPerson, planeAt, spotOf, type PlaneSpot } from "./people";
+import { lookOf, readQuality, startTier, steppedDown, watchBattery, type OfficeQuality } from "./quality";
 
 export interface SceneOptions {
   reducedMotion: boolean; // read at every use: the owner can change it while the scene runs
@@ -18,15 +20,21 @@ export interface SceneOptions {
   onLost(): void;       // context lost
   onRestored(): void;   // context back, picture drawn unless the scene is hidden
   clock?(): number;     // what `Flight.at` is measured against. Date.now, unless a demo holds time still
+  quality?: OfficeQuality; // the setting, unless the owner's stored one
 }
 /** CSS pixels in the canvas. `clear`: a bubble hangs this far below the point, and no tag should cover it. */
 export interface Anchor { id: string; kind: "floor" | "person" | "top" | "board"; x: number; y: number; visible: boolean; clear?: number }
-export interface SceneStats { calls: number; triangles: number; frames: number; lost: number; restored: number; lastRestoreMs: number | null; drawW: number; drawH: number }
+export interface SceneStats { calls: number; triangles: number; frames: number; lost: number; restored: number; lastRestoreMs: number | null; drawW: number; drawH: number; tier: number; geometries: number; textures: number; asleep: boolean }
 export interface OfficeScene {
   setModel(m: OfficeModel): void;
   setLevel(l: Level, instant: boolean): void;
   resize(w: number, h: number): void;
   setVisible(on: boolean): void;
+  setQuality(q: OfficeQuality): void;
+  /** The person under the pointer rises a little. */
+  hover(personId: string | null): void;
+  /** Where the pointer is on the canvas, -1 to 1: sky and town shift behind the tower. */
+  parallax(x: number, y: number): void;
   pick(x: number, y: number): { personId?: string; floorId?: string } | null;
   anchors(): Anchor[];
   onMoved(fn: () => void): () => void;  // the camera came to rest: labels may be placed. Gives back the way to stop hearing it
@@ -34,9 +42,14 @@ export interface OfficeScene {
   dispose(): void;
 }
 
-const MOVE_MS = 900;
+/** A level change: the app's --m-level, on its entrance curve. */
+const MOVE_MS = 333;
+/** How long the scene keeps its GPU memory once nobody can see it. */
+const AWAY_MS = 120_000;
+const HOVER_RISE = 0.14;
+/** How far sky and town shift at the edge of the canvas, in scene units. */
+const PARALLAX = { x: 1.6, y: 0.7 };
 const PICK_LAYER = 1;
-const MAX_DPR = 1.5;
 const SHADOW_MAP = 1024;
 const PERSON_BOX = { w: 0.9, d: 0.9 };
 /** A pick box reaches this far over the head. */
@@ -63,7 +76,11 @@ export function webglProbe(allowSoftware = false): { ok: boolean; renderer: stri
   return { ok: allowSoftware || goodRenderer(renderer), renderer };
 }
 
-export const easeInOutCubic = (k: number): number => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2);
+/** cubic-bezier(0, 0, 0, 1). Its x is s cubed, so it needs no solving. */
+export const easeEnter = (k: number): number => {
+  const s = Math.cbrt(k);
+  return s * s * (3 - 2 * s);
+};
 
 /** From normalised device coordinates to CSS pixels. Past z = 1 is behind the camera. */
 export function cssPoint(p: { x: number; y: number; z: number }, w: number, h: number): { x: number; y: number; visible: boolean } {
@@ -105,7 +122,11 @@ const markedIn = (m: OfficeModel): Set<string> => new Set([
 
 export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeScene {
   const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: "low-power", preserveDrawingBuffer: false });
-  renderer.setPixelRatio(Math.min(o.dpr, MAX_DPR));
+  let setting: OfficeQuality = o.quality ?? readQuality();
+  let battery = false;
+  let tier = startTier(setting, battery);
+  let seen = lookOf(tier);
+  renderer.setPixelRatio(Math.min(o.dpr, seen.maxDpr));
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -118,11 +139,11 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   const camera = new PerspectiveCamera(FOV, 1, 1, 900);
   scene.add(new HemisphereLight(0xb9c8f0, 0x4a3a34, 1.1));
   const sun = new DirectionalLight(0xffe2c0, 1.25);
-  sun.castShadow = true;
   sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.03;
   sun.shadow.intensity = 0.62;
+  sun.castShadow = seen.shadows;
   scene.add(sun, sun.target);
 
   const clock = o.clock ?? Date.now;
@@ -134,6 +155,15 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   let cast: Object3D[] = [];
   const planes = new Group();
   scene.add(planes);
+  const risingLook = risingMaterial();
+  let rising: ReturnType<typeof risingMesh> | null = null;
+  let risingKey = "";
+  let liftCar: Object3D | null = null;
+  let hovered: string | null = null;
+  const hops = new Map<string, number>();
+  let shownStates = new Map<string, OfficeState>();
+  let gaps: number[] = [];
+  let lastFrameAt = 0;
 
   const proxies = new Group();
   scene.add(proxies);
@@ -166,6 +196,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   let lostCount = 0;
   let restored = 0;
   let lastRestoreMs: number | null = null;
+  let awayTimer: ReturnType<typeof setTimeout> | null = null;
+  let asleep = false;
   const moved = new Set<() => void>();
 
   const floorOf = (id: string): string | null | undefined => {
@@ -176,15 +208,36 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   const flying = (now: number): PlaneSpot[] =>
     (tower && model ? model.flights.flatMap((f) => planeAt(tower!, f, floorOf, now, o.reducedMotion) ?? []) : []);
 
+  const hopping = () => {
+    const now = clock();
+    for (const [id, at] of hops) if (now - at >= HOP_MS) hops.delete(id);
+    return hops.size > 0;
+  };
+
   /** A plane on screen counts too: it takes one more frame to clear it after it lands. */
-  const moving = () => tween !== null || flying(clock()).length > 0 || planes.children.some((p) => p.visible);
+  const moving = () => tween !== null || hopping() || (!o.reducedMotion && (flying(clock()).length > 0 || planes.children.some((p) => p.visible)));
+
+  /** Reduced motion holds a plane still at its destination: one frame to show it, and one when it lands. */
+  const landsIn = (): number | null => {
+    if (!o.reducedMotion || !model?.flights.length) return null;
+    const left = model.flights.map((f) => f.at + FLIGHT_MS - clock()).filter((ms) => ms > 0);
+    return left.length ? Math.min(...left) : planes.children.some((p) => p.visible) ? 0 : null;
+  };
+
+  /** Ambient motion runs where it can be seen, and never over a terminal. */
+  const ambient = () => anyoneWorking && seen.ambient && level.kind !== "desk";
 
   /* The whole of the on-demand rule: a frame only when something asks for one. */
   function schedule(): void {
     if (disposed || timer !== null || raf !== null || !visible || lost) return;
-    const delay = frameDelay({ visible, moving: moving(), ambient: anyoneWorking, reduced: o.reducedMotion });
+    // A level change takes every frame the screen offers: it is short, and timers would round it down to 20.
+    const delay = tween ? 0 : frameDelay({ visible, moving: moving(), ambient: ambient(), reduced: o.reducedMotion }) ?? landsIn();
     if (delay === null && !dirty) return;
-    const wait = Math.max(0, (delay ?? 0) - (performance.now() - lastDraw));
+    const wait = dirty ? 0 : Math.max(0, delay! - (performance.now() - lastDraw));
+    if (wait === 0) {
+      raf = requestAnimationFrame(frame);
+      return;
+    }
     timer = setTimeout(() => {
       timer = null;
       raf = requestAnimationFrame(frame);
@@ -208,13 +261,42 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   function frame(t: number): void {
     raf = null;
     if (lost || !visible) return;
+    if (tween) {
+      if (lastFrameAt) gaps.push(t - lastFrameAt);
+      lastFrameAt = t;
+    }
     advance(t);
     draw();
     if (resting) {
       resting = false;
+      lastFrameAt = 0;
+      judge();
       for (const fn of [...moved]) fn();
     }
     schedule();
+  }
+
+  /** A level change just ended: did it hold 30 frames a second? */
+  function judge(): void {
+    const next = steppedDown(tier, setting, gaps);
+    gaps = [];
+    if (next !== tier) applyTier(next);
+  }
+
+  function applyTier(next: number): void {
+    tier = next;
+    seen = lookOf(tier);
+    const shadowsChanged = sun.castShadow !== seen.shadows;
+    sun.castShadow = seen.shadows;
+    if (shadowsChanged) {
+      renderer.shadowMap.needsUpdate = seen.shadows;
+      if (!seen.shadows) sun.shadow.dispose();
+    }
+    if (kit.deskLight) kit.deskLight.visible = seen.glow;
+    if (kit.hazeLight) kit.hazeLight.visible = seen.glow;
+    renderer.setPixelRatio(Math.min(o.dpr, seen.maxDpr));
+    renderer.setSize(width, height, false);
+    invalidate();
   }
 
   function invalidate(): void {
@@ -246,12 +328,22 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   /** Everything that follows the clock. Nothing kept here matters: it is all from time. */
   function advance(t: number): void {
     const now = clock();
-    for (const who of cast) animate(who, o.reducedMotion ? 0 : now);
+    const still = o.reducedMotion || !ambient();
+    for (const who of cast) {
+      const { id } = who.userData.person as { id: string };
+      const hop = hops.get(id);
+      animate(who, still ? 0 : now, (hop === undefined ? 0 : hopAt(now - hop)) + (id === hovered ? HOVER_RISE : 0));
+    }
+    if (rising) {
+      rising.visible = !still;
+      if (!still) risingLook.uniforms.time.value = (now % 3_600_000) / 1000;
+    }
+    if (liftCar && !still) liftCar.position.y = liftAt(now, liftCar.userData.stops as number[]);
     fly(now);
     if (!tween) return;
     tween.at ??= t;
     const k = Math.min(1, (t - tween.at) / MOVE_MS);
-    look(mixShots(tween.from, tween.to, easeInOutCubic(k)));
+    look(mixShots(tween.from, tween.to, easeEnter(k)));
     if (k === 1) {
       tween = null;
       resting = true;
@@ -377,7 +469,10 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     }
 
     cast = [...floors.values(), ...(top ? [top] : [])].flatMap(({ group }) => group.children.filter(isPerson));
+    liftCar = top?.group.getObjectByName("liftCar") ?? null;
     sizeMarks();
+    noteFinishes(m);
+    placeRising(m, t);
     placeProxies(m, t);
     kit.groundLight.visible = m.floors.some((f) => f.lit);
     anyoneWorking = [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].some((p) => p.state === "working");
@@ -390,9 +485,59 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
     else invalidate();
   }
 
+  /** Someone who was working and has stopped, with nothing to ask, has finished: a small jump. */
+  function noteFinishes(m: OfficeModel): void {
+    const now = new Map([...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)].map((p) => [p.id, p.state]));
+    for (const [id, state] of now) {
+      if (shownStates.get(id) === "working" && (state === "review" || state === "idle") && !o.reducedMotion) hops.set(id, clock());
+    }
+    shownStates = now;
+  }
+
+  /** Steam and bytes, over the desks where someone works. One mesh, rebuilt only when that changes. */
+  function placeRising(m: OfficeModel, t: Tower): void {
+    const seats = [
+      ...t.floors.flatMap((spot) => spot.desks.filter((d) => stateOf(d.personId) === "working").map((d) => ({ d: d as Seat, y: spot.y, id: d.personId }))),
+      ...(m.founder?.state === "working" ? [{ d: FOUNDER_DESK, y: t.roofY, id: m.founder.id }] : []),
+    ];
+    const key = JSON.stringify(seats);
+    if (key === risingKey) return;
+    risingKey = key;
+    if (rising) {
+      scene.remove(rising);
+      rising.geometry.dispose();
+      rising = null;
+    }
+    if (!seats.length) return;
+    rising = risingMesh(risingGeometry(seats.flatMap((s, i) => risingAt(s.d, s.y, (i + 1) * 0.173))), risingLook);
+    scene.add(rising);
+  }
+
   function setLevel(l: Level, instant: boolean): void {
     level = l;
     aim(instant);
+  }
+
+  function setQuality(q: OfficeQuality): void {
+    setting = q;
+    applyTier(startTier(q, battery));
+  }
+
+  function hover(id: string | null): void {
+    if (id === hovered) return;
+    hovered = id;
+    if (!tween) { advance(lastDraw); invalidate(); }
+  }
+
+  function parallax(x: number, y: number): void {
+    if (o.reducedMotion || !kit.far) return;
+    const on = level.kind === "building" ? 1 : 0;
+    const dx = -x * PARALLAX.x * on;
+    const dy = y * PARALLAX.y * on;
+    if (Math.abs(dx - kit.far.position.x) < 0.01 && Math.abs(dy - kit.far.position.y) < 0.01) return;
+    kit.far.position.x = dx;
+    kit.far.position.y = dy;
+    invalidate();
   }
 
   function resize(w: number, h: number): void {
@@ -412,8 +557,27 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   function setVisible(on: boolean): void {
     visible = on;
-    if (on) invalidate();
-    else halt();
+    if (awayTimer !== null) clearTimeout(awayTimer);
+    awayTimer = null;
+    if (on) {
+      if (asleep) {
+        // The picture comes back with the context: see onContextRestored.
+        renderer.forceContextRestore();
+        return;
+      }
+      invalidate();
+      return;
+    }
+    halt();
+    awayTimer = setTimeout(sleep, AWAY_MS);
+  }
+
+  /** Nobody has looked for a while: give the GPU its memory back, and keep what it takes to rebuild. */
+  function sleep(): void {
+    awayTimer = null;
+    if (disposed || lost || visible) return;
+    asleep = true;
+    renderer.forceContextLoss();
   }
 
   function pick(x: number, y: number): { personId?: string; floorId?: string } | null {
@@ -447,24 +611,31 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
   function stats(): SceneStats {
     const size = renderer.getDrawingBufferSize(new Vector2());
     const { calls, triangles } = renderer.info.render;
-    return { calls, triangles, frames, lost: lostCount, restored, lastRestoreMs, drawW: size.x, drawH: size.y };
+    const { geometries, textures } = renderer.info.memory;
+    return { calls, triangles, frames, lost: lostCount, restored, lastRestoreMs, drawW: size.x, drawH: size.y, tier, geometries, textures, asleep };
   }
 
   function onContextLost(e: Event): void {
     e.preventDefault();
     lost = true;
+    halt();
+    if (asleep) return;
     lostAt = performance.now();
     lostCount += 1;
-    halt();
     o.onLost();
   }
 
   function onContextRestored(): void {
     lost = false;
-    renderer.shadowMap.needsUpdate = true;
+    renderer.shadowMap.needsUpdate = seen.shadows;
     renderer.setSize(width, height, false);
     // Hidden, the picture waits: setVisible asks for it.
     if (visible) draw();
+    if (asleep) {
+      asleep = false;
+      schedule();
+      return;
+    }
     restored += 1;
     lastRestoreMs = performance.now() - lostAt;
     o.onRestored();
@@ -473,9 +644,15 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
 
   canvas.addEventListener("webglcontextlost", onContextLost);
   canvas.addEventListener("webglcontextrestored", onContextRestored);
+  const offBattery = watchBattery((on) => {
+    battery = on;
+    applyTier(startTier(setting, battery));
+  });
+  if (kit.deskLight) kit.deskLight.visible = seen.glow;
+  if (kit.hazeLight) kit.hazeLight.visible = seen.glow;
 
   return {
-    setModel, setLevel, resize, setVisible, pick, anchors, stats,
+    setModel, setLevel, resize, setVisible, setQuality, hover, parallax, pick, anchors, stats,
     onMoved(fn) {
       moved.add(fn);
       return () => { moved.delete(fn); };
@@ -484,6 +661,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       if (disposed) return;
       disposed = true;
       halt();
+      if (awayTimer !== null) clearTimeout(awayTimer);
+      offBattery();
       moved.clear();
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
@@ -492,6 +671,8 @@ export function createScene(canvas: HTMLCanvasElement, o: SceneOptions): OfficeS
       floors.clear();
       cast = [];
       planes.clear();
+      rising?.geometry.dispose();
+      risingLook.dispose();
       proxyBox.dispose();
       proxyMaterial.dispose();
       kit.dispose();

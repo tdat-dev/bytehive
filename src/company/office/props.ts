@@ -5,7 +5,7 @@
 import {
   BufferGeometry, CircleGeometry, Color, ConeGeometry, CylinderGeometry, Matrix4, PlaneGeometry, SphereGeometry, TorusGeometry,
 } from "three";
-import { box, flare, hashOf, moved, paint, ramp, seeded, soft, tint } from "./geometry";
+import { box, flare, hashOf, moved, paint, pool, ramp, seeded, soft, tint } from "./geometry";
 import { ROOM_D, ROOM_W, SLAB, STOREY } from "./layout";
 import { rgb, type Blocker, type Lamp, type RoomLight } from "./light";
 import { ACCENTS, OFFICE } from "./palette";
@@ -352,33 +352,24 @@ export function furnish(room: RoomPlan): Furnished {
   };
 
   // The back wall: left, middle, and right unless the board has it. Each room draws its own.
-  const big: Array<{ make: () => Prop; low: boolean }> = [
-    { make: () => sofa(accent), low: true },
-    { make: coffeeCounter, low: false },
-    { make: () => bookshelf(rand, 2.5, 2.7, 4), low: false },
-    { make: () => beanbags(accent), low: true },
-    { make: () => arcade(accent), low: true },
-    { make: rack, low: false },
-  ];
-  // What stands behind the pair in the middle stays low, or it fights the people for the eye.
-  const slots = [-3.25 + rand() * 0.3, 0.1 + rand() * 0.3, 3.35];
-  const order = shuffled(big, rand);
-  const middle = order.find((p) => p.low)!;
-  const sides = order.filter((p) => p !== middle);
-  const picks = room.board ? [sides[0], middle] : [sides[0], middle, sides[1]];
+  // From the viewer's corner the left of the back wall is behind the people, and what stands
+  // there stays low, or it fights them for the eye. Anything tall goes on the far right.
+  const low = shuffled<() => Prop>([() => sofa(accent), () => beanbags(accent), coffeeCounter], rand);
+  const tall = shuffled<() => Prop>([() => bookshelf(rand, 2.5, 2.7, 4), rack, () => arcade(accent)], rand);
+  const slots = [-3.25 + rand() * 0.3, 0.2 + rand() * 0.3, 3.45];
   const hung: Array<() => Prop> = shuffled([() => wallArt(accent, rand), clock, () => wallArt(accent, rand)], rand);
-  picks.forEach((p, i) => {
-    put(p.make(), slots[i], BACK_Z);
-    if (p.low) put(hung.pop()!(), slots[i], BACK_Z);
-  });
+  put(low[0](), slots[0], BACK_Z);
+  put(hung[0](), slots[0], BACK_Z);
+  put(low[1](), slots[1], BACK_Z);
+  put(hung[1](), slots[1], BACK_Z);
+  if (!room.board) put(tall[0](), slots[2], BACK_Z);
 
   // The left wall: something to look out of or write on, and something tall or green.
   const onWall: Array<() => Prop> = shuffled([() => windowBay(rand), () => whiteboard(accent, rand), () => windowBay(rand)], rand);
-  const [near, far] = rand() < 0.5 ? [1.75, -1.75] : [-1.75, 1.75];
-  put(onWall[0](), LEFT_X, near, Math.PI / 2);
-  const standing: Array<() => Prop> = shuffled([() => bookshelf(rand, 1.9, 2.3, 3), () => plant(rand, 2.1), snakePlant, coatRack], rand);
-  put(standing[0](), LEFT_X, far, Math.PI / 2);
-  put(standing[1](), LEFT_X + 0.1, near < 0 ? 3.1 : -3.0, Math.PI / 2);
+  put(onWall[0](), LEFT_X, -1.75, Math.PI / 2);
+  const standing: Array<() => Prop> = shuffled([() => bookshelf(rand, 1.9, 2.3, 3), () => plant(rand, 2.1), () => arcade(accent), coatRack], rand);
+  put(standing[0](), LEFT_X, 1.75, Math.PI / 2);
+  put(rand() < 0.5 ? snakePlant() : plant(rand, 1.7), LEFT_X + 0.1, -3.1, Math.PI / 2);
 
   out.solid.push(...hexRug(shift(accent, "#8a7566", 0.38), 0, 0.06, 2.9));
   if (rand() < 0.45) put(rand() < 0.5 ? plant(rand, 1.5) : snakePlant(), -4.6, 3.05);
@@ -391,11 +382,12 @@ export function furnish(room: RoomPlan): Furnished {
     out.solid.push(...p.solid);
     out.lit.push(...p.lit);
     for (const g of p.glows) out.thrown.push(flare(g.x, g.y, g.z, g.size, g.hex, g.level));
-    if (room.lit) out.lamps.push({ x, y: PENDANT_Y - 0.1, z: 0.1, colour: rgb(WARM_LAMP), power: 0.86, reach: 2.4 });
+    if (room.lit) out.thrown.push(pool(x, 0.03, 0.1, 5.4, 4.6, "#ffcf9e", 0.09));
+    if (room.lit) out.lamps.push({ x, y: PENDANT_Y - 0.1, z: 0.1, colour: rgb(WARM_LAMP), power: 1.05, reach: 2.2 });
   }
   if (!room.lit) put(floorLamp(true), rand() < 0.5 ? -4.5 : 3.8, room.index % 2 ? -3.1 : 2.6);
   return out;
 }
 
 /** The colours of a room's walls and tiles, lit or left for the night. */
-export const roomAmbient = (lit: boolean): RoomLight["ambient"] => (lit ? [0.8, 0.74, 0.68] : [0.5, 0.56, 0.78]);
+export const roomAmbient = (lit: boolean): RoomLight["ambient"] => (lit ? [0.68, 0.62, 0.55] : [0.56, 0.62, 0.86]);

@@ -16,12 +16,13 @@ vi.mock("three", async (real) => {
   class WebGLRenderer {
     shadowMap = { enabled: false, type: 0, autoUpdate: true, needsUpdate: false };
     info = { render: { calls: 0, triangles: 0 } };
-    setPixelRatio() {}
     getDrawingBufferSize(v: { x: number; y: number }) { return v; }
     setSize(w: number, h: number) { calls.push(`size ${w}x${h}`); }
     render() { calls.push("render"); }
+    setPixelRatio() {}
     dispose() { calls.push("dispose"); }
     forceContextLoss() { calls.push("contextLoss"); }
+    forceContextRestore() { calls.push("contextRestore"); }
   }
   class DirectionalLight extends three.DirectionalLight {
     constructor(...a: ConstructorParameters<typeof three.DirectionalLight>) {
@@ -42,7 +43,7 @@ vi.mock("./build", async (real) => ({
 let queued: FrameRequestCallback[];
 const runFrames = (n = 1) => {
   for (let i = 0; i < n; i += 1) {
-    vi.runOnlyPendingTimers();
+    vi.advanceTimersByTime(140);
     for (const fn of queued.splice(0)) fn(performance.now());
   }
 };
@@ -75,6 +76,92 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("going away", () => {
+  const AWAY = 120_000;
+  const lostAndBack = (canvas: HTMLCanvasElement) => {
+    canvas.dispatchEvent(new Event("webglcontextlost"));
+    runFrames(1);
+  };
+
+  it("draws nothing while hidden", () => {
+    const { scene } = mount();
+    settle(scene);
+    scene.setVisible(false);
+    vi.advanceTimersByTime(5000);
+    runFrames(3);
+    expect(calls).not.toContain("render");
+  });
+  it("gives back the GPU after two minutes away, and not before", () => {
+    const { scene } = mount();
+    settle(scene);
+    scene.setVisible(false);
+    vi.advanceTimersByTime(AWAY - 1000);
+    expect(calls).not.toContain("contextLoss");
+    vi.advanceTimersByTime(1000);
+    expect(calls).toContain("contextLoss");
+  });
+  it("stays awake if the owner comes back in time", () => {
+    const { scene } = mount();
+    settle(scene);
+    scene.setVisible(false);
+    vi.advanceTimersByTime(AWAY / 2);
+    scene.setVisible(true);
+    vi.advanceTimersByTime(AWAY);
+    expect(calls).not.toContain("contextLoss");
+  });
+  it("asks for the context back on return, and draws once it has it", () => {
+    const { scene, canvas } = mount();
+    settle(scene);
+    scene.setVisible(false);
+    vi.advanceTimersByTime(AWAY);
+    lostAndBack(canvas);
+    calls.length = 0;
+    scene.setVisible(true);
+    expect(calls).toContain("contextRestore");
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    expect(calls).toContain("render");
+  });
+  it("does not tell the shell the picture is lost when it let go itself", () => {
+    const canvas = document.createElement("canvas");
+    const onLost = vi.fn();
+    const onRestored = vi.fn();
+    const scene = createScene(canvas, { reducedMotion: true, dpr: 1, onLost, onRestored });
+    settle(scene);
+    scene.setVisible(false);
+    vi.advanceTimersByTime(AWAY);
+    lostAndBack(canvas);
+    scene.setVisible(true);
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    expect(onLost).not.toHaveBeenCalled();
+    expect(onRestored).not.toHaveBeenCalled();
+  });
+});
+
+describe("what keeps it drawing", () => {
+  it("stops the ambient loop at a Desk: the terminal comes first", () => {
+    const canvas = document.createElement("canvas");
+    const scene = createScene(canvas, { reducedMotion: false, dpr: 1, onLost: () => {}, onRestored: () => {} });
+    settle(scene);
+    vi.advanceTimersByTime(500);
+    runFrames(2);
+    expect(calls).toContain("render");
+    scene.setLevel({ kind: "desk", personId: "linh", floorId: "bytehive", tab: "terminal" }, true);
+    runFrames(2);
+    calls.length = 0;
+    vi.advanceTimersByTime(2000);
+    runFrames(3);
+    expect(calls).not.toContain("render");
+  });
+  it("has no ambient loop on Low", () => {
+    const canvas = document.createElement("canvas");
+    const scene = createScene(canvas, { reducedMotion: false, dpr: 1, onLost: () => {}, onRestored: () => {}, quality: "low" });
+    settle(scene);
+    vi.advanceTimersByTime(2000);
+    runFrames(3);
+    expect(calls).not.toContain("render");
+  });
 });
 
 describe("dispose", () => {

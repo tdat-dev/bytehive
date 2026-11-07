@@ -16,13 +16,23 @@ export interface Pose {
   sit: number;        // 0 standing, 1 seated
   lean: number;       // chair back, radians
   armL: number; armR: number; // arm swing, radians
+  turn: number;       // the top half, turned from the desk, radians
   screen: "work" | "off" | "dim";
   lamp: boolean;
   bubble: boolean;
   present: boolean;   // false: an empty chair
 }
 
-const STILL: Pose = { sit: 1, lean: 0, armL: 0, armR: 0, screen: "dim", lamp: false, bubble: false, present: true };
+const STILL: Pose = { sit: 1, lean: 0, armL: 0, armR: 0, turn: 0, screen: "dim", lamp: false, bubble: false, present: true };
+const GLANCE = { every: 7000, takes: 1500, far: 0.42 };
+
+/** A look away from the screen, every few seconds. */
+function glance(t: number, seat: number): number {
+  const at = (t + seat * 2300) % GLANCE.every;
+  if (at >= GLANCE.takes) return 0;
+  const side = Math.floor((t + seat * 2300) / GLANCE.every) % 2 ? 1 : -1;
+  return side * GLANCE.far * Math.sin((at / GLANCE.takes) * Math.PI) ** 2;
+}
 
 /** A character's whole picture from its state and the clock. Nothing is kept between frames. */
 export function pose(state: OfficeState, t: number, seat: number): Pose {
@@ -30,7 +40,7 @@ export function pose(state: OfficeState, t: number, seat: number): Pose {
     case "needs": return { ...STILL, sit: 0, lamp: true, bubble: true };
     case "working": {
       const phase = t / 125 + seat * 1.7;
-      return { ...STILL, screen: "work", armL: Math.sin(phase) * 0.18, armR: Math.sin(phase + 2) * 0.18 };
+      return { ...STILL, screen: "work", armL: Math.sin(phase) * 0.18, armR: Math.sin(phase + 2) * 0.18, turn: glance(t, seat) };
     }
     case "review": return { ...STILL, armR: 0.5 };
     case "idle": return { ...STILL, lean: 0.32 };
@@ -89,7 +99,7 @@ const HAIR: Array<(hex: string) => BufferGeometry[]> = [
   (hex) => [dome(hex)],
   (hex) => [dome(hex), moved(tint(new SphereGeometry(0.19, 12, 8), hex).scale(1.5, 0.6, 1), -0.13, 0.31, -0.25)],
   (hex) => [dome(hex), moved(tint(new SphereGeometry(0.17, 12, 9), hex), 0, 0.42, 0.24)],
-  (hex) => [moved(tint(new SphereGeometry(HEAD_R + 0.1, 18, 12), hex), 0, 0.1, 0.1), ...[[-0.38, 0.28, -0.08], [0.38, 0.28, -0.08], [-0.18, 0.46, -0.14], [0.18, 0.46, -0.14]].map(([x, y, z]) => moved(tint(new SphereGeometry(0.15, 10, 7), hex), x, y, z))],
+  (hex) => [dome(hex, 0.36), moved(tint(new SphereGeometry(0.2, 12, 9), hex), -0.3, 0.05, 0.1), moved(tint(new SphereGeometry(0.2, 12, 9), hex), 0.3, 0.05, 0.1), moved(tint(new SphereGeometry(0.22, 12, 9), hex), 0, 0.26, 0.26)],
   (hex) => [dome(hex, 0.5), tint(new SphereGeometry(HEAD_R + 0.03, 20, 9, 0, Math.PI * 2, Math.PI / 2 - 0.1, Math.PI / 2.6), hex).rotateX(0.46)],
   (hex) => [dome(hex, 0.68), tint(new SphereGeometry(HEAD_R + 0.014, 18, 7, 0, Math.PI * 2, Math.PI * 0.68, Math.PI * 0.32), hex).rotateX(0.2)],
 ];
@@ -234,7 +244,7 @@ export function buildPerson(p: OfficePerson, kit: PeopleKit, marked = false): Ob
   }
 
   const parts: Parts = { body, trunk, legs, armL, armR, bubble };
-  root.userData = { person: { state: p.state, seat: p.seat }, parts, rot: 0, marked };
+  root.userData = { person: { id: p.id, state: p.state, seat: p.seat }, parts, rot: 0, marked };
   applyPose(root, look);
   return root;
 }
@@ -248,16 +258,23 @@ export function seatPerson(obj: Object3D, d: Seat, y: number): void {
   applyPose(obj, pose(state, 0, seat));
 }
 
-export function applyPose(obj: Object3D, p: Pose): void {
+export const HOP_MS = 460;
+const HOP_UP = 0.46;
+
+/** A small jump, from when it started: how high off the ground. */
+export const hopAt = (ms: number): number => (ms <= 0 || ms >= HOP_MS ? 0 : HOP_UP * 4 * (ms / HOP_MS) * (1 - ms / HOP_MS));
+
+export function applyPose(obj: Object3D, p: Pose, raise = 0): void {
   const { parts, rot, marked } = obj.userData as { parts: Parts; rot: number; marked: boolean };
   const up = 1 - p.sit;
   const hip = hipAt(p.sit);
   const reach = ARM_STAND + (ARM_SIT - ARM_STAND) * p.sit - p.lean * ARM_REST;
   obj.visible = p.present;
   const step = stepOf(rot);
-  parts.body.position.set(step.x * up, hip, step.z * up);
+  parts.body.position.set(step.x * up, hip + raise, step.z * up);
   parts.body.rotation.y = p.sit < 0.5 ? FACE_VIEWER : rot;
   parts.trunk.rotation.x = p.lean;
+  parts.trunk.rotation.y = p.turn;
   parts.legs.rotation.x = (Math.PI / 2) * p.sit;
   parts.armL.rotation.x = reach + p.armL;
   parts.armR.rotation.x = reach + p.armR;
@@ -268,9 +285,9 @@ export function applyPose(obj: Object3D, p: Pose): void {
 }
 
 /** The pose this person has now. */
-export function animate(obj: Object3D, t: number): void {
+export function animate(obj: Object3D, t: number, raise = 0): void {
   const { state, seat } = obj.userData.person as { state: OfficeState; seat: number };
-  applyPose(obj, pose(state, t, seat));
+  applyPose(obj, pose(state, t, seat), raise);
 }
 
 export const isPerson = (o: Object3D): boolean => !!o.userData.person;
