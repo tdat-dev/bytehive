@@ -56,8 +56,6 @@ svg{display:block;flex:none}
 [hidden]{display:none !important}
 /* Freeze running animations while the window is hidden/unfocused (set from JS) to save GPU. */
 body.anim-paused *,body.anim-paused *::before,body.anim-paused *::after{animation-play-state:paused !important}
-/* the two-layer ring lands in parts.css */
-:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 *::-webkit-scrollbar{width:9px;height:9px}
 *::-webkit-scrollbar-thumb{background:var(--line);border-radius:var(--r-control);border:2px solid transparent;background-clip:padding-box}
 *::-webkit-scrollbar-thumb:hover{background:var(--line-control);background-clip:padding-box}

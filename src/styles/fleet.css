@@ -16,11 +16,11 @@
 .fleet-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;
   gap:8px 10px;width:100%;text-align:left;padding:8px 10px;border-radius:var(--r-card);
   background:var(--surface-1);border:1px solid var(--line);cursor:pointer;
-  transition:background .12s,border-color .12s}
+  transition:background var(--m-press) var(--ease-in), border-color var(--m-press) var(--ease-in)}
 .fleet-row:hover{background:var(--surface-2);border-color:var(--line-strong)}
 
-.fleet-dot{width:9px;height:9px;border-radius:50%;background:var(--dot,#7d8b99);
-  grid-row:1 / span 2;align-self:center;box-shadow:0 0 0 3px rgba(0,0,0,.25)}
+.fleet-dot{width:9px;height:9px;border-radius:50%;background:var(--dot,var(--ink-3));
+  grid-row:1 / span 2;align-self:center;box-shadow:none}
 .fleet-name{font-size:var(--fs-meta);color:var(--text);font-weight:550;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .fleet-ws{grid-column:2;font-size:var(--fs-meta);color:var(--muted-2);overflow:hidden;
@@ -32,19 +32,16 @@
   font-family:var(--mono);white-space:nowrap}
 
 /* status accents */
-.fleet-row.st-needs{border-color:rgba(255,255,255,.4)}
+.fleet-row.st-needs{border-color:var(--line-control)}
 .fleet-row.st-needs .fleet-st{color:var(--accent-ink);background:var(--accent)}
 .fleet-row.st-needs .fleet-dot{background:var(--accent);
-  box-shadow:0 0 0 3px rgba(255,255,255,.18);animation:fleet-pulse 1.6s ease-in-out infinite}
-.fleet-row.st-active .fleet-st{color:#052e16;background:var(--run)}
+  box-shadow:0 0 0 3px var(--line);}
+.fleet-row.st-active .fleet-st{color:var(--ground);background:var(--run)}
 .fleet-row.st-active .fleet-dot{background:var(--run)}
 .fleet-row.st-idle{opacity:.9}
 .fleet-row.st-stopped{opacity:.6}
 .fleet-row.st-stopped .fleet-dot{background:var(--idle)}
 
-@keyframes fleet-pulse{0%,100%{box-shadow:0 0 0 3px rgba(255,255,255,.18)}
-  50%{box-shadow:0 0 0 5px rgba(255,255,255,.28)}}
-@media (prefers-reduced-motion:reduce){.fleet-row.st-needs .fleet-dot{animation:none}}
 
 /* rail count badge */
 .dr-btn{position:relative}

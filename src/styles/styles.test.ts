@@ -36,3 +36,18 @@ describe("shape", () => {
     expect(off).toEqual([]);
   });
 });
+
+describe("motion", () => {
+  const motion = (s: string) => s.replace(/@keyframes[^{]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+  it("uses the four timings and the two curves", () => {
+    const off = files.filter(([f]) => f !== "splash.css" && f !== "tokens.css").flatMap(([f, s]) =>
+      [...motion(s).matchAll(/\btransition:\s*([^;}]+)/g)].map((m) => `${f}: ${m[1]}`).filter((d) => !/none\s*$/.test(d) && !/^[^:]+: (?:[\w-]+ var\(--m-(press|swap|panel|level)\) var\(--ease-(in|out)\)(?:,\s*)?)+\s*$/.test(d)));
+    expect(off).toEqual([]);
+  });
+  it("moves only what the compositor can", () => {
+    expect(hits(/\btransition:[^;}]*\b(width|height|left|top|box-shadow|filter)\b/g)).toEqual([]);
+  });
+  it("keeps one loop", () => {
+    expect(hits(/animation:[^;}]*\binfinite\b/g)).toEqual(["parts.css: animation:spin 1s linear infinite"]);
+  });
+});

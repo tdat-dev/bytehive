@@ -35,10 +35,10 @@
      the terminal agree. At the default "Glass" opacity it is fully transparent
      and the wallpaper reads straight through the pane — the border, the title
      bar and the text are all that remain. */
-  background: var(--pane-plate, rgba(10,10,12, 0.62));
+  background: var(--pane-plate, var(--scrim));
   border: 1px solid var(--line-2);
   box-shadow: var(--lift);
-  transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s;
+  transition: border-color var(--m-press) var(--ease-in), transform var(--m-press) var(--ease-in);
   animation: none;
 }
 /* A running agent repaints its terminal several times a second (spinner, timer),
@@ -49,11 +49,11 @@
    wallpaper behind an idle pane is blurred once and cached, a busy one costs
    nothing extra, and the text halo below still carries legibility. */
 .grid.canvas[data-glass="1"] .pane.run:not(.focused) {
-  background-color: rgba(8, 9, 12, 0.38);
+  background-color: var(--raised);
 }
 /* dark glyphs (a light wallpaper): the plate goes light too, like the halo below */
 .grid.canvas[data-glass="1"][data-tone="dark"] .pane.run:not(.focused) {
-  background-color: rgba(246, 247, 249, 0.38);
+  background-color: var(--over);
 }
 /* Legibility floor — a tight halo in the opposite tone, so text survives the
    patch of image that happens to match its own colour. This reaches the DOM
@@ -74,7 +74,7 @@
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent), var(--lift);
 }
 .grid.canvas .pane:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--line);
   box-shadow: var(--lift);
 }
 /* canvas mode has its own free-drag lift — override the generic dim+dashed
@@ -104,7 +104,7 @@
   /* Its own plate, independent of the pane's: the dot, the name and the buttons
      are chrome, and they have to stay readable and hittable over any wallpaper
      even when the body below them is fully see-through. */
-  background: rgba(10,10,12, 0.55);
+  background: var(--scrim);
   border-bottom: 1px solid var(--line);
   cursor: grab;
   user-select: none;
@@ -128,21 +128,11 @@
      the compositor redraw that blur every frame for every running agent */
 }
 .grid.canvas .pb-dot.work {
-  background: #f4b740;
+  background: var(--honey);
   box-shadow: none;
 }
 .grid.canvas .pb-dot.done {
   background: var(--teal);
-}
-@keyframes breathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-@media (prefers-reduced-motion: reduce) {
-  /* dots don't breathe */
-  .grid.canvas .pane.run .pb-dot {
-    animation: none;
-  }
 }
 /* per-agent avatar — hidden while tiled; becomes the mockup's stage-head avatar
    (and the status dot hides) when the pane is the focused stage. */
@@ -155,7 +145,7 @@
   place-items: center;
   font-size: var(--fs-meta);
   font-weight: 600;
-  color: #0a0d07;
+  color: var(--ground);
 }
 .grid.canvas.has-focus .pane.focused .pb-av {
   display: grid;
@@ -221,7 +211,7 @@
   display: flex;
   gap: 1px;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--m-press) var(--ease-in);
 }
 .grid.canvas .pane:hover .pb-ctrls,
 .grid.canvas .pb-ctrls:focus-within {
@@ -265,11 +255,11 @@
   color: color-mix(in oklab, var(--accent-ink) 70%, transparent);
 }
 .grid.canvas .pane[data-role="director"] .pctrl:hover {
-  background: rgba(0, 0, 0, 0.13);
+  background: var(--raised);
   color: var(--accent-ink);
 }
 .grid.canvas .pane[data-role="director"] .pctrl.danger:hover {
-  background: rgba(127, 29, 29, 0.22);
+  background: var(--danger-soft);
 }
 /* A status dot loses its edge on a plate this bright — ring it in the ink. */
 .grid.canvas .pane[data-role="director"] .pb-dot,
@@ -303,7 +293,7 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: rgba(0,0,0, 0.55);
+  background: var(--scrim);
 }
 .grid.canvas.has-focus .pane.focused {
   display: flex;
@@ -315,20 +305,13 @@
   /* lifted stage: bigger radius, a ring in the focused agent's hue, deep shadow,
      and a zoom-in on entry — the mockup's focus-stage feel. */
   border-radius: var(--r-dialog);
-  box-shadow: var(--lift), 0 0 0 1px color-mix(in oklab, var(--stg, #6fd6a0) 22%, transparent);
+  box-shadow: var(--lift), 0 0 0 1px color-mix(in oklab, var(--stg, var(--work)) 22%, transparent);
   transform-origin: var(--ox, 50%) var(--oy, 50%);
-  animation: zoomIn 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: rise var(--m-panel) var(--ease-in);
 }
 /* keep the controls (esp. the back button) visible while focused — beats the
    two opacity:0 rules the pane bar inherits (.ctrls + .grid.canvas .pb-ctrls). */
 .grid.canvas.has-focus .pane.focused .pb-ctrls { opacity: 1 !important; }
-@keyframes zoomIn {
-  from { opacity: 0; transform: scale(0.94); }
-  to { opacity: 1; transform: scale(1); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .grid.canvas.has-focus .pane.focused { animation: none; }
-}
 /* the stage header reads bigger than a tiled pane's slim bar */
 .grid.canvas.has-focus .pane.focused .pane-bar { height: 38px; }
 .grid.canvas.has-focus .pane.focused .pb-name { font-size: var(--fs-lead); }
@@ -380,7 +363,7 @@
 }
 *:hover,
 *.scrolling {
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: var(--line) transparent;
 }
 *::-webkit-scrollbar {
   width: 10px;
@@ -397,14 +380,14 @@
   border-radius: var(--r-control);
   border: 3px solid transparent;
   background-clip: padding-box;
-  transition: background 0.3s;
+  transition: background var(--m-panel) var(--ease-in);
 }
 *.scrolling::-webkit-scrollbar-thumb,
 *:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--over);
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--over);
   background-clip: padding-box;
 }

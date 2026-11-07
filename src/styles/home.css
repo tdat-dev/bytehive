@@ -2,12 +2,9 @@
 /* "Back to workspace" pill — only on Home when tabs are still alive. */
 .home-resume{position:fixed;top:9px;left:50%;transform:translateX(-50%);z-index:var(--z-rail);
   display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:var(--r-card);
-  border:1px solid var(--line-strong);background:rgba(21,22,26,.92);
-  color:var(--text-2);font-size:var(--fs-meta);font-weight:500;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+  border:1px solid var(--line-strong);background:var(--scrim);
+  color:var(--text-2);font-size:var(--fs-meta);font-weight:500;cursor:pointer;transition:border-color var(--m-press) var(--ease-in), color var(--m-press) var(--ease-in), background var(--m-press) var(--ease-in)}
 .home-resume:hover{border-color:var(--accent-dim);color:var(--accent);background:var(--surface-2)}
 .home-resume .hr-count{font-family:var(--mono);font-size:var(--fs-meta);color:var(--muted-2)}
 .home{position:fixed;inset:0;overflow:auto;display:grid;place-items:center;
-  background:
-    radial-gradient(820px 440px at 50% 20%, var(--accent-glow), transparent 62%),
-    radial-gradient(560px 560px at 86% 96%, rgba(56,189,248,.04), transparent 60%),
-    var(--bg);}
+  background:var(--ground);}

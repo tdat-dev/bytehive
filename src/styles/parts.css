@@ -20,6 +20,7 @@ input:focus-visible + .tg,input:focus-visible + .pt-sw,input:focus-visible + .cf
 @keyframes rise{from{transform:translateY(4px)}to{transform:none}}
 @keyframes slide-in{from{transform:translateX(12px)}to{transform:none}}
 @keyframes spin{to{transform:rotate(360deg)}}
+.cv-spin,.g-work{animation:spin 1s linear infinite}
 /* Position changes become instant, the opacity swap stays as feedback, the ring holds still. */
 @media (prefers-reduced-motion:reduce){
   *:not(.intro,.intro *),*:not(.intro,.intro *)::before,*:not(.intro,.intro *)::after{animation:none !important;transition-property:opacity !important;transition-duration:var(--m-swap) !important}
