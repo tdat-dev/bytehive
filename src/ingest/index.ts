@@ -1,13 +1,15 @@
 /** Wire the gate to the app: one instance per project, files under
  *  `.bytehive/`, settings from prefs, and the classifier from Rust. */
+import { showDelegationToast } from "../delegation";
 import { fsCreateFile, fsReadFile, fsWriteFile, sendMessage } from "../ipc";
 import { getPrefs, onPrefs } from "../prefs";
 import { pricesFingerprint } from "../pricing";
 import { taskOf } from "../tasks";
+import { BlockedStore, type BlockedList } from "./blocked";
 import { ResultCache } from "./cache";
 import { Gate } from "./gate";
 import { sha256 } from "./hash";
-import { IngestLog } from "./log";
+import { IngestLog, type LogStats } from "./log";
 import { classifyWithProvider } from "./provider";
 import { defaultTools } from "./tools";
 import type { BlockedEntry, GateSettings, Outcome, Request, ToolResult } from "./types";
@@ -32,22 +34,6 @@ function fileIO(root: string, rel: string) {
   };
 }
 
-/** shortcut: two blocks landing together can drop one entry, fine while blocks
- *  are rare; make the file one writer if the panel starts missing some. */
-async function addBlocked(root: string, entry: BlockedEntry): Promise<void> {
-  let entries: BlockedEntry[] = [];
-  try {
-    const text = (await fsReadFile(root, BLOCKED)).content;
-    const file = JSON.parse(text) as { entries?: BlockedEntry[] };
-    if (Array.isArray(file.entries)) entries = file.entries;
-  } catch {
-    /* first block, or a file we cannot read */
-  }
-  entries.push(entry);
-  await fsCreateFile(root, BLOCKED).catch(() => {});
-  await fsWriteFile(root, BLOCKED, JSON.stringify({ version: 1, entries: entries.slice(-100) }), null);
-}
-
 export function ingestSettings(): GateSettings {
   const p = getPrefs();
   return {
@@ -67,7 +53,54 @@ function resultLine(result: ToolResult): string {
   return `[ingest] ${result.metadata.tool}: ${values}`;
 }
 
+/** Something the gate answered with code, kept for the panel until the app closes. */
+export interface RecentResult {
+  at: number;
+  source: Request["source"];
+  from?: string;
+  to: string;
+  toName?: string;
+  text: string;
+  result: ToolResult;
+  cached: boolean;
+}
+
+const RECENT_MAX = 50;
+
 const gates = new Map<string, Gate>();
+const logs = new Map<string, IngestLog>();
+const stores = new Map<string, BlockedStore>();
+const recents = new Map<string, RecentResult[]>();
+const listeners = new Set<() => void>();
+
+const changed = (): void => {
+  for (const fn of listeners) {
+    try {
+      fn();
+    } catch {
+      /* a broken view must not break a send */
+    }
+  }
+};
+
+function logFor(dir: string): IngestLog {
+  let log = logs.get(dir);
+  if (!log) {
+    log = new IngestLog(fileIO(dir, LOG));
+    void log.load();
+    logs.set(dir, log);
+  }
+  return log;
+}
+
+function storeFor(dir: string): BlockedStore {
+  let store = stores.get(dir);
+  if (!store) {
+    store = new BlockedStore(fileIO(dir, BLOCKED));
+    stores.set(dir, store);
+  }
+  return store;
+}
 
 // Only a changed ingest setting rebuilds a gate; a font or tray change must not
 // disturb a log write that is still on its debounce.
@@ -83,8 +116,7 @@ function gateFor(dir: string): Gate {
   const hit = gates.get(dir);
   if (hit) return hit;
   const tools = defaultTools();
-  const log = new IngestLog(fileIO(dir, LOG));
-  void log.load();
+  const log = logFor(dir);
   const cache = new ResultCache(fileIO(dir, CACHE), {
     ttlMs: ingestSettings().ttlDays * 86_400_000,
     version: `${pricesFingerprint()}|${tools.map((t) => `${t.name}:${t.version}`).join(",")}|1`,
@@ -92,9 +124,12 @@ function gateFor(dir: string): Gate {
   const gate = new Gate({
     send: (to, text) => sendMessage(to, text),
     sendResult: (req, result) => {
-      if (!req.fromPane) return false;
-      void sendMessage(req.fromPane, resultLine(result)).catch(() => {});
-      return true;
+      if (req.fromPane) {
+        void sendMessage(req.fromPane, resultLine(result)).catch(() => {});
+        return true;
+      }
+      // A person reads it in the toast and the panel; anyone else gets the agent.
+      return req.source === "kanban" || req.source === "phone";
     },
     classify: classifyWithProvider,
     isAwaiting: (to) => !!taskOf(to)?.status.ask,
@@ -102,7 +137,7 @@ function gateFor(dir: string): Gate {
     cache,
     tools,
     log: (entry) => void log.add(entry),
-    block: (entry) => addBlocked(dir, entry),
+    block: (entry) => storeFor(dir).add(entry),
     canCall: () => {
       const stats = log.stats();
       const settings = ingestSettings();
@@ -117,5 +152,46 @@ function gateFor(dir: string): Gate {
 
 /** Send one programmatic message through the gate for the project at `dir`. */
 export async function sendGated(dir: string, req: Request): Promise<Outcome> {
-  return gateFor(dir).send(req);
+  const out = await gateFor(dir).send(req);
+  if (out.kind === "answered" || out.kind === "cache-hit") {
+    const list = recents.get(dir) ?? [];
+    list.push({ ...req, at: Date.now(), result: out.result, cached: out.kind === "cache-hit" });
+    recents.set(dir, list.slice(-RECENT_MAX));
+    if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], resultLine(out.result).replace("[ingest] ", ""));
+    changed();
+  } else if (out.kind === "blocked") {
+    if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], "Held back. Open Ingest to send it anyway.");
+    changed();
+  }
+  return out;
 }
+
+/** Tell the panel when something it shows has changed. */
+export function onIngest(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+export const blockedList = (dir: string): Promise<BlockedList> => storeFor(dir).list();
+
+export const blockedRemove = (dir: string, id: string): Promise<BlockedEntry | null> => storeFor(dir).remove(id);
+
+export const blockedRestore = (dir: string, entry: BlockedEntry): Promise<void> => storeFor(dir).add(entry);
+
+/** Deliver a held message as it was written, past the gate. It stays on the
+ *  list unless it really reached the agent. */
+export async function blockedResend(dir: string, entry: BlockedEntry): Promise<boolean> {
+  const sent = await sendMessage(entry.to, entry.text).catch(() => false);
+  if (!sent) return false;
+  await storeFor(dir).remove(entry.id);
+  void logFor(dir).add({ ts: Date.now(), hash: entry.hash, source: "retry", from: entry.from, to: entry.to, path: "pass", ms: { total: 0 } });
+  return true;
+}
+
+export async function ingestStats(dir: string): Promise<LogStats> {
+  const log = logFor(dir);
+  await log.load();
+  return log.stats();
+}
+
+export const ingestRecent = (dir: string): readonly RecentResult[] => recents.get(dir) ?? [];

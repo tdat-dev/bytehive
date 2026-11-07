@@ -171,7 +171,7 @@ export class Gate {
   private async block(req: Request, hash: string, reason: string, started: number, extra: Partial<LogEntry> = {}): Promise<Outcome> {
     const id = this.deps.id();
     try {
-      await this.deps.block({ id, hash, source: req.source, from: req.from, to: req.to, text: req.text, reason, at: this.now() });
+      await this.deps.block({ id, hash, source: req.source, from: req.from, to: req.to, toName: req.toName, text: req.text, reason, at: this.now() });
     } catch (e) {
       this.warn("could not keep the blocked message: " + String(e));
     }

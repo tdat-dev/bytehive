@@ -44,7 +44,7 @@ describe("What ByteHive can do", () => {
     document.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => clicked.push(b.id)));
     dock.opened = [];
     for (const t of TOOLS) openTool(t.id);
-    expect(dock.opened).toEqual(["kanban", "flow", "company", "fleet", "pomodoro"]);
+    expect(dock.opened).toEqual(["kanban", "flow", "ingest", "company", "fleet", "pomodoro"]);
     expect(clicked).toEqual(["setOpenSched", "setOpenReplays", "setOpenUsage"]);
   });
 });

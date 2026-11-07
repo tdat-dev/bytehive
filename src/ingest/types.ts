@@ -12,6 +12,8 @@ export interface Request {
   fromPane?: string;
   /** Pane id of the agent that would receive the message. */
   to: string;
+  /** That agent's name, for the panel and the toast. */
+  toName?: string;
   text: string;
 }
 
@@ -62,6 +64,7 @@ export interface BlockedEntry {
   source: Source;
   from?: string;
   to: string;
+  toName?: string;
   text: string;
   reason: string;
   at: number;

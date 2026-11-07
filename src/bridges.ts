@@ -187,7 +187,10 @@ export function initBridges(): void {
   setAgentSenderById((id, text, submit) => {
     const pane = activeWs?.panes.get(id);
     if (!pane || !pane.running) return false;
-    void sendMessage(pane.id, text, submit).catch(() => {});
+    // A draft left in the box (submit off) is yours to finish, not a message yet.
+    const dir = activeWs?.dir;
+    if (submit && dir) void sendGated(dir, { source: "kanban", to: pane.id, toName: pane.spec.name, text }).catch(() => {});
+    else void sendMessage(pane.id, text, submit).catch(() => {});
     pane.term.focus();
     return true;
   });
@@ -314,7 +317,7 @@ export function initBridges(): void {
           )
         : undefined;
       for (const p of targets) {
-        void sendGated(dir, { source: "fleet", from: from ?? undefined, fromPane: sender?.id, to: p.id, text: message })
+        void sendGated(dir, { source: "fleet", from: from ?? undefined, fromPane: sender?.id, to: p.id, toName: p.spec.name, text: message })
           .then((out) => {
             if (out.kind === "blocked" && sender) {
               const why = out.reason === "smalltalk" ? "small talk" : out.reason;

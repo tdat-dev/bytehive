@@ -3,6 +3,7 @@
 // keystrokes/messages from that page back into the right PTY. Split from
 // main.ts; reads the fleet via appstate, formats errors via an injected helper.
 
+import { sendGated } from "./ingest";
 import { workspaces } from "./appstate";
 import { hiddenGate } from "./hiddengate";
 import { paneStatus } from "./fleet";
@@ -229,6 +230,7 @@ export function initDashboard(): void {
         const pane = ws.panes.get(o.paneId);
         if (pane && pane.running) {
           if (keys) void sendInput(pane.id, keys).catch(() => {});
+          else if (ws.dir) void sendGated(ws.dir, { source: "phone", to: pane.id, toName: pane.spec.name, text: message as string }).catch(() => {});
           else void sendMessage(pane.id, message as string).catch(() => {});
           window.setTimeout(pushDash, 150);
           window.setTimeout(pushDash, 450);

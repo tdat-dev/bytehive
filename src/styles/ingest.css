@@ -1,0 +1,34 @@
+/* Ingest: the dock panel for what the gate held back or answered. Rows are
+ * Flow's (.flow-row, .flow-text); this file only adds what Flow doesn't have. */
+
+.dock-panel[data-tool="ingest"]{width:min(440px,84vw)}
+
+.igp-root{display:flex;flex-direction:column;gap:14px;outline:none}
+
+.igp-today{font-size:12.5px;line-height:1.55;color:var(--muted);padding:0 2px}
+.igp-status{font-size:12.5px;line-height:1.55;color:var(--text);padding:0 2px}
+.igp-status:empty{display:none}
+
+.igp-sec{display:flex;flex-direction:column;gap:6px}
+.igp-h{font-size:12.5px;font-weight:600;color:var(--text);padding:0 2px}
+.igp-none{font-size:12.5px;line-height:1.55;color:var(--muted-2);padding:0 2px}
+
+.igp-head{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;min-width:0}
+
+.igp-actions{display:flex;align-items:center;gap:6px;margin-top:2px}
+.igp-why{font-size:11.5px;color:var(--muted-2);margin-right:auto;min-width:0}
+
+.igp-btn{min-height:26px;padding:0 10px;border-radius:var(--r1);border:1px solid var(--line);
+  font-size:12px;color:var(--text);cursor:pointer;flex:none}
+.igp-btn:hover{background:var(--surface-2,rgba(255,255,255,.08))}
+.igp-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.igp-primary:hover{background:var(--accent);filter:brightness(1.08)}
+
+.igp-link{min-height:24px;padding:0 2px;font-size:12.5px;color:var(--accent);cursor:pointer;
+  text-decoration:underline;text-underline-offset:2px}
+
+.igp-answer{font-size:12.5px;line-height:1.55;color:var(--text)}
+.igp-answer b{font-weight:600}
+.igp-answer .igp-why{margin:0}
+
+.igp-btn:focus-visible,.igp-link:focus-visible,.igp-root .flow-text:focus-visible{outline:2px solid #fff;outline-offset:2px}
