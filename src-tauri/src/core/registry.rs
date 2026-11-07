@@ -182,6 +182,11 @@ impl Registry {
         self.get(id)?.resize(cols, rows)
     }
 
+    /// The flow state of `id`, to be read without the registry lock.
+    pub fn flow_of(&self, id: &str) -> Option<std::sync::Arc<crate::core::flow::Flow>> {
+        self.get(id).ok().map(|a| a.flow().clone())
+    }
+
     /// Whether `id` talks in JSON lines on pipes. False for an unknown id.
     pub fn is_pipe(&self, id: &str) -> bool {
         self.get(id).is_ok_and(|a| a.is_pipe())

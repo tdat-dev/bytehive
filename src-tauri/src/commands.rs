@@ -27,21 +27,36 @@ struct ExitPayload {
 static NEXT_RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// While a terminal streams, at most one message to its window per this long.
-const MESSAGE_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
-/// ...unless this much is waiting, which goes at once.
+/// Measured with 12 shells printing: every webview call (a message out, an ack
+/// back) goes through one channel that also carries typing and every other
+/// command, and at 33 ms a message the round trip of a no-op command reached
+/// 4.6 s; at 125 ms it stayed at 16 ms (95th percentile) like an idle app.
+const MESSAGE_EVERY: std::time::Duration = std::time::Duration::from_millis(125);
+/// ...but while someone types into the agent, the short one, so the echo of a
+/// key amid a stream is not held for a whole MESSAGE_EVERY.
+const MESSAGE_EVERY_TYPING: std::time::Duration = std::time::Duration::from_millis(16);
+/// "While someone types" is this long after the last input.
+const TYPING_FOR: std::time::Duration = std::time::Duration::from_millis(1500);
+/// A pile this big goes out at once.
 const MESSAGE_BIG: usize = 64 * 1024;
 
 /// Where an agent's output goes in the window. A terminal's reads are tiny and
 /// many; each one sent alone is a script the webview compiles and runs, so they
 /// are joined (core/coalesce.rs). A pipe agent's output is whole JSON lines and
-/// stays as it is.
-fn window_sink(on_bytes: Channel<InvokeResponseBody>, pipe: bool) -> Box<dyn FnMut(&[u8]) + Send> {
+/// stays as it is. `flow` is filled in once the agent exists, so the joiner can
+/// tell when someone is typing into it.
+fn window_sink(
+    on_bytes: Channel<InvokeResponseBody>,
+    pipe: bool,
+    flow: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<crate::core::flow::Flow>>>,
+) -> Box<dyn FnMut(&[u8]) + Send> {
     if pipe {
         return Box::new(move |bytes| {
             let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
         });
     }
-    let joined = Coalescer::new(MESSAGE_EVERY, MESSAGE_BIG, move |batch| {
+    let typing = move || flow.get().is_some_and(|f| f.typed_within(TYPING_FOR));
+    let joined = Coalescer::new(MESSAGE_EVERY, MESSAGE_EVERY_TYPING, MESSAGE_BIG, typing, move |batch| {
         let _ = on_bytes.send(InvokeResponseBody::Raw(batch));
     });
     Box::new(move |bytes| joined.push(bytes))
@@ -95,6 +110,7 @@ pub async fn pty_spawn(
     let pipe = pipe.unwrap_or(false);
 
     run_blocking(move || {
+        let flow = std::sync::Arc::new(std::sync::OnceLock::new());
         // Not under the registry lock: ConPTY creation is slow, and every other
         // agent's keystrokes and resizes take that same lock.
         Registry::spawn_shared(
@@ -104,16 +120,20 @@ pub async fn pty_spawn(
             &spec,
             size,
             pipe,
-            window_sink(on_bytes, pipe),
+            window_sink(on_bytes, pipe, flow.clone()),
             move |code| {
                 let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code, run });
             },
         )
         .map_err(CommandError::from)?;
+        let reg = registry::lock(&registry);
+        if let Some(f) = reg.flow_of(&flow_id) {
+            let _ = flow.set(f);
+        }
         // The window acks what it parses (pty_ack); a terminal is held back when
         // it falls behind. A pipe agent is never held.
         if !pipe {
-            let _ = registry::lock(&registry).enable_flow(&flow_id);
+            let _ = reg.enable_flow(&flow_id);
         }
         Ok(run)
     })
@@ -133,7 +153,11 @@ pub async fn pty_attach(
     run_blocking(move || {
         let reg = registry::lock(&registry);
         let pipe = reg.is_pipe(&agent_id);
-        reg.attach(&agent_id, window_sink(on_bytes, pipe))
+        let flow = std::sync::Arc::new(std::sync::OnceLock::new());
+        if let Some(f) = reg.flow_of(&agent_id) {
+            let _ = flow.set(f);
+        }
+        reg.attach(&agent_id, window_sink(on_bytes, pipe, flow))
             .map_err(CommandError::from)
     })
     .await

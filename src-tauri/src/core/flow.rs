@@ -46,6 +46,7 @@ struct State {
     held: bool,
     closed: bool,
     open_until: Option<Instant>,
+    last_input: Option<Instant>,
 }
 
 pub struct Flow {
@@ -60,7 +61,7 @@ impl Flow {
     pub fn new(cfg: FlowConfig) -> Self {
         Flow {
             cfg,
-            state: Mutex::new(State { on: false, inflight: 0, held: false, closed: false, open_until: None }),
+            state: Mutex::new(State { on: false, inflight: 0, held: false, closed: false, open_until: None, last_input: None }),
             cv: Condvar::new(),
         }
     }
@@ -112,6 +113,7 @@ impl Flow {
     /// to answer something the person just did.
     pub fn open_for(&self, d: Duration) {
         let mut s = self.st();
+        s.last_input = Some(Instant::now());
         if s.held {
             s.open_until = Some(Instant::now() + d);
             self.cv.notify_all();
@@ -123,6 +125,11 @@ impl Flow {
         let mut s = self.st();
         s.closed = true;
         self.cv.notify_all();
+    }
+
+    /// Whether anything was typed (or otherwise sent in) within the last `d`.
+    pub fn typed_within(&self, d: Duration) -> bool {
+        self.st().last_input.is_some_and(|t| t.elapsed() < d)
     }
 
     pub fn is_held(&self) -> bool {
@@ -270,6 +277,16 @@ mod tests {
         h.join().unwrap();
         assert!(t.elapsed() < Duration::from_millis(500), "shutdown must not wait for the stall timer");
         assert!(done.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn it_knows_whether_someone_just_typed() {
+        let f = on(small());
+        assert!(!f.typed_within(Duration::from_secs(5)));
+        f.open_for(Duration::from_millis(1)); // any input, held or not
+        assert!(f.typed_within(Duration::from_secs(5)));
+        thread::sleep(Duration::from_millis(60));
+        assert!(!f.typed_within(Duration::from_millis(30)));
     }
 
     #[test]

@@ -6,7 +6,9 @@
 //! renderer's main thread and 50 times the memory of the text itself while the
 //! window was minimized. Here a message goes out at once when the stream was
 //! quiet (a keystroke's echo is not delayed), and while it is busy at most one
-//! goes out per `interval`, carrying everything read since.
+//! goes out per `interval`, carrying everything read since. While someone is
+//! typing into it (`fast` says so) the interval is the short one, so an echo
+//! amid a stream is not held for a whole interval.
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -30,10 +32,16 @@ pub struct Coalescer {
 impl Coalescer {
     /// `deliver` runs on a thread of its own, never on the caller of `push`, so a
     /// slow window cannot stall the reader. `big` bytes waiting go out at once.
-    pub fn new(interval: Duration, big: usize, deliver: impl FnMut(Vec<u8>) + Send + 'static) -> Self {
+    pub fn new(
+        interval: Duration,
+        typing_interval: Duration,
+        big: usize,
+        fast: impl Fn() -> bool + Send + 'static,
+        deliver: impl FnMut(Vec<u8>) + Send + 'static,
+    ) -> Self {
         let shared = Arc::new(Shared { buf: Mutex::new(Buf { data: Vec::new(), closed: false, last_sent: None }), cv: Condvar::new() });
         let s = shared.clone();
-        thread::spawn(move || run(s, interval, big, deliver));
+        thread::spawn(move || run(s, interval, typing_interval, big, fast, deliver));
         Coalescer { shared }
     }
 
@@ -56,7 +64,7 @@ impl Drop for Coalescer {
     }
 }
 
-fn run(shared: Arc<Shared>, interval: Duration, big: usize, mut deliver: impl FnMut(Vec<u8>)) {
+fn run(shared: Arc<Shared>, interval: Duration, typing_interval: Duration, big: usize, fast: impl Fn() -> bool, mut deliver: impl FnMut(Vec<u8>)) {
     loop {
         let batch = {
             let mut b = shared.buf.lock().unwrap_or_else(|p| p.into_inner());
@@ -68,7 +76,7 @@ fn run(shared: Arc<Shared>, interval: Duration, big: usize, mut deliver: impl Fn
             }
             // Busy: wait out the rest of the interval, taking more in meanwhile.
             while !b.closed && b.data.len() < big {
-                let due = b.last_sent.map(|t| t + interval);
+                let due = b.last_sent.map(|t| t + if fast() { typing_interval } else { interval });
                 let Some(left) = due.and_then(|d| d.checked_duration_since(Instant::now())) else { break };
                 b = shared.cv.wait_timeout(b, left).unwrap_or_else(|p| p.into_inner()).0;
             }
@@ -86,7 +94,7 @@ mod tests {
 
     fn collect(interval_ms: u64, big: usize) -> (Coalescer, mpsc::Receiver<Vec<u8>>) {
         let (tx, rx) = mpsc::channel();
-        (Coalescer::new(Duration::from_millis(interval_ms), big, move |v| { let _ = tx.send(v); }), rx)
+        (Coalescer::new(Duration::from_millis(interval_ms), Duration::from_millis(interval_ms), big, || false, move |v| { let _ = tx.send(v); }), rx)
     }
 
     #[test]
@@ -118,6 +126,21 @@ mod tests {
     }
 
     #[test]
+    fn while_someone_types_the_short_interval_applies() {
+        let typing = Arc::new(Mutex::new(false));
+        let t = typing.clone();
+        let (tx, rx) = mpsc::channel();
+        let c = Coalescer::new(Duration::from_secs(5), Duration::from_millis(20), 1 << 20, move || *t.lock().unwrap(), move |v| { let _ = tx.send(v); });
+        c.push(b"first");
+        rx.recv_timeout(Duration::from_millis(500)).unwrap();
+        c.push(b"slow");
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err(), "the long interval holds it");
+        *typing.lock().unwrap() = true;
+        c.push(b"-echo");
+        assert_eq!(rx.recv_timeout(Duration::from_millis(500)).unwrap(), b"slow-echo");
+    }
+
+    #[test]
     fn a_big_pile_goes_out_without_waiting_for_the_interval() {
         let (c, rx) = collect(5_000, 1000);
         c.push(b"first");
@@ -140,7 +163,7 @@ mod tests {
             }
         }
         let mark = Mark(e);
-        let c = Coalescer::new(Duration::from_secs(5), 1 << 20, move |v| {
+        let c = Coalescer::new(Duration::from_secs(5), Duration::from_secs(5), 1 << 20, || false, move |v| {
             let _keep = &mark; // lives as long as the thread's closure
             let _ = tx.send(v);
         });

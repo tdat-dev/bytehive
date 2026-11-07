@@ -16,7 +16,7 @@ export interface Acker {
  *  holds a program at 512 KB unparsed, so 32 KB keeps its count within 6%. */
 export const ACK_STEP = 32 * 1024;
 /** Longest an ack waits while output keeps coming. */
-export const ACK_MS = 50;
+export const ACK_MS = 250;
 
 export function createAcker(send: (n: number) => void, step = ACK_STEP, ms = ACK_MS): Acker {
   let owed = 0;
