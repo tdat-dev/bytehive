@@ -50,6 +50,8 @@ export class Gate {
   }
 
   send(req: Request): Promise<Outcome> {
+    // Off means off: the same synchronous hand-off as a plain sendMessage.
+    if (!this.deps.settings().enabled) return this.pass(req, this.now());
     const before = this.tails.get(req.to) ?? Promise.resolve();
     const run = before.then(() => this.run(req));
     const tail: Promise<unknown> = run.catch(() => {}).finally(() => {
@@ -62,7 +64,6 @@ export class Gate {
   private async run(req: Request): Promise<Outcome> {
     const started = this.now();
     const settings = this.deps.settings();
-    if (!settings.enabled) return this.pass(req, started);
     if (this.deps.isAwaiting(req.to)) return this.pass(req, started);
 
     const text = normalize(req.text);

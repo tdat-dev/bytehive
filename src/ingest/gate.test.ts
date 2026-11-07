@@ -226,9 +226,10 @@ describe("the gate's edges", () => {
     const t = setup({
       settings: () => ({ enabled: false, ttlDays: 7, dailyCallCap: 500, dailyTokenCap: 500_000, loopWindowMin: 10 }),
     });
-    const out = await t.gate.send({ source: "kanban", to: "a1", text: "cảm ơn nhé" });
-    expect(out.kind).toBe("sent");
+    const pending = t.gate.send({ source: "kanban", to: "a1", text: "cảm ơn nhé" });
     expect(t.sent).toHaveLength(1);
+    const out = await pending;
+    expect(out.kind).toBe("sent");
     expect(t.logs).toHaveLength(0);
   });
 });
