@@ -48,7 +48,7 @@ import type { Pane, Workspace } from "./panetypes";
 import { hiddenGate } from "./hiddengate";
 import { onAppKey } from "./appkeys";
 import { companyNeeds, onCompanyChange } from "./company/engine";
-import { ICON_CLOSE, ICON_EXPAND, icon } from "./icons";
+import { ICON_CLOSE, ICON_EXPAND, glyph, icon } from "./icons";
 import { officeReveal } from "./company/office/office";
 
 /* ---------------- pure helpers (tested) ---------------- */
@@ -509,7 +509,7 @@ function cardHtml(t: Task, p: Pane): string {
   }
   const color = p.color ?? "#888";
   return `<div class="rc st-${t.status.state}${t.status.limit ? " limited" : ""}" role="listitem" tabindex="0" data-card="${esc(p.id)}" aria-label="${esc(t.name)}, in ${esc(t.project)}" title="${esc(t.name)} in ${esc(t.project)} · click to work with it in the terminal, right-click for more">
-    <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${cliMark(p.spec)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+    <div class="rc-h"><span class="iq-mk" style="--mk:${esc(color)}" aria-hidden="true">${cliMark(p.spec)}</span><b class="rc-n">${esc(t.name)}</b>${p.spec.badge ? `<span class="rc-cli">${esc(p.spec.badge)}</span>` : ""}<span class="ib-pill st-${t.status.state}">${stateGlyph(t)}${GROUP_LABEL[t.status.state]}</span></div>
     ${t.title ? `<p class="rc-t" title="${esc(t.title)}">${esc(t.title)}</p>` : ""}${body}
   </div>`;
 }
@@ -607,6 +607,9 @@ export function setSplit(on: boolean): void {
   dockEl?.querySelector('[data-dock="queue"]')?.setAttribute("aria-pressed", String(!on));
   render();
 }
+
+/** A state's glyph; an agent out of usage waits on the clock, not on you. */
+const stateGlyph = (t: Task) => glyph(t.status.limit ? "out" : t.status.state);
 
 /** ✕ on a Split card: take that agent out, hand the focus to another one. */
 function closeFromSplit(id: string): void {
@@ -749,7 +752,7 @@ function renderQueue(list: Task[], current: string | undefined, now: number): vo
           : use?.tokens ? `<span class="iq-cost" title="Tokens its conversation has used so far">${tokens(use.tokens)} tokens</span>` : "";
         const full = use?.contextPct != null && use.contextPct >= 80 ? `<span class="iq-full" title="Its context is nearly full: it will soon sum up the conversation and lose detail">${Math.round(use.contextPct)}% context</span>` : "";
         return `<li><button class="iq-row st-${t.status.state}${t.status.limit ? " limited" : ""}" data-id="${esc(t.paneId)}" aria-current="${t.paneId === current}" aria-haspopup="menu" title="${esc(main)}${t.title ? ` · ${esc(t.name)}` : ""} · ${esc(g.name)} · right-click for more">
-          <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliMark(p?.spec)}</span>
+          <span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliMark(p?.spec)}<span class="iq-g">${stateGlyph(t)}</span></span>
           <span class="iq-t">${esc(main)}</span>
           <span class="iq-tm">${pins.includes(t.paneId) && splitOn ? `<span class="iq-pin" title="In the Grid">${icon("layout-grid", "sm")}</span> ` : ""}<span class="iq-ago" data-since="${t.since}">${ago(now - t.since)}</span></span>
           ${t.status.state === "stopped" ? `<span class="iq-resume" data-resume aria-hidden="true" title="Start ${esc(t.name)} again, in the conversation it was last in">Resume</span>` : ""}
@@ -799,7 +802,8 @@ function renderHead(list: Task[]): void {
   if (!headEl) return;
   const h = headline(list, companyNeeds());
   // A live region: only a real change is worth reading out.
-  const html = `<b>${esc(h.lead)}</b>${esc(h.rest)}`;
+  const yours = /^\d/.test(h.lead);
+  const html = `<b${yours ? ' class="needs"' : ""}>${esc(h.lead)}</b>${esc(h.rest)}`;
   if (headEl.innerHTML !== html) headEl.innerHTML = html;
 }
 
@@ -819,7 +823,9 @@ function renderHeaders(list: Task[], pane: Pane | undefined): void {
       p.el.querySelector(".pane-bar .pb-sp")?.after(pill);
     }
     pill.className = `ib-pill st-${t.status.state}`;
-    pill.textContent = GROUP_LABEL[t.status.state];
+    // Only on a change: a rebuild would restart the Working ring every tick.
+    const said = `${t.status.state}|${!!t.status.limit}`;
+    if (pill.dataset.said !== said) { pill.dataset.said = said; pill.innerHTML = `${stateGlyph(t)}${esc(GROUP_LABEL[t.status.state])}`; }
     const mode = pinned ? "split" : splitOn ? "grid" : "stage";
     const stopped = t.status.state === "stopped";
     const build = `${mode}|${t.name}|${t.race?.of ?? ""}|${stopped}`;
@@ -887,7 +893,7 @@ function renderAsk(list: Task[], pane: Pane | undefined): void {
     askEl.dataset.sig = sig;
     askEl.hidden = false;
     askEl.className = "inbox-ask min review";
-    askEl.innerHTML = `<button class="ia-chip" data-act="review"><i class="ia-dot" aria-hidden="true"></i>${esc(t.name)} is ready · ${esc(rowLine(t))} · Review</button>`;
+    askEl.innerHTML = `<button class="ia-chip" data-act="review">${glyph("review")}${esc(t.name)} is ready · ${esc(rowLine(t))} · Review</button>`;
     return;
   }
   askEl.hidden = true; askEl.innerHTML = ""; askEl.dataset.sig = "";
@@ -1018,7 +1024,7 @@ function openCompare(raceId: string): void {
     <div class="cmp-grid">${racers.map((t) => {
       const p = paneOf(t);
       return `<section class="cmp-col">
-        <div class="cmp-h"><span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliMark(p?.spec)}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${GROUP_LABEL[t.status.state]}</span></div>
+        <div class="cmp-h"><span class="iq-mk" style="--mk:${esc(p?.color ?? "#888")}" aria-hidden="true">${cliMark(p?.spec)}</span><b>${esc(t.name)}</b><span class="ib-pill st-${t.status.state}">${stateGlyph(t)}${GROUP_LABEL[t.status.state]}</span></div>
         <p class="cmp-n">${t.changedFiles == null ? "Changes unknown" : `${t.changedFiles} file${t.changedFiles === 1 ? "" : "s"} changed`}${lineCounts(t)}</p>
         <p class="cmp-l">${esc(rowLine(t))}</p>
         <button class="im-btn${t.status.state === "review" ? " primary" : ""}" data-review="${esc(t.paneId)}">Review</button>

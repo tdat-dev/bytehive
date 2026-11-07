@@ -53,7 +53,9 @@ body.inbox-ui #btnToggleCode { display: none !important; }
   text-overflow: ellipsis;
   min-width: 0;
 }
-.inbox-head b { color: var(--ib-ink); font-weight: 600; }
+.inbox-head b { color: var(--ib-ink); font-weight: 600; }
+/* your turn, in the one sentence that says so */
+.inbox-head b.needs { color: var(--honey); }
 
 /* ---------- the plan's limits, at the foot of the list ---------- */
 .inbox-queue:has(.iq-plan) { display: flex; flex-direction: column; scroll-padding-bottom: 52px; }
@@ -152,7 +154,6 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-row.st-needs .iq-l { color: var(--ib-needs); }
 /* stopped at its plan's limit: waiting on the clock, not on you */
 .iq-row.limited .iq-l { color: var(--ib-needs); }
-.iq-row.limited .iq-mk::after { background: var(--ib-needs); box-shadow: 0 0 0 2px var(--ib-panel); }
 /* what its conversation has used, at API prices */
 .iq-cost { font: var(--t-mono); color: var(--ib-ink-3); }
 .iq-cost::before, .iq-full::before { content: "·"; margin: 0 var(--s1); font-family: var(--sans); color: var(--ib-ink-3); }
@@ -164,7 +165,7 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-row.st-review .iq-l { color: var(--ib-review); }
 .iq-row.st-working .iq-l { color: var(--ib-work); }
 .iq-row.st-stopped .iq-t { color: var(--ib-ink-2); font-weight: 400; }
-.iq-row.st-stopped .iq-mk { opacity: 0.55; }
+.iq-row.st-stopped .iq-mk > :not(.iq-g) { opacity: 0.55; }
 .iq-empty { margin: 0 var(--s2) var(--s1); font-size: var(--fs-meta); color: var(--ib-ink-3); }
 
 /* one group per project: its name over its agents */
@@ -187,8 +188,9 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-group.folded .iq-chev { transform: none; }
 .iq-pn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iq-need {
-  flex: none; min-width: 18px; height: 18px; padding: 0 var(--s1); border-radius: var(--r-control); display: grid; place-items: center;
-  font: var(--t-mono); color: var(--honey-ink); background: var(--ib-needs);
+  flex: none; width: 20px; height: 22px; display: grid; place-items: center;
+  font: var(--t-meta); font-weight: 600; color: var(--honey-ink); background: var(--honey);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
 }
 .iq-ph .iq-n { flex: none; font: var(--t-mono); color: var(--ib-ink-3); }
 /* open, the rows are the count */
@@ -197,18 +199,12 @@ body.inbox-ui #btnToggleCode { display: none !important; }
 .iq-row.st-needs { background: var(--ib-needs-bg); box-shadow: inset 0 0 0 1px var(--honey-line); }
 .iq-row.st-needs:hover { background: var(--honey-soft); }
 .iq-row.st-needs[aria-current="true"] { background: var(--honey-soft); box-shadow: inset 0 0 0 1px var(--honey-line); }
-/* the agent's state as a dot on its mark: needs you, ready, working; hollow when stopped */
+/* the agent's state as a glyph on its mark, cut out of the row it sits on */
 .iq-mk { position: relative; }
-.iq-mk::after {
-  content: ""; position: absolute; right: -3px; bottom: -3px;
-  width: 9px; height: 9px; border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--ib-panel); background: var(--ib-ink-3);
-}
-.iq-row[aria-current="true"] .iq-mk::after { box-shadow: 0 0 0 2px var(--ib-raise); }
-.iq-row.st-needs .iq-mk::after { background: var(--ib-needs); }
-.iq-row.st-review .iq-mk::after { background: var(--ib-review); }
-.iq-row.st-working .iq-mk::after { background: var(--ib-work); }
-.iq-row.st-stopped .iq-mk::after { background: var(--ib-panel); box-shadow: 0 0 0 2px var(--ib-panel), var(--ring-line); }
+.iq-g { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--panel); }
+.iq-row:hover .iq-g { background: var(--raised); }
+.iq-row.st-needs .iq-g { background: color-mix(in srgb, var(--honey) 14%, var(--panel)); }
+.iq-row[aria-current="true"] .iq-g { background: var(--over); }
 
 /* ---------- stage: the focused pane, full width, no scrim, no avatar rail ---------- */
 body.inbox-ui .grid.canvas.has-focus::after { display: none; }
@@ -293,9 +289,7 @@ body.inbox-ui .grid.canvas:not(.inbox-split) .pane.focused .term-host .xterm { p
   white-space: nowrap;
   color: var(--ib-ink-3);
 }
-.ib-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .ib-pill.st-needs { color: var(--ib-needs); }
-.ib-pill.st-needs::before { border-radius: var(--r-control); transform: rotate(45deg); }
 .ib-pill.st-review { color: var(--ib-review); }
 .ib-pill.st-working { color: var(--ib-work); }
 
@@ -418,7 +412,6 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 
 /* a finished agent's chip is blue, not amber: it is ready, not blocked */
 .inbox-ask.review .ia-chip { color: var(--ib-review); box-shadow: var(--lift), var(--ring-line); }
-.ia-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ib-review); display: inline-block; }
 
 /* ---------- Review drawer: the agent's diff, commit / merge / discard, send back ---------- */
 .inbox-review {
@@ -554,7 +547,6 @@ body:has(.grid.canvas:not([hidden]) .pane.focused .ib-go) .id-new:hover { backgr
 
 /* merged: done, so it steps back in the list; one button clears them */
 .iq-row.st-merged .iq-t, .iq-row.st-merged .iq-s { opacity: 0.6; }
-.iq-row.st-merged .iq-mk::after { transform: scale(0.55); }
 .iq-clear { display: block; margin: var(--s2) var(--s2) var(--s1); height: 30px; padding: 0 var(--s3); border-radius: var(--r-control); font-size: var(--fs-meta); color: var(--ib-ink-2); background: var(--raised); }
 .iq-clear:hover { background: var(--over); color: var(--ib-ink); }
 
@@ -870,8 +862,6 @@ body.inbox-ui .inbox-start {
 .st-brand .logo-glow { position: relative; isolation: isolate; width: 84px; height: 84px; margin: -16px -10px -16px -16px; display: grid; place-items: center; }
 .st-brand .logo-glow svg { width: 84px; height: 84px; overflow: visible; }
 .st-brand .hc { display: none; }
-body:not(.anim-paused) .st-brand .logo-glow:is(.live, :hover) svg { will-change: transform; }
-body:not(.anim-paused) .st-brand .logo-glow:is(.live, :hover) .hc { animation-delay: calc(var(--n) * 0.16s); }
 .inbox-start h1 { margin: 0; font-size: var(--fs-home); font-weight: 600; letter-spacing:-.01em; line-height: 1.1; }
 .st-status { margin: var(--s2) 0 var(--s6); font-size: var(--fs-title); line-height: 1.45; color: var(--ib-ink-3); }
 .st-status.needs { color: var(--ib-needs); }
@@ -959,7 +949,6 @@ body:not(.anim-paused) .st-brand .logo-glow:is(.live, :hover) .hc { animation-de
   color: var(--ib-ink);
 }
 .st-w:hover { box-shadow: inset 0 0 0 1px var(--honey-line); }
-.st-dia { width: 8px; height: 8px; background: var(--ib-needs); transform: rotate(45deg); border-radius: var(--r-control); }
 .st-w b { font-weight: 600; }
 .st-wp { font-size: var(--fs-meta); color: var(--ib-ink-3); }
 .st-wl { font-size: var(--fs-body); color: var(--ib-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

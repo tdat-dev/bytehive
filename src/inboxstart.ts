@@ -33,6 +33,7 @@ const CUSTOM_OPT = "__custom__";
 
 import { STARTERS } from "./starters";
 import { APP_NAME } from "./appname";
+import { glyph } from "./icons";
 import { hiveLogo } from "./hivelogo";
 export { STARTERS };
 
@@ -154,7 +155,6 @@ export function renderStart(): void {
   const hello = `${greeting(new Date().getHours())}.`;
   if (h1 && h1.textContent !== hello) h1.textContent = hello;
   const tasks = allTasks();
-  el.querySelector(".logo-glow")?.classList.toggle("live", tasks.some((t) => t.status.state === "working"));
   const recents = getRecents();
   const firstRun = recents.length === 0 && workspaces.size === 0;
   const rows = recents.map((dir) => ({ dir, ...projectLine(dir, tasks) }));
@@ -173,7 +173,7 @@ export function renderStart(): void {
   live.innerHTML =
     (waiting.length ? `<section class="st-sec" aria-label="Waiting on you"><h2>Waiting on you</h2><div class="st-wait">${waiting.map((t) => `
       <button class="st-w" data-pane="${esc(t.paneId)}" data-ws="${esc(t.wsId)}">
-        <i class="st-dia" aria-hidden="true"></i><b>${esc(t.name)}</b><span class="st-wp">${esc(t.project)}</span>
+        ${glyph("needs")}<b>${esc(t.name)}</b><span class="st-wp">${esc(t.project)}</span>
         <span class="st-wl">${esc(askLine(t))}</span><span class="st-open">Answer</span></button>`).join("")}</div></section>` : "") +
     (firstRun ? `<section class="st-sec" aria-label="Getting started"><h2>Getting started</h2><ol class="st-steps">
         <li><b>Choose a folder</b><span>Any project on your disk. Agents work right in that folder. Settings can give each one its own git branch instead.</span></li>
