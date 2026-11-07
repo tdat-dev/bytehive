@@ -35,7 +35,7 @@
 /* The office layer. Over .topbar (100), under the hint (180), the dock panel (290), modals
  * and the window controls (300). Sky, honey, chip, panel and ink come from palette.ts,
  * set on #office by the shell. The scene is the picture; this stays quiet around it. */
-:root { --office-desk-w: clamp(340px, 34vw, 520px); --office-bar-h: 44px; --office-rail-w: 320px; --office-z: 120; }
+:root { --office-desk-w: clamp(340px, 34vw, 520px); --office-bar-h: 44px; --office-rail-w: 320px; --office-z: 15; }
 .of {
   position: fixed; top: 0; bottom: 0; left: 0; width: 100vw; z-index: var(--office-z); overflow: hidden;
   display: grid; grid-template: "bar bar" var(--office-bar-h) "stage rail" minmax(0, 1fr) / minmax(0, 1fr) var(--office-rail-w);
