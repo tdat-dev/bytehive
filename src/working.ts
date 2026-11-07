@@ -25,6 +25,15 @@ export function promptShown(screen: string): boolean {
   return lines.some((l) => /^\s*[│┃|]?\s*[>›❯](\s|$)/.test(l) || /\? for shortcuts|shift\+tab to cycle|ctrl\+p commands|enter to send/i.test(l));
 }
 
+/** What CLIs print beside their prompt while they are at work. */
+const BUSY = /esc to (interrupt|cancel)|esc interrupt|ctrl\+c to (stop|interrupt|cancel)/i;
+
+/** Sitting at its prompt with no sign of work: what it prints now is a status
+ *  line's clock or a redraw. */
+export function restingAtPrompt(screen: string): boolean {
+  return promptShown(screen) && !BUSY.test(screen);
+}
+
 const DOING: Record<string, string> = {
   Ran: "Running",
   Read: "Reading",

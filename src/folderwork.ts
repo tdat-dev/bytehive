@@ -3,9 +3,11 @@
 // each look at the folder is held against the one before: a file that moved in
 // between belongs to the agents that were working then. One agent working: it is
 // that agent's. Several: nobody can tell, so each keeps it and it is marked
-// shared. None: it was you, or something else, and no agent claims it.
+// shared. None: it was you, or something else, and no agent claims it. A pull or
+// a branch switch moves the baseline and claims nothing.
 //
-// Kept in memory: after a restart an agent starts with a clean slate.
+// Kept in memory: after a restart what is dirty is nobody's. A claim lasts until
+// you mark it reviewed, commit it with no agent at work, or remove the agent.
 
 import type { FolderState } from "./ipc";
 
@@ -14,8 +16,8 @@ export interface OwnWork {
   from: string | null;
   /** The files it changed, in git's form. */
   paths: string[];
-  /** Of those, how many another agent may have changed instead. */
-  shared: number;
+  /** Of those, the ones another agent may have changed instead. */
+  sharedPaths: string[];
 }
 
 export function createFolderWork() {
@@ -37,6 +39,8 @@ export function createFolderWork() {
     /** A look at the folder has been taken. */
     seen: () => last !== null,
     head: () => last?.head ?? null,
+    /** Uncommitted files no agent claims. */
+    unclaimed: () => Object.keys(last?.files ?? {}).filter((p) => !owners.has(p)).length,
     /** Compare a new look with the last one. `working` are the agents that
      *  printed anything since then. The first look only sets the mark: what is
      *  dirty by then is nobody's. */
@@ -44,6 +48,10 @@ export function createFolderWork() {
       const was = last;
       last = now;
       if (!was) return;
+      if (now.jumped) {
+        for (const id of starts.keys()) starts.set(id, now.head);
+        return;
+      }
       const from = was.head;
       const paths = new Set([...Object.keys(was.files), ...Object.keys(now.files)]);
       for (const p of paths) if (was.files[p] !== now.files[p]) claim(p, working, from);
@@ -56,13 +64,13 @@ export function createFolderWork() {
     /** What one agent changed; no files yet is an empty list. */
     of(id: string): OwnWork {
       const paths: string[] = [];
-      let shared = 0;
+      const sharedPaths: string[] = [];
       for (const [p, who] of owners) {
         if (!who.has(id)) continue;
         paths.push(p);
-        if (who.size > 1) shared++;
+        if (who.size > 1) sharedPaths.push(p);
       }
-      return { from: starts.get(id) ?? null, paths: paths.sort(), shared };
+      return { from: starts.get(id) ?? null, paths: paths.sort(), sharedPaths: sharedPaths.sort() };
     },
     /** You have looked at this agent's work, or it is gone: it claims nothing now. */
     settle(id: string): void {

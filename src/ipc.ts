@@ -218,7 +218,12 @@ export async function runCaptureStatus(program: string, args: string[], cwd: str
   return invoke<{ stdout: string; code: number | null }>("run_capture_status", { program, args, cwd, timeoutMs });
 }
 
+/** When each agent's terminal last changed size: a CLI redraws after that. */
+const resizes = new Map<string, number>();
+export const resizedAt = (agentId: string): number => resizes.get(agentId) ?? 0;
+
 export async function resizePty(agentId: string, cols: number, rows: number): Promise<void> {
+  resizes.set(agentId, Date.now());
   await invoke("pty_resize", { agentId, cols, rows });
 }
 
@@ -591,6 +596,8 @@ export interface FolderState {
   files: Record<string, string>;
   /** Paths commits changed since `since`. */
   committed: string[];
+  /** HEAD left `since` by a pull, a branch switch or a reset, not by a commit. */
+  jumped: boolean;
 }
 export async function folderState(dir: string, since: string | null): Promise<FolderState> {
   return invoke<FolderState>("folder_state", { dir, since });

@@ -264,7 +264,8 @@ export function createReviewDrawer(host: HTMLElement, onClose: () => void) {
       ? `<button type="button" class="btn primary" data-act="merge"${off}>Merge into ${into} <kbd>M</kbd></button>
          ${back}
          <button type="button" class="btn danger" data-act="discard"${off}>Discard branch</button>`
-      : `<button type="button" class="btn primary" data-act="reviewed"${off}>Mark as reviewed</button> ${back}`;
+      // Only where it does something: a worktree agent that fell back here claims nothing.
+      : `${!pane.spec.worktree && changeScope(pane)?.paths?.length ? `<button type="button" class="btn primary" data-act="reviewed"${off}>Mark as reviewed</button> ` : ""}${back}`;
     return `<div class="rfoot">${line}
       <label class="ia-sr" for="irNote">Note for ${name}</label>
       <textarea class="note" id="irNote" placeholder="What should ${name} change? Needed only for Send back.">${esc(note)}</textarea>

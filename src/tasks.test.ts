@@ -2,11 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sent: Array<[string, string]> = [];
 let changed: Record<string, number> = {};
-let folder: { head: string | null; files: Record<string, string>; committed: string[] } = { head: "h1", files: {}, committed: [] };
+let folder: { head: string | null; files: Record<string, string>; committed: string[]; jumped: boolean } = { head: "h1", files: {}, committed: [], jumped: false };
+/** Files a claimed agent has put back: git no longer shows them. */
+let reverted: string[] = [];
+let resized: Record<string, number> = {};
 vi.mock("./ipc", () => ({
   // with `paths` it answers for those files, as a shared folder's agent asks
   agentChanges: vi.fn(async (dir: string, _from: string | null, paths: string[] | null) =>
-    (paths ?? Array.from({ length: changed[dir] ?? 0 }, (_, i) => `f${i}`)).map((path) => ({ path, status: "M", added: 2, removed: 1 }))),
+    (paths ?? Array.from({ length: changed[dir] ?? 0 }, (_, i) => `f${i}`)).filter((p) => !reverted.includes(p)).map((path) => ({ path, status: "M", added: 2, removed: 1 }))),
+  resizedAt: (id: string) => resized[id] ?? 0,
   folderState: vi.fn(async () => folder),
   sendInput: vi.fn(async (id: string, data: string) => { sent.push([id, data]); }),
   // every agent here is a terminal
@@ -14,7 +18,7 @@ vi.mock("./ipc", () => ({
 
 import { workspaces } from "./appstate";
 import { agentChanges, folderState } from "./ipc";
-import { allTasks, answerOption, answerText, changeScope, historyOf, markMerged, markReviewed, onTasksChange, taskLine, taskOf, updateTasks } from "./tasks";
+import { allTasks, answerOption, answerText, changeScope, historyOf, markMerged, markReviewed, onTasksChange, taskLine, taskOf, unclaimedChanges, updateTasks } from "./tasks";
 import type { Pane, Workspace } from "./panetypes";
 
 const ASK = `
@@ -46,7 +50,7 @@ function workspace(panes: Pane[]): Workspace {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
-  workspaces.clear(); sent.length = 0; changed = {}; folder = { head: "h1", files: {}, committed: [] };
+  workspaces.clear(); sent.length = 0; changed = {}; folder = { head: "h1", files: {}, committed: [], jumped: false }; reverted = []; resized = {};
   updateTasks(0); // drop tasks left from the previous test
 });
 
@@ -79,23 +83,82 @@ describe("tasks", () => {
       updateTasks(now + 1); await flush(); await flush();
       updateTasks(now + 2);
     };
+    /** It prints, and a tick sees it at work. */
+    const prints = (p: Pane, at: number) => { p.lastOutputAt = at; updateTasks(at); };
 
     it("is not ready to review for what was dirty before it started", async () => {
       workspaces.set("ws-1", workspace([pane("x", "Xo", { lastOutputAt: 0 })]));
       await look(QUIET, { "old.txt": "1" });
       await look(QUIET + 6_000, { "old.txt": "1" });
       expect(taskOf("x")?.status.state).toBe("idle");
+      // nobody's, and the project says the folder holds changes
+      expect(unclaimedChanges(workspaces.get("ws-1")!)).toBe(1);
     });
 
     it("is ready to review once it really changed something, and Review reads the same files", async () => {
       const x = pane("x", "Xo", { lastOutputAt: 0 });
       workspaces.set("ws-1", workspace([x]));
       await look(QUIET, {});
-      x.lastOutputAt = QUIET + 1_000; // it worked, then went quiet
+      prints(x, QUIET + 1_000); // it worked, then went quiet
       await look(QUIET + 6_000, { "a.txt": "1" });
       await look(QUIET + 12_000, { "a.txt": "1" });
       expect(taskOf("x")).toMatchObject({ changedFiles: 1, shared: 0, status: { state: "review" } });
-      expect(changeScope(x)).toEqual({ dir: "D:\\p", from: "h1", paths: ["a.txt"], shared: 0 });
+      expect(changeScope(x)).toEqual({ dir: "D:\\p", from: "h1", paths: ["a.txt"], sharedPaths: [] });
+      expect(unclaimedChanges(workspaces.get("ws-1")!)).toBe(0);
+    });
+
+    it("claims nothing for what only looks like work", async () => {
+      const cases: Array<[string, (p: Pane, at: number) => void]> = [
+        ["the echo of your typing", (p, at) => { p.lastInputAt = at - 100; }],
+        ["a redraw after a resize", (p, at) => { resized[p.id] = at - 200; }],
+        ["a status line ticking at its prompt", (p) => { (p.term as { snapshot: () => string }).snapshot = () => "> \n  ? for shortcuts"; }],
+      ];
+      for (const [what, noise] of cases) {
+        workspaces.clear(); updateTasks(0); resized = {}; folder = { head: "h1", files: {}, committed: [], jumped: false };
+        const x = pane("x", "Xo", { lastOutputAt: 0 });
+        workspaces.set("ws-1", workspace([x]));
+        await look(QUIET, {});
+        noise(x, QUIET + 1_000);
+        prints(x, QUIET + 1_000);
+        await look(QUIET + 6_000, { "a.txt": "1" });
+        await look(QUIET + 12_000, { "a.txt": "1" });
+        expect(changeScope(x)?.paths, what).toEqual([]);
+      }
+    });
+
+    it("still claims while its CLI says it is at work behind the prompt", async () => {
+      const x = pane("x", "Xo", { lastOutputAt: 0, screen: "✻ Pondering… (42s · esc to interrupt)\n> " });
+      workspaces.set("ws-1", workspace([x]));
+      await look(QUIET, {});
+      prints(x, QUIET + 1_000);
+      await look(QUIET + 6_000, { "a.txt": "1" });
+      expect(changeScope(x)?.paths).toEqual(["a.txt"]);
+    });
+
+    it("treats D:/p and D:\\p as one folder, so two agents there are seen together", async () => {
+      const x = pane("x", "Xo", { lastOutputAt: 0 });
+      const y = pane("y", "Yan", { lastOutputAt: 0 });
+      workspaces.set("ws-1", workspace([x]));
+      workspaces.set("ws-2", { ...workspace([y]), id: "ws-2", dir: "D:/p/" });
+      await look(QUIET, {});
+      expect(vi.mocked(folderState).mock.calls.slice(-1)[0][0]).toBe("D:\\p");
+      prints(x, QUIET + 1_000);
+      y.lastOutputAt = QUIET + 1_000; updateTasks(QUIET + 1_000);
+      await look(QUIET + 6_000, { "a.txt": "1" });
+      expect(changeScope(x)?.sharedPaths).toEqual(["a.txt"]);
+      expect(changeScope(y)?.sharedPaths).toEqual(["a.txt"]);
+    });
+
+    it("says shared only of files it still shows", async () => {
+      const x = pane("x", "Xo", { lastOutputAt: 0 });
+      const y = pane("y", "Yan", { lastOutputAt: 0 });
+      workspaces.set("ws-1", workspace([x, y]));
+      await look(QUIET, {});
+      x.lastOutputAt = y.lastOutputAt = QUIET + 1_000; updateTasks(QUIET + 1_000);
+      await look(QUIET + 6_000, { "a.txt": "1", "b.txt": "1", "c.txt": "1" });
+      reverted = ["a.txt", "b.txt"];
+      await look(QUIET + 12_000, { "c.txt": "1" });
+      expect(taskOf("x")).toMatchObject({ changedFiles: 1, shared: 1 });
     });
 
     it("gets no credit for what changed while it was quiet", async () => {
@@ -103,7 +166,7 @@ describe("tasks", () => {
       const y = pane("y", "Yan", { lastOutputAt: 0 });
       workspaces.set("ws-1", workspace([x, y]));
       await look(QUIET, {});
-      y.lastOutputAt = QUIET + 1_000;
+      prints(y, QUIET + 1_000);
       await look(QUIET + 6_000, { "a.txt": "1" });
       await look(QUIET + 12_000, { "a.txt": "1" });
       expect(taskOf("y")?.status.state).toBe("review");
@@ -115,7 +178,7 @@ describe("tasks", () => {
       const y = pane("y", "Yan", { lastOutputAt: 0 });
       workspaces.set("ws-1", workspace([x, y]));
       await look(QUIET, {});
-      x.lastOutputAt = y.lastOutputAt = QUIET + 1_000;
+      x.lastOutputAt = y.lastOutputAt = QUIET + 1_000; updateTasks(QUIET + 1_000);
       await look(QUIET + 6_000, { "a.txt": "1" });
       await look(QUIET + 12_000, { "a.txt": "1" });
       expect(taskOf("x")).toMatchObject({ changedFiles: 1, shared: 1, status: { state: "review" } });
@@ -126,7 +189,7 @@ describe("tasks", () => {
       const x = pane("x", "Xo", { lastOutputAt: 0 });
       workspaces.set("ws-1", workspace([x]));
       await look(QUIET, {});
-      x.lastOutputAt = QUIET + 1_000;
+      prints(x, QUIET + 1_000);
       await look(QUIET + 6_000, { "a.txt": "1" });
       await look(QUIET + 12_000, { "a.txt": "1" });
       markReviewed("x", QUIET + 13_000);
@@ -148,7 +211,7 @@ describe("tasks", () => {
       s.spec.badge = "shell";
       workspaces.set("ws-1", workspace([s]));
       await look(QUIET, {});
-      s.lastOutputAt = QUIET + 1_000;
+      prints(s, QUIET + 1_000);
       await look(QUIET + 6_000, { "a.txt": "1" });
       expect(taskOf("s")?.changedFiles).toBeNull();
     });

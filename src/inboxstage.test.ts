@@ -8,6 +8,7 @@ import type { Task } from "./tasks";
 const state = vi.hoisted(() => ({ tasks: [] as Task[], listeners: [] as Array<() => void> }));
 vi.mock("./tasks", () => ({
   allTasks: () => state.tasks,
+  unclaimedChanges: () => 0,
   onTasksChange: (cb: () => void) => { state.listeners.push(cb); return () => {}; },
   answerOption: async () => {},
   answerText: async () => {},

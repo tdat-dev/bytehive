@@ -8,10 +8,10 @@
 // status line for notifications.
 
 import { workspaces } from "./appstate";
-import { agentChanges, folderState, sendInput } from "./ipc";
+import { agentChanges, folderState, resizedAt, sendInput } from "./ipc";
 import { createFolderWork, type FolderWork } from "./folderwork";
 import { freeTextKeys, type AskOption } from "./askparse";
-import { deriveTaskState, statusLine, WORKING_MS, type TaskState, type TaskStatus } from "./taskstate";
+import { atWork, deriveTaskState, statusLine, type TaskState, type TaskStatus } from "./taskstate";
 import type { Pane, Workspace } from "./panetypes";
 
 export interface Task {
@@ -57,7 +57,7 @@ const HISTORY_MAX = 200;
 
 const tasks = new Map<string, Task>();
 const history = new Map<string, HistoryEvent[]>();
-const diffs = new Map<string, { n: number | null; add: number | null; del: number | null; at: number; pending: boolean; wasRunning: boolean }>();
+const diffs = new Map<string, { n: number | null; add: number | null; del: number | null; shared: number; at: number; pending: boolean; wasRunning: boolean }>();
 const listeners = new Set<(list: Task[]) => void>();
 
 /** Agents whose branch Review merged, until they start again. */
@@ -74,8 +74,12 @@ export function mergedInfo(paneId: string): { base: string; branch: string } | n
   return merged.get(paneId) ?? null;
 }
 
-/** Folders agents without a worktree work in, by the project's folder. */
-const folders = new Map<string, { work: FolderWork; at: number; pending: boolean; wasRunning: boolean }>();
+/** Folders agents without a worktree work in, by the project's folder.
+ *  `workers` were at work on some tick since the last look. */
+const folders = new Map<string, { work: FolderWork; workers: Set<string>; at: number; pending: boolean; wasRunning: boolean }>();
+
+/** One key for a folder however it is written: D:/x and D:\x are the same place. */
+const folderKey = (dir: string) => dir.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 
 /** The folder this agent shares, when it has no worktree. A plain shell is you
  *  at a prompt, so it neither claims nor counts. */
@@ -85,29 +89,39 @@ function sharedFolder(ws: Workspace, pane: Pane): string | null {
 }
 
 /** Look at each shared folder (throttled) and credit what moved since the last
- *  look to the agents that printed in between. */
+ *  look to the agents that were at work in between. */
 function lookAtFolders(now: number): void {
-  const live = new Map<string, Pane[]>();
+  const live = new Map<string, { dir: string; panes: Pane[] }>();
   for (const ws of workspaces.values())
     for (const p of ws.panes.values()) {
       const dir = sharedFolder(ws, p);
-      if (dir) live.set(dir, [...(live.get(dir) ?? []), p]);
+      if (!dir) continue;
+      const at = live.get(folderKey(dir)) ?? { dir, panes: [] };
+      at.panes.push(p);
+      live.set(folderKey(dir), at);
     }
-  for (const dir of folders.keys()) if (!live.has(dir)) folders.delete(dir);
-  for (const [dir, panes] of live) {
-    const f = folders.get(dir) ?? { work: createFolderWork(), at: 0, pending: false, wasRunning: false };
-    folders.set(dir, f);
+  for (const key of folders.keys()) if (!live.has(key)) folders.delete(key);
+  for (const [key, { dir, panes }] of live) {
+    const f = folders.get(key) ?? { work: createFolderWork(), workers: new Set<string>(), at: 0, pending: false, wasRunning: false };
+    folders.set(key, f);
     const running = panes.some((p) => p.running);
     if (!(running || f.wasRunning) || f.pending || (f.at !== 0 && now - f.at < DIFF_EVERY_MS)) continue;
-    const since = f.at;
+    const working = [...f.workers];
+    f.workers.clear();
     f.pending = true;
     f.at = now;
     f.wasRunning = running;
     folderState(dir, f.work.head())
-      .then((state) => f.work.see(state, panes.filter((p) => p.lastOutputAt >= since - WORKING_MS).map((p) => p.id)))
+      .then((state) => f.work.see(state, working))
       .catch(() => {}) // not a repo: nothing can be said, and changes stay unknown
       .finally(() => { f.pending = false; });
   }
+}
+
+/** Uncommitted files in a project's folder that no agent claims: what is left
+ *  after a restart, or what you changed yourself. */
+export function unclaimedChanges(ws: Workspace): number {
+  return ws.dir ? folders.get(folderKey(ws.dir))?.work.unclaimed() ?? 0 : 0;
 }
 
 /** Where an agent's changes are read from. */
@@ -116,14 +130,15 @@ export interface ChangeScope {
   from: string | null;
   /** Only these files; null for everything in its own worktree. */
   paths: string[] | null;
-  shared: number;
+  /** Of those, the ones another agent may have changed instead. */
+  sharedPaths: string[];
 }
 
 function scopeOf(ws: Workspace, pane: Pane): ChangeScope | null {
   const wt = pane.spec.worktree;
-  if (wt) return { dir: wt, from: null, paths: null, shared: 0 };
+  if (wt) return { dir: wt, from: null, paths: null, sharedPaths: [] };
   const dir = sharedFolder(ws, pane);
-  const f = dir ? folders.get(dir) : undefined;
+  const f = dir ? folders.get(folderKey(dir)) : undefined;
   return dir && f?.work.seen() ? { dir, ...f.work.of(pane.id) } : null;
 }
 
@@ -148,7 +163,7 @@ export function markReviewed(paneId: string, at: number = Date.now()): void {
 function changesFor(ws: Workspace, pane: Pane, now: number): { n: number | null; add: number | null; del: number | null; shared: number } {
   const scope = scopeOf(ws, pane);
   if (!scope) return { n: null, add: null, del: null, shared: 0 };
-  const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, at: 0, pending: false, wasRunning: false };
+  const d = diffs.get(pane.id) ?? { n: null, add: null, del: null, shared: 0, at: 0, pending: false, wasRunning: false };
   const due = pane.running || d.at === 0 || d.wasRunning;
   if (due && !d.pending && now - d.at >= DIFF_EVERY_MS) {
     d.pending = true;
@@ -159,12 +174,14 @@ function changesFor(ws: Workspace, pane: Pane, now: number): { n: number | null;
         let add = 0, del = 0;
         for (const f of files) { add += f.added ?? 0; del += f.removed ?? 0; }
         d.add = add; d.del = del;
+        // Of what it really changed: a claimed file may have gone back since.
+        d.shared = files.filter((f) => scope.sharedPaths.includes(f.path.replace(/\\/g, "/"))).length;
       })
-      .catch(() => { d.n = d.add = d.del = null; })
+      .catch(() => { d.n = d.add = d.del = null; d.shared = 0; })
       .finally(() => { d.at = Date.now(); d.pending = false; });
   }
   diffs.set(pane.id, d);
-  return { ...d, shared: scope.shared };
+  return d;
 }
 
 function toTask(ws: Workspace, pane: Pane, now: number): Task {
@@ -174,16 +191,20 @@ function toTask(ws: Workspace, pane: Pane, now: number): Task {
   const done = merged.get(pane.id);
   const changes = changesFor(ws, pane, now);
   const changedFiles = changes.n;
+  const screen = pane.running ? pane.term.snapshot(SCREEN_LINES) : "";
   const status = deriveTaskState(
     {
       running: pane.running,
       lastOutputAt: pane.lastOutputAt,
-      screen: pane.running ? pane.term.snapshot(SCREEN_LINES) : "",
+      screen,
       changedFiles,
       merged: !!done,
     },
     now,
   );
+  const dir = sharedFolder(ws, pane);
+  if (dir && atWork({ state: status.state, lastOutputAt: pane.lastOutputAt, lastInputAt: pane.lastInputAt, lastResizeAt: resizedAt(pane.id), screen }))
+    folders.get(folderKey(dir))?.workers.add(pane.id);
   const prev = tasks.get(pane.id);
   // "resets 7pm" read after 7pm would be tomorrow's: the same notice keeps the
   // time it was first read with

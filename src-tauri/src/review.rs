@@ -276,6 +276,9 @@ pub struct FolderState {
     pub files: std::collections::HashMap<String, String>,
     /// Paths commits changed between `since` and HEAD.
     pub committed: Vec<String>,
+    /// HEAD left `since` by something other than a commit: a pull, a branch
+    /// switch, a reset. What differs then came from elsewhere.
+    pub jumped: bool,
 }
 
 /// How a folder several agents may share stands right now: tasks.ts compares two
@@ -303,14 +306,32 @@ fn folder_state_impl(dir: &str, since: Option<&str>) -> Result<FolderState, Comm
         })
         .collect();
     let head = git(&["rev-parse", "--verify", "-q", "HEAD"], &repo).ok().filter(|h| !h.is_empty());
-    let committed = match (since, head.as_deref()) {
+    let (committed, jumped) = match (since, head.as_deref()) {
         (Some(from), Some(to)) if from != to => {
             let range = format!("{from}..{to}");
-            names(git_env(&["-c", "core.quotepath=false", "diff", "--name-only", "-z", &range], &repo, &READ_ONLY).unwrap_or_default())
+            let paths = names(git_env(&["-c", "core.quotepath=false", "diff", "--name-only", "-z", &range], &repo, &READ_ONLY).unwrap_or_default());
+            (paths, head_jumped(&repo, from))
         }
-        _ => Vec::new(),
+        _ => (Vec::new(), false),
     };
-    Ok(FolderState { head, files, committed })
+    Ok(FolderState { head, files, committed, jumped })
+}
+
+/// Did HEAD get here from `since` by anything but commits? The reflog says how
+/// each step was made. Past its end nobody can say, so it counts as a jump: that
+/// moves a baseline, where a wrong "no" would hand an agent a whole pull.
+fn head_jumped(repo: &str, since: &str) -> bool {
+    let log = git_env(&["log", "-g", "-n", "200", "--format=%H %gs", "HEAD"], repo, &READ_ONLY).unwrap_or_default();
+    for line in log.lines() {
+        let (hash, how) = line.split_once(' ').unwrap_or((line, ""));
+        if hash == since {
+            return false;
+        }
+        if !how.starts_with("commit") {
+            return true;
+        }
+    }
+    true
 }
 
 /// Size and modified time, or "gone" for a deleted file.
@@ -859,6 +880,21 @@ mod tests {
         assert_eq!(after.committed, vec!["a.txt"]);
         assert!(!after.files.contains_key("a.txt"));
         assert_ne!(after.head, clean.head);
+    }
+
+    #[test]
+    fn a_commit_is_not_a_jump_but_a_branch_switch_or_a_reset_is() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        let first = git(&["rev-parse", "HEAD"], &root).unwrap();
+        write(tmp.path(), "a.txt", "two\n");
+        git(&["commit", "-qam", "agent work"], &root).unwrap();
+        let second = git(&["rev-parse", "HEAD"], &root).unwrap();
+        assert!(!folder_state_impl(&root, Some(&first)).unwrap().jumped);
+        git(&["checkout", "-q", "-b", "other", &first], &root).unwrap();
+        assert!(folder_state_impl(&root, Some(&second)).unwrap().jumped, "a branch switch");
+        git(&["reset", "-q", "--hard", &second], &root).unwrap();
+        assert!(folder_state_impl(&root, Some(&first)).unwrap().jumped, "a reset");
     }
 
     #[test]

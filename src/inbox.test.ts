@@ -15,6 +15,9 @@ const state = vi.hoisted(() => ({
   scoped: [] as Array<[string | null, string[] | null]>,
   markedReviewed: [] as string[],
   leftOut: [] as string[],
+  scope: { dir: "D:/bytehive", from: "h1", paths: ["src/a.ts"], sharedPaths: [] } as { dir: string; from: string | null; paths: string[] | null; sharedPaths: string[] } | null,
+  loose: 0,
+  noBranch: false,
   settings: 0,
   killed: [] as string[],
   renamed: [] as Array<[string, string]>,
@@ -31,7 +34,8 @@ vi.mock("./tasks", () => ({
   taskOf: (id: string) => state.tasks.find((t) => t.paneId === id),
   markMerged: (id: string, base: string, branch: string) => { state.merged.push([id, base, branch]); },
   markReviewed: (id: string) => { state.markedReviewed.push(id); },
-  changeScope: () => ({ dir: "D:/bytehive", from: "h1", paths: ["src/a.ts"], shared: 0 }),
+  changeScope: () => state.scope,
+  unclaimedChanges: () => state.loose,
   onTasksChange: (cb: () => void) => { state.listeners.push(cb); return () => {}; },
   answerOption: async (id: string, o: { key: string }) => { state.answered.push([id, o.key]); },
   answerText: async (id: string, t: string) => { state.texts.push([id, t]); },
@@ -52,7 +56,7 @@ vi.mock("./ipc", () => ({
   resizePty: async () => {},
   killPty: async (id: string) => { state.killed.push(id); },
   sendMessage: async (id: string, text: string) => { state.sent.push([id, text]); },
-  reviewBranchDiff: async (wt: string) => { state.reviewed.push(wt); return state.diff; },
+  reviewBranchDiff: async (wt: string) => { if (state.noBranch) throw new Error("no branch"); state.reviewed.push(wt); return state.diff; },
   agentLeftOut: async () => state.leftOut,
   agentDiff: async (dir: string, from: string | null, paths: string[] | null) => { state.reviewed.push(dir); state.scoped.push([from, paths]); return state.diff; },
   reposUnder: async (dir: string) => [{ path: dir, name: "bytehive" }],
@@ -220,7 +224,8 @@ describe("inbox DOM", () => {
     document.body.innerHTML = `<div id="app"><header class="topbar"><div class="tb-center"></div></header></div>
 `;
     localStorage.clear();
-    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = []; state.scoped = []; state.markedReviewed = []; state.leftOut = [];
+    state.tasks = []; state.answered = []; state.texts = []; state.focused = []; state.listeners = []; state.reviewed = []; state.scoped = []; state.markedReviewed = []; state.leftOut = []; state.loose = 0; state.noBranch = false;
+    state.scope = { dir: "D:/bytehive", from: "h1", paths: ["src/a.ts"], sharedPaths: [] };
     state.sent = []; state.lands = []; state.discarded = []; state.merged = []; state.killed = [];
     state.diff = DIFF;
     state.land = { dry: { kind: "ok", base: "main", branch: "bytehive/e", sha: "", removed: false, note: null }, real: { kind: "ok", base: "main", branch: "bytehive/e", sha: "abc", removed: true, note: null } };
@@ -640,6 +645,36 @@ describe("inbox DOM", () => {
     drawer.querySelector<HTMLElement>('[data-act="reviewed"]')!.click();
     expect(state.markedReviewed).toEqual(["e"]);
     expect(document.querySelector(".inbox-review")).toBeNull();
+  });
+
+  it("offers Mark as reviewed only when it would do something", async () => {
+    // a worktree agent whose Review fell back to its folder's diff claims nothing
+    state.noBranch = true;
+    state.tasks = [task("e", "Eli", "review", { changedFiles: 1 })];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect([...document.querySelectorAll(".inbox-review .row2 button")].map((b) => b.textContent!.trim())).toEqual(["Send back"]);
+  });
+
+  it("offers it to no agent with nothing claimed", async () => {
+    delete (panes[1].spec as { worktree?: string }).worktree;
+    state.scope = { dir: "D:/bytehive", from: null, paths: [], sharedPaths: [] };
+    state.diff = "";
+    state.tasks = [task("e", "Eli", "idle")];
+    setInbox(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "r", altKey: true }));
+    await flush();
+    expect(document.querySelector('.inbox-review [data-act="reviewed"]')).toBeNull();
+  });
+
+  it("the project says so when its folder holds changes no agent claims", () => {
+    state.tasks = [task("e", "Eli", "idle")];
+    state.loose = 3;
+    setInbox(true);
+    const head = document.querySelector(".iq-ph")!;
+    expect(head.textContent).toContain("Uncommitted changes");
+    expect(head.querySelector("[title*='no agent claims']")!.getAttribute("title")).toBe("3 uncommitted files here that no agent claims");
   });
 
   it("says when a change in a shared folder may be another agent's", async () => {

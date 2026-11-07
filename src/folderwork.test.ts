@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createFolderWork } from "./folderwork";
 
-const look = (files: Record<string, string> = {}, head = "h1", committed: string[] = []) => ({ head, files, committed });
+const look = (files: Record<string, string> = {}, head = "h1", committed: string[] = [], jumped = false) => ({ head, files, committed, jumped });
 
 describe("folder work", () => {
   it("what was dirty before the first look is nobody's", () => {
@@ -15,7 +15,7 @@ describe("folder work", () => {
     const w = createFolderWork();
     w.see(look(), []);
     w.see(look({ "a.txt": "1" }), ["ana"]);
-    expect(w.of("ana")).toEqual({ from: "h1", paths: ["a.txt"], shared: 0 });
+    expect(w.of("ana")).toEqual({ from: "h1", paths: ["a.txt"], sharedPaths: [] });
     expect(w.of("bo").paths).toEqual([]);
   });
 
@@ -31,8 +31,8 @@ describe("folder work", () => {
     w.see(look(), []);
     w.see(look({ "a.txt": "1" }), ["ana", "bo"]);
     w.see(look({ "a.txt": "1", "b.txt": "1" }), ["bo"]);
-    expect(w.of("ana")).toMatchObject({ paths: ["a.txt"], shared: 1 });
-    expect(w.of("bo")).toMatchObject({ paths: ["a.txt", "b.txt"], shared: 1 });
+    expect(w.of("ana")).toMatchObject({ paths: ["a.txt"], sharedPaths: ["a.txt"] });
+    expect(w.of("bo")).toMatchObject({ paths: ["a.txt", "b.txt"], sharedPaths: ["a.txt"] });
   });
 
   it("an agent's own commit stays its work, measured from before it", () => {
@@ -40,7 +40,7 @@ describe("folder work", () => {
     w.see(look({}, "h1"), []);
     w.see(look({ "a.txt": "1" }, "h1"), ["ana"]);
     w.see(look({}, "h2", ["a.txt", "b.txt"]), ["ana"]);
-    expect(w.of("ana")).toEqual({ from: "h1", paths: ["a.txt", "b.txt"], shared: 0 });
+    expect(w.of("ana")).toEqual({ from: "h1", paths: ["a.txt", "b.txt"], sharedPaths: [] });
   });
 
   it("a commit with no agent at work is you taking the work", () => {
@@ -57,7 +57,7 @@ describe("folder work", () => {
     w.see(look({ "a.txt": "1" }), ["ana", "bo"]);
     w.settle("ana");
     expect(w.of("ana").paths).toEqual([]);
-    expect(w.of("bo")).toMatchObject({ paths: ["a.txt"], shared: 0 });
+    expect(w.of("bo")).toMatchObject({ paths: ["a.txt"], sharedPaths: [] });
   });
 
   it("a later job is measured from where the last one was settled", () => {
@@ -67,6 +67,24 @@ describe("folder work", () => {
     w.settle("ana");
     w.see(look({ "a.txt": "1" }, "h2"), []);
     w.see(look({ "a.txt": "2" }, "h2"), ["ana"]);
-    expect(w.of("ana")).toEqual({ from: "h2", paths: ["a.txt"], shared: 0 });
+    expect(w.of("ana")).toEqual({ from: "h2", paths: ["a.txt"], sharedPaths: [] });
+  });
+
+  it("a pull or a branch switch claims nothing, and moves the baseline", () => {
+    const w = createFolderWork();
+    w.see(look({}, "h1"), []);
+    w.see(look({ "mine.txt": "1" }, "h1"), ["ana"]);
+    w.see(look({ "mine.txt": "1", "theirs.txt": "1" }, "h9", ["pulled.txt", "other.txt"], true), ["ana"]);
+    expect(w.of("ana")).toEqual({ from: "h9", paths: ["mine.txt"], sharedPaths: [] });
+    expect(w.unclaimed()).toBe(1);
+  });
+
+  it("counts what is dirty with no agent's name on it", () => {
+    const w = createFolderWork();
+    expect(w.unclaimed()).toBe(0);
+    w.see(look({ "old.txt": "1", "older.txt": "1" }), []);
+    expect(w.unclaimed()).toBe(2);
+    w.see(look({ "old.txt": "2", "older.txt": "1" }), ["ana"]);
+    expect(w.unclaimed()).toBe(1);
   });
 });

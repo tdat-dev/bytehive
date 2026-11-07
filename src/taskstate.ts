@@ -9,6 +9,7 @@
 
 import { parseAsk, type Ask } from "./askparse";
 import { limitOnScreen, type LimitHit } from "./limits";
+import { restingAtPrompt } from "./working";
 
 export type TaskState = "needs" | "review" | "working" | "idle" | "stopped" | "merged";
 
@@ -35,6 +36,19 @@ export interface TaskStatus {
 /** Spinners and streaming redraw several times a second; this long without a
  *  byte means the agent has stopped producing and is waiting. */
 export const WORKING_MS = 2500;
+
+/** A CLI answers a key or a new size this soon after it. */
+const ECHO_MS = 500;
+const REDRAW_MS = 1500;
+
+/** Its state is Working and what it last printed was work: not the echo of your
+ *  typing, a redraw after a resize, or a status line ticking at an idle prompt.
+ *  Only this lets an agent claim a file in a shared folder. */
+export function atWork(f: { state: TaskState; lastOutputAt: number; lastInputAt: number; lastResizeAt: number; screen: string }): boolean {
+  if (f.state !== "working") return false;
+  const after = (at: number, ms: number) => at > 0 && f.lastOutputAt >= at && f.lastOutputAt - at <= ms;
+  return !after(f.lastInputAt, ECHO_MS) && !after(f.lastResizeAt, REDRAW_MS) && !restingAtPrompt(f.screen);
+}
 
 /** Order the queue uses: what needs you first, then what's ready for you. */
 export const STATE_RANK: Record<TaskState, number> = { needs: 0, review: 1, working: 2, idle: 3, stopped: 4, merged: 5 };
