@@ -9,6 +9,7 @@ import { createBgFilter } from "./ansibg";
 import { openMenu } from "./ctxmenu";
 import { createPacer } from "./calm";
 import { localTermKey } from "./termkeys";
+import { win32Key } from "./win32keys";
 
 /** How a pane paints: which palette, and whether the CLI's own background
  *  plate is stripped out of the byte stream on the way in. */
@@ -267,10 +268,29 @@ export function mountTerminal(
   // default action then fires `paste` on xterm's textarea, which xterm's own
   // paste listener turns into exactly one paste. (Do NOT also read the
   // clipboard manually — that's the old double-paste bug.)
+  // ConPTY's ask for whole key events, and the keys that went as one: their
+  // release follows, the way Windows Terminal sends it.
+  let win32Keys = false;
+  const held = new Set<string>();
+  const wantsWin32 = (params: (number | number[])[], on: boolean) => {
+    if (params.includes(9001)) win32Keys = on;
+    return false; // xterm's own handling of the other modes in the sequence goes on
+  };
+  term.parser.registerCsiHandler({ prefix: "?", final: "h" }, (p) => wantsWin32(p, true));
+  term.parser.registerCsiHandler({ prefix: "?", final: "l" }, (p) => wantsWin32(p, false));
+
   // Every other key is the CLI's, except what Windows Terminal keeps too.
   term.attachCustomKeyEventHandler((e) => {
     const local = localTermKey(e, term.hasSelection());
-    if (!local) return true;
+    if (!local) {
+      if (!win32Keys || (e.type !== "keydown" && !held.has(e.code))) return true;
+      const seq = e.type === "keypress" ? null : win32Key(e, e.type === "keydown");
+      if (seq === null) return true;
+      e.preventDefault();
+      if (e.type === "keydown") held.add(e.code); else held.delete(e.code);
+      term.input(seq);
+      return false;
+    }
     if (local === "paste") return false;
     e.preventDefault();
     if (local === "find") opts.onFind?.();
