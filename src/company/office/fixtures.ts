@@ -5,7 +5,7 @@ import { emptyCompany } from "../org";
 import { FOUNDER_ID, type Company, type Job, type JobPlan, type Person, type RoleDef } from "../types";
 import type { Alert } from "../watch";
 import { FLIGHT_MS } from "./layout";
-import { officeModel, type BoardCounts, type OfficeModel, type OfficePane, type OfficeTask } from "./model";
+import { officeModel, type BoardCounts, type JobCards, type OfficeModel, type OfficePane, type OfficeTask } from "./model";
 import { BUILDING, clampLevel, rowTarget, type Level } from "./nav";
 import { deskReport } from "./report";
 import type { OfficeSource } from "./source";
@@ -50,7 +50,8 @@ const job = (over: Partial<Job> & Pick<Job, "id" | "title" | "status">): Job =>
 
 const PLAN: JobPlan = {
   summary: "Split the work between the two teams.",
-  hires: [{ role: "developer", floor: "bytehive" }, { role: "copywriter", floor: "gcare" }],
+  // bytehive's developers and gcare's copywriter take their cards: the one hire is new to gcare.
+  hires: [{ role: "designer", floor: "gcare" }],
   cards: [
     { floor: "bytehive", title: "Add the price table", desc: "", checklist: [] },
     { floor: "bytehive", title: "Link each plan to sign-up", desc: "", checklist: [] },
@@ -90,6 +91,7 @@ interface Demo {
   panes: OfficePane[];
   openDirs: string[];
   boards: Record<string, BoardCounts>;
+  jobCards?: Record<string, JobCards>;
   flight: boolean;
 }
 
@@ -153,13 +155,14 @@ function demoState(o: DemoOptions): Demo {
     jobs, alerts, panes,
     openDirs: ids.filter((id) => !CLOSED.includes(id)).map(dirOf),
     boards: { bytehive: BOARD_COUNTS },
+    jobCards: { "J-0141": { done: 2, total: 5 }, "J-0139": { done: 1, total: 3 } },
     flight: !!o.flight,
   };
 }
 
 function modelOf(d: Demo, now: number): OfficeModel {
   const flights = d.flight ? [{ id: "demo-flight", from: "tuan", to: FOUNDER_ID, at: now - FLIGHT_MS / 2 }] : [];
-  return officeModel(d.company, d.jobs, d.alerts, d.panes, { roles: ROLES, boards: d.boards, openDirs: d.openDirs, flights });
+  return officeModel(d.company, d.jobs, d.alerts, d.panes, { roles: ROLES, boards: d.boards, jobCards: d.jobCards, openDirs: d.openDirs, flights });
 }
 
 export const demoModel = (o: DemoOptions = {}): OfficeModel => modelOf(demoState(o), o.now ?? 0);
