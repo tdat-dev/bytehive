@@ -3,7 +3,6 @@
  * parts.css and the tokens in tokens.css. The scene is the picture; this frames it. */
 .co-rail, .co-box { display: flex; flex-direction: column; gap: var(--s3); color: var(--ink); }
 /* Needs you scrolls. Jobs stays in sight under it, however many cards there are. */
-.of-rail .co-rail { height: 100%; }
 .of-rail .co-needs { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 /* Cards past the fold say so, under the list: the rail's scrollbar hides until hovered. */
 .co-below { flex: none; align-self: stretch; justify-content: center; margin-top: calc(var(--s2) * -1); color: var(--ink-2); }
@@ -189,8 +188,14 @@ body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex
   /* Names only: with a role each, the tags climb over the floor above. */
   .of-tag-person span { display: none; }
 }
-/* No room over the scene: the box would hide the lowest floor, so it stands under the rail. */
+/* No room over the scene: the box would hide the lowest floor, so it takes its own row under
+ * the rail, and the rail scrolls as one, cards and jobs together. */
 @media (max-width: 1000px), (max-height: 640px) {
-  .of-job, .of-msg { right: 0; bottom: 0; left: auto; width: var(--office-rail-w); border-radius: 0; box-shadow: inset 0 1px 0 var(--line); }
-  .of:not([data-level="desk"]) .of-rail { padding-bottom: 200px; }
+  .of:not([data-level="desk"]) { grid-template: "bar bar" var(--office-bar-h) "stage rail" minmax(0, 1fr) "stage box" auto / minmax(0, 1fr) var(--office-rail-w); }
+  .of-job, .of-msg { position: static; grid-area: box; width: auto; padding: var(--s3) var(--s4); border-radius: 0; box-shadow: inset 0 1px 0 var(--line), inset 1px 0 0 var(--line); }
+  .of-rail { overflow-y: auto; overscroll-behavior: contain; }
+  .of-rail .co-needs, .of-rail .co-jobs { flex: none; max-height: none; overflow: visible; }
+  .co-give label { font: var(--t-title); }
+  .co-give .co-hint { display: none; }
+  .co-foot { justify-content: flex-end; }
 }
