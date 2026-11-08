@@ -13,6 +13,7 @@
 .co-n { font: var(--t-title); color: var(--honey); }
 /* What the numbers on the job lines are, said once over them. */
 .co-h-meta { margin-left: auto; color: var(--ink-3); font: var(--t-meta); }
+.co-rail:not(:has(.co-job)) .co-h-meta { display: none; }
 .co-n:empty { display: none; }
 .co-error { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--danger-soft); color: var(--danger); font: var(--t-body); }
 .co-hint { font: var(--t-meta); color: var(--ink-3); }
