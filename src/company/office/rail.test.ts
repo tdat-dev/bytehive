@@ -35,6 +35,7 @@ const mountRail = (s: OfficeSource, go = vi.fn(), where?: () => Level, o: RailOp
 const founder = { id: "founder", name: "Founder", title: "Founder", shirt: "#eef0f4", floorId: null };
 const click = (el: HTMLElement, sel: string) => el.querySelector<HTMLElement>(sel)!.click();
 const tick = () => new Promise((r) => setTimeout(r, 0));
+const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
 
 describe("Needs you rail", () => {
   beforeEach(() => { document.body.innerHTML = ""; });
@@ -338,7 +339,7 @@ describe("Needs you rail", () => {
     click(el, '[data-act="reject"]');
     expect([...el.querySelectorAll<HTMLElement>(".btn.primary")].map((b) => b.dataset.act)).toEqual(["reject"]);
   });
-  it("says how many cards wait below a short rail, and goes to the first of them", () => {
+  it("says how many cards wait below a short rail, and goes to the first of them", async () => {
     const rows: NeedRow[] = ["a", "b", "c"].map((k) => ({ key: k, kind: "alert", jobId: null, personId: null, title: `Stuck ${k}`, detail: "" }));
     const { el } = mountRail(fake({ model: model(rows) }));
     const list = el.querySelector<HTMLElement>("[data-needs]")!;
@@ -352,15 +353,19 @@ describe("Needs you rail", () => {
     box(list, () => 50, 120);
     const cards = [...list.querySelectorAll<HTMLElement>(".co-card")];
     cards.forEach((c, i) => box(c, () => 50 + i * 100 - top, 90));
-    const seen = vi.fn();
-    cards[1].scrollIntoView = seen;
+    // It scrolls the list itself, not every box round it.
+    const went = vi.fn();
+    at(list, { scrollTop: 0 });
+    list.scrollTo = went as never;
     list.dispatchEvent(new Event("scroll"));
+    await frame();
     expect(more.hidden).toBe(false);
     expect(more.textContent).toBe("2 more below");
     more.click();
-    expect(seen).toHaveBeenCalled();
+    expect(went).toHaveBeenCalledWith({ top: 100 });
     top = 180;
     list.dispatchEvent(new Event("scroll"));
+    await frame();
     expect(more.hidden).toBe(true);
   });
   it("holds Approve while it says the note is missing, and closes the note on request", async () => {
@@ -394,17 +399,47 @@ describe("Needs you rail", () => {
     click(el, "[data-row]");
     expect(go).toHaveBeenCalledWith({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" });
   });
-  it("says Jobs wait below when the whole rail scrolls and they are out of sight", () => {
+  it("says Jobs wait below when the whole rail scrolls and they are out of sight", async () => {
     const { el } = mountRail(fake({ model: model([]) }));
     const at = (x: HTMLElement, props: Record<string, number>) => { for (const [k, v] of Object.entries(props)) Object.defineProperty(x, k, { configurable: true, value: v }); };
     const box = (x: HTMLElement, top: number, h: number) => { x.getBoundingClientRect = () => ({ top, bottom: top + h }) as DOMRect; };
     at(el, { scrollHeight: 600, clientHeight: 300 });
     box(el, 0, 300);
     box(el.querySelector<HTMLElement>("[data-jobs-head]")!, 420, 24);
-    document.dispatchEvent(new Event("scroll"));
+    el.dispatchEvent(new Event("scroll"));
+    await frame();
     const more = el.querySelector<HTMLElement>("[data-below]")!;
     expect(more.hidden).toBe(false);
     expect(more.textContent).toBe("Jobs below");
+  });
+  it("measures only for its own scrolling, once a frame, and not while put away", async () => {
+    const rows: NeedRow[] = ["a", "b"].map((k) => ({ key: k, kind: "alert", jobId: null, personId: null, title: `Stuck ${k}`, detail: "" }));
+    const s = fake({ model: model(rows) });
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const rail = createRail(s, vi.fn(), undefined, { confirm: async () => true });
+    rail.mount(el);
+    const list = el.querySelector<HTMLElement>("[data-needs]")!;
+    let reads = 0;
+    Object.defineProperty(list, "scrollHeight", { configurable: true, get: () => { reads += 1; return 0; } });
+    const terminal = document.createElement("div");
+    document.body.appendChild(terminal);
+    terminal.dispatchEvent(new Event("scroll"));
+    await frame();
+    expect(reads).toBe(0);
+    list.dispatchEvent(new Event("scroll"));
+    list.dispatchEvent(new Event("scroll"));
+    await frame();
+    expect(reads).toBe(1);
+    rail.watch(false);
+    list.dispatchEvent(new Event("scroll"));
+    await frame();
+    expect(reads).toBe(1);
+    rail.watch(true);
+    rail.dispose();
+    list.dispatchEvent(new Event("scroll"));
+    await frame();
+    expect(reads).toBe(1);
   });
   it("says who a card takes you to", () => {
     const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };

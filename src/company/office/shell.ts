@@ -730,6 +730,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
       shown = true;
       el.hidden = false;
       source.watching(true);
+      rail.watch(true);
       timer ??= window.setInterval(draw, TICK_MS);
       model = source.snapshot(Date.now()).model;
       const to = l ?? level;
@@ -743,6 +744,7 @@ export function createShell(source: OfficeSource, host: ShellHost) {
     hide(): void {
       shown = false;
       el.hidden = true;
+      rail.watch(false);
       if (timer !== null) window.clearInterval(timer);
       timer = null;
       scene?.setVisible(false);

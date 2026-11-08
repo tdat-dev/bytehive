@@ -170,7 +170,7 @@ async function confirmEnd(j: OfficeJob): Promise<boolean> {
 }
 
 /** `where` says where the owner stands: a row title that would not move them is not a button. */
-export function createRail(source: OfficeSource, go: (l: Level) => void, where: () => Level = () => BUILDING, o: RailOptions = {}): { mount(el: HTMLElement): void; draw(): void; dispose(): void } {
+export function createRail(source: OfficeSource, go: (l: Level) => void, where: () => Level = () => BUILDING, o: RailOptions = {}): { mount(el: HTMLElement): void; draw(): void; watch(on: boolean): void; dispose(): void } {
   const face: Face = o.face ?? (() => null);
   const confirmJob = o.confirm ?? confirmEnd;
   let body: HTMLElement | null = null;
@@ -207,8 +207,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
   };
   /** Cards past the bottom of what scrolls, at least partly: the scrollbar hides until hovered,
    *  so a cut list would read as the whole of it. Measured on screen, where the cut is. */
-  const below = (): HTMLElement[] => {
-    const box = scroller();
+  const below = (box: HTMLElement | null): HTMLElement[] => {
     if (!box) return [];
     // On a short window the count stands at the rail's foot, over the last few pixels.
     const fold = box.getBoundingClientRect().bottom - (box.matches("[data-needs]") ? 0 : FOOT);
@@ -216,22 +215,46 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
     return [...box.querySelectorAll<HTMLElement>("[data-needs] > .co-card")].filter((c) => c.getBoundingClientRect().bottom > fold + CUT);
   };
   /** The Jobs heading, when the whole rail scrolls and it is out of sight under the fold. */
-  const jobsBelow = (): HTMLElement | null => {
-    const box = scroller();
+  const jobsBelow = (box: HTMLElement | null): HTMLElement | null => {
     const head = body?.querySelector<HTMLElement>("[data-jobs-head]");
     if (!box || !head || box.matches("[data-needs]")) return null;
     return head.getBoundingClientRect().top > box.getBoundingClientRect().bottom - FOOT ? head : null;
   };
   const edge = () => {
     const more = body?.querySelector<HTMLElement>("[data-below]");
-    if (!more) return;
-    const n = below().length;
-    const jobs = !!jobsBelow();
+    // Put away, nothing is on screen to count.
+    if (!more || body?.closest("[hidden]")) return;
+    const box = scroller();
+    const n = below(box).length;
+    const jobs = !!jobsBelow(box);
     more.hidden = !n && !jobs;
     const words = n && jobs ? `${n} more and Jobs below` : n ? `${n} more below` : "Jobs below";
     if (!more.hidden && more.textContent !== words) more.innerHTML = `${icon("chevron-down")}${words}`;
   };
   const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(edge);
+  /** A scroll anywhere reaches the document, a terminal's on every line it prints: only the
+   *  rail's own scrollers count, once a frame. */
+  let edgeFrame = 0;
+  const onScroll = (e: Event) => {
+    const t = e.target;
+    if (!body || edgeFrame || (t !== body && t !== body.querySelector("[data-needs]") && t !== body.closest(".of-side"))) return;
+    edgeFrame = requestAnimationFrame(() => {
+      edgeFrame = 0;
+      edge();
+    });
+  };
+  let watching = false;
+  /** Listening for scrolls only while the rail can be seen. */
+  const watch = (on: boolean) => {
+    if (on === watching) return;
+    watching = on;
+    if (on) document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    else {
+      document.removeEventListener("scroll", onScroll, { capture: true });
+      cancelAnimationFrame(edgeFrame);
+      edgeFrame = 0;
+    }
+  };
 
   const calmLine = (m: OfficeModel) => {
     // Of everyone, as the signs count them, so the two agree.
@@ -336,8 +359,8 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
         `<button type="button" class="btn quiet sm co-below" data-below hidden></button>` +
         `<h3 id="coJobsH" data-jobs-head>Jobs <span class="co-h-meta">Tokens used of the cap</span></h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
       const list = el.querySelector<HTMLElement>("[data-needs]")!;
-      // Whatever scrolls, the list, the rail or the column round it: a scroll does not bubble.
-      document.addEventListener("scroll", edge, { capture: true, passive: true });
+      // A scroll does not bubble: the document hears it in the capture phase.
+      watch(true);
       sized?.observe(list);
       sized?.observe(el);
       el.addEventListener("input", (e) => {
@@ -355,7 +378,10 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       el.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
         if (target.closest("[data-below]")) {
-          (below()[0] ?? jobsBelow())?.scrollIntoView({ block: "start" });
+          // The scroller itself moves: scrollIntoView would shift every box round it too.
+          const box = scroller();
+          const to = below(box)[0] ?? jobsBelow(box);
+          if (box && to) box.scrollTo({ top: box.scrollTop + to.getBoundingClientRect().top - box.getBoundingClientRect().top });
           return;
         }
         const opener = target.closest<HTMLElement>("[data-menu]");
@@ -420,12 +446,13 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       draw();
     },
     draw,
+    watch,
     dispose() {
       off?.();
       off = null;
       body = null;
       sized?.disconnect();
-      document.removeEventListener("scroll", edge, { capture: true });
+      watch(false);
       document.removeEventListener("pointerdown", outside);
     },
   };

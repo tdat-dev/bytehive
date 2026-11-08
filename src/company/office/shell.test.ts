@@ -795,6 +795,17 @@ describe("its life", () => {
     await source.approve("nothing");
     expect(document.activeElement).toBe(box);
   });
+  it("stops hearing scrolls for the rail while put away, and hears them again on show", async () => {
+    const { shell } = await shown();
+    const off = vi.spyOn(document, "removeEventListener");
+    const on = vi.spyOn(document, "addEventListener");
+    shell.hide();
+    expect(off.mock.calls.some(([t]) => t === "scroll")).toBe(true);
+    shell.show();
+    expect(on.mock.calls.some(([t]) => t === "scroll")).toBe(true);
+    off.mockRestore();
+    on.mockRestore();
+  });
   it("does not make the current crumb a button", async () => {
     const { shell } = await shown();
     shell.go(floor("bytehive"));
