@@ -313,6 +313,21 @@ describe("once the Company has been used", () => {
     expect(m.officeVisible()).toBe(true);
     expect(document.body.classList.contains("office-fallback")).toBe(false);
   });
+  it("says in the column why, what still works and what to try, and Try again opens the scene", async () => {
+    io.used = true;
+    io.probe = { ok: false, renderer: "" };
+    const { m } = await fresh();
+    m.officeBoot();
+    await settle();
+    const why = document.querySelector<HTMLElement>("#app .of-side .of-fell");
+    expect(why?.textContent).toContain("The office can't draw on this graphics card.");
+    expect(why?.textContent).toContain("Everything still works here.");
+    io.probe = { ok: true, renderer: "ANGLE (Intel)" };
+    why!.querySelector<HTMLElement>("[data-retry]")!.click();
+    await settle();
+    expect(m.officeVisible()).toBe(true);
+    expect(document.querySelector(".of-side")).toBeNull();
+  });
   it("says so once a run, however often the scene fails again", async () => {
     io.used = true;
     io.probe = { ok: false, renderer: "" };

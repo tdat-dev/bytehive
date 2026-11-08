@@ -4,7 +4,7 @@ import { demoSource, levelFrom, type DemoOptions } from "./fixtures";
 import { FLIGHT_MS } from "./layout";
 import type { DeskTab } from "./nav";
 import type { OfficeScene, SceneOptions, SceneStats } from "./scene";
-import { createJobBox, createRail } from "./rail";
+import { createJobBox, createRail, fellHtml } from "./rail";
 import { createShell, type ShellHost } from "./shell";
 
 declare global {
@@ -112,7 +112,7 @@ if (flag("side")) {
   // As office.ts does it with no 3D: the rail and the job box as a column beside the app.
   const side = document.createElement("aside");
   side.className = "of-side";
-  side.innerHTML = `<div data-job-box></div><div data-rail></div>`;
+  side.innerHTML = `${fellHtml(true)}<div data-job-box></div><div data-rail></div>`;
   document.getElementById("app")!.append(side);
   document.body.classList.add("office-fallback");
   createJobBox(source).mount(side.querySelector<HTMLElement>("[data-job-box]")!);

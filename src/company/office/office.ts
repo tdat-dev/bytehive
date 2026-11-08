@@ -6,7 +6,7 @@ import { changesOpenFor, closeChanges, focusStage, openChanges, refitStage, stag
 import { companyElsewhere, companyUsedNow, onCompanyChange } from "../engine";
 import type { OfficeModel, OfficePerson } from "./model";
 import { BUILDING, deskOf, homeView, type DeskTab, type Level } from "./nav";
-import { createJobBox, createRail, why } from "./rail";
+import { createJobBox, createRail, fellHtml, why } from "./rail";
 import { createShell, type ShellHost } from "./shell";
 import type { OfficeSource } from "./source";
 
@@ -191,7 +191,8 @@ async function toFallback(): Promise<void> {
     if (!app || !fallback) return;
     el.className = "of-side";
     el.setAttribute("aria-label", "The Company");
-    el.innerHTML = `<div data-job-box></div><div data-rail></div>`;
+    el.innerHTML = `${fellHtml(OFFICE_3D)}<div data-job-box></div><div data-rail></div>`;
+    el.querySelector("[data-retry]")?.addEventListener("click", () => void open());
     app.append(el);
     const box = createJobBox(source);
     const rail = createRail(source, goFromSide);
