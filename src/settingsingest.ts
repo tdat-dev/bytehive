@@ -8,7 +8,8 @@ import { getPrefs, setPref } from "./prefs";
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const field = (id: string) => $<HTMLInputElement>(id);
 
-const NO_KEY = "For messages the rules can't judge. Without one, only the rules run.";
+const PURPOSE = "For messages the rules can't judge.";
+const NO_KEY = `${PURPOSE} Without one, only the rules run.`;
 
 function note(text: string, kind: "" | "ok" | "err" = ""): void {
   const el = $("ingNote");
@@ -26,7 +27,7 @@ export function keyProblem(e: unknown): string {
 }
 
 /** The saved line names where the key goes, so nobody has to guess. */
-export const savedLine = (host: string): string => (host ? `Saved. Sent only to ${host}.` : "Saved.");
+export const savedLine = (host: string): string => (host ? `${PURPOSE} Saved, sent only to ${host}.` : `${PURPOSE} Saved.`);
 
 function showKey(p: { hasKey: boolean; host: string }): void {
   const key = field("ingKey");

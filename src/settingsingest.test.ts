@@ -6,8 +6,8 @@ vi.mock("./prefs", () => ({}));
 
 describe("savedLine", () => {
   it("names where the key goes", () => {
-    expect(savedLine("9router.zoldify.com")).toBe("Saved. Sent only to 9router.zoldify.com.");
-    expect(savedLine("")).toBe("Saved.");
+    expect(savedLine("9router.zoldify.com")).toBe("For messages the rules can't judge. Saved, sent only to 9router.zoldify.com.");
+    expect(savedLine("")).toBe("For messages the rules can't judge. Saved.");
   });
 });
 
