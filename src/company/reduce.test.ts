@@ -98,6 +98,13 @@ describe("applyRequest", () => {
     expect(r.state).toBe(s);
     expect(r.effects[0]).toMatchObject({ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("running") });
   });
+  it("takes a plan that hires a role a floor already has, and lets the person there do it", () => {
+    const s = newJob(state(), "x", 1).state;
+    const r = applyRequest(s, { type: "plan", ts: 2, from: FOUNDER_ID, job: "J-0001", plan: { ...plan, hires: [{ role: "developer", floor: "a" }, { role: "marketing", floor: "b" }] } });
+    expect(r.state.jobs[0].status).toBe("awaiting-plan");
+    expect(r.state.jobs[0].plan?.hires).toEqual([{ role: "marketing", floor: "b" }]);
+    expect(r.effects).toEqual([{ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("Linh") }]);
+  });
   it("refuses a plan while another waits for approval", () => {
     const s = waiting();
     const r = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan });

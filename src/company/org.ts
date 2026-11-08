@@ -90,6 +90,20 @@ function draftErrors(drafts: NewRole[], roles: RoleDef[]): string[] {
   return errors;
 }
 
+/** A plan that hires a role a floor already has: the person there takes the work, and only
+ *  the hires beyond them stay. Each one on a floor covers one hire of their role. */
+export function reuseStaff(c: Company, plan: JobPlan): JobPlan {
+  const free = new Map<string, number>();
+  for (const p of c.people) if (p.floor) free.set(`${p.floor}:${p.role}`, (free.get(`${p.floor}:${p.role}`) ?? 0) + 1);
+  const hires = plan.hires.filter((h) => {
+    const key = `${h.floor}:${h.role}`;
+    const left = free.get(key) ?? 0;
+    if (left > 0) free.set(key, left - 1);
+    return left === 0;
+  });
+  return hires.length === plan.hires.length ? plan : { ...plan, hires };
+}
+
 export function validatePlan(c: Company, plan: JobPlan, roles: RoleDef[]): string[] {
   const drafts = plan.newRoles ?? [];
   const errors = draftErrors(drafts, roles);

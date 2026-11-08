@@ -2,8 +2,8 @@
 /* Everything that changes the company, as plain functions: state in, state and
  * effects out. engine.ts runs the effects. The app re-checks every rule here,
  * because a request is only a line in a file. */
-import { applyHires, canMessage, fromDraft, personById, personByName, planCap, validatePlan } from "./org";
-import { FOUNDER_ID, type Company, type CompanyRequest, type Job, type Person, type RoleDef } from "./types";
+import { applyHires, canMessage, fromDraft, personById, personByName, planCap, reuseStaff, validatePlan } from "./org";
+import { FOUNDER_ID, type Company, type CompanyRequest, type Job, type JobPlan, type Person, type RoleDef } from "./types";
 
 export interface State { company: Company; jobs: Job[]; roles: RoleDef[] }
 
@@ -62,9 +62,12 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   if (!job) return none;
   if (r.type === "plan") {
     if (job.status !== "planning") return refuse(`Plan for ${r.job} refused: the job is ${job.status}, and a plan is only taken while it is planning.`);
-    const errors = validatePlan(s.company, r.plan, s.roles);
+    // A role the floor already has is that person's work, not a new hire's.
+    const plan = reuseStaff(s.company, r.plan);
+    const errors = validatePlan(s.company, plan, s.roles);
     if (errors.length) return refuse(`Plan for ${r.job} refused: ${errors.join(" ")}`);
-    return { state: patch(s, r.job, { status: "awaiting-plan", plan: r.plan }), effects: [] };
+    const reused = plan === r.plan ? [] : [tellFounder(`Plan for ${r.job} taken without ${r.plan.hires.length - plan.hires.length} of its hires: ${staffOn(s, r.plan)} already there, and they do that work.`)];
+    return { state: patch(s, r.job, { status: "awaiting-plan", plan }), effects: reused };
   }
   if (r.type !== "job-done") return none;
   // Nothing was planned, so nobody worked and there is nothing to merge. A plan the owner is reading still has to be answered.
@@ -73,6 +76,12 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   }
   if (job.status !== "running") return refuse(`${r.job} cannot be finished: it is ${job.status}, and only a running job, or a planning one that needs no work, can.`);
   return { state: patch(s, r.job, { status: "awaiting-merge", summary: r.summary }), effects: [] };
+}
+
+/** Who already holds the roles a plan asks to hire, by name, role and floor. */
+function staffOn(s: State, plan: JobPlan): string {
+  const held = s.company.people.filter((p) => plan.hires.some((h) => h.floor === p.floor && h.role === p.role));
+  return held.map((p) => `${p.name} (${p.role} on ${p.floor})`).join(", ") + (held.length === 1 ? " is" : " are");
 }
 
 export function approvePlan(

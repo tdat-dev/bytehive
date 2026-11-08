@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyHires, canMessage, emptyCompany, floorContact, floorId, fromDraft, personByName, planCap, reportsOf, resolveTargets, validatePlan, validRoleId } from "./org";
+import { applyHires, canMessage, emptyCompany, floorContact, floorId, fromDraft, personByName, planCap, reportsOf, resolveTargets, reuseStaff, validatePlan, validRoleId } from "./org";
 import { DEFAULT_LIMITS, FOUNDER_ID, type Company, type JobPlan, type Person, type RoleDef } from "./types";
 
 const role = (id: string, rank: "lead" | "staff"): RoleDef => ({
@@ -47,6 +47,22 @@ describe("resolveTargets", () => {
   });
   it("reports an unknown name", () => {
     expect(resolveTargets(c, "d1", "Ghost")).toEqual({ error: expect.stringContaining("Ghost") });
+  });
+});
+
+describe("reuseStaff", () => {
+  it("drops a hire whose role already works on that floor, so the person there takes the work", () => {
+    const c = company([person("l1", "lead", "a", FOUNDER_ID), person("d1", "staff", "a", "l1")]);
+    const p = reuseStaff(c, plan({ hires: [{ role: "developer", floor: "a" }, { role: "developer", floor: "b" }, { role: "marketing", floor: "a" }] }));
+    expect(p.hires).toEqual([{ role: "developer", floor: "b" }, { role: "marketing", floor: "a" }]);
+  });
+  it("keeps a second hire of the same role when the floor has only one of it", () => {
+    const c = company([person("d1", "staff", "a", FOUNDER_ID)]);
+    expect(reuseStaff(c, plan({ hires: [{ role: "developer", floor: "a" }, { role: "developer", floor: "a" }] })).hires).toEqual([{ role: "developer", floor: "a" }]);
+  });
+  it("gives back the same plan when nothing repeats", () => {
+    const p = plan({ hires: [{ role: "developer", floor: "a" }] });
+    expect(reuseStaff(company([]), p)).toBe(p);
   });
 });
 
