@@ -29,17 +29,32 @@ pub(crate) const INHERITED_SESSION_MARKERS: [&str; 4] = [
 /// app it starts, gets what the variable held before ByteHive changed it.
 pub const WEBVIEW_ARGS: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 
-static WEBVIEW_ARGS_BEFORE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+static WEBVIEW_ARGS_BEFORE: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
 
-/// Called once, right before ByteHive changes WEBVIEW_ARGS on itself.
-pub fn remember_webview_args(before: Option<String>) {
+/// Called once, right before ByteHive changes WEBVIEW_ARGS on itself. As an
+/// OsString, so a value that is not valid Unicode comes back exactly.
+pub fn remember_webview_args(before: Option<std::ffi::OsString>) {
     let _ = WEBVIEW_ARGS_BEFORE.set(before);
 }
 
 /// WEBVIEW_ARGS for an agent: `None` while ByteHive never changed it (inherit
 /// it as it is), else the value from before, or `Some(None)` for unset.
-pub(crate) fn agent_webview_args() -> Option<Option<&'static str>> {
+pub(crate) fn agent_webview_args() -> Option<Option<&'static std::ffi::OsStr>> {
     WEBVIEW_ARGS_BEFORE.get().map(|b| b.as_deref())
+}
+
+/// The same for a child started with std::process::Command (a CLI run in the
+/// background), so it too sees the variable as it was before ByteHive.
+pub fn restore_webview_args(cmd: &mut std::process::Command) {
+    match agent_webview_args() {
+        Some(Some(before)) => {
+            cmd.env(WEBVIEW_ARGS, before);
+        }
+        Some(None) => {
+            cmd.env_remove(WEBVIEW_ARGS);
+        }
+        None => {}
+    }
 }
 
 pub struct PtySession {

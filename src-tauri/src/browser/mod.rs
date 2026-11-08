@@ -229,9 +229,10 @@ pub async fn browser_profiles() -> Vec<profiles::ProfileRow> {
 pub async fn browser_open_profile(browser: String, dir: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let exe = profiles::browser_exe(&browser).ok_or_else(|| format!("{browser} isn't installed where ByteHive looked."))?;
-        std::process::Command::new(exe)
-            .arg(format!("--profile-directory={dir}"))
-            .spawn()
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg(format!("--profile-directory={dir}"));
+        crate::core::pty_session::restore_webview_args(&mut cmd);
+        cmd.spawn()
             .map(|_| ())
             .map_err(|e| e.to_string())
     })

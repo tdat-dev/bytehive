@@ -996,6 +996,7 @@ fn capture(program: &str, args: &[String], cwd: Option<&str>, timeout_ms: u64) -
     use std::process::{Command, Stdio};
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    crate::core::pty_session::restore_webview_args(&mut cmd);
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         if !Path::new(dir).is_dir() {
             return Err(CommandError::Failed(format!("The folder {dir} doesn't exist anymore.")));
