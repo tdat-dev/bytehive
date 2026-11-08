@@ -101,12 +101,14 @@ fn fixture() -> Vec<Group> {
 
 pub struct Inbox {
     terminal: Entity<Terminal>,
+    /// The rest of the fleet: alive, not drawn.
+    _fleet: Vec<Entity<Terminal>>,
     logo: Arc<Image>,
 }
 
 impl Inbox {
-    pub fn new(terminal: Entity<Terminal>) -> Self {
-        Self { terminal, logo: Arc::new(Image::from_bytes(ImageFormat::Png, CLAUDE_LOGO.to_vec())) }
+    pub fn new(terminal: Entity<Terminal>, fleet: Vec<Entity<Terminal>>) -> Self {
+        Self { terminal, _fleet: fleet, logo: Arc::new(Image::from_bytes(ImageFormat::Png, CLAUDE_LOGO.to_vec())) }
     }
 
     fn mark(&self, size: f32, radius: f32) -> Div {

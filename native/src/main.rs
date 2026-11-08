@@ -45,9 +45,17 @@ fn main() {
         };
         gpui_kit::open_window(options, cx, |window, cx| {
             let terminal = cx.new(|cx| Terminal::new(command(), cx).expect("terminal"));
+            // BYTEHIVE_TERMINALS=5 keeps four more alive out of sight, as a
+            // fleet does, to measure the app at the load it really carries.
+            let extra = std::env::var("BYTEHIVE_TERMINALS").ok().and_then(|n| n.parse::<usize>().ok()).unwrap_or(1).saturating_sub(1);
+            let fleet: Vec<_> = (0..extra).map(|_| cx.new(|cx| Terminal::new(command(), cx).expect("terminal"))).collect();
+            for hidden in &fleet {
+                hidden.read(cx).keep_lines(terminal::SCROLLBACK_HIDDEN);
+            }
+            terminal.read(cx).claim_keys();
             let focus = terminal.read(cx).focus_handle();
             focus.focus(window, cx);
-            cx.new(|_| Inbox::new(terminal))
+            cx.new(|_| Inbox::new(terminal, fleet))
         })
         .expect("window");
     });

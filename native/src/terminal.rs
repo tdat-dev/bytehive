@@ -26,7 +26,10 @@ use crate::{boxdraw, keys};
 const FONT_FAMILY: &str = "Geist Mono";
 const FONT_SIZE: f32 = 19.0;
 const LINE_HEIGHT: f32 = 1.6;
-const SCROLLBACK: usize = 10_000;
+/// History kept in view, and once out of sight: today's app keeps the same
+/// (src/terminal.ts SCROLLBACK_SHOWN, SCROLLBACK_HIDDEN).
+const SCROLLBACK: usize = 5_000;
+pub const SCROLLBACK_HIDDEN: usize = 1_000;
 /// Output arriving faster than this waits for the next frame.
 const FRAME: Duration = Duration::from_millis(8);
 
@@ -246,6 +249,16 @@ impl Terminal {
             selecting: false,
             wheel: 0.0,
         })
+    }
+
+    /// Take the keyboard: keys.rs hands keys to this terminal from now on.
+    pub fn claim_keys(&self) {
+        keys::set_sink(self.writer.clone());
+    }
+
+    /// How many lines of history to keep; older ones are dropped.
+    pub fn keep_lines(&self, lines: usize) {
+        self.term.lock().unwrap().set_options(Config { scrolling_history: lines, ..Config::default() });
     }
 
     pub fn focus_handle(&self) -> FocusHandle {
