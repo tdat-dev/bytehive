@@ -9,6 +9,10 @@ Written 2026-11-08 after the first slice passed the owner's gate (looks, termina
 - Company comes after cutover; Tauri keeps running it until then.
 - A Tauri 0.14.2 release writes the fleet and settings to `~/.bytehive/export/web-state.json`, which native imports once.
 
+## Releases repo
+
+The public releases repo is `tdat-dev/bytehive-releases` (renamed from `maestro-releases` on 2026-11-08; never create a repo by the old name). Before tagging the 0.14.2 export release, merge branch `chore/bytehive-releases` (commit 1806505: release.yml, the tauri.conf.json updater endpoint, README, docs). The native updater in phase 5 points at `https://github.com/tdat-dev/bytehive-releases`, never the old name.
+
 ## Rules that do not bend
 
 - Terminal input: raw Win32 key messages through win32-input-mode (`native/src/keys.rs`), never a key table. Only Ctrl+V and Alt+F4 stay local over a terminal.
