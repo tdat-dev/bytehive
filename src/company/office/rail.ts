@@ -11,7 +11,7 @@ import { BUILDING, deskOf, rowTarget, type Level } from "./nav";
 import type { OfficeSource } from "./source";
 
 const RAISE_BY = 1_000_000;
-/** The height of the "more below" line where it stands over the foot of a short rail. */
+/** The height of the "N below" line where it stands over the foot of a short rail. */
 const FOOT = 32;
 /** How much of a card's foot may be out of sight before it counts as below: its padding and half a button. */
 const CUT = 16;
@@ -232,7 +232,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
     const n = below(box).length;
     const jobs = !!jobsBelow(box);
     more.hidden = !n && !jobs;
-    const words = n && jobs ? `${n} more and Jobs below` : n ? `${n} more below` : "Jobs below";
+    const words = n && jobs ? `${n} and Jobs below` : n ? `${n} below` : "Jobs below";
     if (!more.hidden && more.textContent !== words) more.innerHTML = `${icon("chevron-down")}${words}`;
   };
   const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(edge);

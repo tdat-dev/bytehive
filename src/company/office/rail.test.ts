@@ -360,9 +360,13 @@ describe("Needs you rail", () => {
     list.dispatchEvent(new Event("scroll"));
     await frame();
     expect(more.hidden).toBe(false);
-    expect(more.textContent).toBe("2 more below");
+    expect(more.textContent).toBe("2 below");
     more.click();
     expect(went).toHaveBeenCalledWith({ top: 100 });
+    top = 80;
+    list.dispatchEvent(new Event("scroll"));
+    await frame();
+    expect(more.textContent).toBe("1 below");
     top = 180;
     list.dispatchEvent(new Event("scroll"));
     await frame();
