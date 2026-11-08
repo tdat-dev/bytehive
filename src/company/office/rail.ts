@@ -15,7 +15,8 @@ const RAISE_BY = 1_000_000;
 const FOOT = 32;
 /** How much of a card's foot may be out of sight before it counts as below: its padding and half a button. */
 const CUT = 16;
-const ASK_HINT = "Add marketing to gcare";
+/** The box's example names a project the company has, or none: a new company has no gcare. */
+const askHint = (m: OfficeModel | null) => (m?.floors[0] ? `Add marketing to ${m.floors[0].name}` : "Build a landing page for my app");
 const WHY_HINT = "For example: fewer hires, and leave QA for later";
 const NOTE_NEEDED = "Send back needs a note. To drop the job instead, use Cancel job in its menu.";
 /** Examples for an empty box: what a first job can sound like. */
@@ -462,6 +463,8 @@ export function createJobBox(source: OfficeSource): { mount(el: HTMLElement): vo
     send.classList.toggle("primary", !!box.value.trim() && !!m && !m.needs.length);
     send.classList.toggle("secondary", !send.classList.contains("primary"));
     chips.hidden = !!box.value;
+    const hint = askHint(m);
+    if (box.placeholder !== hint) box.placeholder = hint;
   };
 
   return {
@@ -470,7 +473,7 @@ export function createJobBox(source: OfficeSource): { mount(el: HTMLElement): vo
       el.classList.add("co-box");
       el.innerHTML =
         `<form class="co-give"><label for="coAsk">Give the Founder a job</label>` +
-        `<textarea id="coAsk" rows="2" placeholder="${ASK_HINT}"></textarea>` +
+        `<textarea id="coAsk" rows="2" placeholder=""></textarea>` +
         `<div class="co-chips" data-chips>${EXAMPLES.map((x) => `<button type="button" class="btn secondary sm" data-chip>${esc(x)}</button>`).join("")}</div>` +
         `<div class="co-foot"><span class="co-hint">Enter sends. Shift+Enter starts a new line.</span><button type="submit" class="btn secondary" data-send>Send</button></div></form>` +
         `<p class="co-error" role="alert" data-msg hidden></p>`;

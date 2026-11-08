@@ -520,6 +520,11 @@ describe("job box", () => {
     return el;
   };
   const submit = (el: HTMLElement) => el.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+  it("gives an example from a project the company has, and none from a project it has not", () => {
+    const hint = (m: OfficeModel) => mountBox(fake({ model: m })).querySelector("textarea")!.placeholder;
+    expect(hint(model([], { floors: [{ id: "a", name: "shopfront", people: [] } as never] }))).toBe("Add marketing to shopfront");
+    expect(hint(model([]))).not.toContain("gcare");
+  });
 
   it("gives the Founder a job and clears the box", async () => {
     const s = fake();
