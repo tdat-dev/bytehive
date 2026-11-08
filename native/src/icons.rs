@@ -13,7 +13,12 @@ macro_rules! icons {
 }
 
 icons!(
+    "chev",
+    "chev-open",
     "chevron-down",
+    "diamond",
+    "dots",
+    "memory",
     "chevron-right",
     "circle-question-mark",
     "ellipsis",

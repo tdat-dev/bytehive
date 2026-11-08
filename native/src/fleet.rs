@@ -35,6 +35,8 @@ pub struct Spec {
 pub struct Seat {
     pub spec: Spec,
     pub terminal: Option<Entity<Terminal>>,
+    /// The git branch of its folder, read when it starts; none outside a repo.
+    pub branch: Option<String>,
 }
 
 impl Seat {
@@ -86,7 +88,7 @@ impl Fleet {
     /// The saved fleet, every agent stopped.
     pub fn load() -> Self {
         let specs: Vec<Spec> = store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { spec, terminal: None }).collect();
+        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(&spec.cwd)), spec, terminal: None }).collect();
         let focused = if seats.is_empty() { None } else { Some(0) };
         Self { seats, focused, learned: Arc::default() }
     }
@@ -120,7 +122,7 @@ impl Fleet {
             session_id: None,
             started_ms: now_ms(),
         };
-        self.seats.push(Seat { spec, terminal: None });
+        self.seats.push(Seat { spec, terminal: None, branch: None });
         let index = self.seats.len() - 1;
         self.start(index, cx)?;
         Ok(index)
@@ -152,6 +154,7 @@ impl Fleet {
         spec.cwd = Some(cwd.clone());
         let terminal = Terminal::spawn(spec, cx)?;
         seat.terminal = Some(terminal);
+        seat.branch = agent_core::git::current_branch(std::path::Path::new(&cwd));
         seat.spec.session_id = session.or(seat.spec.session_id.take());
         let started = now_ms();
         seat.spec.started_ms = started;
@@ -191,6 +194,21 @@ impl Fleet {
             self.save();
         }
         !found.is_empty()
+    }
+
+    /// Take the agent off the list: it stops, its spec is forgotten. Its
+    /// branch and its changes stay in git.
+    pub fn remove(&mut self, index: usize) {
+        if index < self.seats.len() {
+            self.seats.remove(index);
+        }
+        self.focused = match self.focused {
+            _ if self.seats.is_empty() => None,
+            Some(f) if f > index => Some(f - 1),
+            Some(f) => Some(f.min(self.seats.len() - 1)),
+            None => None,
+        };
+        self.save();
     }
 
     /// Stop the agent: its whole process tree ends, its spec stays.

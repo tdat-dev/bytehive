@@ -1,16 +1,17 @@
 //! The Agent Inbox, Direction D Cinema: black stage, floating panels, colour
-//! only for state. Sizes and colours follow src/styles/inbox.css one to one.
-//! The queue is the live fleet; the stage shows the focused agent's terminal.
+//! only for state. Sizes, colours and words follow today's app one to one:
+//! src/styles/inbox.css, src/inbox.ts (rowLine, headline, renderQueue,
+//! renderHeaders) and src/styles/selectmenu.css for the right-click menu.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-
-use supervise::task_state::TaskState as State;
+use supervise::ask::AskKind;
+use supervise::task_state::{TaskState as State, TaskStatus};
 
 use crate::fleet::{Fleet, Seat, now_ms};
 
@@ -25,18 +26,20 @@ const WORK: u32 = 0x6fd6a0;
 const NEEDS: u32 = 0xf0bf6a;
 /// --ib-review: blue, for work ready to look at.
 const REVIEW: u32 = 0x9ab8ee;
+const DANGER: u32 = 0xf2766b;
 const QUEUE_W: f32 = 320.0;
 const DOCK_H: f32 = 84.0;
 /// How often the queue rereads who is working.
 const TICK: Duration = Duration::from_millis(700);
 
-/// The CLIs New agent offers: program, label, brand colour.
-const CLIS: [(&str, &str, u32); 4] = [("claude", "Claude", 0xd97757), ("codex", "Codex", 0xe5e5e5), ("opencode", "OpenCode", 0xcfcfcf), ("powershell.exe", "PowerShell", 0x5391fe)];
+/// The CLIs New agent offers: program, label, brand colour (clibrand.ts).
+const CLIS: [(&str, &str, u32); 4] = [("claude", "Claude", 0xd97757), ("codex", "Codex", 0x10a37f), ("opencode", "OpenCode", 0xf0883e), ("powershell.exe", "PowerShell", 0x5391fe)];
 
-const LOGOS: [(&str, &[u8]); 3] = [
-    ("claude", include_bytes!("../assets/clis/claude.png")),
-    ("codex", include_bytes!("../assets/clis/codex.png")),
-    ("opencode", include_bytes!("../assets/clis/opencode.png")),
+/// Logos, and whether the logo fills its whole tile (clibrand.ts `tile`).
+const LOGOS: [(&str, &[u8], bool); 3] = [
+    ("claude", include_bytes!("../assets/clis/claude.png"), false),
+    ("codex", include_bytes!("../assets/clis/codex.png"), true),
+    ("opencode", include_bytes!("../assets/clis/opencode.png"), false),
 ];
 
 fn color(hex: u32) -> Hsla {
@@ -61,9 +64,14 @@ fn tile(hex: u32) -> Hsla {
     color((mix(16) << 16) | (mix(8) << 8) | mix(0))
 }
 
+/// `inset 0 0 0 1px`: a ring that takes no room, so rows never shift.
+fn ring(c: Hsla) -> BoxShadow {
+    BoxShadow { color: c, offset: point(px(0.0), px(0.0)), blur_radius: px(0.0), spread_radius: px(1.0), inset: true }
+}
+
 /// `--ib-float`: the shadow every floating dock piece stands on.
 fn float() -> Vec<BoxShadow> {
-    vec![BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.55), offset: point(px(0.0), px(18.0)), blur_radius: px(40.0), spread_radius: px(0.0), inset: false }]
+    vec![BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.55), offset: point(px(0.0), px(18.0)), blur_radius: px(40.0), spread_radius: px(0.0), inset: false }, ring(white(0.08))]
 }
 
 fn icon(name: &'static str, size: f32, tone: Hsla) -> Svg {
@@ -79,19 +87,28 @@ fn brand(cli: &str) -> (&'static str, u32) {
     CLIS.iter().find(|(program, _, _)| *program == key || key.starts_with(program.trim_end_matches(".exe"))).map(|(_, label, hex)| (*label, *hex)).unwrap_or(("Terminal", 0x8c8c96))
 }
 
-fn state_look(state: State) -> (&'static str, u32) {
+/// GROUP_LABEL in inbox.ts.
+fn label_of(state: State) -> &'static str {
     match state {
-        State::Needs => ("Needs you", NEEDS),
-        State::Blocked => ("Blocked", NEEDS),
-        State::Review => ("Ready to review", REVIEW),
-        State::Working => ("Working", WORK),
-        State::Idle => ("Idle", INK_3),
-        State::Stopped => ("Stopped", INK_3),
-        State::Merged => ("Merged", INK_3),
+        State::Needs | State::Blocked => "Needs you",
+        State::Review => "Ready to review",
+        State::Working => "Working",
+        State::Idle => "Idle",
+        State::Stopped => "Stopped",
+        State::Merged => "Merged",
     }
 }
 
-/// It is waiting on you: marked where it is, never moved to the top.
+/// The colour a state's words and dot take; None keeps the quiet ink.
+fn hue_of(state: State) -> Option<u32> {
+    match state {
+        State::Needs | State::Blocked => Some(NEEDS),
+        State::Review => Some(REVIEW),
+        State::Working => Some(WORK),
+        _ => None,
+    }
+}
+
 fn waits(state: State) -> bool {
     matches!(state, State::Needs | State::Blocked)
 }
@@ -100,12 +117,44 @@ fn ended(state: State) -> bool {
     matches!(state, State::Stopped | State::Merged)
 }
 
+/// rowLine in inbox.ts: the second line of a queue row, from the agent's side.
+fn row_line(status: &TaskStatus, worked: bool) -> String {
+    if let Some(limit) = &status.limit {
+        return match limit.resets_at {
+            Some(at) => format!("Out of usage · back {}", supervise::task_state::clock_of(at, now_ms())),
+            None => "Out of usage".to_string(),
+        };
+    }
+    let said = match status.state {
+        State::Needs | State::Blocked => match &status.ask {
+            None => match &status.blocked {
+                Some(b) => b.what.clone(),
+                None => "Needs you".to_string(),
+            },
+            Some(a) => match (a.kind, &a.detail) {
+                (AskKind::Run, Some(d)) => format!("Wants to run {d}"),
+                (AskKind::Run, None) => "Wants to run a command".to_string(),
+                (AskKind::Edit, Some(d)) => format!("Wants to edit {d}"),
+                (AskKind::Edit, None) => "Wants to edit a file".to_string(),
+                _ => format!("Asks: {}", a.prompt),
+            },
+        },
+        State::Review => "Changes to review".to_string(),
+        State::Working => "Working".to_string(),
+        State::Stopped => "Stopped".to_string(),
+        State::Merged => "Merged into the base branch".to_string(),
+        State::Idle => if worked { "Done" } else { "Waiting for a task" }.to_string(),
+    };
+    let state = label_of(status.state);
+    if said == state || status.state == State::Merged { said } else { format!("{state} · {said}") }
+}
+
 /// The top bar's sentence, worded as today's app words it (inbox.ts headline).
-fn headline(states: &[State]) -> (String, String) {
-    let n = |s: State| states.iter().filter(|x| **x == s).count();
+fn headline(statuses: &[TaskStatus], worked: &[bool]) -> (String, String) {
+    let n = |s: State| statuses.iter().filter(|x| x.state == s).count();
     let are = |k: usize| if k == 1 { "is" } else { "are" };
-    if states.is_empty() {
-        return ("No agents yet.".to_string(), "Start one with New agent.".to_string());
+    if statuses.is_empty() {
+        return ("No agents yet.".to_string(), " Start one with New agent.".to_string());
     }
     let needs = n(State::Needs) + n(State::Blocked);
     let lead = match needs {
@@ -122,21 +171,29 @@ fn headline(states: &[State]) -> (String, String) {
         parts.push(format!("{working} {} working", are(working)));
     }
     if parts.is_empty() {
-        let (idle, stopped) = (n(State::Idle), n(State::Stopped));
-        if idle > 0 {
-            parts.push(format!("{idle} {} waiting for a task", are(idle)));
+        let idle = n(State::Idle);
+        let done = statuses.iter().zip(worked).filter(|(s, w)| s.state == State::Idle && **w).count();
+        let (stopped, merged) = (n(State::Stopped), n(State::Merged));
+        if done > 0 {
+            parts.push(format!("{done} {} done", are(done)));
+        }
+        if idle > done {
+            parts.push(format!("{} {} waiting for a task", idle - done, are(idle - done)));
         }
         if stopped > 0 {
             parts.push(format!("{stopped} {} stopped", are(stopped)));
         }
+        if merged > 0 {
+            parts.push(format!("{merged} {} merged", are(merged)));
+        }
     }
-    let rest = if parts.is_empty() { String::new() } else { format!("{}.", parts.join(", ")) };
+    let rest = if parts.is_empty() { String::new() } else { format!(" {}.", parts.join(", ")) };
     (lead, rest)
 }
 
-/// "12s", "4m", "2h", "3d" since `ms`.
-fn age(ms: u64) -> String {
-    let s = now_ms().saturating_sub(ms) / 1000;
+/// ago() in inbox.ts: "12s", "4m", "2h", "3d".
+fn ago(ms: u64) -> String {
+    let s = ms / 1000;
     match s {
         0..=59 => format!("{s}s"),
         60..=3599 => format!("{}m", s / 60),
@@ -152,12 +209,32 @@ struct Sheet {
     error: Option<String>,
 }
 
+/// The right-click menu of one agent, where it was opened.
+struct Menu {
+    index: usize,
+    at: Point<Pixels>,
+}
+
+/// One snapshot of every agent, taken once per render.
+struct View {
+    statuses: Vec<TaskStatus>,
+    worked: Vec<bool>,
+    since: Vec<u64>,
+}
+
 pub struct Inbox {
     fleet: Fleet,
-    logos: HashMap<&'static str, Arc<Image>>,
+    logos: HashMap<&'static str, (Arc<Image>, bool)>,
     sheet: Option<Sheet>,
-    /// Each agent's state at the last tick, to redraw only on a change.
-    seen: Vec<State>,
+    menu: Option<Menu>,
+    /// An agent waiting on "Remove?" to be confirmed.
+    removing: Option<usize>,
+    /// Projects whose stopped agents are folded away.
+    folded: HashSet<String>,
+    /// Per agent id: its state at the last tick and since when.
+    since: HashMap<String, (State, u64)>,
+    /// Agents that have worked on something: idle then reads as done.
+    worked: HashSet<String>,
     _ticker: Task<()>,
 }
 
@@ -171,17 +248,46 @@ impl Inbox {
                 }
             }
         });
-        let logos = LOGOS.iter().map(|(cli, bytes)| (*cli, Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))).collect();
-        Self { fleet: Fleet::load(), logos, sheet: None, seen: Vec::new(), _ticker: ticker }
+        let logos = LOGOS.iter().map(|(cli, bytes, fills)| (*cli, (Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())), *fills))).collect();
+        Self {
+            fleet: Fleet::load(),
+            logos,
+            sheet: None,
+            menu: None,
+            removing: None,
+            folded: HashSet::new(),
+            since: HashMap::new(),
+            worked: HashSet::new(),
+            _ticker: ticker,
+        }
     }
 
+    /// Reread every agent; redraw when a state moved or a minute rolled on.
     fn tick(&mut self, cx: &mut Context<Self>) {
-        let learned = self.fleet.absorb();
-        let now: Vec<State> = self.fleet.seats.iter().map(|s| s.state(cx)).collect();
-        if learned || now != self.seen {
-            self.seen = now;
+        let mut changed = self.fleet.absorb();
+        let now = now_ms();
+        for seat in &self.fleet.seats {
+            let state = seat.state(cx);
+            if state == State::Working {
+                self.worked.insert(seat.spec.id.clone());
+            }
+            let entry = self.since.entry(seat.spec.id.clone()).or_insert((state, now));
+            if entry.0 != state {
+                *entry = (state, now);
+                changed = true;
+            }
+        }
+        // The times on the rows count in seconds under a minute.
+        if changed || self.fleet.seats.iter().any(|s| self.since.get(&s.spec.id).is_some_and(|(_, at)| now - at < 60_000)) {
             cx.notify();
         }
+    }
+
+    fn view(&self, cx: &App) -> View {
+        let statuses: Vec<TaskStatus> = self.fleet.seats.iter().map(|s| s.status(cx)).collect();
+        let worked = self.fleet.seats.iter().map(|s| self.worked.contains(&s.spec.id)).collect();
+        let since = self.fleet.seats.iter().map(|s| self.since.get(&s.spec.id).map(|(_, at)| *at).unwrap_or(s.spec.started_ms)).collect();
+        View { statuses, worked, since }
     }
 
     fn mark(&self, cli: &str, size: f32, radius: f32) -> Div {
@@ -193,43 +299,53 @@ impl Inbox {
             .size(px(size))
             .rounded(px(radius))
             .bg(tile(hex))
-            .border_1()
-            .border_color(tint(hex, 0.38))
+            .shadow(vec![ring(tint(hex, 0.38))])
             .flex()
             .items_center()
             .justify_center();
         match self.logos.get(key.as_str()) {
-            Some(logo) => base.child(img(logo.clone()).size(px(size * 0.68))),
+            Some((logo, true)) => base.child(img(logo.clone()).size_full().rounded(px(radius))),
+            Some((logo, false)) => base.child(img(logo.clone()).size(px(size * 0.68))),
             None => base.child(div().text_size(px(size * 0.42)).font_weight(FontWeight::BOLD).text_color(color(hex)).child(label[..1].to_string())),
         }
     }
 
-    fn agent_row(&self, index: usize, seat: &Seat, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let state = seat.state(cx);
-        let (label, hue) = state_look(state);
+    fn agent_row(&self, index: usize, seat: &Seat, status: &TaskStatus, worked: bool, since: u64, cx: &mut Context<Self>) -> AnyElement {
+        let state = status.state;
         let current = self.fleet.focused == Some(index);
-        let ring = if current { RAISE } else { PANEL };
-        let dot = div().absolute().right(px(-3.0)).bottom(px(-3.0)).size(px(13.0)).rounded_full().bg(color(ring)).flex().items_center().justify_center().child(
-            match state {
-                s if ended(s) => div().size(px(9.0)).rounded_full().border_1().border_color(color(INK_3)),
-                _ => div().size(px(9.0)).rounded_full().bg(color(hue)),
-            },
-        );
-        let (cli_label, _) = brand(&seat.spec.cli);
+        let ring_ground = if current { RAISE } else { PANEL };
+        let dot = div().absolute().right(px(-3.0)).bottom(px(-3.0)).size(px(13.0)).rounded_full().bg(color(ring_ground)).flex().items_center().justify_center().child(match state {
+            s if ended(s) => div().size(px(9.0)).rounded_full().shadow(vec![ring(color(INK_3))]).into_any_element(),
+            s if waits(s) => icon("diamond", 11.0, color(NEEDS)).into_any_element(),
+            s => div().size(px(9.0)).rounded_full().bg(color(hue_of(s).unwrap_or(INK_3))).into_any_element(),
+        });
+        let group: SharedString = format!("row-{index}").into();
+        let line = row_line(status, worked);
         div()
             .id(("seat", index))
+            .group(group.clone())
+            .relative()
             .flex()
             .gap(px(10.0))
             .p(px(10.0))
             .rounded(px(12.0))
-            .text_color(color(if ended(state) { INK_2 } else { INK }))
-            .when(waits(state), |row| row.bg(tint(NEEDS, if current { 0.2 } else { 0.12 })).border_1().border_color(tint(NEEDS, 0.3)))
-            .when(current && !waits(state), |row| row.bg(color(RAISE)).border_1().border_color(white(0.1)))
+            .text_color(color(INK))
+            .when(waits(state), |row| {
+                row.bg(tint(NEEDS, if current { 0.2 } else { 0.12 })).shadow(vec![ring(tint(NEEDS, 0.3))]).hover(|row| row.bg(tint(NEEDS, 0.17)))
+            })
+            .when(current && !waits(state), |row| row.bg(color(RAISE)).shadow(vec![ring(white(0.1))]))
             .when(!current && !waits(state), |row| row.hover(|row| row.bg(white(0.03))))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.fleet.focus(index, window, cx);
                 cx.notify();
             }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.menu = Some(Menu { index, at: event.position });
+                    cx.notify();
+                }),
+            )
             .child(self.mark(&seat.spec.cli, 24.0, 7.0).when(ended(state), |mark| mark.opacity(0.55)).child(dot))
             .child(
                 div()
@@ -242,44 +358,153 @@ impl Inbox {
                         div()
                             .flex()
                             .justify_between()
-                            .child(div().font_weight(if ended(state) { FontWeight::NORMAL } else { FontWeight::MEDIUM }).text_size(px(14.0)).truncate().child(seat.spec.name.clone()))
-                            .child(mono().text_size(px(12.0)).text_color(color(INK_3)).child(age(seat.spec.started_ms))),
+                            .gap(px(10.0))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(px(14.0))
+                                    .font_weight(if state == State::Stopped { FontWeight::NORMAL } else { FontWeight::MEDIUM })
+                                    .text_color(color(if state == State::Stopped { INK_2 } else { INK }))
+                                    .child(seat.spec.name.clone()),
+                            )
+                            .child(mono().flex_none().text_size(px(12.0)).text_color(color(INK_3)).group_hover(group.clone(), |time| time.opacity(0.0)).child(ago(now_ms().saturating_sub(since)))),
                     )
                     .child(
                         div()
-                            .flex()
-                            .items_center()
+                            .min_w_0()
+                            .truncate()
                             .text_size(px(12.5))
-                            .text_color(color(INK_3))
-                            .child(div().text_color(color(hue)).child(label))
-                            .child(format!(" · {cli_label}")),
+                            .text_color(color(hue_of(state).unwrap_or(INK_3)))
+                            .when(state == State::Stopped, |line| line.pr(px(72.0)))
+                            .child(line),
                     ),
             )
+            .child(
+                div()
+                    .id(("more", index))
+                    .absolute()
+                    .top(px(8.0))
+                    .right(px(8.0))
+                    .size(px(26.0))
+                    .rounded(px(8.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(color(0x1a1b20))
+                    .shadow(vec![ring(white(0.1))])
+                    .opacity(0.0)
+                    .group_hover(group, |more| more.opacity(1.0))
+                    .hover(|more| more.bg(color(0x24252b)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            this.menu = Some(Menu { index, at: event.position });
+                            cx.notify();
+                        }),
+                    )
+                    .child(icon("dots", 16.0, color(INK_2))),
+            )
+            .when(state == State::Stopped, |row| {
+                row.child(
+                    div()
+                        .id(("resume-row", index))
+                        .absolute()
+                        .right(px(8.0))
+                        .bottom(px(8.0))
+                        .h(px(24.0))
+                        .px(px(10.0))
+                        .flex()
+                        .items_center()
+                        .rounded_full()
+                        .bg(white(0.1))
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(color(INK))
+                        .hover(|pill| pill.bg(color(INK)).text_color(color(GROUND)))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(cx.listener(move |this, _, window, cx| this.resume(index, window, cx)))
+                        .child("Resume"),
+                )
+            })
+            .into_any_element()
     }
 
-    fn project_head(name: &str, count: usize) -> impl IntoElement + use<> {
-        div().flex().items_center().gap(px(2.0)).mt(px(6.0)).pt(px(8.0)).px(px(4.0)).pb(px(4.0)).child(
-            div()
-                .flex()
-                .flex_1()
-                .min_w_0()
-                .items_center()
-                .gap(px(7.0))
-                .min_h(px(32.0))
-                .pl(px(6.0))
-                .pr(px(8.0))
-                .rounded(px(9.0))
-                .text_size(px(12.5))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(color(INK_2))
-                .child(icon("chevron-down", 10.0, tint(INK_2, 0.7)))
-                .child(div().flex_1().min_w_0().truncate().child(name.to_string()))
-                .child(mono().font_weight(FontWeight::NORMAL).text_size(px(12.0)).text_color(color(INK_3)).child(count.to_string())),
-        )
+    fn project_head(&self, name: &str, count: usize, needs: usize, cx: &mut Context<Self>) -> AnyElement {
+        let folded = self.folded.contains(name);
+        let key = name.to_string();
+        div()
+            .flex()
+            .items_center()
+            .gap(px(2.0))
+            .mt(px(6.0))
+            .pt(px(8.0))
+            .px(px(4.0))
+            .pb(px(4.0))
+            .child(
+                div()
+                    .id(SharedString::from(format!("proj-{name}")))
+                    .flex()
+                    .flex_1()
+                    .min_w_0()
+                    .items_center()
+                    .gap(px(7.0))
+                    .min_h(px(32.0))
+                    .pl(px(6.0))
+                    .pr(px(8.0))
+                    .rounded(px(9.0))
+                    .text_size(px(12.5))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(color(INK_2))
+                    .hover(|head| head.bg(white(0.04)).text_color(color(INK)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.folded.remove(&key) {
+                            this.folded.insert(key.clone());
+                        }
+                        cx.notify();
+                    }))
+                    .child(icon(if folded { "chev" } else { "chev-open" }, 10.0, tint(INK_2, 0.7)))
+                    .child(div().flex_1().min_w_0().truncate().child(name.to_string()))
+                    .when(needs > 0, |head| {
+                        head.child(
+                            mono()
+                                .flex_none()
+                                .min_w(px(18.0))
+                                .h(px(18.0))
+                                .px(px(5.0))
+                                .rounded_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .bg(color(NEEDS))
+                                .text_size(px(11.0))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(color(0x1a1204))
+                                .child(needs.to_string()),
+                        )
+                    })
+                    .child(mono().flex_none().font_weight(FontWeight::NORMAL).text_size(px(12.0)).text_color(color(INK_3)).child(count.to_string())),
+            )
+            .child(
+                div()
+                    .id(SharedString::from(format!("mem-{name}")))
+                    .flex_none()
+                    .size(px(30.0))
+                    .rounded(px(9.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .opacity(0.7)
+                    .hover(|mem| mem.opacity(1.0).bg(white(0.06)))
+                    .child(icon("memory", 15.0, color(INK_3))),
+            )
+            .into_any_element()
     }
 
-    fn queue(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        // Projects in the order they first appear, each over its agents.
+    fn queue(&self, view: &View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        // Projects in the order they first appear; nothing moves when a state
+        // changes. Folding hides a project's stopped agents.
         let mut projects: Vec<String> = Vec::new();
         for seat in &self.fleet.seats {
             let name = seat.project();
@@ -290,14 +515,19 @@ impl Inbox {
         let mut list = div().id("queue").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().px(px(8.0)).pt(px(6.0)).pb(px(12.0));
         for project in &projects {
             let members: Vec<usize> = (0..self.fleet.seats.len()).filter(|i| &self.fleet.seats[*i].project() == project).collect();
-            list = list.child(Self::project_head(project, members.len()));
+            let needs = members.iter().filter(|i| waits(view.statuses[**i].state)).count();
+            let folded = self.folded.contains(project);
+            list = list.child(self.project_head(project, members.len(), needs, cx));
             for index in members {
-                let row = self.agent_row(index, &self.fleet.seats[index], cx);
+                if folded && ended(view.statuses[index].state) {
+                    continue;
+                }
+                let row = self.agent_row(index, &self.fleet.seats[index], &view.statuses[index], view.worked[index], view.since[index], cx);
                 list = list.child(row);
             }
         }
         if projects.is_empty() {
-            list = list.child(div().mx(px(10.0)).mt(px(14.0)).text_size(px(12.5)).text_color(color(INK_3)).child("No agents yet. New agent starts one."));
+            list = list.child(div().mx(px(10.0)).mt(px(6.0)).mb(px(6.0)).text_size(px(12.5)).text_color(color(INK_3)).child("No agents yet."));
         }
         div()
             .flex()
@@ -308,17 +538,70 @@ impl Inbox {
             .mb(px(DOCK_H))
             .rounded(px(18.0))
             .bg(color(PANEL))
-            .border_1()
-            .border_color(hairline())
+            .shadow(vec![ring(hairline())])
             .overflow_hidden()
             .child(list)
     }
 
-    fn stage_head(&self, seat: &Seat, index: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let state = seat.state(cx);
-        let (label, hue) = state_look(state);
+    fn stage_head(&self, seat: &Seat, index: usize, status: &TaskStatus, cx: &mut Context<Self>) -> AnyElement {
+        let state = status.state;
         let (cli_label, _) = brand(&seat.spec.cli);
-        let tab = |label: &'static str| div().h(px(28.0)).px(px(13.0)).flex().items_center().rounded_full().hover(|tab| tab.bg(white(0.06)).text_color(color(INK))).child(label);
+        let lit = hue_of(state);
+        let act = |id: &'static str, label: &'static str| {
+            div()
+                .id(id)
+                .h(px(26.0))
+                .px(px(12.0))
+                .flex()
+                .items_center()
+                .rounded_full()
+                .text_color(color(INK_2))
+                .hover(|act| act.bg(white(0.06)).text_color(color(INK)))
+                .child(label)
+        };
+        let has_model = matches!(seat.spec.cli.to_ascii_lowercase().as_str(), "claude" | "codex");
+        let acts = div().flex().items_center().gap(px(2.0)).p(px(3.0)).rounded_full().bg(white(0.05)).text_size(px(12.5)).font_weight(FontWeight::MEDIUM);
+        let acts = if state == State::Stopped {
+            acts.child(
+                div()
+                    .id("go")
+                    .h(px(26.0))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
+                    .rounded_full()
+                    .bg(color(INK))
+                    .text_color(color(GROUND))
+                    .hover(|go| go.bg(color(0xffffff)))
+                    .on_click(cx.listener(move |this, _, window, cx| this.resume(index, window, cx)))
+                    .child("Resume"),
+            )
+            .child(act("changes", "Changes"))
+            .child(act("history", "History"))
+        } else {
+            let terminal = seat.terminal.clone();
+            let model_terminal = seat.terminal.clone();
+            acts.child(act("cmds", "Commands").on_click(cx.listener(move |_, _, window, cx| {
+                // Type / so the CLI shows its own commands.
+                if let Some(t) = &terminal {
+                    t.read(cx).type_text("/");
+                    t.read(cx).focus_handle().focus(window, cx);
+                }
+            })))
+            .when(has_model, |acts| {
+                acts.child(act("model", "Model").on_click(cx.listener(move |_, _, window, cx| {
+                    if let Some(t) = &model_terminal {
+                        t.read(cx).type_text("/model\r");
+                        t.read(cx).focus_handle().focus(window, cx);
+                    }
+                })))
+            })
+            .child(act("changes", "Changes"))
+            .child(act("history", "History"))
+        };
+        let control = |id: &'static str, name: &'static str| {
+            div().id(id).size(px(30.0)).rounded_full().flex().items_center().justify_center().opacity(0.0).group_hover("stage", |c| c.opacity(1.0)).hover(|c| c.bg(white(0.06))).child(icon(name, 15.0, color(INK_3)))
+        };
         div()
             .flex()
             .flex_none()
@@ -327,8 +610,8 @@ impl Inbox {
             .pt(px(20.0))
             .pr(px(20.0))
             .pb(px(12.0))
-            .pl(px(20.0))
-            .child(self.mark(&seat.spec.cli, 42.0, 12.0).when(state == State::Working, |mark| mark.border_color(tint(WORK, 0.6))))
+            .pl(px(24.0))
+            .child(self.mark(&seat.spec.cli, 36.0, 10.0).mr(px(4.0)))
             .child(
                 div()
                     .flex()
@@ -336,8 +619,15 @@ impl Inbox {
                     .flex_1()
                     .min_w_0()
                     .gap(px(2.0))
-                    .child(div().flex().gap(px(8.0)).text_size(px(12.5)).child(div().text_color(color(INK_2)).child(cli_label)).child(mono().text_color(color(INK_3)).truncate().child(seat.spec.cwd.clone())))
-                    .child(div().text_size(px(22.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(seat.spec.name.clone())),
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.0))
+                            .text_size(px(12.5))
+                            .child(div().text_color(color(INK_2)).child(cli_label))
+                            .children(seat.branch.clone().map(|b| mono().min_w_0().truncate().text_color(color(INK_3)).child(b))),
+                    )
+                    .child(div().truncate().text_size(px(22.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(seat.spec.name.clone())),
             )
             .child(
                 div()
@@ -347,91 +637,40 @@ impl Inbox {
                     .h(px(28.0))
                     .px(px(12.0))
                     .rounded_full()
-                    .bg(if matches!(state, State::Idle | State::Stopped | State::Merged) { white(0.06) } else { tint(hue, 0.12) })
+                    .bg(lit.map(|h| tint(h, 0.12)).unwrap_or(white(0.06)))
                     .text_size(px(12.5))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(color(if matches!(state, State::Idle | State::Stopped | State::Merged) { INK_2 } else { hue }))
-                    .child(div().size(px(8.0)).rounded_full().bg(color(hue)))
-                    .child(label),
+                    .text_color(color(lit.unwrap_or(INK_2)))
+                    .child(if waits(state) { icon("diamond", 11.0, color(NEEDS)).into_any_element() } else { div().size(px(8.0)).rounded_full().bg(color(lit.unwrap_or(INK_2))).into_any_element() })
+                    .child(label_of(state)),
             )
+            .child(acts)
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .p(px(1.0))
-                    .rounded_full()
-                    .bg(white(0.05))
-                    .text_size(px(12.5))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(color(INK_2))
-                    .child(tab("Commands"))
-                    .child(tab("Model"))
-                    .child(tab("Changes"))
-                    .child(tab("History")),
-            )
-            .when(!ended(state), |head| {
-                head.child(
-                    div()
-                        .id("stop")
-                        .size(px(30.0))
-                        .rounded_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .hover(|control| control.bg(white(0.06)))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.fleet.stop(index);
+                    .child(control("stage-more", "dots").on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                            this.menu = Some(Menu { index, at: event.position });
                             cx.notify();
-                        }))
-                        .child(icon("square", 14.0, color(INK_3))),
-                )
-            })
-    }
-
-    fn stopped_panel(&self, seat: &Seat, index: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let ended = seat.terminal.as_ref().and_then(|t| t.read(cx).exit_code());
-        div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap(px(14.0))
-            .child(div().text_size(px(18.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(format!("{} is stopped.", seat.spec.name)))
-            .child(div().text_size(px(13.0)).text_color(color(INK_3)).child(match (ended, &seat.spec.session_id) {
-                (Some(code), _) => format!("It ended with code {code}. Resume carries on the same conversation."),
-                (None, Some(_)) => "Resume carries on the same conversation.".to_string(),
-                (None, None) => "Resume starts it again in the same folder.".to_string(),
-            }))
-            .child(
-                div()
-                    .id("resume")
-                    .h(px(40.0))
-                    .px(px(20.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded_full()
-                    .bg(color(0xffffff))
-                    .text_size(px(13.0))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(color(0x000000))
-                    .hover(|button| button.bg(color(0xe9e9ec)))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let _ = this.fleet.start(index, cx);
-                        this.fleet.focus(index, window, cx);
+                        }),
+                    ))
+                    .child(control("stage-remove", "x").on_click(cx.listener(move |this, _, _, cx| {
+                        this.removing = Some(index);
                         cx.notify();
-                    }))
-                    .child(icon("rotate-ccw", 14.0, color(0x000000)))
-                    .child("Resume"),
+                    }))),
             )
+            .into_any_element()
     }
 
-    fn stage(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn stage(&self, view: &View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let edge = |from: Hsla, to: Hsla| div().flex_1().h_full().bg(linear_gradient(90.0, linear_color_stop(from, 0.0), linear_color_stop(to, 1.0)));
-        let lit = tint(WORK, 0.45);
+        let lit = tint(WORK, 0.6);
         let clear = tint(WORK, 0.0);
         let panel = div()
+            .id("stage")
+            .group("stage")
             .relative()
             .flex()
             .flex_col()
@@ -441,34 +680,76 @@ impl Inbox {
             .mb(px(DOCK_H))
             .rounded(px(18.0))
             .bg(color(PANEL))
-            .border_1()
-            .border_color(hairline())
+            .shadow(vec![ring(hairline())])
             .overflow_hidden();
         let Some(index) = self.fleet.focused.filter(|i| *i < self.fleet.seats.len()) else {
-            return panel
-                .items_center()
-                .justify_center()
-                .gap(px(10.0))
-                .child(div().text_size(px(18.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child("Nothing on stage."))
-                .child(div().text_size(px(13.0)).text_color(color(INK_3)).child("Start an agent with New agent, below."));
+            return panel.items_center().justify_center().child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(24.0))
+                    .child(div().text_size(px(18.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child("No agents yet."))
+                    .child(div().text_size(px(14.0)).text_color(color(INK_3)).child("Start one with New agent."))
+                    .child(
+                        div()
+                            .id("empty-new")
+                            .mt(px(10.0))
+                            .h(px(36.0))
+                            .px(px(16.0))
+                            .flex()
+                            .items_center()
+                            .rounded_full()
+                            .bg(color(0xffffff))
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(color(0x000000))
+                            .hover(|b| b.bg(color(0xe9e9ec)))
+                            .on_click(cx.listener(|this, _, window, cx| this.open_sheet(window, cx)))
+                            .child("New agent"),
+                    ),
+            );
         };
         let seat = &self.fleet.seats[index];
-        let state = seat.state(cx);
+        let status = &view.statuses[index];
+        // The edge glows while the CLI runs, whatever it is doing (pane.run).
+        let running = seat.terminal.as_ref().is_some_and(|t| t.read(cx).exit_code().is_none());
         let panel = panel
-            .when(state == State::Working, |panel| panel.child(div().absolute().top_0().left_0().right_0().h(px(2.0)).flex().child(edge(clear, lit)).child(edge(lit, clear))))
-            .child(self.stage_head(seat, index, cx));
-        match (&seat.terminal, state) {
-            (Some(terminal), s) if !ended(s) => panel.child(div().flex_1().min_h_0().pt(px(4.0)).px(px(24.0)).pb(px(12.0)).child(terminal.clone())),
-            _ => panel.child(self.stopped_panel(seat, index, cx)),
+            .when(running, |panel| panel.child(div().absolute().top_0().left_0().right_0().h(px(2.0)).flex().child(edge(clear, lit)).child(edge(lit, clear))))
+            .child(self.stage_head(seat, index, status, cx));
+        // A stopped agent keeps its last screen; nothing to type into until Resume.
+        match &seat.terminal {
+            Some(terminal) => panel.child(
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .pt(px(4.0))
+                    .px(px(24.0))
+                    .pb(px(12.0))
+                    .child(terminal.clone())
+                    .child(div().absolute().top_0().left_0().right_0().h(px(8.0)).bg(linear_gradient(180.0, linear_color_stop(color(PANEL), 0.0), linear_color_stop(tint(PANEL, 0.0), 1.0)))),
+            ),
+            None => panel,
         }
     }
 
-    fn top_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let states: Vec<State> = self.fleet.seats.iter().map(|s| s.state(cx)).collect();
-        let stopped = states.iter().filter(|s| **s == State::Stopped).count();
-        let (lead, rest) = headline(&states);
-        let window_button = |name: &'static str, area: WindowControlArea, id: &'static str| {
-            div().id(id).w(px(46.0)).h(px(38.0)).flex().items_center().justify_center().window_control_area(area).hover(|button| button.bg(white(0.08))).child(icon(name, 14.0, color(INK_2)))
+    fn top_bar(&self, view: &View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let stopped = view.statuses.iter().filter(|s| s.state == State::Stopped).count();
+        let (lead, rest) = headline(&view.statuses, &view.worked);
+        let window_button = |name: &'static str, area: WindowControlArea, id: &'static str, close: bool| {
+            div()
+                .id(id)
+                .w(px(46.0))
+                .h(px(38.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .window_control_area(area)
+                .when(close, |b| b.hover(|b| b.bg(color(0xe81123))))
+                .when(!close, |b| b.hover(|b| b.bg(white(0.08))))
+                .child(icon(name, 14.0, color(INK_2)))
         };
         div()
             .relative()
@@ -476,22 +757,22 @@ impl Inbox {
             .flex_none()
             .items_center()
             .h(px(68.0))
-            .pl(px(20.0))
+            .pl(px(12.0))
             .pr(px(4.0))
             .window_control_area(WindowControlArea::Drag)
-            .child(icon("house", 15.0, color(INK_2)))
+            .child(div().id("home").size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("house", 15.0, color(INK_3))))
             .child(
                 div()
                     .flex()
                     .flex_1()
                     .min_w_0()
-                    .gap(px(7.0))
-                    .ml(px(20.0))
+                    .ml(px(18.0))
+                    .truncate()
                     .text_size(px(24.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(color(INK_3))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(lead))
-                    .child(rest),
+                    .child(div().flex_none().font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(lead))
+                    .child(div().min_w_0().truncate().child(rest)),
             )
             .when(stopped > 0, |bar| {
                 bar.child(
@@ -499,16 +780,16 @@ impl Inbox {
                         .id("resume-all")
                         .flex()
                         .items_center()
-                        .gap(px(6.0))
+                        .gap(px(5.0))
                         .h(px(32.0))
-                        .px(px(16.0))
+                        .px(px(14.0))
                         .mr(px(146.0))
                         .rounded_full()
-                        .bg(color(RAISE))
-                        .text_size(px(13.0))
+                        .bg(white(0.06))
+                        .text_size(px(12.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(color(INK))
-                        .hover(|pill| pill.bg(color(0x1d1e23)))
+                        .hover(|pill| pill.bg(white(0.12)))
                         .on_click(cx.listener(|this, _, window, cx| {
                             for index in 0..this.fleet.seats.len() {
                                 if this.fleet.seats[index].state(cx) == State::Stopped {
@@ -522,7 +803,7 @@ impl Inbox {
                         }))
                         .child(icon("rotate-ccw", 13.0, color(INK)))
                         .child("Resume all")
-                        .child(mono().px(px(6.0)).rounded_full().bg(white(0.14)).text_size(px(11.0)).child(stopped.to_string())),
+                        .child(mono().ml(px(2.0)).px(px(6.0)).rounded_full().bg(white(0.14)).text_size(px(11.0)).child(stopped.to_string())),
                 )
             })
             .child(
@@ -531,9 +812,9 @@ impl Inbox {
                     .top_0()
                     .right_0()
                     .flex()
-                    .child(window_button("minus", WindowControlArea::Min, "win-min"))
-                    .child(window_button("square", WindowControlArea::Max, "win-max"))
-                    .child(window_button("x", WindowControlArea::Close, "win-close")),
+                    .child(window_button("minus", WindowControlArea::Min, "win-min", false))
+                    .child(window_button("square", WindowControlArea::Max, "win-max", false))
+                    .child(window_button("x", WindowControlArea::Close, "win-close", true)),
             )
     }
 
@@ -562,8 +843,6 @@ impl Inbox {
                 .justify_center()
                 .rounded_full()
                 .bg(color(RAISE))
-                .border_1()
-                .border_color(white(0.08))
                 .shadow(float())
                 .hover(|round| round.bg(color(0x1d1e23)))
                 .child(icon(name, 17.0, color(INK_2)))
@@ -577,19 +856,7 @@ impl Inbox {
             .justify_center()
             .items_center()
             .gap(px(10.0))
-            .child(
-                div()
-                    .flex()
-                    .gap(px(2.0))
-                    .p(px(4.0))
-                    .rounded_full()
-                    .bg(color(RAISE))
-                    .border_1()
-                    .border_color(white(0.08))
-                    .shadow(float())
-                    .child(seg("rectangle-horizontal", "Focus", true))
-                    .child(seg("layout-grid", "Grid", false)),
-            )
+            .child(div().flex().gap(px(2.0)).p(px(4.0)).rounded_full().bg(color(RAISE)).shadow(float()).child(seg("rectangle-horizontal", "Focus", true)).child(seg("layout-grid", "Grid", false)))
             .child(
                 div()
                     .flex()
@@ -601,14 +868,12 @@ impl Inbox {
                     .pr(px(8.0))
                     .rounded_full()
                     .bg(color(RAISE))
-                    .border_1()
-                    .border_color(white(0.08))
                     .shadow(float())
                     .text_size(px(13.0))
                     .text_color(color(INK_3))
                     .child(icon("search", 14.0, color(INK_3)))
                     .child(div().flex_1().truncate().child("Jump to an agent or run a command"))
-                    .child(mono().text_size(px(11.0)).px(px(6.0)).py(px(2.0)).rounded(px(6.0)).border_1().border_color(white(0.12)).child("Ctrl+K")),
+                    .child(mono().text_size(px(11.0)).px(px(6.0)).py(px(2.0)).rounded(px(6.0)).shadow(vec![ring(white(0.12))]).child("Ctrl+K")),
             )
             .child(
                 div()
@@ -630,6 +895,146 @@ impl Inbox {
             .child(round("history"))
             .child(round("circle-question-mark"))
             .child(round("settings"))
+    }
+
+    fn resume(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let _ = self.fleet.start(index, cx);
+        self.fleet.focus(index, window, cx);
+        cx.notify();
+    }
+
+    /// selectmenu.css: the right-click menu of an agent.
+    fn menu_view(&self, menu: &Menu, view: &View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let index = menu.index;
+        let running = view.statuses.get(index).is_some_and(|s| !ended(s.state));
+        let item = |id: &'static str, label: &'static str, danger: bool, disabled: bool| {
+            div()
+                .id(id)
+                .min_h(px(32.0))
+                .px(px(12.0))
+                .py(px(6.0))
+                .flex()
+                .items_center()
+                .rounded(px(9.0))
+                .text_color(color(if disabled { INK_3 } else if danger { DANGER } else { INK }))
+                .when(!disabled && !danger, |i| i.hover(|i| i.bg(white(0.08))))
+                .when(!disabled && danger, |i| i.hover(|i| i.bg(tint(DANGER, 0.12))))
+                .child(label)
+        };
+        let close = cx.listener(|this, _: &MouseDownEvent, _, cx| {
+            this.menu = None;
+            cx.notify();
+        });
+        div().absolute().inset_0().on_mouse_down(MouseButton::Left, close).child(
+            deferred(
+                anchored().position(menu.at).snap_to_window().child(
+                    div()
+                        .id("menu")
+                        .min_w(px(210.0))
+                        .p(px(5.0))
+                        .rounded(px(14.0))
+                        .bg(color(0x16171b))
+                        .shadow(vec![
+                            BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.6), offset: point(px(0.0), px(22.0)), blur_radius: px(50.0), spread_radius: px(0.0), inset: false },
+                            BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.4), offset: point(px(0.0), px(2.0)), blur_radius: px(6.0), spread_radius: px(0.0), inset: false },
+                            ring(white(0.1)),
+                        ])
+                        .text_size(px(13.5))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(item("menu-open", "Open", false, false).on_click(cx.listener(move |this, _, window, cx| {
+                            this.menu = None;
+                            this.fleet.focus(index, window, cx);
+                            cx.notify();
+                        })))
+                        .when(!running, |m| {
+                            m.child(item("menu-resume", "Resume", false, false).on_click(cx.listener(move |this, _, window, cx| {
+                                this.menu = None;
+                                this.resume(index, window, cx);
+                            })))
+                        })
+                        .child(item("menu-stop", "Stop", false, !running).when(running, |i| {
+                            i.on_click(cx.listener(move |this, _, _, cx| {
+                                this.menu = None;
+                                this.fleet.stop(index);
+                                cx.notify();
+                            }))
+                        }))
+                        .child(div().h(px(1.0)).mx(px(8.0)).my(px(5.0)).bg(white(0.08)))
+                        .child(item("menu-remove", "Remove agent…", true, false).on_click(cx.listener(move |this, _, _, cx| {
+                            this.menu = None;
+                            this.removing = Some(index);
+                            cx.notify();
+                        }))),
+                ),
+            )
+            .with_priority(1),
+        )
+    }
+
+    /// confirmModal: "Remove Bob?" before an agent goes.
+    fn confirm_view(&self, index: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let seat = &self.fleet.seats[index];
+        let running = seat.terminal.as_ref().is_some_and(|t| t.read(cx).exit_code().is_none());
+        let message = if running {
+            "It stops and its terminal closes. Its branch and the changes on it stay in git."
+        } else {
+            "Its terminal closes. Its branch and the changes on it stay in git."
+        };
+        let button = |id: &'static str, label: &'static str, danger: bool| {
+            div()
+                .id(id)
+                .h(px(36.0))
+                .px(px(16.0))
+                .flex()
+                .items_center()
+                .rounded_full()
+                .text_size(px(13.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .when(danger, |b| b.bg(color(DANGER)).text_color(color(GROUND)).hover(|b| b.opacity(0.9)))
+                .when(!danger, |b| b.text_color(color(INK_2)).hover(|b| b.bg(white(0.06)).text_color(color(INK))))
+                .child(label)
+        };
+        div()
+            .id("confirm-scrim")
+            .absolute()
+            .inset_0()
+            .bg(hsla(0.0, 0.0, 0.0, 0.55))
+            .flex()
+            .justify_center()
+            .pt(relative(0.14))
+            .child(
+                div()
+                    .id("confirm")
+                    .w(px(440.0))
+                    .h_auto()
+                    .flex()
+                    .flex_col()
+                    .gap(px(14.0))
+                    .p(px(22.0))
+                    .rounded(px(18.0))
+                    .bg(color(PANEL))
+                    .shadow(vec![BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.75), offset: point(px(0.0), px(40.0)), blur_radius: px(100.0), spread_radius: px(0.0), inset: false }, ring(white(0.09))])
+                    .child(div().text_size(px(20.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(format!("Remove {}?", seat.spec.name)))
+                    .child(div().text_size(px(14.0)).line_height(relative(1.5)).text_color(color(INK_2)).child(message))
+                    .child(
+                        div()
+                            .flex()
+                            .justify_end()
+                            .gap(px(8.0))
+                            .child(button("confirm-cancel", "Cancel", false).on_click(cx.listener(|this, _, _, cx| {
+                                this.removing = None;
+                                cx.notify();
+                            })))
+                            .child(button("confirm-ok", "Remove", true).on_click(cx.listener(move |this, _, window, cx| {
+                                this.removing = None;
+                                this.fleet.remove(index);
+                                if let Some(f) = this.fleet.focused {
+                                    this.fleet.focus(f, window, cx);
+                                }
+                                cx.notify();
+                            }))),
+                    ),
+            )
     }
 
     fn open_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -757,8 +1162,6 @@ impl Inbox {
                     .p(px(24.0))
                     .rounded(px(18.0))
                     .bg(color(PANEL))
-                    .border_1()
-                    .border_color(white(0.09))
                     .shadow(float())
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(div().text_size(px(18.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child("New agent"))
@@ -777,7 +1180,7 @@ impl Inbox {
                                     .child(div().flex_1().child(Input::new(&sheet.folder)))
                                     .child(button("browse", "Browse", false).on_click(cx.listener(|this, _, window, cx| this.browse(window, cx)))),
                             )
-                            .when_some(sheet.error.clone(), |field, error| field.child(div().text_size(px(12.5)).text_color(color(0xf2766b)).child(error))),
+                            .when_some(sheet.error.clone(), |field, error| field.child(div().text_size(px(12.5)).text_color(color(DANGER)).child(error))),
                     )
                     .child(
                         div()
@@ -793,11 +1196,14 @@ impl Inbox {
 
 impl Render for Inbox {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let queue = self.queue(cx);
-        let stage = self.stage(cx);
-        let top = self.top_bar(cx);
+        let view = self.view(cx);
+        let queue = self.queue(&view, cx);
+        let stage = self.stage(&view, cx);
+        let top = self.top_bar(&view, cx);
         let dock = self.dock(cx);
         let sheet = self.sheet.as_ref().map(|sheet| self.sheet_view(sheet, cx));
+        let menu = self.menu.as_ref().filter(|m| m.index < self.fleet.seats.len()).map(|m| self.menu_view(m, &view, cx));
+        let confirm = self.removing.filter(|i| *i < self.fleet.seats.len()).map(|i| self.confirm_view(i, cx));
         div()
             .relative()
             .flex()
@@ -810,5 +1216,7 @@ impl Render for Inbox {
             .child(div().flex().flex_1().min_h_0().child(queue).child(stage))
             .child(dock)
             .children(sheet)
+            .children(menu)
+            .children(confirm)
     }
 }

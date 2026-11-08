@@ -285,6 +285,11 @@ impl Terminal {
     }
 
     /// How long since the CLI last wrote anything, in ms.
+    /// Type 	ext into the CLI as if it came from the keyboard.
+    pub fn type_text(&self, text: &str) {
+        self.write(keys::text_records(text));
+    }
+
     /// When the CLI last wrote anything, ms since the epoch.
     pub fn last_output_ms(&self) -> u64 {
         self.last_output.load(Ordering::Relaxed)
