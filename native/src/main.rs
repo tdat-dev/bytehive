@@ -25,6 +25,9 @@ const FONTS: [&[u8]; 5] = [
 fn main() {
     gpui_kit::application().with_assets(icons::Icons).run(|cx| {
         gpui_kit::init(cx);
+        // The kit's own widgets (the New agent folder field) follow its theme:
+        // dark, like the rest, never the OS's light mode.
+        gpui_kit::component::theme::Theme::change(gpui_kit::component::theme::ThemeMode::Dark, None, cx);
         keys::install();
         cx.text_system().add_fonts(FONTS.iter().map(|f| Cow::Borrowed(*f)).collect()).expect("bundled fonts");
         let options = WindowOptions {
