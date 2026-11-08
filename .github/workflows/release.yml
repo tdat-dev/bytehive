@@ -55,7 +55,7 @@ jobs:
 
       # This repository is private, so its releases can't be downloaded by the
       # people who installed ByteHive. Installers and the updater's latest.json
-      # go to the public tdat-dev/maestro-releases instead (releases only, no
+      # go to the public tdat-dev/bytehive-releases instead (releases only, no
       # code), which is what tauri.conf.json's updater endpoint reads.
       - name: Release notes from CHANGELOG
         id: notes
@@ -73,13 +73,13 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           # A fine-grained token with Contents: read and write on
-          # tdat-dev/maestro-releases; GITHUB_TOKEN can't write to another repo.
+          # tdat-dev/bytehive-releases; GITHUB_TOKEN can't write to another repo.
           GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           owner: tdat-dev
-          repo: maestro-releases
+          repo: bytehive-releases
           # the tag is made there, on its own branch: this repo's commits aren't in it
           releaseCommitish: main
           tagName: ${{ github.ref_name }}

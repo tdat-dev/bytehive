@@ -6,9 +6,9 @@
 
 **Spawn & orchestrate fleets of AI agent CLIs — real terminals, real tree-kill.**
 
-[![Latest release](https://img.shields.io/github/v/release/tdat-dev/maestro-releases?label=release&color=c6f135)](https://github.com/tdat-dev/maestro-releases/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/tdat-dev/bytehive-releases?label=release&color=c6f135)](https://github.com/tdat-dev/bytehive-releases/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d6)](https://github.com/tdat-dev/maestro-releases/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d6)](https://github.com/tdat-dev/bytehive-releases/releases/latest)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)](https://tauri.app)
 
 A native Windows desktop app for running many AI coding agents side by side —
@@ -16,7 +16,7 @@ Claude Code, Codex, Gemini, Aider, Cursor Agent, Copilot, and more — each in a
 real ConPTY terminal, tiled into workspaces you can rearrange, detach, and
 merge like a window manager built for agent swarms.
 
-[Download the latest installer »](https://github.com/tdat-dev/maestro-releases/releases/latest)
+[Download the latest installer »](https://github.com/tdat-dev/bytehive-releases/releases/latest)
 
 </div>
 
@@ -89,7 +89,7 @@ that command, the full tool reference, and a worktree-isolation caveat.
 ## Install
 
 Grab `bytehive_<version>_x64-setup.exe` from the
-[latest release](https://github.com/tdat-dev/maestro-releases/releases/latest) and run
+[latest release](https://github.com/tdat-dev/bytehive-releases/releases/latest) and run
 it. ByteHive auto-updates from then on (signed releases via the Tauri updater).
 
 > **Requirements:** Windows 10/11 x64. The AI CLIs themselves (e.g. `claude`,

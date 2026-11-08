@@ -23,7 +23,7 @@ exe (`tauri build --no-bundle`) and renames it. Copy the whole
 | app data (settings, sessions) | identifier-based | separate, identifier-based |
 | dashboard port | 8477 (+1 terminal WS) | 8577 (+1 terminal WS) |
 | browser hub file | `~/.maestro/browser-hub.json` | `~/.maestro/browser-hub.supervisor.json` |
-| auto-update | on (maestro-releases feed) | on (own supervisor-releases feed) |
+| auto-update | on (bytehive-releases feed) | on (own supervisor-releases feed) |
 
 How it works:
 
@@ -57,7 +57,7 @@ so the two editions never cross-update.
   publishes them.
 - `RELEASES_TOKEN` must have Contents: read and write on
   `tdat-dev/maestro-supervisor-releases` too, not just
-  `tdat-dev/maestro-releases`, or publishing fails. It is a fine-grained
+  `tdat-dev/bytehive-releases`, or publishing fails. It is a fine-grained
   token: add the repo under its repository access (or mint a new one and
   `gh secret set RELEASES_TOKEN`).
 - Install the first Supervisor release manually once; updates after that
