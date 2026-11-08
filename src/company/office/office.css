@@ -11,6 +11,8 @@
 .co-rail ul { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
 .co-needs { gap: var(--s2); }
 .co-n { font: var(--t-title); color: var(--honey); }
+/* What the numbers on the job lines are, said once over them. */
+.co-h-meta { margin-left: auto; color: var(--ink-3); font: var(--t-meta); }
 .co-n:empty { display: none; }
 .co-error { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--danger-soft); color: var(--danger); font: var(--t-body); }
 .co-hint { font: var(--t-meta); color: var(--ink-3); }
@@ -198,4 +200,10 @@ body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex
   .co-give label { font: var(--t-title); }
   .co-give .co-hint { display: none; }
   .co-foot { justify-content: flex-end; }
+  /* The count of cards below stands at the rail's foot while there are any. */
+  .co-below { position: sticky; bottom: calc(var(--s4) * -1); z-index: 1; height: 32px; margin: 0 calc(var(--s4) * -1); border-radius: 0; background: var(--panel); box-shadow: 0 -1px 0 var(--line); }
+}
+/* A short window keeps the box to its words: the examples come back with the room. */
+@media (max-height: 640px) {
+  .co-chips { display: none; }
 }

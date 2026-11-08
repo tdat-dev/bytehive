@@ -11,8 +11,10 @@ import { BUILDING, rowTarget, type Level } from "./nav";
 import type { OfficeSource } from "./source";
 
 const RAISE_BY = 1_000_000;
+/** The height of the "more below" line where it stands over the foot of a short rail. */
+const FOOT = 32;
 const ASK_HINT = "Add marketing to gcare";
-const WHY_HINT = "Fewer hires, and leave QA for later";
+const WHY_HINT = "For example: fewer hires, and leave QA for later";
 const NOTE_NEEDED = "Send back needs a note. To drop the job instead, use Cancel job in its menu.";
 /** Examples for an empty box: what a first job can sound like. */
 const EXAMPLES = ["Add a pricing page", "Fix the login", "Write the docs"];
@@ -146,7 +148,7 @@ export interface RailOptions {
 async function confirmEnd(j: OfficeJob): Promise<boolean> {
   const r = await confirmModal({
     title: `${stopWord(j)}?`,
-    message: `${j.title} ends here, and its people stop working on it. Its cards and branches stay.`,
+    message: `"${j.title}" ends here, and its people stop working on it. Its cards and branches stay.`,
     okLabel: stopWord(j),
     cancelLabel: "Keep job",
     danger: true,
@@ -183,13 +185,24 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
 
   const busy = (key: string) => pending.has(key);
 
-  /** Cards past the bottom of the list, at least partly: the rail is short and the scrollbar
-   *  hides until hovered, so a cut list would read as the whole of it. */
-  const below = (): HTMLElement[] => {
+  /** What scrolls: the list on a tall rail, the whole rail on a short window. */
+  const scroller = (): HTMLElement | null => {
     const list = body?.querySelector<HTMLElement>("[data-needs]");
-    if (!list || list.scrollHeight <= list.clientHeight) return [];
-    const fold = list.scrollTop + list.clientHeight;
-    return [...list.querySelectorAll<HTMLElement>(":scope > .co-card")].filter((c) => c.offsetTop + c.offsetHeight > fold + 1);
+    for (const x of [list, body]) if (x && x.scrollHeight > x.clientHeight + 1) return x;
+    return null;
+  };
+  /** Cards past the bottom of what scrolls, at least partly: the scrollbar hides until hovered,
+   *  so a cut list would read as the whole of it. Measured on screen, where the cut is. */
+  const below = (): HTMLElement[] => {
+    const box = scroller();
+    if (!box) return [];
+    // On a short window the count stands at the rail's foot, over the last few pixels.
+    const fold = box.getBoundingClientRect().bottom - (box === body ? FOOT : 0);
+    // A card counts once most of it is out of sight: one cut near its foot is still read.
+    return [...box.querySelectorAll<HTMLElement>("[data-needs] > .co-card")].filter((c) => {
+      const r = c.getBoundingClientRect();
+      return (r.top + r.bottom) / 2 > fold;
+    });
   };
   const edge = () => {
     const more = body?.querySelector<HTMLElement>("[data-below]");
@@ -301,10 +314,12 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
         `<h3 id="coNeedsH">Needs you <span class="co-n" data-count></span></h3>` +
         `<ul class="co-needs" aria-labelledby="coNeedsH" data-needs></ul>` +
         `<button type="button" class="btn quiet sm co-below" data-below hidden></button>` +
-        `<h3 id="coJobsH">Jobs</h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
+        `<h3 id="coJobsH">Jobs <span class="co-h-meta">Tokens used of the cap</span></h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
       const list = el.querySelector<HTMLElement>("[data-needs]")!;
       list.addEventListener("scroll", edge, { passive: true });
+      el.addEventListener("scroll", edge, { passive: true });
       sized?.observe(list);
+      sized?.observe(el);
       el.addEventListener("input", (e) => {
         if (short.delete((e.target as HTMLElement).dataset.note ?? "")) draw();
       });
@@ -320,7 +335,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       el.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
         if (target.closest("[data-below]")) {
-          below()[0]?.scrollIntoView({ block: "nearest" });
+          below()[0]?.scrollIntoView({ block: "start" });
           return;
         }
         const opener = target.closest<HTMLElement>("[data-menu]");

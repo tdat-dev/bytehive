@@ -335,9 +335,13 @@ describe("Needs you rail", () => {
     const more = el.querySelector<HTMLElement>("[data-below]")!;
     expect(more.hidden).toBe(true);
     const at = (x: HTMLElement, props: Record<string, number>) => { for (const [k, v] of Object.entries(props)) Object.defineProperty(x, k, { configurable: true, value: v }); };
-    at(list, { scrollHeight: 300, clientHeight: 120, scrollTop: 0 });
+    // Where things are on screen, as the list scrolls by `top`.
+    let top = 0;
+    const box = (x: HTMLElement, y: () => number, h: number) => { x.getBoundingClientRect = () => ({ top: y(), bottom: y() + h }) as DOMRect; };
+    at(list, { scrollHeight: 300, clientHeight: 120 });
+    box(list, () => 50, 120);
     const cards = [...list.querySelectorAll<HTMLElement>(".co-card")];
-    cards.forEach((c, i) => at(c, { offsetTop: i * 100, offsetHeight: 90 }));
+    cards.forEach((c, i) => box(c, () => 50 + i * 100 - top, 90));
     const seen = vi.fn();
     cards[1].scrollIntoView = seen;
     list.dispatchEvent(new Event("scroll"));
@@ -345,7 +349,7 @@ describe("Needs you rail", () => {
     expect(more.textContent).toBe("2 more below");
     more.click();
     expect(seen).toHaveBeenCalled();
-    at(list, { scrollTop: 180 });
+    top = 180;
     list.dispatchEvent(new Event("scroll"));
     expect(more.hidden).toBe(true);
   });
