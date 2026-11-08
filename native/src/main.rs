@@ -7,8 +7,10 @@ mod fleet;
 mod icons;
 mod inbox;
 mod keys;
+mod plan;
 mod presets;
 mod terminal;
+mod usage;
 
 use std::borrow::Cow;
 

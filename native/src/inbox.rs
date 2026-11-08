@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -17,6 +18,7 @@ use supervise::typing::{TypeStep, Typer};
 use crate::brand::{self, Mark};
 use crate::fleet::{Fleet, Race, Seat, now_ms};
 use crate::presets::{self, PRESETS, Prefs, Template};
+use crate::{plan, usage};
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -62,6 +64,17 @@ fn hairline() -> Hsla {
 fn tile(hex: u32) -> Hsla {
     let mix = |shift: u32| ((hex >> shift & 0xff) as f32 * 0.22 + (0x11 as f32) * 0.78) as u32;
     color((mix(16) << 16) | (mix(8) << 8) | mix(0))
+}
+
+/// A native tooltip, today's title="".
+fn tip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let text: SharedString = text.into();
+    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+}
+
+fn haze() -> std::sync::Arc<Image> {
+    static HAZE: std::sync::OnceLock<std::sync::Arc<Image>> = std::sync::OnceLock::new();
+    HAZE.get_or_init(|| std::sync::Arc::new(Image::from_bytes(ImageFormat::Png, include_bytes!("../assets/haze.png").to_vec()))).clone()
 }
 
 /// `inset 0 0 0 1px`: a ring that takes no room, so rows never shift.
@@ -270,7 +283,20 @@ pub struct Inbox {
     since: HashMap<String, (State, u64)>,
     /// Agents that have worked on something: idle then reads as done.
     worked: HashSet<String>,
+    /// Claude's and Codex's plan limits.
+    plans: (plan::Source, plan::Source),
+    /// Per agent id: what it has used, as last read.
+    uses: HashMap<String, Use>,
     _ticker: Task<()>,
+    _plans: Task<()>,
+}
+
+/// What an agent has used, and when that was last asked.
+#[derive(Default)]
+struct Use {
+    usage: Option<usage::Usage>,
+    at: u64,
+    busy: bool,
 }
 
 impl Inbox {
@@ -283,7 +309,21 @@ impl Inbox {
                 }
             }
         });
+        // A few seconds after start, never in the way of CLIs starting, then
+        // every few minutes.
+        let plans = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(plan::FIRST_MS)).await;
+            loop {
+                if this.update(cx, |this, cx| this.ask_plans(cx)).is_err() {
+                    break;
+                }
+                cx.background_executor().timer(Duration::from_millis(plan::EVERY_MS)).await;
+            }
+        });
         Self {
+            plans: Default::default(),
+            uses: HashMap::new(),
+            _plans: plans,
             fleet: Fleet::load(),
             prefs: Prefs::load(),
             sheet: None,
@@ -300,6 +340,7 @@ impl Inbox {
 
     /// Reread every agent; redraw when a state moved or a minute rolled on.
     fn tick(&mut self, cx: &mut Context<Self>) {
+        self.refresh_usage(cx);
         let mut changed = self.fleet.absorb();
         let now = now_ms();
         for seat in &self.fleet.seats {
@@ -420,8 +461,10 @@ impl Inbox {
         });
         let group: SharedString = format!("row-{index}").into();
         let line = row_line(status, worked);
+        let used = self.uses.get(&seat.spec.id).and_then(|u| u.usage.clone());
         div()
             .id(("seat", index))
+            .tooltip(tip(format!("{}{} . {} . right-click for more", seat.spec.title.clone().unwrap_or_else(|| seat.spec.name.clone()), if seat.spec.title.is_some() { format!(" . {}", seat.spec.name) } else { String::new() }, seat.project()).replace(" . ", " \u{00b7} ")))
             .group(group.clone())
             .relative()
             .flex()
@@ -482,7 +525,14 @@ impl Inbox {
                             .when_some(seat.spec.race.clone(), |line, race| {
                                 line.child(mono().flex_none().px(px(6.0)).py(px(1.0)).rounded(px(5.0)).bg(white(0.07)).text_size(px(11.0)).text_color(color(INK_2)).child(format!("race {}/{}", race.n, race.of)))
                             })
-                            .child(div().min_w_0().truncate().text_color(color(hue_of(state).unwrap_or(INK_3))).child(line)),
+                            .child(div().min_w_0().truncate().text_color(color(hue_of(state).unwrap_or(INK_3))).child(line))
+                            // What its conversation has used: money when its CLI
+                            // prices it, else tokens; its context once nearly full.
+                            .children(used.as_ref().and_then(|u| {
+                                let what = u.usd.map(supervise::pricing::money).or_else(|| u.tokens.map(|t| format!("{} tokens", usage::tokens(t))))?;
+                                Some(mono().min_w_0().truncate().text_size(px(11.5)).text_color(color(INK_3)).child(format!("· {what}")))
+                            }))
+                            .children(used.as_ref().and_then(|u| u.context_pct).filter(|p| *p >= 80.0).map(|p| mono().flex_none().text_size(px(11.5)).text_color(color(NEEDS)).child(format!("· {}% context", p.round())))),
                     ),
             )
             .child(
@@ -515,6 +565,7 @@ impl Inbox {
                 row.child(
                     div()
                         .id(("resume-row", index))
+                        .tooltip(tip(format!("Start {} again, in the conversation it was last in", seat.spec.name)))
                         .absolute()
                         .right(px(8.0))
                         .bottom(px(8.0))
@@ -550,6 +601,7 @@ impl Inbox {
             .child(
                 div()
                     .id(SharedString::from(format!("proj-{name}")))
+                    .tooltip(tip(if folded { format!("{name} \u{00b7} unfold") } else { format!("{name} \u{00b7} fold the stopped away") }))
                     .flex()
                     .flex_1()
                     .min_w_0()
@@ -594,6 +646,7 @@ impl Inbox {
             .child(
                 div()
                     .id(SharedString::from(format!("mem-{name}")))
+                    .tooltip(tip(format!("Project memory: what every agent in {name} knows")))
                     .flex_none()
                     .size(px(30.0))
                     .rounded(px(9.0))
@@ -617,7 +670,7 @@ impl Inbox {
                 projects.push(name);
             }
         }
-        let mut list = div().id("queue").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().px(px(8.0)).pt(px(6.0)).pb(px(12.0));
+        let mut list = div().id("queue").flex().flex_col().flex_1().min_h_0().px(px(8.0)).pt(px(6.0)).pb(px(12.0));
         for project in &projects {
             let members: Vec<usize> = (0..self.fleet.seats.len()).filter(|i| &self.fleet.seats[*i].project() == project).collect();
             let needs = members.iter().filter(|i| waits(view.statuses[**i].state)).count();
@@ -645,16 +698,155 @@ impl Inbox {
             .bg(color(PANEL))
             .shadow(vec![ring(hairline())])
             .overflow_hidden()
-            .child(list)
+            // A thin thumb over a clear track, as tokens.css draws scrollbars.
+            .child(list.overflow_y_scrollbar())
+            .children(self.plan_view())
+    }
+
+    /// .iq-plan: the plans' limits at the foot of the list, always there once
+    /// a plan has something to say.
+    fn plan_view(&self) -> Option<AnyElement> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut sections: Vec<AnyElement> = Vec::new();
+        for src in [&self.plans.0, &self.plans.1] {
+            let Some(u) = &src.usage else {
+                if src.problem.as_deref() == Some("expired") {
+                    sections.push(div().text_size(px(12.0)).line_height(relative(1.5)).text_color(color(INK_3)).child("Claude's sign-in renews the next time an agent runs; its limits show then.").into_any_element());
+                }
+                continue;
+            };
+            if plan::all_reset(u, now) {
+                continue;
+            }
+            let rows = plan::rows(u, now);
+            if rows.is_empty() {
+                continue;
+            }
+            // How fresh: a Claude answer that failed since, or Codex numbers from its last run.
+            let as_of = if src.problem.is_some() { Some(src.asked_at as i64) } else { u.as_of_ms };
+            let stale = as_of.filter(|at| *at > 0 && (src.problem.is_some() || now - at > 10 * 60_000));
+            let mut section = div().flex().flex_col().gap(px(12.0)).child(
+                div()
+                    .flex()
+                    .gap(px(6.0))
+                    .items_baseline()
+                    .text_size(px(11.5))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(color(INK_3))
+                    .child(plan::title(u))
+                    .children(stale.map(|at| div().font_weight(FontWeight::NORMAL).child(format!("as of {}", plan::clock(at))))),
+            );
+            for row in rows {
+                let tone = match row.level {
+                    plan::Level::Full => Some(DANGER),
+                    plan::Level::High => Some(NEEDS),
+                    plan::Level::Ok => None,
+                };
+                section = section.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(5.0))
+                        .child(
+                            div()
+                                .flex()
+                                .justify_between()
+                                .items_baseline()
+                                .text_size(px(12.5))
+                                .child(div().text_color(color(INK_2)).child(row.label))
+                                .child(mono().font_weight(FontWeight::MEDIUM).text_size(px(12.0)).text_color(color(tone.unwrap_or(INK))).child(format!("{}%", row.percent))),
+                        )
+                        .child(div().h(px(4.0)).rounded_full().bg(white(0.08)).overflow_hidden().child(div().h_full().min_w(px(2.0)).w(relative(row.percent.min(100) as f32 / 100.0)).rounded_full().bg(color(tone.unwrap_or(INK_2))))),
+                )
+                .when(!row.resets.is_empty(), |s| s.child(div().mt(px(-7.0)).text_size(px(11.5)).text_color(color(INK_3)).child(format!("resets {}", row.resets))));
+            }
+            sections.push(section.into_any_element());
+        }
+        if sections.is_empty() {
+            return None;
+        }
+        let mut foot = div().flex().flex_col().flex_none().pt(px(12.0)).px(px(14.0)).pb(px(14.0)).bg(color(PANEL)).rounded_b(px(18.0)).border_t_1().border_color(hairline());
+        for (i, section) in sections.into_iter().enumerate() {
+            foot = foot.child(div().when(i > 0, |d| d.mt(px(12.0)).pt(px(12.0)).border_t_1().border_color(hairline())).child(section));
+        }
+        Some(foot.into_any_element())
+    }
+
+    /// Ask both plans now, off the UI thread.
+    fn ask_plans(&mut self, cx: &mut Context<Self>) {
+        let ask = cx.background_executor().spawn(async move { (plan::ask_claude(), plan::ask_codex()) });
+        cx.spawn(async move |this, cx| {
+            let (claude, codex) = ask.await;
+            let _ = this.update(cx, |this, cx| {
+                let now = now_ms();
+                match claude {
+                    Ok(u) => {
+                        this.plans.0.usage = Some(u);
+                        this.plans.0.problem = None;
+                    }
+                    Err(why) => {
+                        if why == "not signed in" {
+                            this.plans.0.usage = None;
+                        }
+                        this.plans.0.problem = Some(why);
+                    }
+                }
+                this.plans.0.asked_at = now;
+                if codex.is_some() {
+                    this.plans.1.usage = codex;
+                    this.plans.1.asked_at = now;
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Read again what an agent has used, when it printed something new and
+    /// the last read is older than REFRESH_MS (agentcost.ts).
+    fn refresh_usage(&mut self, cx: &mut Context<Self>) {
+        let now = now_ms();
+        for seat in &self.fleet.seats {
+            let cli = seat.spec.cli.to_ascii_lowercase();
+            if !matches!(cli.as_str(), "claude" | "codex" | "opencode") && seat.terminal.is_none() {
+                continue;
+            }
+            let last_output = seat.terminal.as_ref().map(|t| t.read(cx).last_output_ms()).unwrap_or(0);
+            let entry = self.uses.entry(seat.spec.id.clone()).or_default();
+            let moved = last_output > entry.at;
+            if entry.busy || !(entry.at == 0 || (moved && now - entry.at > usage::REFRESH_MS)) {
+                continue;
+            }
+            entry.busy = true;
+            entry.at = now;
+            let (id, dir, session, since) = (seat.spec.id.clone(), seat.spec.cwd.clone(), seat.spec.session_id.clone(), seat.spec.started_ms);
+            let screen = seat.terminal.as_ref().map(|t| t.read(cx).screen_text()).unwrap_or_default();
+            let read = cx.background_executor().spawn(async move { usage::read(&cli, &dir, session.as_deref(), since, &screen) });
+            cx.spawn(async move |this, cx| {
+                let u = read.await;
+                let _ = this.update(cx, |this, cx| {
+                    if let Some(entry) = this.uses.get_mut(&id) {
+                        entry.busy = false;
+                        if entry.usage.as_ref() != Some(&u) {
+                            entry.usage = Some(u);
+                            cx.notify();
+                        }
+                    }
+                });
+            })
+            .detach();
+        }
     }
 
     fn stage_head(&self, seat: &Seat, index: usize, status: &TaskStatus, cx: &mut Context<Self>) -> AnyElement {
         let state = status.state;
         let cli_label = cli_label(&seat.spec.cli);
         let lit = hue_of(state);
-        let act = |id: &'static str, label: &'static str| {
+        let name = seat.spec.name.clone();
+        let act = |id: &'static str, label: &'static str, title: String| {
             div()
                 .id(id)
+                .tooltip(tip(title))
                 .h(px(26.0))
                 .px(px(12.0))
                 .flex()
@@ -670,6 +862,7 @@ impl Inbox {
             acts.child(
                 div()
                     .id("go")
+                    .tooltip(tip(format!("Start {name} again, in the conversation it was last in")))
                     .h(px(26.0))
                     .px(px(12.0))
                     .flex()
@@ -681,12 +874,12 @@ impl Inbox {
                     .on_click(cx.listener(move |this, _, window, cx| this.resume(index, window, cx)))
                     .child("Resume"),
             )
-            .child(act("changes", "Changes"))
-            .child(act("history", "History"))
+            .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")))
+            .child(act("history", "History", format!("What {name} has done (Alt+H)")))
         } else {
             let terminal = seat.terminal.clone();
             let model_terminal = seat.terminal.clone();
-            acts.child(act("cmds", "Commands").on_click(cx.listener(move |_, _, window, cx| {
+            acts.child(act("cmds", "Commands", format!("Type / so {name}'s CLI shows its own commands")).on_click(cx.listener(move |_, _, window, cx| {
                 // Type / so the CLI shows its own commands.
                 if let Some(t) = &terminal {
                     t.read(cx).type_text("/");
@@ -694,15 +887,15 @@ impl Inbox {
                 }
             })))
             .when(has_model, |acts| {
-                acts.child(act("model", "Model").on_click(cx.listener(move |_, _, window, cx| {
+                acts.child(act("model", "Model", "Open the CLI's own model picker".to_string()).on_click(cx.listener(move |_, _, window, cx| {
                     if let Some(t) = &model_terminal {
                         t.read(cx).type_text("/model\r");
                         t.read(cx).focus_handle().focus(window, cx);
                     }
                 })))
             })
-            .child(act("changes", "Changes"))
-            .child(act("history", "History"))
+            .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")))
+            .child(act("history", "History", format!("What {name} has done (Alt+H)")))
         };
         let control = |id: &'static str, name: &'static str| {
             div().id(id).size(px(30.0)).rounded_full().flex().items_center().justify_center().opacity(0.0).group_hover("stage", |c| c.opacity(1.0)).hover(|c| c.bg(white(0.06))).child(icon(name, 15.0, color(INK_3)))
@@ -875,7 +1068,7 @@ impl Inbox {
             .pl(px(12.0))
             .pr(px(4.0))
             .window_control_area(WindowControlArea::Drag)
-            .child(div().id("home").size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("house", 15.0, color(INK_3))))
+            .child(div().id("home").tooltip(tip("Home (keep agents running)")).size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("home", 16.0, color(INK_3))))
             .child(
                 div()
                     .flex()
@@ -893,6 +1086,7 @@ impl Inbox {
                 bar.child(
                     div()
                         .id("resume-all")
+                        .tooltip(tip("Resume every stopped agent"))
                         .flex()
                         .items_center()
                         .gap(px(5.0))
@@ -934,8 +1128,10 @@ impl Inbox {
     }
 
     fn dock(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let seg = |name: &'static str, label: &'static str, on: bool| {
+        let seg = |id: &'static str, name: &'static str, label: &'static str, on: bool, title: &'static str| {
             div()
+                .id(id)
+                .tooltip(tip(title))
                 .flex()
                 .items_center()
                 .gap(px(7.0))
@@ -950,8 +1146,10 @@ impl Inbox {
                 .child(icon(name, 15.0, color(if on { INK } else { INK_2 })))
                 .child(label)
         };
-        let round = |name: &'static str| {
+        let round = |id: &'static str, title: &'static str| {
             div()
+                .id(id)
+                .tooltip(tip(title))
                 .size(px(40.0))
                 .flex()
                 .items_center()
@@ -960,7 +1158,6 @@ impl Inbox {
                 .bg(color(RAISE))
                 .shadow(float())
                 .hover(|round| round.bg(color(0x1d1e23)))
-                .child(icon(name, 17.0, color(INK_2)))
         };
         div()
             .absolute()
@@ -971,9 +1168,11 @@ impl Inbox {
             .justify_center()
             .items_center()
             .gap(px(10.0))
-            .child(div().flex().gap(px(2.0)).p(px(4.0)).rounded_full().bg(color(RAISE)).shadow(float()).child(seg("rectangle-horizontal", "Focus", true)).child(seg("layout-grid", "Grid", false)))
+            .child(div().flex().gap(px(2.0)).p(px(4.0)).rounded_full().bg(color(RAISE)).shadow(float()).child(seg("dock-focus", "focus", "Focus", true, "Focus: one agent at a time, full size (Alt+S switches)")).child(seg("dock-grid", "grid", "Grid", false, "Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)")))
             .child(
                 div()
+                    .id("dock-search")
+                    .tooltip(tip("Jump to an agent or run a command (Ctrl+K)"))
                     .flex()
                     .items_center()
                     .gap(px(10.0))
@@ -993,6 +1192,7 @@ impl Inbox {
             .child(
                 div()
                     .id("new-agent")
+                    .tooltip(tip("New agent (Ctrl+Shift+T)"))
                     .h(px(40.0))
                     .px(px(18.0))
                     .flex()
@@ -1007,9 +1207,9 @@ impl Inbox {
                     .on_click(cx.listener(|this, _, window, cx| this.open_sheet(window, cx)))
                     .child("New agent"),
             )
-            .child(round("history"))
-            .child(round("circle-question-mark"))
-            .child(round("settings"))
+            .child(round("dock-sessions", "Sessions: read back earlier conversations (Alt+O)").child(icon("sessions", 17.0, color(INK_2))))
+            .child(round("dock-help", "What ByteHive can do (?)").text_size(px(16.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK_2)).child("?"))
+            .child(round("dock-settings", "Settings (Ctrl+,)").child(icon("settings", 17.0, color(INK_2))))
     }
 
     fn resume(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -1549,6 +1749,10 @@ impl Render for Inbox {
             .bg(color(GROUND))
             .font_family("Geist")
             .line_height(relative(1.2))
+            // The faint amber haze over the top of the stage: inbox.css's
+            // radial-gradient(1100px 460px at 62% -12%), baked into haze.png
+            // since GPUI draws no radial gradients.
+            .child(div().absolute().left(relative(0.62)).ml(px(-1100.0)).top(relative(-0.12)).mt(px(-460.0)).w(px(2200.0)).h(px(920.0)).child(img(haze()).size_full().object_fit(ObjectFit::Fill)))
             .child(top)
             .child(div().flex().flex_1().min_h_0().child(queue).child(stage))
             .child(dock)
