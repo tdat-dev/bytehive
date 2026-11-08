@@ -72,8 +72,7 @@ pub struct Prefs {
 }
 
 fn store() -> Option<PathBuf> {
-    let home = std::env::var("USERPROFILE").ok()?;
-    Some(PathBuf::from(home).join(".bytehive").join("native").join("prefs.json"))
+    Some(crate::fleet::data_dir()?.join("prefs.json"))
 }
 
 impl Prefs {

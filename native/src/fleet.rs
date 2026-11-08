@@ -89,9 +89,18 @@ pub fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
-fn store() -> Option<PathBuf> {
+/// Where the native app keeps its files: ~/.bytehive/native, or
+/// BYTEHIVE_NATIVE_DIR so a test run never touches the owner's fleet.
+pub fn data_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("BYTEHIVE_NATIVE_DIR") {
+        return Some(PathBuf::from(dir));
+    }
     let home = std::env::var("USERPROFILE").ok()?;
-    Some(PathBuf::from(home).join(".bytehive").join("native").join("session.json"))
+    Some(PathBuf::from(home).join(".bytehive").join("native"))
+}
+
+fn store() -> Option<PathBuf> {
+    Some(data_dir()?.join("session.json"))
 }
 
 #[derive(Default)]

@@ -131,12 +131,15 @@ fn character(vk: u16, sc: u32) -> u16 {
     }
 }
 
-/// Keys that stay ours even over a terminal, the same few as today's app:
-/// Ctrl+V pastes, Alt+F4 closes the window. Everything else is the program's.
+/// Keys that stay ours even over a terminal, the same few today's app takes
+/// before xterm sees them: Ctrl+V pastes, Ctrl+K opens the palette,
+/// Ctrl+Shift+T starts a new agent, Alt+F4 closes the window. Everything
+/// else is the program's.
 fn stays_local(vk: u16) -> bool {
     let ctrl = pressed(VK_CONTROL);
     let alt = pressed(VK_MENU);
-    (ctrl && !alt && vk == b'V' as u16) || (alt && vk == VK_F4)
+    let shift = pressed(VK_SHIFT);
+    (ctrl && !alt && !shift && (vk == b'V' as u16 || vk == b'K' as u16)) || (ctrl && shift && !alt && vk == b'T' as u16) || (alt && vk == VK_F4)
 }
 
 fn send(bytes: Vec<u8>) {
