@@ -2,14 +2,13 @@
 //! keeps the feel of today's xterm pane: keys go whole to the program (keys.rs),
 //! selecting copies, right click copies, Ctrl+V pastes, OSC 52 sets the clipboard.
 
-use std::io::Read;
 use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use agent_core::CommandSpec;
-use agent_core::pty_session::PtySession;
+use agent_core::{Agent, CommandSpec};
 use alacritty_terminal::event::{Event, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line, Point as Cell, Side};
@@ -42,6 +41,10 @@ const ANSI: [u32; 16] = [
     0x1e293b, 0xef4444, 0x22c55e, 0xeab308, 0x3b82f6, 0xd946ef, 0x06b6d4, 0xf8fafc, 0x7c8aa0, 0xf87171, 0x4ade80, 0xfde047, 0x60a5fa, 0xe879f9,
     0x22d3ee, 0xffffff,
 ];
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
 
 fn from_hex(hex: u32) -> Rgb {
     Rgb { r: (hex >> 16) as u8, g: (hex >> 8) as u8, b: hex as u8 }
@@ -164,7 +167,14 @@ struct Fill {
 
 pub struct Terminal {
     term: Arc<Mutex<Term<Listener>>>,
-    session: Arc<Mutex<PtySession>>,
+    /// The CLI and its whole process tree: a kill-on-close job ends them all
+    /// when this terminal is dropped.
+    agent: Arc<Mutex<Agent>>,
+    /// Its exit code once it ended.
+    exit: Arc<Mutex<Option<u32>>>,
+    /// When output last arrived, ms since the epoch: the queue reads working
+    /// or idle from it.
+    last_output: Arc<AtomicU64>,
     writer: Sender<Vec<u8>>,
     copies: Arc<Mutex<Vec<String>>>,
     cell_px: Arc<Mutex<WindowSize>>,
@@ -185,19 +195,7 @@ impl Terminal {
     pub fn new(spec: CommandSpec, cx: &mut Context<Self>) -> anyhow::Result<Self> {
         let (cols, rows) = (100, 30);
         let size = PtySize { rows: rows as u16, cols: cols as u16, pixel_width: 0, pixel_height: 0 };
-        let (session, mut reader, mut child) = PtySession::spawn(&spec, size)?;
-        let session = Arc::new(Mutex::new(session));
-
         let (writer, keys_rx) = channel::<Vec<u8>>();
-        let to_pty = session.clone();
-        std::thread::spawn(move || {
-            for bytes in keys_rx {
-                if to_pty.lock().unwrap().write_input(&bytes).is_err() {
-                    break;
-                }
-            }
-        });
-
         let copies = Arc::new(Mutex::new(Vec::new()));
         let cell_px = Arc::new(Mutex::new(WindowSize { num_lines: rows as u16, num_cols: cols as u16, cell_width: 8, cell_height: 16 }));
         let listener = Listener { writer: writer.clone(), copies: copies.clone(), cell_px: cell_px.clone() };
@@ -208,18 +206,34 @@ impl Terminal {
         // however many chunks arrive: a bounded channel of one drops the rest.
         let (wake, woken) = async_channel::bounded::<()>(1);
         let grid = term.clone();
+        let last_output = Arc::new(AtomicU64::new(now_ms()));
+        let heard = last_output.clone();
+        let mut processor: Processor = Processor::new();
+        let output_wake = wake.clone();
+        let exit = Arc::new(Mutex::new(None));
+        let exited = exit.clone();
+        let agent = Agent::spawn(
+            &spec,
+            size,
+            move |bytes: &[u8]| {
+                keys::watch_mode(bytes);
+                processor.advance(&mut *grid.lock().unwrap(), bytes);
+                heard.store(now_ms(), Ordering::Relaxed);
+                let _ = output_wake.try_send(());
+            },
+            move |code| {
+                *exited.lock().unwrap() = Some(code);
+                let _ = wake.try_send(());
+            },
+        )?;
+        let agent = Arc::new(Mutex::new(agent));
+        let to_pty = agent.clone();
         std::thread::spawn(move || {
-            let mut processor: Processor = Processor::new();
-            let mut buf = vec![0u8; 64 * 1024];
-            while let Ok(n) = reader.read(&mut buf) {
-                if n == 0 {
+            for bytes in keys_rx {
+                if to_pty.lock().unwrap().write_input(&bytes).is_err() {
                     break;
                 }
-                keys::watch_mode(&buf[..n]);
-                processor.advance(&mut *grid.lock().unwrap(), &buf[..n]);
-                let _ = wake.try_send(());
             }
-            let _ = child.wait();
         });
 
         cx.spawn(async move |this, cx| {
@@ -232,10 +246,11 @@ impl Terminal {
         })
         .detach();
 
-        keys::set_sink(writer.clone());
         Ok(Self {
             term,
-            session,
+            agent,
+            exit,
+            last_output,
             writer,
             copies,
             cell_px,
@@ -254,6 +269,16 @@ impl Terminal {
     /// Take the keyboard: keys.rs hands keys to this terminal from now on.
     pub fn claim_keys(&self) {
         keys::set_sink(self.writer.clone());
+    }
+
+    /// The CLI's exit code once it has ended.
+    pub fn exit_code(&self) -> Option<u32> {
+        *self.exit.lock().unwrap()
+    }
+
+    /// How long since the CLI last wrote anything, in ms.
+    pub fn quiet_for_ms(&self) -> u64 {
+        now_ms().saturating_sub(self.last_output.load(Ordering::Relaxed))
     }
 
     /// How many lines of history to keep; older ones are dropped.
@@ -288,7 +313,7 @@ impl Terminal {
         self.cols = cols;
         self.rows = rows;
         self.term.lock().unwrap().resize(GridSize { rows, cols });
-        let _ = self.session.lock().unwrap().resize(cols as u16, rows as u16);
+        let _ = self.agent.lock().unwrap().resize(cols as u16, rows as u16);
         *self.cell_px.lock().unwrap() =
             WindowSize { num_lines: rows as u16, num_cols: cols as u16, cell_width: f32::from(cell_w) as u16, cell_height: f32::from(cell_h) as u16 };
     }
