@@ -118,6 +118,12 @@ describe("applyRequest", () => {
     expect(a.state.jobs[0].people).toContain("d1");
     expect(a.hired.map((p) => p.role)).toEqual(["marketing"]);
   });
+  it("drops a reuse list the Founder sends: who takes a hire is the app's to say", () => {
+    const s = newJob(state(), "x", 1).state;
+    const r = applyRequest(s, { type: "plan", ts: 2, from: FOUNDER_ID, job: "J-0001", plan: { ...plan, reuse: ["d1"] } });
+    expect(r.state.jobs[0].plan?.reuse).toBeUndefined();
+    expect(approvePlan(r.state, "J-0001", pick).reused).toEqual([]);
+  });
   it("refuses a plan while another waits for approval", () => {
     const s = waiting();
     const r = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan });

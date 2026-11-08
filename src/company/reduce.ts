@@ -64,8 +64,7 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
     if (job.status !== "planning") return refuse(`Plan for ${r.job} refused: the job is ${job.status}, and a plan is only taken while it is planning.`);
     // A role the floor already has is that person's work, not a new hire's. Who that is, is
     // the app's to say: a reuse list in the request is dropped.
-    const { reuse: _forged, ...asked } = r.plan;
-    const plan = reuseStaff(s.company, asked);
+    const plan = reuseStaff(s.company, { ...r.plan, reuse: undefined });
     const errors = validatePlan(s.company, plan, s.roles);
     if (errors.length) return refuse(`Plan for ${r.job} refused: ${errors.join(" ")}`);
     const told = plan.reuse?.length ? [tellFounder(`Plan for ${r.job} taken without ${plan.reuse.length} of its hires: ${staffOn(s, plan.reuse)} already there and ${plan.reuse.length === 1 ? "does" : "do"} that work.`)] : [];
