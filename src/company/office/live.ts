@@ -21,29 +21,53 @@ const panesNow = (now: number): OfficePane[] => [...workspaces.values()].flatMap
 const count = (lists: Array<{ title: string; cards: unknown[] }>, title: string) =>
   lists.find((l) => l.title.trim().toLowerCase() === title)?.cards.length ?? 0;
 
+/** One board's cards by the Job they belong to. A Map: a Job id comes from a file in a repo,
+ *  and "__proto__" as a key of a plain object would write to every object in the page. */
+export function cardsOnBoard(lists: Array<{ title: string; cards: Array<{ job?: string }> }>): Map<string, JobCards> {
+  const byJob = new Map<string, JobCards>();
+  for (const l of lists) {
+    const done = l.title.trim().toLowerCase() === "done";
+    for (const c of l.cards) {
+      if (!c.job) continue;
+      const t = byJob.get(c.job) ?? { done: 0, total: 0 };
+      t.total += 1;
+      if (done) t.done += 1;
+      byJob.set(c.job, t);
+    }
+  }
+  return byJob;
+}
+
+/** Every floor's cards by Job, added up. fromEntries makes each key an own property, whatever it is. */
+export function cardsByJob(floors: Iterable<Map<string, JobCards>>): Record<string, JobCards> {
+  const all = new Map<string, JobCards>();
+  for (const f of floors) {
+    for (const [job, c] of f) {
+      const t = all.get(job) ?? { done: 0, total: 0 };
+      all.set(job, { done: t.done + c.done, total: t.total + c.total });
+    }
+  }
+  return Object.fromEntries(all);
+}
+
 export function liveSource(): OfficeSource {
   const boards: Record<string, BoardCounts> = {};
+  /** Each floor's last good tally: a board that could not be read this time keeps its count. */
+  const floorCards = new Map<string, Map<string, JobCards>>();
   let jobCards: Record<string, JobCards> = {};
   let timer: number | null = null;
 
   const readBoards = async () => {
     const s = engine.companyView();
-    const byJob: Record<string, JobCards> = {};
-    for (const f of s?.company.floors.filter((x) => s.company.people.some((p) => p.floor === x.id)) ?? []) {
+    const floors = s?.company.floors.filter((x) => s.company.people.some((p) => p.floor === x.id)) ?? [];
+    for (const id of [...floorCards.keys()]) if (!floors.some((f) => f.id === id)) floorCards.delete(id);
+    for (const f of floors) {
       const file = await readBoardFile(f.dir).catch(() => null);
       if (!file) continue;
       boards[f.id] = { todo: count(file.board.lists, "to do"), doing: count(file.board.lists, "doing"), done: count(file.board.lists, "done") };
-      for (const l of file.board.lists) {
-        const done = l.title.trim().toLowerCase() === "done";
-        for (const c of l.cards) {
-          if (!c.job) continue;
-          const t = (byJob[c.job] ??= { done: 0, total: 0 });
-          t.total += 1;
-          if (done) t.done += 1;
-        }
-      }
+      floorCards.set(f.id, cardsOnBoard(file.board.lists));
     }
-    jobCards = byJob;
+    jobCards = cardsByJob(floorCards.values());
   };
 
   return {

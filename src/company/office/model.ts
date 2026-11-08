@@ -151,7 +151,7 @@ export function officeModel(company: Company, jobs: Job[], alerts: Alert[], pane
 
   return {
     founder, floors, needs,
-    jobs: jobs.flatMap((j) => (GOING[j.status] ? [{ id: j.id, title: j.title, status: j.status, label: GOING[j.status]!, tokensUsed: j.tokensUsed, tokenCap: j.tokenCap, cards: extra.jobCards?.[j.id] ?? null }] : [])),
+    jobs: jobs.flatMap((j) => (GOING[j.status] ? [{ id: j.id, title: j.title, status: j.status, label: GOING[j.status]!, tokensUsed: j.tokensUsed, tokenCap: j.tokenCap, cards: extra.jobCards && Object.prototype.hasOwnProperty.call(extra.jobCards, j.id) ? extra.jobCards[j.id] : null }] : [])),
     flights: extra.flights ?? [],
     counts: { people: everyone.length, working: everyone.filter((p) => p.state === "working").length, needs: needs.length },
   };
