@@ -7,7 +7,7 @@ import { confirmModal } from "../../confirmmodal";
 import { glyph, icon } from "../../icons";
 import type { NeedRow, PlanDetail } from "../needs";
 import type { OfficeJob, OfficeModel, OfficePerson } from "./model";
-import { BUILDING, rowTarget, type Level } from "./nav";
+import { BUILDING, deskOf, rowTarget, type Level } from "./nav";
 import type { OfficeSource } from "./source";
 
 const RAISE_BY = 1_000_000;
@@ -73,15 +73,18 @@ function actButton(busy: Busy, act: string, label: string, about: string, jobId:
 
 /** The one word that fits the line. The full label is there for a screen reader. */
 const JOB_WORD: Partial<Record<OfficeJob["status"], string>> = { "awaiting-plan": "Waiting" };
-const JOB_GLYPH: Partial<Record<OfficeJob["status"], string>> = { running: "working", paused: "stopped", planning: "idle", "awaiting-plan": "needs" };
+const JOB_GLYPH: Partial<Record<OfficeJob["status"], string>> = { running: "working", paused: "paused", planning: "idle", "awaiting-plan": "needs" };
 /** A job nobody has started on is cancelled. One that has people on it is stopped. */
 const stopWord = (j: OfficeJob) => (j.status === "planning" || j.status === "awaiting-plan" ? "Cancel job" : "Stop job");
 
+/** The line under a job is its cards done, from the boards: tokens spent say what it cost, not
+ *  how far it got. A job whose cards are not on a board yet has no line. */
 const jobHtml = (j: OfficeJob, busy: Busy, menuOpen: boolean) => {
-  const done = j.tokenCap > 0 ? Math.min(100, Math.round((j.tokensUsed / j.tokenCap) * 100)) : 0;
+  const done = j.cards && j.cards.total > 0 ? Math.min(100, Math.round((j.cards.done / j.cards.total) * 100)) : 0;
   const tokens = `${j.tokensUsed.toLocaleString("en-US")} of ${j.tokenCap.toLocaleString("en-US")} tokens`;
-  return `<li class="co-job" style="--done:${done}%">${glyph(JOB_GLYPH[j.status] ?? "idle")}<b title="${esc(j.title)}">${esc(j.title)}</b>` +
-    `<span class="co-state" title="${esc(tokens)}">${esc(JOB_WORD[j.status] ?? j.label)}, ${tokensShort(j.tokensUsed)} of ${tokensShort(j.tokenCap)}</span><span class="of-sr">${esc(j.id)}. ${esc(j.label)}, ${tokens}.</span>` +
+  const cards = j.cards ? ` ${j.cards.done} of ${plural(j.cards.total, "card")} done.` : "";
+  return `<li class="co-job" data-status="${esc(j.status)}" style="--done:${done}%">${glyph(JOB_GLYPH[j.status] ?? "idle")}<b title="${esc(j.title)}">${esc(j.title)}</b>` +
+    `<span class="co-state" title="${esc(tokens)}">${esc(JOB_WORD[j.status] ?? j.label)}, ${tokensShort(j.tokensUsed)} of ${tokensShort(j.tokenCap)}</span><span class="of-sr">${esc(j.id)}. ${esc(j.label)}, ${tokens}.${cards}</span>` +
     `<button type="button" class="btn icon sm" data-menu="${esc(j.id)}" aria-haspopup="menu" aria-expanded="${menuOpen}" aria-label="${esc(`More for ${j.title}`)}">${icon("ellipsis")}</button>` +
     `<div class="co-menu" role="menu"${menuOpen ? "" : " hidden"}>${actButton(busy, "stop", stopWord(j), j.title, j.id, "danger", ' role="menuitem"')}</div></li>`;
 };
@@ -109,10 +112,10 @@ function rowHtml(r: NeedRow, busy: Busy, o: RowLook): string {
   const btn = (act: string, label: string, kind: string, extra = "") => actButton(busy, act, label, r.title, r.jobId, kind, extra);
   const open = (label: string) => (o.goes ? `<button type="button" class="btn ${main}" data-open="${esc(r.key)}" aria-label="${esc(`${label}: ${r.title}`)}">${esc(label)}</button>` : "");
   const buttons =
-    r.kind === "plan" ? btn("approve", "Approve", main) + btn("reject", "Send back", o.primary && o.asking ? "primary" : "secondary")
+    r.kind === "plan" ? btn("approve", "Approve", main, o.short ? ' aria-disabled="true" title="Write why, or close the note, first"' : "") + btn("reject", "Send back", o.primary && o.asking ? "primary" : "secondary")
     : r.kind === "paused" ? btn("raise", "Add 1M tokens", main)
     : r.kind === "merge" ? open("Review") + btn("finish", "Mark done", o.goes ? "secondary" : main)
-    : r.standing ? btn("dismiss", "Dismiss", "secondary", ` data-key="${esc(r.key)}"`) : open(person ? `Go to ${person.name}` : "Open");
+    : r.standing ? btn("dismiss", "Dismiss", "secondary", ` data-key="${esc(r.key)}"`) : open(person ? (r.key.startsWith("ask-") ? `Answer at ${person.name}'s desk` : `Go to ${person.name}`) : "Open");
   // A plan and a paused job have nobody at a desk: they are the Founder's to bring you.
   const who = r.kind === "plan" || r.kind === "paused" ? o.model.founder ?? undefined : person;
   const named = !!who;
@@ -123,7 +126,9 @@ function rowHtml(r: NeedRow, busy: Busy, o: RowLook): string {
   const more = named && r.kind !== "plan" && r.kind !== "paused" && r.detail ? r.detail : "";
   const fold = r.plan ? `<details class="co-more"${o.open || r.plan.newRoles.length ? " open" : ""}><summary data-more="${esc(r.key)}">Details</summary>${planHtml(r.plan, r.detail)}</details>` : "";
   const note = r.kind === "plan" && r.jobId
-    ? `<div class="co-field"${o.asking ? "" : " hidden"}><label>Why send it back?<textarea data-note="${esc(r.jobId)}" rows="2" placeholder="${esc(WHY_HINT)}"></textarea></label>${o.short ? `<p class="co-wrong" role="status">${esc(NOTE_NEEDED)}</p>` : ""}</div>`
+    ? `<div class="co-field"${o.asking ? "" : " hidden"}><div class="co-field-head"><label for="coNote-${esc(r.jobId)}">Why send it back?</label>` +
+      `<button type="button" class="btn icon sm" data-act="unask" data-job="${esc(r.jobId)}" aria-label="Close the note" title="Close the note">${icon("x")}</button></div>` +
+      `<textarea id="coNote-${esc(r.jobId)}" data-note="${esc(r.jobId)}" rows="2" placeholder="${esc(WHY_HINT)}"></textarea>${o.short ? `<p class="co-wrong" role="status">${esc(NOTE_NEEDED)}</p>` : ""}</div>`
     : "";
   const words = `${what ? `<p class="co-what">${esc(what)}</p>` : ""}${more ? `<p class="co-more-line">${esc(more)}</p>` : ""}`;
   const acts = buttons ? `<div class="co-acts">${buttons}</div>` : "";
@@ -131,6 +136,11 @@ function rowHtml(r: NeedRow, busy: Busy, o: RowLook): string {
   const rest = r.kind === "plan" ? `${words}${fold}${note}${acts}` : `<div class="co-line"><div class="co-words">${words}</div>${acts}</div>`;
   return `<li class="co-card co-${r.kind}">${top}${rest}</li>`;
 }
+
+/** Where a card takes you. A plan or a paused job is the Founder's to bring you, so it goes to
+ *  the Founder's desk, as its face says, from every level alike. */
+const targetOf = (r: NeedRow, m: OfficeModel): Level =>
+  (r.kind === "plan" || r.kind === "paused") && m.founder ? deskOf(m.founder) : rowTarget(r, m);
 
 /** What identifies a control across a redraw. */
 const identity = (el: HTMLElement) => [el.dataset.act, el.dataset.job, el.dataset.key, el.dataset.row, el.dataset.note, el.dataset.open, el.dataset.menu, el.dataset.more].map((x) => x ?? "").join("|");
@@ -187,10 +197,11 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
 
   const busy = (key: string) => pending.has(key);
 
-  /** What scrolls: the list on a tall rail, the whole rail on a short window. */
+  /** What scrolls: the list on a tall rail, the whole rail on a short window, or the column
+   *  the rail stands in when there is no 3D. */
   const scroller = (): HTMLElement | null => {
     const list = body?.querySelector<HTMLElement>("[data-needs]");
-    for (const x of [list, body]) if (x && x.scrollHeight > x.clientHeight + 1) return x;
+    for (const x of [list, body, body?.closest<HTMLElement>(".of-side")]) if (x && x.scrollHeight > x.clientHeight + 1) return x;
     return null;
   };
   /** Cards past the bottom of what scrolls, at least partly: the scrollbar hides until hovered,
@@ -199,22 +210,31 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
     const box = scroller();
     if (!box) return [];
     // On a short window the count stands at the rail's foot, over the last few pixels.
-    const fold = box.getBoundingClientRect().bottom - (box === body ? FOOT : 0);
+    const fold = box.getBoundingClientRect().bottom - (box.matches("[data-needs]") ? 0 : FOOT);
     // A card counts once its buttons are cut: a few pixels off its foot leave them readable.
     return [...box.querySelectorAll<HTMLElement>("[data-needs] > .co-card")].filter((c) => c.getBoundingClientRect().bottom > fold + CUT);
+  };
+  /** The Jobs heading, when the whole rail scrolls and it is out of sight under the fold. */
+  const jobsBelow = (): HTMLElement | null => {
+    const box = scroller();
+    const head = body?.querySelector<HTMLElement>("[data-jobs-head]");
+    if (!box || !head || box.matches("[data-needs]")) return null;
+    return head.getBoundingClientRect().top > box.getBoundingClientRect().bottom - FOOT ? head : null;
   };
   const edge = () => {
     const more = body?.querySelector<HTMLElement>("[data-below]");
     if (!more) return;
     const n = below().length;
-    more.hidden = !n;
-    const words = `${n} more below`;
-    if (n && more.textContent !== words) more.innerHTML = `${icon("chevron-down")}${words}`;
+    const jobs = !!jobsBelow();
+    more.hidden = !n && !jobs;
+    const words = n && jobs ? `${n} more and Jobs below` : n ? `${n} more below` : "Jobs below";
+    if (!more.hidden && more.textContent !== words) more.innerHTML = `${icon("chevron-down")}${words}`;
   };
   const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(edge);
 
   const calmLine = (m: OfficeModel) => {
-    if (m.counts.working) return `${m.counts.working === 1 ? "1 person is" : `${m.counts.working} people are`} working.`;
+    // Of everyone, as the signs count them, so the two agree.
+    if (m.counts.working) return `${m.counts.working} of ${plural(m.counts.people, "person").replace(/persons$/, "people")} ${m.counts.working === 1 ? "is" : "are"} working.`;
     return m.counts.people > 1 ? "Everyone is resting." : "Give the Founder a job to get started.";
   };
 
@@ -252,7 +272,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
     // One honey button: the first thing that asks for something, and nothing below it.
     const lead = m.needs.findIndex((r) => r.kind !== "alert" || !r.standing);
     put(list, m.needs.map((r, i) => rowHtml(r, busy, {
-      goes: !sameLevel(rowTarget(r, m), here),
+      goes: !sameLevel(targetOf(r, m), here),
       primary: i === lead,
       asking: !!r.jobId && (asking.has(r.jobId) || !!notes.get(r.jobId)),
       short: !!r.jobId && short.has(r.jobId),
@@ -313,10 +333,10 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
         `<h3 id="coNeedsH">Needs you <span class="co-n" data-count></span></h3>` +
         `<ul class="co-needs" aria-labelledby="coNeedsH" data-needs></ul>` +
         `<button type="button" class="btn quiet sm co-below" data-below hidden></button>` +
-        `<h3 id="coJobsH">Jobs <span class="co-h-meta">Tokens used of the cap</span></h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
+        `<h3 id="coJobsH" data-jobs-head>Jobs <span class="co-h-meta">Tokens used of the cap</span></h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
       const list = el.querySelector<HTMLElement>("[data-needs]")!;
-      list.addEventListener("scroll", edge, { passive: true });
-      el.addEventListener("scroll", edge, { passive: true });
+      // Whatever scrolls, the list, the rail or the column round it: a scroll does not bubble.
+      document.addEventListener("scroll", edge, { capture: true, passive: true });
       sized?.observe(list);
       sized?.observe(el);
       el.addEventListener("input", (e) => {
@@ -334,7 +354,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       el.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
         if (target.closest("[data-below]")) {
-          below()[0]?.scrollIntoView({ block: "start" });
+          (below()[0] ?? jobsBelow())?.scrollIntoView({ block: "start" });
           return;
         }
         const opener = target.closest<HTMLElement>("[data-menu]");
@@ -349,7 +369,17 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
           const job = b.dataset.job ?? "";
           const kind = b.dataset.act;
           if (kind === "dismiss") source.dismiss(b.dataset.key ?? "");
-          else if (kind === "approve") void act(`approve:${job}`, () => source.approve(job));
+          // Told the note is missing, the owner answers that first: write it, or close it.
+          else if (kind === "approve") { if (!short.has(job)) void act(`approve:${job}`, () => source.approve(job)); }
+          else if (kind === "unask") {
+            asking.delete(job);
+            short.delete(job);
+            notes.delete(job);
+            const box = noteOf(job);
+            if (box) box.value = "";
+            draw();
+            el.querySelector<HTMLElement>(`[data-act="reject"][data-job="${CSS.escape(job)}"]`)?.focus();
+          }
           else if (kind === "reject") {
             const words = noteOf(job)?.value ?? "";
             if (!words.trim()) {
@@ -383,7 +413,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
         const row = target.closest<HTMLElement>("[data-row],[data-open]");
         const key = row?.dataset.row ?? row?.dataset.open;
         const need = key && model?.needs.find((r) => r.key === key);
-        if (need && model) go(rowTarget(need, model));
+        if (need && model) go(targetOf(need, model));
       });
       off = source.onChange(draw);
       draw();
@@ -394,6 +424,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       off = null;
       body = null;
       sized?.disconnect();
+      document.removeEventListener("scroll", edge, { capture: true });
       document.removeEventListener("pointerdown", outside);
     },
   };

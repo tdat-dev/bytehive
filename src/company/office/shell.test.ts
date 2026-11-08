@@ -806,8 +806,9 @@ describe("its life", () => {
     const { shell } = await shown();
     const titles = () => shell.el.querySelectorAll("[data-needs] [data-row]").length;
     const atBuilding = titles();
-    shell.go(floor("bytehive"));
-    expect(titles()).toBeGreaterThan(atBuilding);
+    // The plan and the paused job are the Founder's: at the Founder's desk they go nowhere.
+    shell.go({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" });
+    expect(titles()).toBeLessThan(atBuilding);
   });
 });
 

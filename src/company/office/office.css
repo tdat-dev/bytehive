@@ -3,10 +3,10 @@
  * parts.css and the tokens in tokens.css. The scene is the picture; this frames it. */
 .co-rail, .co-box { display: flex; flex-direction: column; gap: var(--s3); color: var(--ink); }
 /* Needs you scrolls. Jobs stays in sight under it, however many cards there are. */
-.of-rail .co-needs { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.of-rail .co-needs, .of-side .co-needs { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 /* Cards past the fold say so, under the list: the rail's scrollbar hides until hovered. */
 .co-below { flex: none; align-self: stretch; justify-content: center; margin-top: calc(var(--s2) * -1); color: var(--ink-2); }
-.of-rail .co-jobs { flex: none; max-height: 40%; overflow-y: auto; }
+.of-rail .co-jobs, .of-side .co-jobs { flex: none; max-height: 40%; overflow-y: auto; }
 .co-rail h3 { display: flex; align-items: baseline; gap: var(--s2); font: var(--t-title); }
 .co-rail ul { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
 .co-needs { gap: var(--s2); }
@@ -41,7 +41,9 @@
 .co-plan dt { margin-top: var(--s2); color: var(--ink-3); }
 .co-plan dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 .co-plan .co-prompt { padding: var(--s2); border-radius: var(--r-control); background: var(--ground); white-space: pre-wrap; }
-.co-field label { display: flex; flex-direction: column; gap: var(--s1); font: var(--t-row); color: var(--ink); }
+.co-field { display: flex; flex-direction: column; gap: var(--s1); }
+.co-field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.co-field label { font: var(--t-row); color: var(--ink); }
 .co-field textarea, .co-give textarea, .of-msg textarea { width: 100%; padding: var(--s2) var(--s3); border: 0; border-radius: var(--r-control); background: var(--ground); box-shadow: var(--ring-control); color: var(--ink); font: var(--t-body); resize: vertical; }
 .co-wrong { margin-top: var(--s1); color: var(--danger); font: var(--t-meta); }
 
@@ -53,6 +55,9 @@
 /* Jobs: one line each, with how far along it is under the line. */
 .co-job { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--s2); min-height: 36px; box-shadow: inset 0 -1px 0 var(--line); }
 .co-job::after { content: ""; position: absolute; bottom: 0; left: 0; width: var(--done, 0); height: 2px; background: var(--ink-2); }
+/* A paused job's line is how far it got, held still in a quieter ink. */
+.co-job[data-status="paused"]::after { background: var(--ink-3); }
+.co-job[data-status="paused"] b { color: var(--ink-2); }
 .co-job b { overflow: hidden; font: var(--t-row); white-space: nowrap; text-overflow: ellipsis; }
 .co-state { color: var(--ink-3); font: var(--t-meta); white-space: nowrap; }
 /* The menu opens in its own row, so what it acts on is never in doubt. */
@@ -179,11 +184,22 @@ body.office-cover .hint { bottom: 200px; }
 /* No 3D: the rail and the job box are a fourth column of the Inbox. */
 body.office-fallback.inbox-ui .app { grid-template-columns: var(--ib-q) 1fr var(--code-w, 380px) 320px; }
 body.office-fallback.inbox-ui.ib-grid-wide .app { grid-template-columns: 0px 1fr var(--code-w, 380px) 320px; }
-.of-fell { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); padding: var(--s3); border-radius: var(--r-card); background: var(--raised); box-shadow: var(--ring-line); color: var(--ink-2); font: var(--t-body); }
+/* Why the column is here: a plain head on the column, not a card of its own. */
+.of-fell { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); padding-bottom: var(--s3); box-shadow: inset 0 -1px 0 var(--line); color: var(--ink-2); font: var(--t-body); }
 /* In a narrow column the job box is one part among three, not the hero. */
 .of-side .co-give label { font: var(--t-title); }
 .of-fell b { display: block; color: var(--ink); font: var(--t-row); }
-body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex-direction: column; gap: var(--s4); min-height: 0; margin: 0 var(--s4) var(--ib-dock-h) 0; padding: var(--s3); overflow-y: auto; overscroll-behavior: contain; border-radius: var(--r-card); background: var(--panel); }
+/* The same order as the office's rail: Needs you, then Jobs, with the job box at its foot. The
+ * column is one panel, flush like the rail, and only the cards scroll. */
+body.office-fallback .of-side { grid-column: 4; grid-row: 2; display: flex; flex-direction: column; gap: var(--s3); min-height: 0; margin-bottom: var(--ib-dock-h); padding: var(--s3) var(--s4); overflow: hidden; background: var(--panel); box-shadow: inset 1px 0 0 var(--line); }
+.of-side [data-rail] { flex: 1 1 auto; min-height: 0; }
+.of-side [data-job-box] { flex: none; padding-top: var(--s3); box-shadow: inset 0 1px 0 var(--line); }
+@media (max-height: 640px) {
+  body.office-fallback .of-side { overflow-y: auto; overscroll-behavior: contain; }
+  .of-side [data-rail] { flex: none; }
+  .of-side .co-needs, .of-side .co-jobs { flex: none; max-height: none; overflow: visible; }
+  .of-side .co-below { position: sticky; bottom: calc(var(--s3) * -1); z-index: 1; height: 32px; background: var(--panel); box-shadow: 0 -1px 0 var(--line); }
+}
 
 @media (max-width: 1000px) {
   :root { --office-rail-w: 280px; }

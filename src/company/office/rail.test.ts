@@ -306,11 +306,21 @@ describe("Needs you rail", () => {
     expect(document.activeElement).toBe(opener());
   });
   it("draws a Job as one line with how far along it is, the tokens for whoever reads them", () => {
-    const row = { ...going(), tokensUsed: 1_200_000, tokenCap: 5_000_000 };
+    const row = { ...going(), tokensUsed: 1_200_000, tokenCap: 5_000_000, cards: { done: 1, total: 4 } };
     const { el } = mountRail(fake({ model: model([], { jobs: [row] as never }) }));
-    expect(el.querySelector<HTMLElement>(".co-job")!.getAttribute("style")).toContain("--done:24%");
+    expect(el.querySelector<HTMLElement>(".co-job")!.getAttribute("style")).toContain("--done:25%");
     expect(el.querySelector(".co-state")?.textContent).toBe("Running, 1.2M of 5M");
-    expect(el.querySelector(".of-sr")?.textContent).toContain("1,200,000 of 5,000,000 tokens");
+    expect(el.querySelector(".of-sr")?.textContent).toContain("1,200,000 of 5,000,000 tokens. 1 of 4 cards done.");
+  });
+  it("does not fill a paused job's line because it spent its tokens, and marks it paused", () => {
+    const row = { ...going(), status: "paused", label: "Paused", tokensUsed: 5_000_000, tokenCap: 5_000_000, cards: { done: 1, total: 3 } };
+    const { el } = mountRail(fake({ model: model([], { jobs: [row] as never }) }));
+    const line = el.querySelector<HTMLElement>(".co-job")!;
+    expect(line.getAttribute("style")).toContain("--done:33%");
+    expect(line.dataset.status).toBe("paused");
+    expect(line.querySelector(".g-paused")).not.toBeNull();
+    const none = mountRail(fake({ model: model([], { jobs: [{ ...row, cards: null }] as never }) })).el;
+    expect(none.querySelector<HTMLElement>(".co-job")!.getAttribute("style")).toContain("--done:0%");
   });
   it("has no honey and no primary button when nothing needs you", () => {
     const { el } = mountRail(fake({ model: model([], { jobs: [going()] as never }) }));
@@ -352,6 +362,49 @@ describe("Needs you rail", () => {
     top = 180;
     list.dispatchEvent(new Event("scroll"));
     expect(more.hidden).toBe(true);
+  });
+  it("holds Approve while it says the note is missing, and closes the note on request", async () => {
+    const s = fake();
+    const { el } = mountRail(s);
+    click(el, '[data-act="reject"]');
+    click(el, '[data-act="reject"]');
+    expect(el.querySelector('[data-act="approve"]')?.getAttribute("aria-disabled")).toBe("true");
+    click(el, '[data-act="approve"]');
+    await tick();
+    expect(s.approve).not.toHaveBeenCalled();
+    click(el, '[data-act="unask"]');
+    expect(el.querySelector<HTMLElement>(".co-field")!.hidden).toBe(true);
+    expect(el.querySelector(".co-wrong")).toBeNull();
+    expect((document.activeElement as HTMLElement).dataset.act).toBe("reject");
+    click(el, '[data-act="approve"]');
+    await tick();
+    expect(s.approve).toHaveBeenCalledWith("J-1");
+  });
+  it("sends a permission question to the desk where it is answered, and says so", () => {
+    const row: NeedRow = { key: "ask-hai", kind: "alert", jobId: null, personId: "hai", title: "Hai wants to run npm publish", detail: "", standing: false };
+    const hai = { id: "hai", name: "Hai", title: "Lead", shirt: "#5fd08a", floorId: "a" } as never;
+    const { el, go } = mountRail(fake({ model: model([row], { floors: [{ id: "a", name: "bytehive", people: [hai] } as never] }) }));
+    expect(el.querySelector("[data-open]")?.textContent).toBe("Answer at Hai's desk");
+    click(el, "[data-open]");
+    expect(go).toHaveBeenCalledWith({ kind: "desk", personId: "hai", floorId: "a", tab: "terminal" });
+  });
+  it("takes a plan card to the Founder's desk from the Building too, as its face says", () => {
+    const { el, go } = mountRail(fake({ model: model([planRow], { founder: founder as never }) }));
+    expect(el.querySelector(".co-plan [data-row], .co-card [data-row]")).not.toBeNull();
+    click(el, "[data-row]");
+    expect(go).toHaveBeenCalledWith({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" });
+  });
+  it("says Jobs wait below when the whole rail scrolls and they are out of sight", () => {
+    const { el } = mountRail(fake({ model: model([]) }));
+    const at = (x: HTMLElement, props: Record<string, number>) => { for (const [k, v] of Object.entries(props)) Object.defineProperty(x, k, { configurable: true, value: v }); };
+    const box = (x: HTMLElement, top: number, h: number) => { x.getBoundingClientRect = () => ({ top, bottom: top + h }) as DOMRect; };
+    at(el, { scrollHeight: 600, clientHeight: 300 });
+    box(el, 0, 300);
+    box(el.querySelector<HTMLElement>("[data-jobs-head]")!, 420, 24);
+    document.dispatchEvent(new Event("scroll"));
+    const more = el.querySelector<HTMLElement>("[data-below]")!;
+    expect(more.hidden).toBe(false);
+    expect(more.textContent).toBe("Jobs below");
   });
   it("says who a card takes you to", () => {
     const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };
@@ -397,7 +450,7 @@ describe("Needs you rail", () => {
   });
   it("says what the team is doing when nothing needs you", () => {
     const { el } = mountRail(fake({ model: model([], { counts: { people: 4, working: 3, needs: 0 } }) }));
-    expect(el.textContent).toContain("3 people are working.");
+    expect(el.textContent).toContain("3 of 4 people are working.");
   });
   it("says when no job is running", () => {
     expect(mountRail(fake({ model: model([]) })).el.querySelector("[data-jobs]")?.textContent).toContain("No job is running.");
