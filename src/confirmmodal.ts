@@ -31,6 +31,8 @@ export function confirmModal(opts: {
   title: string;
   message: string;
   okLabel?: string;
+  /** What not going ahead means, when plain Cancel would be read as the action. */
+  cancelLabel?: string;
   danger?: boolean;
   dontAsk?: boolean;
   input?: { placeholder?: string; value?: string };
@@ -45,6 +47,7 @@ export function confirmModal(opts: {
   document.getElementById("cfTitle")!.textContent = opts.title;
   document.getElementById("cfMsg")!.textContent = opts.message;
   okBtn.textContent = opts.okLabel ?? "Confirm";
+  cancelBtn.textContent = opts.cancelLabel ?? "Cancel";
   okBtn.classList.toggle("danger", !!opts.danger);
   (document.getElementById("cfDontaskRow") as HTMLElement).hidden = !opts.dontAsk;
   dontChk.checked = false;
