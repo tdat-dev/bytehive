@@ -5,7 +5,7 @@ import { activeWs, workspaces } from "../../appstate";
 import { onTasksChange, taskOf } from "../../tasks";
 import * as engine from "../engine";
 import { floorContact } from "../org";
-import { officeModel, type BoardCounts, type OfficePane } from "./model";
+import { officeModel, type BoardCounts, type JobCards, type OfficePane } from "./model";
 import { deskReport } from "./report";
 import type { OfficeSource } from "./source";
 
@@ -23,14 +23,27 @@ const count = (lists: Array<{ title: string; cards: unknown[] }>, title: string)
 
 export function liveSource(): OfficeSource {
   const boards: Record<string, BoardCounts> = {};
+  let jobCards: Record<string, JobCards> = {};
   let timer: number | null = null;
 
   const readBoards = async () => {
     const s = engine.companyView();
+    const byJob: Record<string, JobCards> = {};
     for (const f of s?.company.floors.filter((x) => s.company.people.some((p) => p.floor === x.id)) ?? []) {
       const file = await readBoardFile(f.dir).catch(() => null);
-      if (file) boards[f.id] = { todo: count(file.board.lists, "to do"), doing: count(file.board.lists, "doing"), done: count(file.board.lists, "done") };
+      if (!file) continue;
+      boards[f.id] = { todo: count(file.board.lists, "to do"), doing: count(file.board.lists, "doing"), done: count(file.board.lists, "done") };
+      for (const l of file.board.lists) {
+        const done = l.title.trim().toLowerCase() === "done";
+        for (const c of l.cards) {
+          if (!c.job) continue;
+          const t = (byJob[c.job] ??= { done: 0, total: 0 });
+          t.total += 1;
+          if (done) t.done += 1;
+        }
+      }
     }
+    jobCards = byJob;
   };
 
   return {
@@ -38,7 +51,7 @@ export function liveSource(): OfficeSource {
       const s = engine.companyView();
       if (!s) return { model: null, note: engine.companyElsewhere(), error: engine.companyError() };
       const openDirs = [...workspaces.values()].flatMap((w) => (w.dir ? [w.dir] : []));
-      return { model: officeModel(s.company, s.jobs, engine.companyAlerts(), panesNow(now), { roles: s.roles, boards, openDirs, flights: engine.companyFlights(now) }), note: null, error: null };
+      return { model: officeModel(s.company, s.jobs, engine.companyAlerts(), panesNow(now), { roles: s.roles, boards, jobCards, openDirs, flights: engine.companyFlights(now) }), note: null, error: null };
     },
     onChange(fn) {
       const off = engine.onCompanyChange(fn);

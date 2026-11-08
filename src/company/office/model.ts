@@ -21,7 +21,11 @@ export interface OfficeExtra {
   boards?: Record<string, BoardCounts>;
   flights?: Flight[];
   openDirs?: string[];
+  /** Cards on the boards by the Job they belong to: how many, and how many are done. */
+  jobCards?: Record<string, JobCards>;
 }
+
+export interface JobCards { done: number; total: number }
 
 export interface OfficePerson {
   id: string;
@@ -56,7 +60,8 @@ export interface OfficeFloor {
   board: BoardCounts | null;
 }
 
-export interface OfficeJob { id: string; title: string; status: JobStatus; label: string; tokensUsed: number; tokenCap: number }
+/** `cards` is how far along it is, from the boards: null until its cards are on one. */
+export interface OfficeJob { id: string; title: string; status: JobStatus; label: string; tokensUsed: number; tokenCap: number; cards: JobCards | null }
 
 export interface OfficeModel {
   founder: OfficePerson | null;
@@ -146,7 +151,7 @@ export function officeModel(company: Company, jobs: Job[], alerts: Alert[], pane
 
   return {
     founder, floors, needs,
-    jobs: jobs.flatMap((j) => (GOING[j.status] ? [{ id: j.id, title: j.title, status: j.status, label: GOING[j.status]!, tokensUsed: j.tokensUsed, tokenCap: j.tokenCap }] : [])),
+    jobs: jobs.flatMap((j) => (GOING[j.status] ? [{ id: j.id, title: j.title, status: j.status, label: GOING[j.status]!, tokensUsed: j.tokensUsed, tokenCap: j.tokenCap, cards: extra.jobCards?.[j.id] ?? null }] : [])),
     flights: extra.flights ?? [],
     counts: { people: everyone.length, working: everyone.filter((p) => p.state === "working").length, needs: needs.length },
   };

@@ -150,7 +150,11 @@ describe("officeModel", () => {
   });
   it("lists the Jobs still going, in words", () => {
     const m = officeModel(company(), [job({ status: "running" }), job({ id: "J-2", status: "done" })], [], []);
-    expect(m.jobs).toEqual([{ id: "J-1", title: "Add login", status: "running", label: "Running", tokensUsed: 5, tokenCap: 100 }]);
+    expect(m.jobs).toEqual([{ id: "J-1", title: "Add login", status: "running", label: "Running", tokensUsed: 5, tokenCap: 100, cards: null }]);
+  });
+  it("says how far a Job got from its cards on the boards", () => {
+    const m = officeModel(company(), [job({ status: "paused" })], [], [], { jobCards: { "J-1": { done: 2, total: 6 } } });
+    expect(m.jobs[0].cards).toEqual({ done: 2, total: 6 });
   });
   it("uses role titles, boards and flights when given them", () => {
     const m = officeModel(company([person("x", { role: "qa" })]), [], [], [], {
