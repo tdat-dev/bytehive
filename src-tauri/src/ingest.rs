@@ -63,6 +63,9 @@ pub struct ProviderView {
     pub has_key: bool,
     /// Where the key goes, so Settings can say so.
     pub host: String,
+    /// On a save: the provider answered with the new key. False when it could
+    /// not be reached, so the key was kept without being checked.
+    pub checked: bool,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -92,11 +95,23 @@ pub fn ingest_provider_get() -> Result<ProviderView, CommandError> {
 }
 
 #[tauri::command]
-pub fn ingest_provider_save(input: SaveInput) -> Result<ProviderView, CommandError> {
+pub async fn ingest_provider_save(input: SaveInput) -> Result<ProviderView, CommandError> {
     let old = read_config().unwrap_or_default();
-    let next = merge(&old, input);
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    // A refused key never replaces the one that works.
+    let (next, checked) = try_key(merge(&old, input)).await?;
     write_config(&next)?;
-    Ok(view(&next))
+    Ok(ProviderView { checked, ..view(&next) })
+}
+
+/// Ask the provider once with the new key. Refused: an error, nothing to keep.
+/// Unreachable: keep it unchecked, since a network blip says nothing about it.
+async fn try_key(next: ProviderConfig) -> Result<(ProviderConfig, bool), CommandError> {
+    match classify(next.clone(), "cảm ơn nhé").await {
+        Ok((_, learned)) => Ok((learned.unwrap_or(next), true)),
+        Err(CommandError::Failed(r)) if r == "http_401" || r == "http_403" => Err(CommandError::Failed(r)),
+        Err(_) => Ok((next, false)),
+    }
 }
 
 #[tauri::command]
@@ -161,6 +176,7 @@ fn view(cfg: &ProviderConfig) -> ProviderView {
     ProviderView {
         has_key: cfg.api_key.as_deref().is_some_and(|k| !k.trim().is_empty()),
         host: host_of(&cfg.base_url),
+        checked: false,
     }
 }
 
@@ -379,6 +395,34 @@ mod tests {
     fn ask(base_url: String) -> Result<(ClassifyReply, Option<ProviderConfig>), CommandError> {
         let _ = rustls::crypto::ring::default_provider().install_default();
         tauri::async_runtime::block_on(classify(ProviderConfig { base_url, ..cfg() }, "x"))
+    }
+
+    fn try_with(base_url: String) -> Result<(ProviderConfig, bool), CommandError> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        tauri::async_runtime::block_on(try_key(ProviderConfig { base_url, ..cfg() }))
+    }
+
+    #[test]
+    fn a_refused_key_is_not_kept() {
+        assert_eq!(try_with(stub(|_| 401)).err().unwrap().to_string(), "http_401");
+        assert_eq!(try_with(stub(|_| 403)).err().unwrap().to_string(), "http_403");
+    }
+
+    #[test]
+    fn a_working_key_is_kept_and_marked_checked() {
+        let (kept, checked) = try_with(stub(|_| 200)).unwrap();
+        assert!(checked);
+        assert_eq!(kept.api_key.as_deref(), Some("sk-test"));
+    }
+
+    #[test]
+    fn an_unreachable_provider_keeps_the_key_unchecked() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}/v1", closed.local_addr().unwrap().port());
+        drop(closed);
+        let (kept, checked) = try_with(url).unwrap();
+        assert!(!checked);
+        assert_eq!(kept.api_key.as_deref(), Some("sk-test"));
     }
 
     #[test]

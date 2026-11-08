@@ -426,6 +426,8 @@ export async function codexPlanUsage(): Promise<PlanUsage | null> {
 export interface IngestProvider {
   hasKey: boolean;
   host: string;
+  /** After a save: the provider answered with the new key. */
+  checked: boolean;
 }
 
 export interface IngestReply {
@@ -438,7 +440,8 @@ export async function ingestProviderGet(): Promise<IngestProvider> {
   return invoke<IngestProvider>("ingest_provider_get");
 }
 
-/** An empty key keeps the stored one, since the page never sees it. */
+/** Tries the key first and keeps it unless the provider refuses it. An empty
+ *  key keeps the stored one, since the page never sees it. */
 export async function ingestProviderSave(input: { apiKey: string }): Promise<IngestProvider> {
   return invoke<IngestProvider>("ingest_provider_save", { input });
 }

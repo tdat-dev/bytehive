@@ -13,8 +13,8 @@ describe("savedLine", () => {
 
 describe("keyProblem", () => {
   it("tells a refused key from an unreachable classifier, in the shape Rust sends", () => {
-    expect(keyProblem({ Failed: "http_401" })).toBe("That key was refused.");
-    expect(keyProblem({ Failed: "http_403" })).toBe("That key was refused.");
+    expect(keyProblem({ Failed: "http_401" })).toBe("That key was refused. Nothing was saved.");
+    expect(keyProblem({ Failed: "http_403" })).toBe("That key was refused. Nothing was saved.");
     expect(keyProblem({ Failed: "timeout" })).toBe("Couldn't reach the classifier.");
     expect(keyProblem({ Failed: "network" })).toBe("Couldn't reach the classifier.");
   });

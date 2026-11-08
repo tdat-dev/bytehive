@@ -245,7 +245,7 @@ Ghi file theo cách của company store: ghi `.tmp` rồi `fs_rename`. Log ghi c
 | `jsonMode` | `schema` (mặc định) hoặc `prompt`, do Rust tự chuyển khi nhà cung cấp từ chối `response_format` |
 | `timeoutMs` | Mặc định 12000 |
 
-Key chỉ đọc và ghi phía Rust. Settings nhận key lúc lưu, còn lần đọc sau chỉ trả `hasKey`, không trả lại chuỗi khóa. Key 9Router không ghi trong spec và không commit; chỉ dán một lần vào Settings. Đó là ô duy nhất về nhà cung cấp trên giao diện: dán xong rời ô là tự lưu và tự gọi thử một tin mẫu.
+Key chỉ đọc và ghi phía Rust. Settings nhận key lúc lưu, còn lần đọc sau chỉ trả `hasKey`, không trả lại chuỗi khóa. Key 9Router không ghi trong spec và không commit; chỉ dán một lần vào Settings. Đó là ô duy nhất về nhà cung cấp trên giao diện: dán xong rời ô thì Rust gọi thử một tin mẫu với key mới trước. Bị từ chối (401/403) thì không lưu gì, key cũ vẫn dùng; không gọi được thì vẫn lưu và báo là chưa kiểm được.
 
 Trong `prefs.ts` chỉ có công tắc chính `ingest`, mặc định `false`. Các giới hạn là hằng số trong `ingestSettings()`, không hiện trên giao diện, vì chúng là giá trị an toàn chứ không phải lựa chọn của người dùng:
 
