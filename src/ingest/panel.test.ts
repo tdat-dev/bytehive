@@ -2,7 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BlockedList } from "./blocked";
 import type { RecentResult } from "./index";
-import { answerText, createIngestPanel, senderName, stamp, type PanelApi } from "./panel";
+import { createIngestPanel, stamp, type PanelApi } from "./panel";
+import { answerLine, answerText, heldLine, senderName } from "./words";
 import type { BlockedEntry, ToolResult } from "./types";
 
 vi.mock("./index", () => ({}));
@@ -15,6 +16,7 @@ function setup(over: Partial<PanelApi> = {}, entries: BlockedEntry[] = [], recen
   const api: PanelApi = {
     list: async (): Promise<BlockedList> => ({ entries: items, damaged: false }),
     recent: () => recent,
+    reachable: () => true,
     resend: async (_d, e) => {
       items = items.filter((x) => x.id !== e.id);
       return true;
@@ -47,6 +49,11 @@ describe("the words", () => {
   it("reads a cost as money and a failure as a failure", () => {
     expect(answerText(cost)).toBe("$0.54");
     expect(answerText({ ...cost, status: "error", error: "unknown model" })).toBe("Failed: unknown model");
+    expect(answerLine(cost)).toBe("Cost estimate $0.54");
+  });
+
+  it("quotes a held message instead of only saying something was held", () => {
+    expect(heldLine("  cảm ơn nhé ")).toBe("held back “cảm ơn nhé”");
   });
 });
 
@@ -60,8 +67,8 @@ describe("the row labels", () => {
 
   it("dates a message held on another day", () => {
     const now = new Date(2026, 10, 7, 14, 0, 0).getTime();
-    expect(stamp(new Date(2026, 10, 7, 9, 5, 1).getTime(), now)).toBe("09:05:01");
-    expect(stamp(new Date(2026, 10, 5, 9, 5, 1).getTime(), now)).toBe("Nov 5 09:05:01");
+    expect(stamp(new Date(2026, 10, 7, 9, 5, 1).getTime(), now)).toBe("09:05");
+    expect(stamp(new Date(2026, 10, 5, 9, 5, 1).getTime(), now)).toBe("Nov 5 09:05");
   });
 });
 
@@ -87,6 +94,13 @@ describe("the panel", () => {
     expect(rows[0].textContent).toContain("Ana");
     expect(rows[0].textContent).toContain("Bob");
     expect(rows[0].textContent).toContain("Small talk");
+  });
+
+  it("says before the press when the agent is stopped, and that old ones clear", async () => {
+    const t = setup({ reachable: () => false }, [held("a", 1)]);
+    await opened(t);
+    expect(t.body.textContent).toContain("Bob is stopped");
+    expect(t.body.textContent).toContain("after 7 days");
   });
 
   it("gives a held message one action, not a list of chores", async () => {
@@ -187,7 +201,7 @@ describe("the panel", () => {
     const r: RecentResult = { at: 1, source: "kanban", to: "p1", toName: "Bob", text: "giá?", result: cost, cached: true };
     const t = setup({}, [], [r]);
     await opened(t);
-    expect(t.body.textContent).toContain("Answered by code (1)");
+    expect(t.body.textContent).toContain("Answered by ByteHive (1)");
     expect(t.body.textContent).toContain("Cost estimate");
     expect(t.body.textContent).toContain("$0.54");
     expect(t.body.textContent).toContain("from cache, 0 tokens");

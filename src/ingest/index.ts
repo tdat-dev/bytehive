@@ -14,6 +14,7 @@ import { sha256 } from "./hash";
 import { IngestLog } from "./log";
 import { classifyWithProvider } from "./provider";
 import { defaultTools } from "./tools";
+import { answerLine, heldLine, senderName } from "./words";
 import type { BlockedEntry, GateSettings, Outcome, Request, ToolResult } from "./types";
 
 const CACHE = ".bytehive/ingest-cache.json";
@@ -156,16 +157,17 @@ function gateFor(dir: string): Gate {
 /** Send one programmatic message through the gate for the project at `dir`. */
 export async function sendGated(dir: string, req: Request): Promise<Outcome> {
   const out = await gateFor(dir).send(req);
+  const from = senderName(req.from, req.source);
+  const name = req.toName ?? "agent";
   if (out.kind === "answered" || out.kind === "cache-hit") {
     const list = recents.get(dir) ?? [];
     list.push({ ...req, at: Date.now(), result: out.result, cached: out.kind === "cache-hit" });
     recents.set(dir, list.slice(-RECENT_MAX));
-    if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], resultLine(out.result).replace("[ingest] ", ""));
+    if (!req.fromPane) showDelegationToast(from, [name], answerLine(out.result));
   } else if (out.kind === "blocked") {
-    const name = req.toName ?? "agent";
-    if (!req.fromPane) showDelegationToast("Ingest", [name], "Held back.", { label: "Send anyway", run: () => void sendHeld(dir, out.id, name) });
+    if (!req.fromPane) showDelegationToast(from, [name], heldLine(req.gist ?? req.text), { label: "Send anyway", run: () => void sendHeld(dir, out.id, from, name) });
   } else if (out.kind === "failed") {
-    if (!req.fromPane) showDelegationToast("Ingest", [req.toName ?? "agent"], "Couldn't deliver it.");
+    if (!req.fromPane) showDelegationToast(from, [name], "couldn't deliver it.");
   }
   changed();
   return out;
@@ -182,8 +184,7 @@ export const blockedList = (dir: string): Promise<BlockedList> => storeFor(dir).
 /** Deliver a held message as it was written, past the gate. It stays on the
  *  list unless it really reached the agent. */
 export async function blockedResend(dir: string, entry: BlockedEntry): Promise<boolean> {
-  const ws = [...workspaces.values()].find((w) => w.dir === dir);
-  const panes = ws ? [...ws.panes.values()].map((p) => ({ id: p.id, name: p.spec.name, running: p.running })) : [];
+  const panes = panesOf(dir);
   const to = liveTarget(panes, entry);
   if (!to) return false;
   const sent = await sendMessage(to, entry.text).catch(() => false);
@@ -194,12 +195,20 @@ export async function blockedResend(dir: string, entry: BlockedEntry): Promise<b
   return true;
 }
 
+function panesOf(dir: string) {
+  const ws = [...workspaces.values()].find((w) => w.dir === dir);
+  return ws ? [...ws.panes.values()].map((p) => ({ id: p.id, name: p.spec.name, running: p.running })) : [];
+}
+
+/** Whether Send anyway can reach the agent right now. */
+export const heldReachable = (dir: string, entry: BlockedEntry): boolean => liveTarget(panesOf(dir), entry) !== null;
+
 /** Send anyway from the toast, which only knows the message's id. */
-async function sendHeld(dir: string, id: string, name: string): Promise<void> {
+async function sendHeld(dir: string, id: string, from: string, name: string): Promise<void> {
   const entry = (await blockedList(dir)).entries.find((e) => e.id === id);
   if (!entry) return;
   const ok = await blockedResend(dir, entry).catch(() => false);
-  showDelegationToast("Ingest", [name], ok ? "Sent." : "Couldn't reach it, so the message is still held.");
+  showDelegationToast(from, [name], ok ? "sent." : `${name} isn't running, so the message is still held.`);
   changed();
 }
 

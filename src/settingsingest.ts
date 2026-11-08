@@ -8,7 +8,7 @@ import { getPrefs, setPref } from "./prefs";
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const field = (id: string) => $<HTMLInputElement>(id);
 
-const NO_KEY = "Without one, only the built-in rules run. It stays on this computer.";
+const NO_KEY = "For messages the rules can't judge. Without one, only the rules run.";
 
 function note(text: string, kind: "" | "ok" | "err" = ""): void {
   const el = $("ingNote");
@@ -25,20 +25,23 @@ export function keyProblem(e: unknown): string {
   return "The classifier didn't answer.";
 }
 
-function showKey(hasKey: boolean): void {
+/** The saved line names where the key goes, so nobody has to guess. */
+export const savedLine = (host: string): string => (host ? `Saved. Sent only to ${host}.` : "Saved.");
+
+function showKey(p: { hasKey: boolean; host: string }): void {
   const key = field("ingKey");
   if (key) {
     key.value = "";
-    key.placeholder = hasKey ? "Saved" : "";
+    key.placeholder = p.hasKey ? "Paste a new key to replace it" : "";
   }
-  note(hasKey ? "Saved on this computer." : NO_KEY);
+  note(p.hasKey ? savedLine(p.host) : NO_KEY);
 }
 
 export function syncIngestView(): void {
   const on = field("prefIngest");
   if (on) on.checked = getPrefs().ingest;
   void ingestProviderGet()
-    .then((p) => showKey(p.hasKey))
+    .then(showKey)
     .catch(() => note(NO_KEY));
 }
 
@@ -52,7 +55,7 @@ async function saveKey(): Promise<void> {
   try {
     await ingestProviderSave({ apiKey });
     key.value = "";
-    key.placeholder = "Saved";
+    key.placeholder = "Paste a new key to replace it";
     await ingestClassify("cảm ơn nhé");
     note("Working.", "ok");
   } catch (e) {

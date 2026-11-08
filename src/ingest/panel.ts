@@ -4,17 +4,18 @@
  * moves a row under the pointer. Nothing polls: the panel redraws when it opens
  * and when the gate reports a change, keeping focus and opened text. */
 
-import { fmtTime } from "../flow";
-import { money } from "../pricing";
 import type { DockContext } from "../dockstore";
-import { blockedList, blockedResend, ingestRecent, onIngest, type RecentResult } from "./index";
+import { blockedList, blockedResend, heldReachable, ingestRecent, onIngest, type RecentResult } from "./index";
 import type { BlockedList } from "./blocked";
-import type { BlockedEntry, Source, ToolResult } from "./types";
+import type { BlockedEntry } from "./types";
+import { TOOLS, answerText, senderName } from "./words";
 
 export interface PanelApi {
   list(dir: string): Promise<BlockedList>;
   recent(dir: string): readonly RecentResult[];
   resend(dir: string, entry: BlockedEntry): Promise<boolean>;
+  /** False when the agent isn't running, so Send anyway would not reach it now. */
+  reachable(dir: string, entry: BlockedEntry): boolean;
   subscribe(fn: () => void): () => void;
 }
 
@@ -24,21 +25,6 @@ const REASONS: Record<string, string> = {
   empty: "Empty message",
   guardrail: "Not a task, says the classifier",
 };
-
-const TOOLS: Record<string, string> = {
-  estimate_cost: "Cost estimate",
-  convert_currency: "Currency",
-  remaining_budget: "Budget left",
-};
-
-/** What a computed answer says, in the words a person would read it. */
-export function answerText(r: ToolResult): string {
-  if (r.status === "error") return `Failed: ${r.error ?? "no answer"}`;
-  if (r.metadata.tool === "estimate_cost" && typeof r.values.usd === "number") return money(r.values.usd);
-  return Object.entries(r.values)
-    .map(([k, v]) => `${k} ${typeof v === "number" ? Math.round(v * 1e6) / 1e6 : v}`)
-    .join(", ");
-}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -74,12 +60,6 @@ function foldable(text: string, key: string, opened: Set<string>): HTMLButtonEle
   return b;
 }
 
-/** Who sent it: Kanban and the phone are you; an unnamed agent is not. */
-export function senderName(from: string | undefined, source: Source): string {
-  if (from) return from;
-  return source === "kanban" || source === "phone" ? "You" : "An agent";
-}
-
 /** Who, why and when, on one quiet line under the message. */
 function meta(from: string, to: string, at: number, why?: string): HTMLElement {
   const line = el("p", "igp-meta");
@@ -89,17 +69,20 @@ function meta(from: string, to: string, at: number, why?: string): HTMLElement {
   return line;
 }
 
+const hm = (d: Date): string => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
 /** Held messages outlive the day they were held, so an old one shows its date. */
 export function stamp(ts: number, now = Date.now()): string {
   const d = new Date(ts);
-  if (d.toDateString() === new Date(now).toDateString()) return fmtTime(ts);
-  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${fmtTime(ts)}`;
+  if (d.toDateString() === new Date(now).toDateString()) return hm(d);
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${hm(d)}`;
 }
 
 const defaultApi = (): PanelApi => ({
   list: blockedList,
   recent: ingestRecent,
   resend: blockedResend,
+  reachable: heldReachable,
   subscribe: onIngest,
 });
 
@@ -130,7 +113,9 @@ export function createIngestPanel(api: PanelApi = defaultApi()) {
     send.disabled = busy.has(entry.id);
 
     const foot = el("div", "igp-foot");
-    foot.append(meta(senderName(entry.from, entry.source), entry.toName ?? "agent", entry.at, REASONS[entry.reason] ?? entry.reason), send);
+    const line = meta(senderName(entry.from, entry.source), entry.toName ?? "agent", entry.at, REASONS[entry.reason] ?? entry.reason);
+    if (dir && !api.reachable(dir, entry)) line.append(" · ", el("span", "igp-stopped", `${entry.toName ?? "The agent"} is stopped`));
+    foot.append(line, send);
 
     row.append(foldable(entry.gist ?? entry.text, entry.id, opened), foot);
     return row;
@@ -197,6 +182,7 @@ export function createIngestPanel(api: PanelApi = defaultApi()) {
     const heldSec = el("section", "igp-sec igp-held");
     heldSec.setAttribute("aria-label", "Held back");
     if (held.damaged || held.entries.length > 0) heldSec.append(el("h3", "igp-h", held.damaged ? "Held back" : `Held back (${held.entries.length})`));
+    if (held.entries.length > 0) heldSec.append(el("p", "igp-note", "Each one leaves this list by itself after 7 days."));
     if (held.damaged) {
       heldSec.append(el("p", "igp-none", "The list of held messages is damaged, so it can't be shown. New ones start a fresh list."));
     } else if (held.entries.length === 0) {
@@ -211,10 +197,10 @@ export function createIngestPanel(api: PanelApi = defaultApi()) {
     const answers = api.recent(here);
     if (answers.length > 0) {
       const sec = el("section", "igp-sec");
-      sec.setAttribute("aria-label", "Answered by code");
+      sec.setAttribute("aria-label", "Answered by ByteHive");
       const list = el("div", "flow-list");
       answers.forEach((r, i) => list.append(answerRow(r, i)));
-      sec.append(el("h3", "igp-h", `Answered by code (${answers.length})`), list);
+      sec.append(el("h3", "igp-h", `Answered by ByteHive (${answers.length})`), list);
       parts.push(sec);
     }
 

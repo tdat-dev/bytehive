@@ -421,9 +421,11 @@ export async function codexPlanUsage(): Promise<PlanUsage | null> {
   return invoke<PlanUsage | null>("codex_plan_usage");
 }
 
-/** Whether the ingestion gate's classifier has a key. The key itself never comes back. */
+/** Whether the ingestion gate's classifier has a key, and the host it goes to.
+ *  The key itself never comes back. */
 export interface IngestProvider {
   hasKey: boolean;
+  host: string;
 }
 
 export interface IngestReply {

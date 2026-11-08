@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { keyProblem } from "./settingsingest";
+import { keyProblem, savedLine } from "./settingsingest";
 
 vi.mock("./ipc", () => ({}));
 vi.mock("./prefs", () => ({}));
+
+describe("savedLine", () => {
+  it("names where the key goes", () => {
+    expect(savedLine("9router.zoldify.com")).toBe("Saved. Sent only to 9router.zoldify.com.");
+    expect(savedLine("")).toBe("Saved.");
+  });
+});
 
 describe("keyProblem", () => {
   it("tells a refused key from an unreachable classifier, in the shape Rust sends", () => {

@@ -61,6 +61,8 @@ impl Default for ProviderConfig {
 #[serde(rename_all = "camelCase")]
 pub struct ProviderView {
     pub has_key: bool,
+    /// Where the key goes, so Settings can say so.
+    pub host: String,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -156,7 +158,15 @@ fn refuses_schema(json_mode: &str, status: u16) -> bool {
 }
 
 fn view(cfg: &ProviderConfig) -> ProviderView {
-    ProviderView { has_key: cfg.api_key.as_deref().is_some_and(|k| !k.trim().is_empty()) }
+    ProviderView {
+        has_key: cfg.api_key.as_deref().is_some_and(|k| !k.trim().is_empty()),
+        host: host_of(&cfg.base_url),
+    }
+}
+
+fn host_of(base_url: &str) -> String {
+    let rest = base_url.split_once("://").map_or(base_url, |(_, r)| r);
+    rest.split(['/', '?', '#']).next().unwrap_or("").to_string()
 }
 
 /// Put a new key into the stored config and leave the rest alone. An empty key
@@ -395,6 +405,13 @@ mod tests {
     fn a_refused_key_is_not_retried_as_a_format_problem() {
         let err = ask(stub(|req| if req.contains("response_format") { 401 } else { 200 })).err().unwrap();
         assert_eq!(err.to_string(), "http_401");
+    }
+
+    #[test]
+    fn the_page_learns_the_host_and_nothing_more() {
+        assert_eq!(host_of("https://9router.zoldify.com/v1"), "9router.zoldify.com");
+        assert_eq!(host_of("http://localhost:11434/v1/"), "localhost:11434");
+        assert_eq!(host_of("nonsense"), "nonsense");
     }
 
     #[test]
