@@ -191,7 +191,7 @@ async function toFallback(): Promise<void> {
     if (!app || !fallback) return;
     el.className = "of-side";
     el.setAttribute("aria-label", "The Company");
-    el.innerHTML = `${fellHtml(OFFICE_3D)}<div data-job-box></div><div data-rail></div>`;
+    el.innerHTML = `${fellHtml(OFFICE_3D)}<div data-rail></div><div data-job-box></div>`;
     el.querySelector("[data-retry]")?.addEventListener("click", () => void open());
     app.append(el);
     const box = createJobBox(source);

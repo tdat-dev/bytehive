@@ -112,7 +112,7 @@ if (flag("side")) {
   // As office.ts does it with no 3D: the rail and the job box as a column beside the app.
   const side = document.createElement("aside");
   side.className = "of-side";
-  side.innerHTML = `${fellHtml(true)}<div data-job-box></div><div data-rail></div>`;
+  side.innerHTML = `${fellHtml(true)}<div data-rail></div><div data-job-box></div>`;
   document.getElementById("app")!.append(side);
   document.body.classList.add("office-fallback");
   createJobBox(source).mount(side.querySelector<HTMLElement>("[data-job-box]")!);
