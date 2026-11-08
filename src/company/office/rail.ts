@@ -18,7 +18,7 @@ const CUT = 16;
 /** The box's example names a project the company has, or none: a new company has no gcare. */
 const askHint = (m: OfficeModel | null) => (m?.floors[0] ? `Add marketing to ${m.floors[0].name}` : "Build a landing page for my app");
 const WHY_HINT = "For example: fewer hires, and leave QA for later";
-const NOTE_NEEDED = "Send back needs a note. To drop the job instead, use Cancel job in its menu.";
+const NOTE_NEEDED = "Send back needs a note. To approve instead, close the note. To drop the job, use Cancel job in its menu.";
 /** Examples for an empty box: what a first job can sound like. */
 const EXAMPLES = ["Add a pricing page", "Fix the login", "Write the docs"];
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -65,11 +65,14 @@ function planHtml(p: PlanDetail, summary: string): string {
 
 type Busy = (key: string) => boolean;
 
-/** A busy button is aria-disabled, not disabled: a disabled button cannot keep keyboard focus. */
-function actButton(busy: Busy, act: string, label: string, about: string, jobId: string | null, kind: string, extra = ""): string {
+/** A busy button is aria-disabled, not disabled: a disabled button cannot keep keyboard focus.
+ *  `heldBy` names the visible line that says why a button is held, read out with it. */
+function actButton(busy: Busy, act: string, label: string, about: string, jobId: string | null, kind: string, extra = "", heldBy = ""): string {
   const working = busy(`${act}:${jobId ?? ""}`);
   const job = jobId ? ` data-job="${esc(jobId)}"` : "";
-  return `<button type="button" class="btn ${kind}" data-act="${act}"${job}${extra} aria-label="${esc(`${label}: ${about}`)}"${working ? ' aria-disabled="true" aria-busy="true"' : ""}>${working ? "Working..." : label}</button>`;
+  const off = working || heldBy ? ' aria-disabled="true"' : "";
+  const why = heldBy ? ` aria-describedby="${esc(heldBy)}"` : "";
+  return `<button type="button" class="btn ${kind}" data-act="${act}"${job}${extra} aria-label="${esc(`${label}: ${about}`)}"${off}${why}${working ? ' aria-busy="true"' : ""}>${working ? "Working..." : label}</button>`;
 }
 
 /** The one word that fits the line. The full label is there for a screen reader. */
@@ -110,10 +113,11 @@ function rowHtml(r: NeedRow, busy: Busy, o: RowLook): string {
   // Asking for a note, the one thing to press is Send back, and Approve steps down.
   const main = o.primary && !o.asking ? "primary" : "secondary";
   const person = everyone(o.model).find((p) => p.id === r.personId);
-  const btn = (act: string, label: string, kind: string, extra = "") => actButton(busy, act, label, r.title, r.jobId, kind, extra);
+  const btn = (act: string, label: string, kind: string, extra = "", heldBy = "") => actButton(busy, act, label, r.title, r.jobId, kind, extra, heldBy);
+  const wrongId = `coWrong-${r.jobId ?? r.key}`;
   const open = (label: string) => (o.goes ? `<button type="button" class="btn ${main}" data-open="${esc(r.key)}" aria-label="${esc(`${label}: ${r.title}`)}">${esc(label)}</button>` : "");
   const buttons =
-    r.kind === "plan" ? btn("approve", "Approve", main, o.short ? ' aria-disabled="true" title="Write why, or close the note, first"' : "") + btn("reject", "Send back", o.primary && o.asking ? "primary" : "secondary")
+    r.kind === "plan" ? btn("approve", "Approve", main, "", o.short ? wrongId : "") + btn("reject", "Send back", o.primary && o.asking ? "primary" : "secondary")
     : r.kind === "paused" ? btn("raise", "Add 1M tokens", main)
     : r.kind === "merge" ? open("Review") + btn("finish", "Mark done", o.goes ? "secondary" : main)
     : r.standing ? btn("dismiss", "Dismiss", "secondary", ` data-key="${esc(r.key)}"`) : open(person ? (r.key.startsWith("ask-") ? `Answer at ${person.name}'s desk` : `Go to ${person.name}`) : "Open");
@@ -129,7 +133,7 @@ function rowHtml(r: NeedRow, busy: Busy, o: RowLook): string {
   const note = r.kind === "plan" && r.jobId
     ? `<div class="co-field"${o.asking ? "" : " hidden"}><div class="co-field-head"><label for="coNote-${esc(r.jobId)}">Why send it back?</label>` +
       `<button type="button" class="btn icon sm" data-act="unask" data-job="${esc(r.jobId)}" aria-label="Close the note" title="Close the note">${icon("x")}</button></div>` +
-      `<textarea id="coNote-${esc(r.jobId)}" data-note="${esc(r.jobId)}" rows="2" placeholder="${esc(WHY_HINT)}"></textarea>${o.short ? `<p class="co-wrong" role="status">${esc(NOTE_NEEDED)}</p>` : ""}</div>`
+      `<textarea id="coNote-${esc(r.jobId)}" data-note="${esc(r.jobId)}" rows="2" placeholder="${esc(WHY_HINT)}"></textarea>${o.short ? `<p class="co-wrong" id="${esc(wrongId)}" role="status">${esc(NOTE_NEEDED)}</p>` : ""}</div>`
     : "";
   const words = `${what ? `<p class="co-what">${esc(what)}</p>` : ""}${more ? `<p class="co-more-line">${esc(more)}</p>` : ""}`;
   const acts = buttons ? `<div class="co-acts">${buttons}</div>` : "";

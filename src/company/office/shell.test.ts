@@ -815,11 +815,15 @@ describe("its life", () => {
   });
   it("tells the rail where it stands", async () => {
     const { shell } = await shown();
-    const titles = () => shell.el.querySelectorAll("[data-needs] [data-row]").length;
-    const atBuilding = titles();
-    // The plan and the paused job are the Founder's: at the Founder's desk they go nowhere.
+    const rows = () => [...shell.el.querySelectorAll<HTMLElement>("[data-needs] [data-row]")].map((b) => b.dataset.row).sort();
+    const atBuilding = rows();
+    expect(atBuilding).toEqual(expect.arrayContaining(["plan-J-0142", "paused-J-0139"]));
+    // From a floor every card still goes somewhere else, so the same ones are buttons.
+    shell.go(floor("bytehive"));
+    expect(rows()).toEqual(atBuilding);
+    // At the Founder's desk the plan and the paused job are where they go: plain text.
     shell.go({ kind: "desk", personId: "founder", floorId: null, tab: "terminal" });
-    expect(titles()).toBeLessThan(atBuilding);
+    expect(rows()).toEqual(atBuilding.filter((k) => k !== "plan-J-0142" && k !== "paused-J-0139"));
   });
 });
 

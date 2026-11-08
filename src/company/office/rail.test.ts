@@ -373,7 +373,12 @@ describe("Needs you rail", () => {
     const { el } = mountRail(s);
     click(el, '[data-act="reject"]');
     click(el, '[data-act="reject"]');
-    expect(el.querySelector('[data-act="approve"]')?.getAttribute("aria-disabled")).toBe("true");
+    const held = el.querySelector<HTMLElement>('[data-act="approve"]')!;
+    expect(held.getAttribute("aria-disabled")).toBe("true");
+    expect(held.outerHTML.match(/aria-disabled/g)).toHaveLength(1);
+    // Why it is held is read out with it, and is the visible line under the note.
+    const why = document.getElementById(held.getAttribute("aria-describedby") ?? "");
+    expect(why?.classList.contains("co-wrong")).toBe(true);
     click(el, '[data-act="approve"]');
     await tick();
     expect(s.approve).not.toHaveBeenCalled();
