@@ -60,6 +60,18 @@ describe("reuseStaff", () => {
     const c = company([person("d1", "staff", "a", FOUNDER_ID)]);
     expect(reuseStaff(c, plan({ hires: [{ role: "developer", floor: "a" }, { role: "developer", floor: "a" }] })).hires).toEqual([{ role: "developer", floor: "a" }]);
   });
+  it("names the one person each dropped hire falls to, not everyone with the role", () => {
+    const c = company([person("d1", "staff", "a", FOUNDER_ID), person("d2", "staff", "a", FOUNDER_ID)]);
+    expect(reuseStaff(c, plan({ hires: [{ role: "developer", floor: "a" }] })).reuse).toEqual(["d1"]);
+  });
+  it("drops a drafted role whose only hire went to someone already there", () => {
+    const c = company([{ ...person("x1", "staff", "a", FOUNDER_ID), role: "analyst" }]);
+    const draft = { id: "analyst", title: "Analyst", department: "Data", prompt: "p" };
+    const kept = { ...draft, id: "writer", title: "Writer" };
+    const p = reuseStaff(c, plan({ hires: [{ role: "analyst", floor: "a" }, { role: "writer", floor: "b" }], newRoles: [draft, kept] }));
+    expect(p.newRoles).toEqual([kept]);
+    expect(p.reuse).toEqual(["x1"]);
+  });
   it("gives back the same plan when nothing repeats", () => {
     const p = plan({ hires: [{ role: "developer", floor: "a" }] });
     expect(reuseStaff(company([]), p)).toBe(p);

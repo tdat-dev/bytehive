@@ -3,7 +3,7 @@
  * effects out. engine.ts runs the effects. The app re-checks every rule here,
  * because a request is only a line in a file. */
 import { applyHires, canMessage, fromDraft, personById, personByName, planCap, reuseStaff, validatePlan } from "./org";
-import { FOUNDER_ID, type Company, type CompanyRequest, type Job, type JobPlan, type Person, type RoleDef } from "./types";
+import { FOUNDER_ID, type Company, type CompanyRequest, type Job, type Person, type RoleDef } from "./types";
 
 export interface State { company: Company; jobs: Job[]; roles: RoleDef[] }
 
@@ -62,12 +62,14 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   if (!job) return none;
   if (r.type === "plan") {
     if (job.status !== "planning") return refuse(`Plan for ${r.job} refused: the job is ${job.status}, and a plan is only taken while it is planning.`);
-    // A role the floor already has is that person's work, not a new hire's.
-    const plan = reuseStaff(s.company, r.plan);
+    // A role the floor already has is that person's work, not a new hire's. Who that is, is
+    // the app's to say: a reuse list in the request is dropped.
+    const { reuse: _forged, ...asked } = r.plan;
+    const plan = reuseStaff(s.company, asked);
     const errors = validatePlan(s.company, plan, s.roles);
     if (errors.length) return refuse(`Plan for ${r.job} refused: ${errors.join(" ")}`);
-    const reused = plan === r.plan ? [] : [tellFounder(`Plan for ${r.job} taken without ${r.plan.hires.length - plan.hires.length} of its hires: ${staffOn(s, r.plan)} already there, and they do that work.`)];
-    return { state: patch(s, r.job, { status: "awaiting-plan", plan }), effects: reused };
+    const told = plan.reuse?.length ? [tellFounder(`Plan for ${r.job} taken without ${plan.reuse.length} of its hires: ${staffOn(s, plan.reuse)} already there and ${plan.reuse.length === 1 ? "does" : "do"} that work.`)] : [];
+    return { state: patch(s, r.job, { status: "awaiting-plan", plan }), effects: told };
   }
   if (r.type !== "job-done") return none;
   // Nothing was planned, so nobody worked and there is nothing to merge. A plan the owner is reading still has to be answered.
@@ -78,9 +80,9 @@ export function applyRequest(s: State, r: CompanyRequest): { state: State; effec
   return { state: patch(s, r.job, { status: "awaiting-merge", summary: r.summary }), effects: [] };
 }
 
-/** Who already holds the roles a plan asks to hire, by name, role and floor. */
-function staffOn(s: State, plan: JobPlan): string {
-  const held = s.company.people.filter((p) => plan.hires.some((h) => h.floor === p.floor && h.role === p.role));
+/** The people a plan reuses, by name, role and floor. */
+function staffOn(s: State, ids: string[]): string {
+  const held = ids.flatMap((id) => personById(s.company, id) ?? []);
   return held.map((p) => `${p.name} (${p.role} on ${p.floor})`).join(", ") + (held.length === 1 ? " is" : " are");
 }
 
@@ -88,15 +90,16 @@ export function approvePlan(
   s: State,
   id: string,
   pick: { name: (taken: string[]) => string; id: () => string },
-): { state: State; hired: Person[]; rewired: Person[]; saved: RoleDef[]; effects: Effect[] } {
+): { state: State; hired: Person[]; reused: Person[]; rewired: Person[]; saved: RoleDef[]; effects: Effect[] } {
   const job = s.jobs.find((j) => j.id === id);
-  if (!job?.plan || job.status !== "awaiting-plan") return { state: s, hired: [], rewired: [], saved: [], effects: [] };
+  if (!job?.plan || job.status !== "awaiting-plan") return { state: s, hired: [], reused: [], rewired: [], saved: [], effects: [] };
   // It passed on arrival, but the company may have changed while it waited.
   const errors = validatePlan(s.company, job.plan, s.roles);
   if (errors.length) {
     return {
       state: patch(s, id, { status: "planning", plan: null }),
       hired: [],
+      reused: [],
       rewired: [],
       saved: [],
       effects: [tellFounder(`Plan for ${id} no longer holds: ${errors.join(" ")} Make a new plan with job_plan.`)],
@@ -107,6 +110,8 @@ export function approvePlan(
   const roles = [...s.roles, ...saved];
   const { company, hired } = applyHires(s.company, job.plan, roles, pick);
   const names = hired.map((p) => `${p.name} (${p.role})`).join(", ");
+  // Whoever took a hire's place works this Job, and starts with the hires if their floor is closed.
+  const reused = (job.plan.reuse ?? []).flatMap((pid) => personById(company, pid) ?? []);
   // Whoever a card names works this Job as much as a new hire does, and so does
   // the Lead of its floor, who hands it out and reviews it. A floor with no Lead
   // has nobody to hand it out: its people are briefed directly, and a stop on an
@@ -120,7 +125,7 @@ export function approvePlan(
   const state = patch({ ...s, company, roles }, id, {
     status: "running",
     tokenCap: planCap(job.plan, job.tokenCap), // the owner's limit, never the Founder's
-    people: [...new Set([...job.people, ...hired.map((p) => p.id), ...onCards])],
+    people: [...new Set([...job.people, ...hired.map((p) => p.id), ...reused.map((p) => p.id), ...onCards])],
   });
   // A new Lead takes over the floor. Whoever was there keeps a session that says
   // otherwise, and would refuse the Lead's orders until they hear it.
@@ -131,7 +136,7 @@ export function approvePlan(
     text: `[From Founder] You have a new boss: ${p.boss ? personById(company, p.boss)?.name : "nobody"}. Take your cards from them and report to them from now on.`,
   }));
   const text = `Plan for ${id} approved.${names ? ` Hired: ${names}.` : ""} The cards are on the boards. Brief the Lead of each floor, or the person working alone there.`;
-  return { state, hired, rewired, saved, effects: [...notices, tellFounder(text)] };
+  return { state, hired, reused, rewired, saved, effects: [...notices, tellFounder(text)] };
 }
 
 /** Write down what a person's pane runs on. Gives back the same state when nothing moved. */

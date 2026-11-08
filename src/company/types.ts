@@ -78,6 +78,7 @@ export interface JobPlan {
   hires: Hire[];
   tokenCap?: number;
   newRoles?: NewRole[]; // saved only when the owner approves the plan
+  reuse?: string[]; // Person ids already on a floor who take a hire's work: set by the app, never by the Founder
 }
 
 export type JobStatus = "planning" | "awaiting-plan" | "running" | "awaiting-merge" | "paused" | "stopped" | "done" | "rejected";

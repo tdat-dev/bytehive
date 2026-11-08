@@ -320,6 +320,21 @@ describe("approve", () => {
     expect(io.files.get(`${ROOT}\\people\\${staff.id}\\prompt.md`)).toContain(`Your boss is ${lead.name}.`);
   });
 
+  it("starts the person a plan reuses when their floor was closed, and hires nobody twice", async () => {
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] });
+    await engine.approve(job().id);
+    const dev = engine.companyView()!.company.people.find((p) => p.rank === "staff")!;
+    // Closing a project drops its agents' panes.
+    for (const ws of workspaces.values()) for (const [id, p] of ws.panes) if (p.spec.personId === dev.id) ws.panes.delete(id);
+    io.spawned.length = 0;
+    await engine.giveJob("more");
+    await request({ type: "plan", ts: 1, from: "founder", job: job(1).id, plan: { summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] } });
+    expect(job(1).plan?.hires).toEqual([]);
+    await engine.approve(job(1).id);
+    expect(engine.companyView()!.company.people.filter((p) => p.rank === "staff")).toHaveLength(1);
+    expect(io.spawned).toContain(dev.name);
+  });
+
   it("places the cards once, however many clicks", async () => {
     await waitingJob(planFor("a"));
     await Promise.all([engine.approve(job().id), engine.approve(job().id)]);

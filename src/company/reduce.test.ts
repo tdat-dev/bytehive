@@ -105,6 +105,19 @@ describe("applyRequest", () => {
     expect(r.state.jobs[0].plan?.hires).toEqual([{ role: "marketing", floor: "b" }]);
     expect(r.effects).toEqual([{ kind: "deliver", personId: FOUNDER_ID, text: expect.stringContaining("Linh") }]);
   });
+  it("tells the Founder only who takes the dropped hires, and gives them the job on approval", () => {
+    const s0 = newJob(state(), "x", 1).state;
+    const dev2: Person = { ...dev, id: "d2", name: "Minh" };
+    const s = { ...s0, company: { ...s0.company, people: [...s0.company.people, dev2] } };
+    const r = applyRequest(s, { type: "plan", ts: 2, from: FOUNDER_ID, job: "J-0001", plan: { ...plan, hires: [{ role: "developer", floor: "a" }, { role: "marketing", floor: "b" }] } });
+    const told = (r.effects[0] as { text: string }).text;
+    expect(told).toContain("Linh");
+    expect(told).not.toContain("Minh");
+    const a = approvePlan(r.state, "J-0001", pick);
+    expect(a.reused.map((p) => p.id)).toEqual(["d1"]);
+    expect(a.state.jobs[0].people).toContain("d1");
+    expect(a.hired.map((p) => p.role)).toEqual(["marketing"]);
+  });
   it("refuses a plan while another waits for approval", () => {
     const s = waiting();
     const r = applyRequest(s, { type: "plan", ts: 3, from: FOUNDER_ID, job: "J-0001", plan });

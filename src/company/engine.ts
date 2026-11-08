@@ -509,7 +509,7 @@ export const approve = (id: string): Promise<void> => enqueue(async () => {
   } catch (e) {
     failed.push(`${job.id} could not be saved: ${reason(e)}.`);
   }
-  failed.push(...await saveRoles(r.saved), ...await refreshFiles(r.rewired), ...await placeCards(job), ...await startHires(r.hired));
+  failed.push(...await saveRoles(r.saved), ...await refreshFiles(r.rewired), ...await placeCards(job), ...await startHires([...r.hired, ...r.reused]));
   await run(reportFailures(r.effects, failed));
 }, "Starting a plan");
 

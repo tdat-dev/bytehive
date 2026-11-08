@@ -91,17 +91,22 @@ function draftErrors(drafts: NewRole[], roles: RoleDef[]): string[] {
 }
 
 /** A plan that hires a role a floor already has: the person there takes the work, and only
- *  the hires beyond them stay. Each one on a floor covers one hire of their role. */
+ *  the hires beyond them stay. Each one on a floor covers one hire of their role, and is named
+ *  in `reuse`, so they start with the hires. A drafted role nobody is hired into any more goes. */
 export function reuseStaff(c: Company, plan: JobPlan): JobPlan {
-  const free = new Map<string, number>();
-  for (const p of c.people) if (p.floor) free.set(`${p.floor}:${p.role}`, (free.get(`${p.floor}:${p.role}`) ?? 0) + 1);
+  const free = new Map<string, string[]>();
+  for (const p of c.people) if (p.floor) free.set(`${p.floor}:${p.role}`, [...(free.get(`${p.floor}:${p.role}`) ?? []), p.id]);
+  const reuse: string[] = [];
   const hires = plan.hires.filter((h) => {
-    const key = `${h.floor}:${h.role}`;
-    const left = free.get(key) ?? 0;
-    if (left > 0) free.set(key, left - 1);
-    return left === 0;
+    const who = free.get(`${h.floor}:${h.role}`)?.shift();
+    if (who) reuse.push(who);
+    return !who;
   });
-  return hires.length === plan.hires.length ? plan : { ...plan, hires };
+  if (!reuse.length) return plan;
+  const hired = new Set(hires.map((h) => h.role));
+  const dropped = new Set(plan.hires.map((h) => h.role).filter((r) => !hired.has(r)));
+  const newRoles = plan.newRoles?.filter((r) => !dropped.has(r.id));
+  return { ...plan, hires, reuse, ...(plan.newRoles ? { newRoles } : {}) };
 }
 
 export function validatePlan(c: Company, plan: JobPlan, roles: RoleDef[]): string[] {
