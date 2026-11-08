@@ -1,15 +1,19 @@
 # Releasing ByteHive (auto-update)
 
 ByteHive is the native app in `crates/native-shell`. An installed copy checks
-`https://github.com/tdat-dev/maestro-releases/releases/latest/download/latest.json`
+`https://github.com/tdat-dev/bytehive-releases/releases/latest/download/latest.json`
 a little after start and every six hours (Settings > System), and when a newer
 **signed** build exists the top bar offers "Update to x.y.z". Installing
 downloads the installer, checks its minisign signature against the key built
 into `crates/native-shell/src/updater.rs`, runs it, and closes ByteHive; the
 installer opens it again.
 
-The source repo `tdat-dev/maestro` is **private**. Installers and `latest.json`
-go to the **public** `tdat-dev/maestro-releases` (releases only, no code).
+The source repo `tdat-dev/bytehive` is **private**. Installers and `latest.json`
+go to the **public** `tdat-dev/bytehive-releases` (releases only, no code).
+
+It was named `tdat-dev/maestro-releases` until 2026-11-08. Copies installed before
+then still ask that address and GitHub redirects them here, so **never create a
+repo named `maestro-releases`**: it would take the redirect and strand them.
 
 ## Moving people off the Tauri app
 
@@ -36,7 +40,7 @@ The **Release** workflow (`.github/workflows/release.yml`) then:
   `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`),
 - writes `latest.json` (`tools/latest_json.mjs`),
 - publishes the installer, its `.sig` and `latest.json` to
-  tdat-dev/maestro-releases with `RELEASES_TOKEN`.
+  tdat-dev/bytehive-releases with `RELEASES_TOKEN`.
 
 ## Building the installer by hand
 

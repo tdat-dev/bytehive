@@ -48,7 +48,7 @@ Collected and used only on the user's computer, passed to the ByteHive app and t
 
 Certify: not sold, not used for unrelated purposes, not used for creditworthiness.
 
-Privacy policy: https://github.com/tdat-dev/maestro-releases/blob/main/PRIVACY.md
+Privacy policy: https://github.com/tdat-dev/bytehive-releases/blob/main/PRIVACY.md
 
 ## Screenshots (1280x800)
 
