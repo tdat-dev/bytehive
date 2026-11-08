@@ -59,7 +59,7 @@ async function renderUsage(dir: string): Promise<void> {
         `<td>${fmtTokens(u.input_tokens)}</td>` +
         `<td>${fmtTokens(u.output_tokens)}</td>` +
         `<td>${fmtTokens(cache)}</td>` +
-        `<td class="um-cost">${cost === null ? "—" : fmtCost(cost)}</td></tr>`
+        `<td class="um-cost">${cost === null ? "No price" : fmtCost(cost)}</td></tr>`
       );
     })
     .join("");

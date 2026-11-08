@@ -87,7 +87,7 @@ export async function detachWorkspace(ws: Workspace) {
     return; // storage unavailable — keep the tab here rather than lose it
   }
   try {
-    await openDetachWindow(key, `ByteHive — ${ws.name}`);
+    await openDetachWindow(key, `ByteHive: ${ws.name}`);
   } catch (e) {
     localStorage.removeItem(`maestro.detach.${key}`);
     console.warn("detach window failed:", e);
