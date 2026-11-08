@@ -44,7 +44,9 @@ const MESSAGE_BIG: usize = 64 * 1024;
 /// many; each one sent alone is a script the webview compiles and runs, so they
 /// are joined (core/coalesce.rs). A pipe agent's output is whole JSON lines and
 /// stays as it is. `flow` is filled in once the agent exists, so the joiner can
-/// tell when someone is typing into it.
+/// tell when someone is typing into it. A message the window cannot take (it
+/// closed, or it is reloading) turns the flow off: nobody is left to ack, and
+/// the reader must not wait on them. Attaching a window turns it on again.
 fn window_sink(
     on_bytes: Channel<InvokeResponseBody>,
     pipe: bool,
@@ -55,9 +57,14 @@ fn window_sink(
             let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
         });
     }
+    let gone = flow.clone();
     let typing = move || flow.get().is_some_and(|f| f.typed_within(TYPING_FOR));
     let joined = Coalescer::new(MESSAGE_EVERY, MESSAGE_EVERY_TYPING, MESSAGE_BIG, typing, move |batch| {
-        let _ = on_bytes.send(InvokeResponseBody::Raw(batch));
+        if on_bytes.send(InvokeResponseBody::Raw(batch)).is_err() {
+            if let Some(f) = gone.get() {
+                f.off();
+            }
+        }
     });
     Box::new(move |bytes| joined.push(bytes))
 }
@@ -76,6 +83,9 @@ pub async fn pty_spawn(
     // On plain pipes instead of a terminal: for an agent that talks in JSON
     // lines (Claude Code's stream-json). Its output arrives as whole lines.
     pipe: Option<bool>,
+    // The window's name for this channel in its acks (core/flow.rs). Without
+    // one the output is never held back.
+    epoch: Option<u64>,
     // Raw-bytes channel: PTY output is streamed as binary (ArrayBuffer on the JS
     // side). Sending `Vec<u8>` directly would serialize every byte as a JSON
     // number — pathologically slow under a chatty agent's output and the cause
@@ -106,6 +116,7 @@ pub async fn pty_spawn(
     let exit_id = agent_id.clone();
     let flow_id = agent_id.clone();
     let registry = state.registry.clone();
+    let flows = state.flows.clone();
     let run = NEXT_RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let pipe = pipe.unwrap_or(false);
 
@@ -126,15 +137,16 @@ pub async fn pty_spawn(
             },
         )
         .map_err(CommandError::from)?;
-        let reg = registry::lock(&registry);
-        if let Some(f) = reg.flow_of(&flow_id) {
-            let _ = flow.set(f);
-        }
+        let Some(f) = registry::lock(&registry).flow_of(&flow_id) else {
+            return Ok(run); // already ended
+        };
+        flows.put(&flow_id, &f);
         // The window acks what it parses (pty_ack); a terminal is held back when
         // it falls behind. A pipe agent is never held.
-        if !pipe {
-            let _ = reg.enable_flow(&flow_id);
+        if let (false, Some(epoch)) = (pipe, epoch) {
+            f.enable(epoch);
         }
+        let _ = flow.set(f);
         Ok(run)
     })
     .await
@@ -147,37 +159,41 @@ pub async fn pty_spawn(
 pub async fn pty_attach(
     state: State<'_, AppState>,
     agent_id: String,
+    epoch: Option<u64>,
     on_bytes: Channel<InvokeResponseBody>,
 ) -> Result<(), CommandError> {
     let registry = state.registry.clone();
+    let flows = state.flows.clone();
     run_blocking(move || {
         let reg = registry::lock(&registry);
         let pipe = reg.is_pipe(&agent_id);
         let flow = std::sync::Arc::new(std::sync::OnceLock::new());
         if let Some(f) = reg.flow_of(&agent_id) {
+            flows.put(&agent_id, &f);
             let _ = flow.set(f);
         }
-        reg.attach(&agent_id, window_sink(on_bytes, pipe, flow))
-            .map_err(CommandError::from)
+        reg.attach(&agent_id, window_sink(on_bytes, pipe, flow.clone()), epoch.unwrap_or(0))
+            .map_err(CommandError::from)?;
+        if epoch.is_none() {
+            if let Some(f) = flow.get() {
+                f.off(); // a window that will not ack is never waited on
+            }
+        }
+        Ok(())
     })
     .await
 }
 
-/// The window has finished parsing `bytes` more of an agent's output. The reader
-/// of that agent is held back while the window is too far behind; this is what
-/// lets it go on. Cheap and never blocks on the agent.
+/// The window of `epoch` has parsed `parsed` bytes of an agent's output in all.
+/// The reader of that agent is held back while the window is too far behind;
+/// this is what lets it go on. Never takes the registry lock, and async so it
+/// stays off the main thread.
 #[tauri::command]
-pub async fn pty_ack(
-    state: State<'_, AppState>,
-    agent_id: String,
-    bytes: u64,
-) -> Result<(), CommandError> {
-    let registry = state.registry.clone();
-    run_blocking(move || {
-        registry::lock(&registry).ack(&agent_id, bytes as usize);
-        Ok(())
-    })
-    .await
+pub async fn pty_ack(state: State<'_, AppState>, agent_id: String, epoch: u64, parsed: u64) -> Result<(), CommandError> {
+    if let Some(f) = state.flows.get(&agent_id) {
+        f.ack(epoch, parsed);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1409,5 +1425,37 @@ mod session_tests {
         assert!(path_under("D:/app/.claude/worktrees/x", r"D:\app"));
         assert!(!path_under(r"D:\app-two", r"D:\app"));
         assert!(!path_under(r"D:\app", ""));
+    }
+}
+
+#[cfg(test)]
+mod window_sink_tests {
+    use super::window_sink;
+    use crate::core::flow::{Flow, FlowConfig};
+    use std::sync::{Arc, OnceLock};
+    use std::time::{Duration, Instant};
+    use tauri::ipc::Channel;
+
+    #[test]
+    fn a_window_that_cannot_take_output_turns_the_flow_off_and_frees_the_reader() {
+        let flow = Arc::new(Flow::new(FlowConfig { high: 10, low: 5, stall: Duration::from_secs(60), trickle: 1 }));
+        flow.enable(7);
+        flow.sent(10);
+        assert!(flow.is_held());
+        let waiting = flow.clone();
+        let reader = std::thread::spawn(move || waiting.wait_ready());
+        let slot = Arc::new(OnceLock::new());
+        let _ = slot.set(flow.clone());
+        let gone = Channel::new(|_| Err(std::io::Error::other("the window is gone").into()));
+        let mut sink = window_sink(gone, false, slot);
+        sink(b"one more line");
+        let t = Instant::now();
+        while !reader.is_finished() {
+            assert!(t.elapsed() < Duration::from_secs(10), "the held reader must be let go");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!flow.is_on(), "nobody is left to ack");
+        flow.begin(8); // a window attaches
+        assert!(flow.is_on());
     }
 }

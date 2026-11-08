@@ -46,6 +46,9 @@ const SCROLLBACK_CAP: usize = 512 * 1024;
 /// keystroke (the echo, the reaction to Ctrl+C) must not queue behind output
 /// the window has not finished with.
 const INPUT_OPENS_GATE: Duration = Duration::from_millis(1500);
+/// ...but for no more than this much output, so a program that keeps querying
+/// the terminal (or a paste) cannot switch the backpressure off.
+const INPUT_OPENS_GATE_BYTES: u64 = 256 * 1024;
 
 /// An in-progress session recording: raw output frames appended to a JSONL file
 /// with a millisecond timestamp, so a player can replay the terminal with its
@@ -199,10 +202,13 @@ impl Agent {
     /// Re-point output at a new sink (a freshly-detached window's channel).
     /// The buffered scrollback is replayed through the new sink first, under
     /// the same lock the reader thread uses, so the swap loses/dupes nothing.
-    pub fn attach(&self, mut sink: Sink) {
+    /// A terminal's new window acks as `epoch`, counting from zero with the
+    /// replay; a pipe agent is never held back, so its flow stays off.
+    pub fn attach(&self, mut sink: Sink, epoch: u64) {
         let mut o = self.output.lock().unwrap_or_else(|p| p.into_inner());
-        // A new window counts from zero, replay included.
-        self.flow.enable();
+        if !o.pipe {
+            self.flow.begin(epoch);
+        }
         let (a, b) = o.buf.as_slices();
         if !a.is_empty() {
             sink(a);
@@ -215,15 +221,16 @@ impl Agent {
         o.sink = sink;
     }
 
-    /// The window shows this agent with flow control: from now on it acks what it
-    /// has parsed (`ack`) and the reader waits when it falls too far behind.
-    pub fn enable_flow(&self) {
-        self.flow.enable();
+    /// The window that started this agent shows it with flow control: from now
+    /// on it acks, as `epoch`, how much it has parsed in all, and the reader
+    /// waits when it falls too far behind.
+    pub fn enable_flow(&self, epoch: u64) {
+        self.flow.enable(epoch);
     }
 
-    /// The window has parsed `n` more bytes of the output.
-    pub fn ack(&self, n: usize) {
-        self.flow.ack(n);
+    /// The window of `epoch` has parsed `total` bytes of the output in all.
+    pub fn ack(&self, epoch: u64, total: u64) {
+        self.flow.ack(epoch, total);
     }
 
     pub fn flow(&self) -> &Arc<Flow> {
@@ -294,7 +301,7 @@ impl Agent {
     }
 
     pub fn write_input(&mut self, bytes: &[u8]) -> Result<()> {
-        self.flow.open_for(INPUT_OPENS_GATE);
+        self.flow.open_for(INPUT_OPENS_GATE, INPUT_OPENS_GATE_BYTES);
         match &mut self.session {
             Session::Pty(s) => s.write_input(bytes),
             #[cfg(windows)]
@@ -543,6 +550,8 @@ mod flow_tests {
     }
 
     const HIGH: usize = 64 * 1024;
+    /// A generous ceiling for what should happen at once, even on a box at 100% CPU.
+    const SOON: Duration = Duration::from_secs(10);
 
     /// A reader thread on a flooding child with the flow switched on, and the bytes its sink has been given.
     fn running(total: usize) -> (Arc<Flow>, Arc<AtomicUsize>, JoinHandle<()>) {
@@ -557,12 +566,22 @@ mod flow_tests {
             rec: None,
             pipe: false,
         }));
-        let flow = Arc::new(Flow::new(FlowConfig { high: HIGH, low: HIGH / 4, stall: Duration::from_secs(60), trickle: 4096 }));
-        flow.enable();
+        let flow = Arc::new(Flow::new(FlowConfig { high: HIGH as u64, low: HIGH as u64 / 4, stall: Duration::from_secs(60), trickle: 4096 }));
+        flow.enable(1);
         let reader = spawn_reader(Box::new(Flooding { left: total }), output, flow.clone());
         (flow, count, reader)
     }
 
+    /// Waits until `cond` holds, failing after `SOON`.
+    fn until(what: &str, cond: impl Fn() -> bool) {
+        let t = Instant::now();
+        while !cond() {
+            assert!(t.elapsed() < SOON, "{what}");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Time for a held reader to show it is not held, if it were not.
     fn settle() {
         thread::sleep(Duration::from_millis(250));
     }
@@ -570,28 +589,30 @@ mod flow_tests {
     #[test]
     fn a_reader_is_held_at_the_high_mark_until_the_window_has_parsed_what_it_got() {
         let (flow, count, reader) = running(10 * 1024 * 1024);
-        settle();
+        until("held at the high mark", || flow.is_held());
         let held = count.load(Ordering::SeqCst);
         assert!(held >= HIGH && held <= HIGH + 16384, "held after about {HIGH} bytes, got {held}");
         settle();
         assert_eq!(count.load(Ordering::SeqCst), held, "nothing more while the window is behind");
 
-        flow.ack(held); // the window parsed it all
-        settle();
+        flow.ack(1, held as u64); // the window parsed it all
+        until("one more window's worth", || count.load(Ordering::SeqCst) >= held + HIGH && flow.is_held());
         let again = count.load(Ordering::SeqCst);
-        assert!(again >= held + HIGH && again <= held + HIGH + 16384, "one more window, got {} more", again - held);
+        assert!(again <= held + HIGH + 16384, "one more window, got {} more", again - held);
         flow.close();
         reader.join().unwrap();
     }
 
     #[test]
-    fn input_lets_a_held_reader_run_for_a_moment() {
+    fn input_lets_a_held_reader_run_for_its_budget() {
         let (flow, count, reader) = running(10 * 1024 * 1024);
-        settle();
+        until("held", || flow.is_held());
         let held = count.load(Ordering::SeqCst);
-        flow.open_for(Duration::from_millis(300));
-        thread::sleep(Duration::from_millis(150));
-        assert!(count.load(Ordering::SeqCst) > held + HIGH, "reads go on right after a keystroke");
+        flow.open_for(Duration::from_secs(60), 3 * HIGH as u64);
+        until("reads go on right after a keystroke", || count.load(Ordering::SeqCst) >= held + 3 * HIGH);
+        settle();
+        let after = count.load(Ordering::SeqCst);
+        assert!(after <= held + 3 * HIGH + 16384, "and stop at the budget, got {} more", after - held);
         flow.close();
         reader.join().unwrap();
     }
@@ -599,12 +620,11 @@ mod flow_tests {
     #[test]
     fn a_held_reader_ends_when_the_agent_goes_so_closing_the_console_cannot_wait_on_it() {
         let (flow, count, reader) = running(2 * 1024 * 1024);
-        settle();
+        until("held", || flow.is_held());
         assert!(count.load(Ordering::SeqCst) < 2 * 1024 * 1024, "held, not finished");
-        let t = Instant::now();
         flow.close(); // what dropping the agent does first
-        reader.join().unwrap(); // drains the rest of the pipe to EOF and ends
-        assert!(t.elapsed() < Duration::from_secs(2), "took {:?}", t.elapsed());
+        until("drains the rest of the pipe to EOF and ends", || reader.is_finished());
+        reader.join().unwrap();
         assert_eq!(count.load(Ordering::SeqCst), 2 * 1024 * 1024, "everything still reached the sink");
     }
 }

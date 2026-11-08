@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createAcker, ACK_MS, ACK_STEP } from "./flowack";
+import { createAcker, ACK_MS, ACK_MIN_MS, ACK_STEP } from "./flowack";
 
 describe("createAcker", () => {
   beforeEach(() => {
@@ -8,54 +8,71 @@ describe("createAcker", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("acks the first chunk after a quiet spell at once", () => {
+  it("tells the first parse after a quiet spell at once", () => {
     const send = vi.fn();
     const a = createAcker(send);
-    a.parsed(100);
+    a.parsedTo(100);
     expect(send).toHaveBeenCalledExactlyOnceWith(100);
   });
 
-  it("joins what is parsed while output keeps coming into one ack per interval", () => {
+  it("sends running totals, one per interval while output keeps coming", () => {
     const send = vi.fn();
     const a = createAcker(send);
-    a.parsed(100); // sent now
+    a.parsedTo(100); // sent now
     vi.advanceTimersByTime(10);
-    a.parsed(200);
+    a.parsedTo(300);
     vi.advanceTimersByTime(10);
-    a.parsed(300);
+    a.parsedTo(600);
     expect(send).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(ACK_MS);
     expect(send).toHaveBeenCalledTimes(2);
-    expect(send).toHaveBeenLastCalledWith(500);
+    expect(send).toHaveBeenLastCalledWith(600);
   });
 
-  it("does not wait for the clock once a step is owed", () => {
+  it("once a step is owed, goes out as soon as the shortest gap allows, not sooner", () => {
     const send = vi.fn();
     const a = createAcker(send);
-    a.parsed(1);
-    a.parsed(ACK_STEP);
-    expect(send).toHaveBeenLastCalledWith(ACK_STEP);
+    a.parsedTo(1); // sent now
+    a.parsedTo(1 + ACK_STEP);
+    expect(send).toHaveBeenCalledTimes(1); // not twice in the same moment
+    vi.advanceTimersByTime(ACK_MIN_MS);
+    expect(send).toHaveBeenLastCalledWith(1 + ACK_STEP);
   });
 
-  it("never loses a byte: everything parsed is acked in the end", () => {
+  it("never sends more than one ack per shortest gap, however fast the parses come", () => {
     const send = vi.fn();
     const a = createAcker(send);
     let total = 0;
-    for (let i = 1; i <= 50; i++) { a.parsed(i * 7); total += i * 7; vi.advanceTimersByTime(3); }
+    for (let ms = 0; ms < 1000; ms++) {
+      total += ACK_STEP; // a huge stream: a step owed every millisecond
+      a.parsedTo(total);
+      vi.advanceTimersByTime(1);
+    }
+    expect(send.mock.calls.length).toBeLessThanOrEqual(1000 / ACK_MIN_MS + 1);
     a.flush();
-    expect(send.mock.calls.reduce((n, c) => n + c[0], 0)).toBe(total);
+    expect(send).toHaveBeenLastCalledWith(total);
+  });
+
+  it("a late or repeated total changes nothing", () => {
+    const send = vi.fn();
+    const a = createAcker(send);
+    a.parsedTo(500);
+    a.parsedTo(200);
+    a.parsedTo(500);
+    vi.advanceTimersByTime(1000);
+    expect(send).toHaveBeenCalledExactlyOnceWith(500);
   });
 
   it("does nothing for nothing, and stops cleanly", () => {
     const send = vi.fn();
     const a = createAcker(send);
-    a.parsed(0);
+    a.parsedTo(0);
     a.flush();
     expect(send).not.toHaveBeenCalled();
-    a.parsed(10);
-    a.parsed(10);
+    a.parsedTo(10);
+    a.parsedTo(20);
     a.dispose();
     vi.advanceTimersByTime(1000);
-    expect(send).toHaveBeenCalledTimes(1); // the first, at once; the second was dropped with the pane
+    expect(send).toHaveBeenCalledTimes(1); // the first, at once; the second went with the pane
   });
 });

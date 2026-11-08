@@ -9,6 +9,8 @@ pub struct AppState {
     // Arc so async commands can clone the handle into a blocking task without
     // borrowing Tauri's managed state across an await.
     pub registry: Arc<Mutex<Registry>>,
+    // Each agent's output flow, reached without the registry lock (pty_ack).
+    pub flows: Arc<crate::core::flow::Flows>,
     // Local web dashboard (opt-in HTTP fleet view + send).
     pub dashboard: Dashboard,
     // Recursive filesystem watch behind the explorer's live tree.

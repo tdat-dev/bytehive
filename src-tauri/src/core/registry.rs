@@ -136,9 +136,10 @@ impl Registry {
     }
 
     /// Re-point a running agent's output at a new sink (window detach).
-    /// Replays the buffered scrollback through the new sink first.
-    pub fn attach(&self, id: &str, sink: Sink) -> Result<()> {
-        self.get(id)?.attach(sink);
+    /// Replays the buffered scrollback through the new sink first. The new
+    /// window acks as `epoch` (core/flow.rs).
+    pub fn attach(&self, id: &str, sink: Sink, epoch: u64) -> Result<()> {
+        self.get(id)?.attach(sink, epoch);
         Ok(())
     }
 
@@ -192,17 +193,17 @@ impl Registry {
         self.get(id).is_ok_and(|a| a.is_pipe())
     }
 
-    /// The window shows this agent and will ack what it parsed.
-    pub fn enable_flow(&self, id: &str) -> Result<()> {
-        self.get(id)?.enable_flow();
+    /// The window shows this agent and will ack, as `epoch`, what it parsed.
+    pub fn enable_flow(&self, id: &str, epoch: u64) -> Result<()> {
+        self.get(id)?.enable_flow(epoch);
         Ok(())
     }
 
-    /// The window has parsed `n` more bytes of the output of `id`. A late ack for
-    /// an agent that is gone is not an error.
-    pub fn ack(&self, id: &str, n: usize) {
+    /// The window of `epoch` has parsed `total` bytes of the output of `id` in
+    /// all. A late ack for an agent that is gone is not an error.
+    pub fn ack(&self, id: &str, epoch: u64, total: u64) {
         if let Ok(a) = self.get(id) {
-            a.ack(n);
+            a.ack(epoch, total);
         }
     }
 

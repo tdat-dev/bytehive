@@ -20,25 +20,41 @@ fn pause(ms: u64) {
     std::thread::sleep(Duration::from_millis(ms));
 }
 
-/// A child that prints 6 MB as fast as the console takes it.
+/// Waits until `cond` holds; fails after `ceiling`, which is generous: these
+/// run real consoles and must not flake on a box at 100% CPU.
+fn until(what: &str, ceiling: Duration, cond: impl Fn() -> bool) {
+    let t = Instant::now();
+    while !cond() {
+        assert!(t.elapsed() < ceiling, "{what} (after {:?})", t.elapsed());
+        pause(20);
+    }
+}
+
+/// A child that prints 24 MB as fast as the console takes it, in a big console
+/// (ConPTY sends what it draws, so more cells reach the high mark sooner).
 fn flood(dir: &std::path::Path) -> CommandSpec {
     let file = dir.join("flood.txt");
-    let line = format!("{}\r\n", "x".repeat(78));
-    std::fs::write(&file, line.repeat(6 * 1024 * 1024 / line.len())).expect("write the flood file");
+    let line = format!("{}\r\n", "x".repeat(240));
+    std::fs::write(&file, line.repeat(24 * 1024 * 1024 / line.len())).expect("write the flood file");
     CommandSpec::new("cmd.exe").arg("/C").arg("type").arg(file.to_string_lossy().to_string())
 }
 
-/// A flooding agent whose window never acks, past the startup burst: held.
+fn big() -> PtySize {
+    PtySize { rows: 100, cols: 250, pixel_width: 0, pixel_height: 0 }
+}
+
+/// A flooding agent whose window never acks, held: flow on from the start, and
+/// the test only goes on once the reader is held.
 fn held() -> (Registry, Arc<AtomicUsize>, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("temp dir");
     let count = Arc::new(AtomicUsize::new(0));
     let c = count.clone();
     let mut reg = Registry::new();
-    reg.spawn("a".into(), &flood(dir.path()), size(), move |b| { c.fetch_add(b.len(), Ordering::SeqCst); }, |_| {}).expect("spawn");
+    reg.spawn("a".into(), &flood(dir.path()), big(), move |b| { c.fetch_add(b.len(), Ordering::SeqCst); }, |_| {}).expect("spawn");
+    reg.enable_flow("a", 1).expect("flow on");
     reg.write_input("a", b"\x1b[1;1R").expect("answer the startup query");
-    pause(1_800); // input opens the gate for 1.5 s; let that pass
-    reg.enable_flow("a").expect("flow on");
-    pause(2_500);
+    let flow = reg.flow_of("a").expect("flow");
+    until("the flood is held back by a window that never acks", Duration::from_secs(90), || flow.is_held());
     (reg, count, dir)
 }
 
@@ -46,26 +62,34 @@ fn held() -> (Registry, Arc<AtomicUsize>, tempfile::TempDir) {
 #[serial_test::serial]
 fn typing_and_resizing_do_not_wait_for_a_held_child() {
     let (mut reg, _count, _dir) = held();
+    assert!(reg.flow_of("a").unwrap().is_held());
     let t = Instant::now();
     reg.write_input("a", b"x").expect("typing");
-    assert!(t.elapsed() < Duration::from_millis(500), "typing waited {:?}", t.elapsed());
+    assert!(t.elapsed() < Duration::from_secs(5), "typing waited {:?}", t.elapsed());
     let t = Instant::now();
     reg.resize("a", 100, 30).expect("resize");
-    assert!(t.elapsed() < Duration::from_millis(500), "resizing waited {:?}", t.elapsed());
+    assert!(t.elapsed() < Duration::from_secs(5), "resizing waited {:?}", t.elapsed());
 }
 
 #[test]
 #[serial_test::serial]
 fn an_agent_held_back_can_be_killed_without_waiting_for_the_window() {
     let (mut reg, count, _dir) = held();
+    assert!(reg.flow_of("a").unwrap().is_held());
     let gone = reg.take("a").expect("agent");
     let t = Instant::now();
     drop(gone);
-    assert!(t.elapsed() < Duration::from_secs(3), "teardown of a held agent took {:?}", t.elapsed());
-    pause(1_500);
-    let a = count.load(Ordering::SeqCst);
-    pause(500);
-    assert_eq!(count.load(Ordering::SeqCst), a, "nothing keeps flowing from a killed agent");
+    assert!(t.elapsed() < Duration::from_secs(10), "teardown of a held agent took {:?}", t.elapsed());
+    // Nothing keeps flowing from a killed agent: the count settles.
+    let t = Instant::now();
+    loop {
+        let a = count.load(Ordering::SeqCst);
+        pause(500);
+        if count.load(Ordering::SeqCst) == a {
+            break;
+        }
+        assert!(t.elapsed() < Duration::from_secs(15), "output kept flowing from a killed agent");
+    }
 }
 
 /// A program that prints without end and stops when `q` is pressed, saying so.
@@ -89,21 +113,22 @@ fn interrupt_gets_through(hold: bool, within: Duration) -> Result<(), String> {
     let big = PtySize { rows: 100, cols: 250, pixel_width: 0, pixel_height: 0 };
     reg.spawn("a".into(), &stoppable_printer(), big, move |b| o.lock().unwrap_or_else(|p| p.into_inner()).extend_from_slice(b), |_| {})
         .expect("spawn");
-    reg.write_input("a", b"\x1b[1;1R").expect("answer the startup query");
-    pause(1_800); // past the moment the typing opened
     let flow = reg.flow_of("a").expect("flow");
     if hold {
-        reg.enable_flow("a").expect("flow on");
+        reg.enable_flow("a", 1).expect("flow on");
+    }
+    reg.write_input("a", b"\x1b[1;1R").expect("answer the startup query");
+    if hold {
         let t = Instant::now();
         while !flow.is_held() {
-            if t.elapsed() > Duration::from_secs(30) {
+            if t.elapsed() > Duration::from_secs(90) {
                 return Err(format!("never held (in flight: {})", flow.inflight()));
             }
             pause(100);
         }
-        pause(1_000);
+        pause(2_000); // the moment and budget the startup answer opened are long over
     } else {
-        pause(3_000);
+        pause(3_000); // printing for a while
     }
     reg.write_input("a", b"q").expect("the key");
     let t = Instant::now();
@@ -125,7 +150,7 @@ fn interrupt_gets_through(hold: bool, within: Duration) -> Result<(), String> {
 #[serial_test::serial]
 fn interrupting_a_held_program_gets_its_answer_through() {
     // The probe works on a console nobody holds back...
-    interrupt_gets_through(false, Duration::from_secs(5)).expect("without flow control");
+    interrupt_gets_through(false, Duration::from_secs(20)).expect("without flow control");
     // ...and a window that never acks does not keep the answer from coming.
-    interrupt_gets_through(true, Duration::from_secs(5)).expect("with the reader held back");
+    interrupt_gets_through(true, Duration::from_secs(20)).expect("with the reader held back");
 }

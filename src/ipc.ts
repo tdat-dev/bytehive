@@ -21,17 +21,24 @@ export async function openExternal(url: string): Promise<void> {
  *  no `parsed` is acked at once, so it is never held. */
 export type PtyHandler = (bytes: Uint8Array, parsed: () => void) => void;
 
-/** Turns a channel message into `onBytes(bytes, parsed)` and sends the acks. */
-function withAcks(agentId: string, onBytes: PtyHandler): (buf: ArrayBuffer) => void {
-  const acker = createAcker((bytes) => void invoke("pty_ack", { agentId, bytes }).catch(() => {}));
+/** A name for one channel in its acks, so the backend can tell them from those
+ *  of a window that no longer owns the output (tab detach, restart). */
+export function newEpoch(): number {
+  const [hi, lo] = crypto.getRandomValues(new Uint32Array(2));
+  return (hi & 0xfffff) * 0x1_0000_0000 + lo + 1; // 1 to 2^52: exact as a JS number and a u64
+}
+
+/** Turns a channel message into `onBytes(bytes, parsed)` and sends the acks.
+ *  Each chunk's `parsed` says "parsed up to the end of this chunk": xterm parses
+ *  in order, so a chunk whose callback never comes is covered by the next. */
+function withAcks(agentId: string, epoch: number, onBytes: PtyHandler): (buf: ArrayBuffer) => void {
+  const acker = createAcker((parsed) => void invoke("pty_ack", { agentId, epoch, parsed }).catch(() => {}));
+  let received = 0;
   return (buf) => {
     const bytes = new Uint8Array(buf);
-    let acked = false;
-    const parsed = () => {
-      if (acked) return;
-      acked = true;
-      acker.parsed(bytes.length);
-    };
+    received += bytes.length;
+    const end = received;
+    const parsed = () => acker.parsedTo(end);
     onBytes(bytes, parsed);
     if (onBytes.length < 2) parsed();
   };
@@ -55,9 +62,10 @@ export async function spawnPty(
   // number[] path serialized every byte as a JSON number on both sides and
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
-  ch.onmessage = withAcks(agentId, onBytes);
+  const epoch = newEpoch();
+  ch.onmessage = withAcks(agentId, epoch, onBytes);
   // The run number of this start; its exit event carries the same number.
-  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe: false, onBytes: ch });
+  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe: false, epoch, onBytes: ch });
 }
 
 /** Re-attach a RUNNING agent's output to this window (tab detach hand-off).
@@ -68,8 +76,9 @@ export async function attachPty(
   onBytes: PtyHandler,
 ): Promise<void> {
   const ch = new Channel<ArrayBuffer>();
-  ch.onmessage = withAcks(agentId, onBytes);
-  await invoke("pty_attach", { agentId, onBytes: ch });
+  const epoch = newEpoch();
+  ch.onmessage = withAcks(agentId, epoch, onBytes);
+  await invoke("pty_attach", { agentId, epoch, onBytes: ch });
 }
 
 export async function sendInput(agentId: string, data: string): Promise<void> {

@@ -1,17 +1,25 @@
 //! Backpressure between a PTY and the window that shows it.
 //!
-//! The window tells the backend how many bytes it has finished parsing (`ack`).
-//! The reader thread counts what it has sent (`sent`); when too much is sent and
-//! not yet parsed, the reader waits before its next read, so the child's own
-//! write blocks on a full pipe instead of the data piling up in the webview.
+//! The reader thread counts every byte it sends (`sent`), and the window says
+//! how far it has parsed (`ack`), both as running totals since the window took
+//! the output over. While too much is sent and not yet parsed, the reader waits
+//! before its next read, so the child's own write blocks on a full pipe instead
+//! of the data piling up in the webview.
+//!
+//! The window's totals are tagged with an epoch it chose when it took the
+//! output (spawn or attach). An ack for another epoch is from a window that no
+//! longer owns the output and counts for nothing. A total lower than one seen
+//! before is late and changes nothing; a lost one is made good by the next.
 //!
 //! Three rules keep this from ever hurting the person using the terminal:
 //!  - input never waits (it does not touch this): typing, resizing and Ctrl+C
 //!    go straight to the pseudo-console. Any input also opens the gate for a
-//!    moment (`open_for`), so the program's answer to it is not held back;
-//!  - a window that stops answering (minimized, hung, gone) cannot freeze the
-//!    child: after `stall` without an ack the gate lets `trickle` bytes more
-//!    through, again and again, so the child slows down but never stops;
+//!    moment and a byte budget (`open_for`), so the program's answer to it is
+//!    not held back, and a program that keeps asking cannot turn this off;
+//!  - a window that stops answering (minimized, hung) cannot freeze the child:
+//!    after `stall` without an ack the gate lets `trickle` bytes more through,
+//!    again and again, so the child slows down but never stops. A window that
+//!    is gone turns the flow off (`off`);
 //!  - closing the flow (the agent is going away) wakes the reader at once.
 
 use std::sync::{Condvar, Mutex};
@@ -21,13 +29,13 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Copy, Debug)]
 pub struct FlowConfig {
     /// Sent and not yet parsed bytes at which the reader stops reading.
-    pub high: usize,
+    pub high: u64,
     /// ...and starts again once the window has parsed down to this.
-    pub low: usize,
+    pub low: u64,
     /// How long a held reader waits for any ack before it lets `trickle` through.
     pub stall: Duration,
     /// Bytes let through per `stall` while no ack arrives.
-    pub trickle: usize,
+    pub trickle: u64,
 }
 
 impl Default for FlowConfig {
@@ -42,11 +50,24 @@ impl Default for FlowConfig {
 
 struct State {
     on: bool,
-    inflight: usize,
+    epoch: u64,
+    /// Bytes sent to the window of `epoch`, and how many of them it has parsed.
+    sent: u64,
+    parsed: u64,
     held: bool,
     closed: bool,
+    /// After input the reader reads freely until this time, while `sent` is under `open_to`.
     open_until: Option<Instant>,
+    open_to: u64,
+    /// A stalled window was given its trickle: not held again before `sent` reaches this.
+    trickle_to: u64,
     last_input: Option<Instant>,
+}
+
+impl State {
+    fn inflight(&self) -> u64 {
+        self.sent.saturating_sub(self.parsed)
+    }
 }
 
 pub struct Flow {
@@ -61,7 +82,18 @@ impl Flow {
     pub fn new(cfg: FlowConfig) -> Self {
         Flow {
             cfg,
-            state: Mutex::new(State { on: false, inflight: 0, held: false, closed: false, open_until: None, last_input: None }),
+            state: Mutex::new(State {
+                on: false,
+                epoch: 0,
+                sent: 0,
+                parsed: 0,
+                held: false,
+                closed: false,
+                open_until: None,
+                open_to: 0,
+                trickle_to: 0,
+                last_input: None,
+            }),
             cv: Condvar::new(),
         }
     }
@@ -70,19 +102,33 @@ impl Flow {
         self.state.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    /// The consumer will ack from now on. Bytes it already holds are forgotten.
-    pub fn enable(&self) {
+    /// The window that has had every byte since the agent started acks from
+    /// now on, as `epoch` (pty_spawn). The count of what was sent stays.
+    pub fn enable(&self, epoch: u64) {
         let mut s = self.st();
         s.on = true;
-        s.inflight = 0;
-        s.held = false;
+        s.epoch = epoch;
         self.cv.notify_all();
     }
 
-    /// A new consumer took over (window detach): start its count from zero.
-    pub fn reset(&self) {
+    /// A new window takes the output over (attach), as `epoch`, and counts from
+    /// zero: call this before the first byte it is sent.
+    pub fn begin(&self, epoch: u64) {
         let mut s = self.st();
-        s.inflight = 0;
+        s.on = true;
+        s.epoch = epoch;
+        s.sent = 0;
+        s.parsed = 0;
+        s.held = false;
+        s.trickle_to = 0;
+        self.cv.notify_all();
+    }
+
+    /// Nobody can ack any more (the window is gone or reloading): let
+    /// everything through until a window takes the output over again.
+    pub fn off(&self) {
+        let mut s = self.st();
+        s.on = false;
         s.held = false;
         self.cv.notify_all();
     }
@@ -90,33 +136,35 @@ impl Flow {
     /// `n` bytes went to the window.
     pub fn sent(&self, n: usize) {
         let mut s = self.st();
-        if !s.on {
-            return;
-        }
-        s.inflight = s.inflight.saturating_add(n);
-        if s.inflight >= self.cfg.high {
+        s.sent = s.sent.saturating_add(n as u64);
+        if s.on && !s.held && s.inflight() >= self.cfg.high && s.sent >= s.trickle_to {
             s.held = true;
         }
     }
 
-    /// The window has parsed `n` more bytes.
-    pub fn ack(&self, n: usize) {
+    /// The window of `epoch` has parsed `total` bytes in all.
+    pub fn ack(&self, epoch: u64, total: u64) {
         let mut s = self.st();
-        s.inflight = s.inflight.saturating_sub(n);
-        if s.held && s.inflight <= self.cfg.low {
+        if epoch != s.epoch || total <= s.parsed {
+            return; // another window's, or late
+        }
+        s.parsed = total;
+        if s.held && s.inflight() <= self.cfg.low {
             s.held = false;
         }
         self.cv.notify_all();
     }
 
-    /// Let output through for `d` whatever the count says: the program is about
-    /// to answer something the person just did. Also when nothing is held yet,
-    /// since the answer itself can be what takes the count over the high mark.
-    pub fn open_for(&self, d: Duration) {
+    /// Let output through for `d`, and at most `budget` bytes, whatever the
+    /// count says: the program is about to answer something the person just
+    /// did. Also when nothing is held yet, since the answer itself can be what
+    /// takes the count over the high mark. Each input starts a new moment.
+    pub fn open_for(&self, d: Duration, budget: u64) {
         let mut s = self.st();
         let now = Instant::now();
         s.last_input = Some(now);
         s.open_until = Some(now + d);
+        s.open_to = s.sent.saturating_add(budget);
         self.cv.notify_all();
     }
 
@@ -136,34 +184,59 @@ impl Flow {
         self.st().held
     }
 
-    pub fn inflight(&self) -> usize {
-        self.st().inflight
+    pub fn is_on(&self) -> bool {
+        self.st().on
+    }
+
+    pub fn inflight(&self) -> u64 {
+        self.st().inflight()
     }
 
     /// Blocks while the window is behind. Returns when the reader may read:
-    /// the window caught up, the gate was opened, the flow closed, or a stalled
-    /// window was given its trickle.
+    /// the window caught up, the gate was opened, the flow closed or went off,
+    /// or a stalled window was given its trickle.
     pub fn wait_ready(&self) {
         let mut s = self.st();
         loop {
             if !s.on || s.closed || !s.held {
                 return;
             }
-            if s.open_until.is_some_and(|t| Instant::now() < t) {
+            if s.open_until.is_some_and(|t| Instant::now() < t) && s.sent < s.open_to {
                 return;
             }
-            s.open_until = None; // the moment is over
-            let before = s.inflight;
+            let before = s.parsed;
             let (guard, timeout) = self.cv.wait_timeout(s, self.cfg.stall).unwrap_or_else(|p| p.into_inner());
             s = guard;
-            // Nobody acked for a whole `stall`: the window is stuck or gone. Let
-            // `trickle` bytes through so the child lives, then hold again.
-            if timeout.timed_out() && s.held && s.inflight == before {
-                s.inflight = self.cfg.high.saturating_sub(self.cfg.trickle);
+            // Nobody acked for a whole `stall`: the window is stuck. Let
+            // `trickle` bytes through so the child lives, then hold again. The
+            // count itself stays what it is.
+            if timeout.timed_out() && s.held && s.parsed == before {
+                s.trickle_to = s.sent.saturating_add(self.cfg.trickle);
                 s.held = false;
                 return;
             }
         }
+    }
+}
+
+/// Every agent's flow by id, apart from the registry: an ack comes in for
+/// each terminal several times a second and must not queue behind the registry
+/// lock, which spawning and tearing down a console holds for long. Holds weak
+/// handles, so an agent that is gone takes its flow with it.
+#[derive(Default)]
+pub struct Flows {
+    by_id: Mutex<std::collections::HashMap<String, std::sync::Weak<Flow>>>,
+}
+
+impl Flows {
+    pub fn put(&self, id: &str, flow: &std::sync::Arc<Flow>) {
+        let mut m = self.by_id.lock().unwrap_or_else(|p| p.into_inner());
+        m.retain(|_, w| w.strong_count() > 0);
+        m.insert(id.to_string(), std::sync::Arc::downgrade(flow));
+    }
+
+    pub fn get(&self, id: &str) -> Option<std::sync::Arc<Flow>> {
+        self.by_id.lock().unwrap_or_else(|p| p.into_inner()).get(id).and_then(|w| w.upgrade())
     }
 }
 
@@ -174,13 +247,18 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
+    /// Long enough that no test ever reaches it by accident, even at 100% CPU.
+    const NEVER: Duration = Duration::from_secs(60);
+    /// A generous ceiling for something that should happen at once.
+    const SOON: Duration = Duration::from_secs(5);
+
     fn small() -> FlowConfig {
-        FlowConfig { high: 100, low: 40, stall: Duration::from_secs(30), trickle: 10 }
+        FlowConfig { high: 100, low: 40, stall: NEVER, trickle: 10 }
     }
 
     fn on(cfg: FlowConfig) -> Arc<Flow> {
         let f = Arc::new(Flow::new(cfg));
-        f.enable();
+        f.enable(1);
         f
     }
 
@@ -195,6 +273,17 @@ mod tests {
         (done, h)
     }
 
+    /// Joins `h` or fails after `SOON`.
+    fn joined(h: thread::JoinHandle<()>, what: &str) {
+        let t = Instant::now();
+        while !h.is_finished() {
+            assert!(t.elapsed() < SOON, "{what}");
+            thread::sleep(Duration::from_millis(5));
+        }
+        h.join().unwrap();
+    }
+
+    /// Time for a reader that should stay blocked to show it does not.
     fn settle() {
         thread::sleep(Duration::from_millis(150));
     }
@@ -215,64 +304,114 @@ mod tests {
         let (done, h) = reader(&f);
         settle();
         assert!(!done.load(Ordering::SeqCst), "held at the high mark");
-        f.ack(30); // 70 left: above the low mark, still held
+        f.ack(1, 30); // 70 left: above the low mark, still held
         settle();
         assert!(!done.load(Ordering::SeqCst), "not released until the low mark");
-        f.ack(40); // 30 left
-        h.join().unwrap();
-        assert!(done.load(Ordering::SeqCst));
+        f.ack(1, 60); // 40 left
+        joined(h, "released at the low mark");
         assert!(!f.is_held());
     }
 
     #[test]
-    fn a_late_or_doubled_ack_cannot_underflow_the_count() {
+    fn a_lost_ack_is_made_good_by_the_next_one() {
         let f = on(small());
-        f.sent(10);
-        f.ack(1_000);
+        f.sent(100);
+        assert!(f.is_held());
+        // the ack for 50 never arrives (failed invoke, dropped callback)
+        f.ack(1, 100);
+        assert_eq!(f.inflight(), 0);
+        assert!(!f.is_held());
+    }
+
+    #[test]
+    fn a_late_ack_changes_nothing() {
+        let f = on(small());
+        f.sent(100);
+        f.ack(1, 80);
+        f.ack(1, 50); // overtaken on the way
+        assert_eq!(f.inflight(), 20);
+        f.ack(1, 1_000); // more than was ever sent cannot go below zero
         assert_eq!(f.inflight(), 0);
     }
 
     #[test]
-    fn a_window_that_stops_answering_still_gets_a_trickle() {
+    fn an_old_windows_acks_count_for_nothing() {
+        let f = on(small());
+        f.sent(80);
+        f.begin(2); // a new window took over (attach)
+        f.sent(100);
+        assert!(f.is_held());
+        f.ack(1, 100); // the old window catching up
+        assert!(f.is_held());
+        assert_eq!(f.inflight(), 100);
+        f.ack(2, 100);
+        assert!(!f.is_held());
+    }
+
+    #[test]
+    fn a_window_that_stops_answering_still_gets_a_trickle_and_the_count_never_rises() {
         let f = on(FlowConfig { high: 100, low: 40, stall: Duration::from_millis(60), trickle: 30 });
-        f.sent(120);
+        f.sent(90);
+        f.ack(1, 50); // 40 in flight
+        f.sent(70); // 110 in flight: held
+        assert!(f.is_held());
         let t = Instant::now();
         f.wait_ready(); // no ack ever comes
-        let first = t.elapsed();
-        assert!(first >= Duration::from_millis(50), "waits a whole stall first, took {first:?}");
-        assert!(first < Duration::from_secs(3), "must not wait forever, took {first:?}");
+        assert!(t.elapsed() >= Duration::from_millis(50), "waits a whole stall first, took {:?}", t.elapsed());
         assert!(!f.is_held());
-        f.sent(30); // the trickle is used up
+        assert_eq!(f.inflight(), 110, "the trickle does not touch the count");
+        f.sent(29);
+        assert!(!f.is_held(), "within the trickle");
+        f.sent(1); // the trickle is used up
         assert!(f.is_held());
+        assert_eq!(f.inflight(), 140);
         let t = Instant::now();
         f.wait_ready();
         assert!(t.elapsed() >= Duration::from_millis(50), "and the next trickle takes another stall");
+        f.ack(1, 190); // the window wakes up: one ack puts it right
+        assert_eq!(f.inflight(), 0);
     }
 
     #[test]
     fn input_opens_the_gate_for_a_moment_then_it_closes_again() {
         let f = on(small());
         f.sent(100);
-        f.open_for(Duration::from_millis(400));
-        let t = Instant::now();
-        f.wait_ready();
-        assert!(t.elapsed() < Duration::from_millis(100), "open for the answer to a keystroke");
-        thread::sleep(Duration::from_millis(450));
+        f.open_for(Duration::from_millis(300), 1 << 20);
+        let (done, h) = reader(&f);
+        joined(h, "open for the answer to a keystroke");
+        assert!(done.load(Ordering::SeqCst));
+        thread::sleep(Duration::from_millis(350));
         let (done, h) = reader(&f);
         settle();
         assert!(!done.load(Ordering::SeqCst), "held again once the moment is over");
         f.close();
-        h.join().unwrap();
+        joined(h, "close wakes it");
+    }
+
+    #[test]
+    fn input_opens_the_gate_for_a_byte_budget_only() {
+        let f = on(small());
+        f.sent(100);
+        f.open_for(NEVER, 50);
+        f.wait_ready(); // open
+        f.sent(49);
+        f.wait_ready(); // still within the budget
+        f.sent(1);
+        let (done, h) = reader(&f);
+        settle();
+        assert!(!done.load(Ordering::SeqCst), "a program that answers with a flood is held after the budget");
+        f.open_for(NEVER, 50); // the next key gives a new budget
+        joined(h, "a new key opens it again");
     }
 
     #[test]
     fn input_just_before_the_window_falls_behind_still_lets_the_answer_through() {
-        let f = on(FlowConfig { stall: Duration::from_secs(2), ..small() });
-        f.open_for(Duration::from_millis(400)); // a key typed while the window keeps up
+        let f = on(small());
+        f.open_for(NEVER, 1 << 20); // a key typed while the window keeps up
         f.sent(100); // the program's answer takes it over the high mark
-        let t = Instant::now();
-        f.wait_ready();
-        assert!(t.elapsed() < Duration::from_millis(100), "the answer to a keystroke waited {:?}", t.elapsed());
+        assert!(f.is_held());
+        let (_, h) = reader(&f);
+        joined(h, "the answer to a keystroke must not wait");
     }
 
     #[test]
@@ -282,31 +421,46 @@ mod tests {
         let (done, h) = reader(&f);
         settle();
         assert!(!done.load(Ordering::SeqCst));
-        let t = Instant::now();
         f.close();
-        h.join().unwrap();
-        assert!(t.elapsed() < Duration::from_millis(500), "shutdown must not wait for the stall timer");
-        assert!(done.load(Ordering::SeqCst));
+        joined(h, "shutdown must not wait for the stall timer");
+    }
+
+    #[test]
+    fn a_window_that_is_gone_turns_the_flow_off_and_a_new_one_back_on() {
+        let f = on(small());
+        f.sent(100);
+        let (_, h) = reader(&f);
+        settle();
+        f.off();
+        joined(h, "off wakes a held reader");
+        f.sent(10_000);
+        assert!(!f.is_held(), "nothing is held while nobody can ack");
+        f.begin(2);
+        f.sent(100);
+        assert!(f.is_held(), "the new window's count holds again");
+    }
+
+    #[test]
+    fn the_table_finds_a_live_flow_and_forgets_a_gone_one() {
+        let t = Flows::default();
+        let a = on(small());
+        t.put("a", &a);
+        assert!(Arc::ptr_eq(&t.get("a").unwrap(), &a));
+        let b = on(small());
+        t.put("a", &b); // restarted in place
+        assert!(Arc::ptr_eq(&t.get("a").unwrap(), &b));
+        drop(b);
+        assert!(t.get("a").is_none());
+        assert!(t.get("nobody").is_none());
     }
 
     #[test]
     fn it_knows_whether_someone_just_typed() {
         let f = on(small());
-        assert!(!f.typed_within(Duration::from_secs(5)));
-        f.open_for(Duration::from_millis(1)); // any input, held or not
-        assert!(f.typed_within(Duration::from_secs(5)));
+        assert!(!f.typed_within(NEVER));
+        f.open_for(Duration::from_millis(1), 1); // any input, held or not
+        assert!(f.typed_within(NEVER));
         thread::sleep(Duration::from_millis(60));
         assert!(!f.typed_within(Duration::from_millis(30)));
-    }
-
-    #[test]
-    fn a_new_window_starts_from_zero() {
-        let f = on(small());
-        f.sent(200);
-        assert!(f.is_held());
-        f.reset();
-        assert!(!f.is_held());
-        assert_eq!(f.inflight(), 0);
-        f.wait_ready();
     }
 }

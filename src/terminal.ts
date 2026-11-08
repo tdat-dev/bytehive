@@ -389,8 +389,14 @@ export function mountTerminal(
 
   return {
     write: (data, parsed) => {
-      if (disposed) parsed?.(); // a chunk that was already in flight when the pane went
-      else pacer.push({ data: bgFilter(data), parsed });
+      if (disposed) { parsed?.(); return; } // a chunk that was already in flight when the pane went
+      let shown = data;
+      try {
+        shown = bgFilter(data);
+      } catch {
+        // the bytes as they came, rather than none at all (and no ack)
+      }
+      pacer.push({ data: shown, parsed });
     },
     fit: () => {
       fitToBox();
