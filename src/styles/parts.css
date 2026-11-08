@@ -36,7 +36,7 @@ input:focus-visible + .tg,input:focus-visible + .pt-sw,input:focus-visible + .cf
 .g-needs{color:var(--honey)}
 .g-review{color:var(--review)}
 .g-work{color:var(--work)}
-.g-idle,.g-stopped,.g-merged,.g-out{color:var(--stop)}
+.g-idle,.g-stopped,.g-paused,.g-merged,.g-out{color:var(--stop)}
 .g-error{color:var(--danger)}
 
 /* One button. Quiet by itself, for toolbars; Secondary and Primary say more. Primary

@@ -15,7 +15,7 @@ describe("the sprite", () => {
     expect(html.match(/class="sprite"/g)).toHaveLength(1);
   });
   it("gives every state a shape of its own", () => {
-    const shapes = ["needs", "review", "work", "idle", "stopped", "out", "error", "merged"].map((s) => new RegExp(`<symbol id="s-${s}"[^>]*>(.*?)</symbol>`).exec(html)?.[1]);
+    const shapes = ["needs", "review", "work", "idle", "stopped", "paused", "out", "error", "merged"].map((s) => new RegExp(`<symbol id="s-${s}"[^>]*>(.*?)</symbol>`).exec(html)?.[1]);
     expect(shapes.every(Boolean)).toBe(true);
     expect(new Set(shapes).size).toBe(shapes.length);
   });

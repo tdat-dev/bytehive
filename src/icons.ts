@@ -12,9 +12,9 @@ export const ICON_EXPAND = icon("maximize");
 export const ICON_PANEL = icon("panel-right");
 
 /** The state glyphs, by what the list calls a state. */
-export type GlyphName = "needs" | "review" | "work" | "idle" | "stopped" | "out" | "error" | "merged";
+export type GlyphName = "needs" | "review" | "work" | "idle" | "stopped" | "paused" | "out" | "error" | "merged";
 
-const GLYPH_OF: Record<string, GlyphName> = { needs: "needs", review: "review", working: "work", idle: "idle", stopped: "stopped", merged: "merged", error: "error", out: "out" };
+const GLYPH_OF: Record<string, GlyphName> = { needs: "needs", review: "review", working: "work", idle: "idle", stopped: "stopped", paused: "paused", merged: "merged", error: "error", out: "out" };
 
 /** A state's glyph. The word beside it carries the meaning for a screen reader. */
 export const glyph = (state: string) => {
