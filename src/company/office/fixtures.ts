@@ -53,8 +53,8 @@ const PLAN: JobPlan = {
   hires: [{ role: "developer", floor: "bytehive" }, { role: "copywriter", floor: "gcare" }],
   cards: [
     { floor: "bytehive", title: "Add the price table", desc: "", checklist: [] },
-    { floor: "bytehive", title: "Wire up the checkout", desc: "", checklist: [] },
-    { floor: "gcare", title: "Write the launch post", desc: "", checklist: [] },
+    { floor: "bytehive", title: "Link each plan to sign-up", desc: "", checklist: [] },
+    { floor: "gcare", title: "Write the pricing FAQ", desc: "", checklist: [] },
   ],
 };
 
@@ -141,7 +141,7 @@ function demoState(o: DemoOptions): Demo {
 
   const running = job({ id: "J-0141", title: "Ship the checkout", status: "running", people: ["linh", "an"] });
   const jobs = o.quiet ? [running] : [
-    job({ id: "J-0142", title: "Add a pricing page", status: "awaiting-plan", plan: PLAN }),
+    job({ id: "J-0142", title: "Add a pricing page", status: "awaiting-plan", plan: PLAN, tokensUsed: 40_000 }),
     running,
     job({ id: "J-0139", title: "Rewrite the docs", status: "paused", tokensUsed: 5_000_000, people: ["tuan"] }),
     job({ id: "J-0138", title: "Fix the login page", status: "awaiting-merge", people: ["linh"], summary: "Login works on mobile again." }),
