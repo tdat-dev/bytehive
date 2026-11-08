@@ -732,6 +732,9 @@ dependencies = [
  "async-channel",
  "gpui-kit",
  "portable-pty",
+ "serde",
+ "serde_json",
+ "uuid",
  "windows-sys 0.60.2",
 ]
 

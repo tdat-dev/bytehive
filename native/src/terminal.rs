@@ -27,7 +27,7 @@ const FONT_SIZE: f32 = 19.0;
 const LINE_HEIGHT: f32 = 1.6;
 /// History kept in view, and once out of sight: today's app keeps the same
 /// (src/terminal.ts SCROLLBACK_SHOWN, SCROLLBACK_HIDDEN).
-const SCROLLBACK: usize = 5_000;
+pub const SCROLLBACK: usize = 5_000;
 pub const SCROLLBACK_HIDDEN: usize = 1_000;
 /// Output arriving faster than this waits for the next frame.
 const FRAME: Duration = Duration::from_millis(8);
@@ -192,7 +192,9 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn new(spec: CommandSpec, cx: &mut Context<Self>) -> anyhow::Result<Self> {
+    /// Start `spec` in a new terminal. The CLI is spawned before the entity
+    /// exists, so a launch failure comes back as an error, not a dead pane.
+    pub fn spawn(spec: CommandSpec, cx: &mut App) -> anyhow::Result<Entity<Self>> {
         let (cols, rows) = (100, 30);
         let size = PtySize { rows: rows as u16, cols: cols as u16, pixel_width: 0, pixel_height: 0 };
         let (writer, keys_rx) = channel::<Vec<u8>>();
@@ -227,43 +229,49 @@ impl Terminal {
             },
         )?;
         let agent = Arc::new(Mutex::new(agent));
-        let to_pty = agent.clone();
+        // Weak on purpose: the agent's output callback owns the grid, the grid
+        // owns a writer, and the writer keeps this thread alive. A strong
+        // handle here would close that loop, and stopping would never drop the
+        // agent nor kill its tree.
+        let to_pty = Arc::downgrade(&agent);
         std::thread::spawn(move || {
             for bytes in keys_rx {
-                if to_pty.lock().unwrap().write_input(&bytes).is_err() {
+                let Some(agent) = to_pty.upgrade() else { break };
+                if agent.lock().unwrap().write_input(&bytes).is_err() {
                     break;
                 }
             }
         });
 
-        cx.spawn(async move |this, cx| {
-            while woken.recv().await.is_ok() {
-                if this.update(cx, |this, cx| this.on_output(cx)).is_err() {
-                    break;
+        Ok(cx.new(|cx| {
+            cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+                while woken.recv().await.is_ok() {
+                    if this.update(cx, |this, cx| this.on_output(cx)).is_err() {
+                        break;
+                    }
+                    cx.background_executor().timer(FRAME).await;
                 }
-                cx.background_executor().timer(FRAME).await;
+            })
+            .detach();
+            Self {
+                term,
+                agent,
+                exit,
+                last_output,
+                writer,
+                copies,
+                cell_px,
+                focus: cx.focus_handle(),
+                cols,
+                rows,
+                cell_w: px(8.0),
+                cell_h: px(16.0),
+                origin: Point::default(),
+                preedit: String::new(),
+                selecting: false,
+                wheel: 0.0,
             }
-        })
-        .detach();
-
-        Ok(Self {
-            term,
-            agent,
-            exit,
-            last_output,
-            writer,
-            copies,
-            cell_px,
-            focus: cx.focus_handle(),
-            cols,
-            rows,
-            cell_w: px(8.0),
-            cell_h: px(16.0),
-            origin: Point::default(),
-            preedit: String::new(),
-            selecting: false,
-            wheel: 0.0,
-        })
+        }))
     }
 
     /// Take the keyboard: keys.rs hands keys to this terminal from now on.
