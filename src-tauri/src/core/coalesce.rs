@@ -110,11 +110,14 @@ mod tests {
     fn a_burst_becomes_few_messages_in_the_same_order() {
         let (c, rx) = collect(100, 1 << 20);
         let mut sent = Vec::new();
+        let t = Instant::now();
         for i in 0..200u8 {
             c.push(&[i]);
             sent.push(i);
             thread::sleep(Duration::from_millis(1));
         }
+        // A 1 ms sleep takes 15 ms on a busy Windows box: the bound follows the real time taken.
+        let most = t.elapsed().as_millis() as usize / 100 + 3;
         let mut got = Vec::new();
         let mut messages = 0;
         while got.len() < sent.len() {
@@ -122,7 +125,7 @@ mod tests {
             messages += 1;
         }
         assert_eq!(got, sent);
-        assert!(messages <= 8, "200 reads over ~300 ms in {messages} messages");
+        assert!(messages <= most, "200 reads in {messages} messages, at most {most} for one per 100 ms");
     }
 
     #[test]
