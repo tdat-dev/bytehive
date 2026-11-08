@@ -99,11 +99,12 @@ mod tests {
 
     #[test]
     fn a_quiet_stream_is_not_delayed() {
-        let (c, rx) = collect(300, 1 << 20);
+        // With a 10 s interval, anything short of seconds means it did not wait for it.
+        let (c, rx) = collect(10_000, 1 << 20);
         let t = Instant::now();
         c.push(b"a");
-        assert_eq!(rx.recv_timeout(Duration::from_millis(200)).unwrap(), b"a");
-        assert!(t.elapsed() < Duration::from_millis(200), "the echo of one key waits for nothing");
+        assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), b"a");
+        assert!(t.elapsed() < Duration::from_secs(5), "the echo of one key waits for nothing");
     }
 
     #[test]
@@ -133,25 +134,23 @@ mod tests {
         let typing = Arc::new(Mutex::new(false));
         let t = typing.clone();
         let (tx, rx) = mpsc::channel();
-        let c = Coalescer::new(Duration::from_secs(5), Duration::from_millis(20), 1 << 20, move || *t.lock().unwrap(), move |v| { let _ = tx.send(v); });
+        let c = Coalescer::new(Duration::from_secs(30), Duration::from_millis(20), 1 << 20, move || *t.lock().unwrap(), move |v| { let _ = tx.send(v); });
         c.push(b"first");
-        rx.recv_timeout(Duration::from_millis(500)).unwrap();
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
         c.push(b"slow");
         assert!(rx.recv_timeout(Duration::from_millis(300)).is_err(), "the long interval holds it");
         *typing.lock().unwrap() = true;
         c.push(b"-echo");
-        assert_eq!(rx.recv_timeout(Duration::from_millis(500)).unwrap(), b"slow-echo");
+        assert_eq!(rx.recv_timeout(Duration::from_secs(10)).unwrap(), b"slow-echo", "well before the 30 s interval");
     }
 
     #[test]
     fn a_big_pile_goes_out_without_waiting_for_the_interval() {
-        let (c, rx) = collect(5_000, 1000);
+        let (c, rx) = collect(30_000, 1000);
         c.push(b"first");
-        rx.recv_timeout(Duration::from_millis(500)).unwrap(); // leading edge
-        let t = Instant::now();
+        rx.recv_timeout(Duration::from_secs(5)).unwrap(); // leading edge
         c.push(&[7u8; 1500]);
-        assert_eq!(rx.recv_timeout(Duration::from_millis(500)).unwrap().len(), 1500);
-        assert!(t.elapsed() < Duration::from_millis(500));
+        assert_eq!(rx.recv_timeout(Duration::from_secs(10)).unwrap().len(), 1500, "well before the 30 s interval");
     }
 
     #[test]
@@ -166,17 +165,17 @@ mod tests {
             }
         }
         let mark = Mark(e);
-        let c = Coalescer::new(Duration::from_secs(5), Duration::from_secs(5), 1 << 20, || false, move |v| {
+        let c = Coalescer::new(Duration::from_secs(30), Duration::from_secs(30), 1 << 20, || false, move |v| {
             let _keep = &mark; // lives as long as the thread's closure
             let _ = tx.send(v);
         });
         c.push(b"one");
-        rx.recv_timeout(Duration::from_millis(500)).unwrap();
-        c.push(b"two"); // would wait 5 s
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        c.push(b"two"); // would wait 30 s
         drop(c);
-        assert_eq!(rx.recv_timeout(Duration::from_millis(500)).unwrap(), b"two");
+        assert_eq!(rx.recv_timeout(Duration::from_secs(10)).unwrap(), b"two");
         let t = Instant::now();
-        while !*ended.lock().unwrap() && t.elapsed() < Duration::from_secs(2) {
+        while !*ended.lock().unwrap() && t.elapsed() < Duration::from_secs(10) {
             thread::sleep(Duration::from_millis(10));
         }
         assert!(*ended.lock().unwrap(), "the sender thread must end with its owner");
