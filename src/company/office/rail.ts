@@ -13,6 +13,8 @@ import type { OfficeSource } from "./source";
 const RAISE_BY = 1_000_000;
 /** The height of the "more below" line where it stands over the foot of a short rail. */
 const FOOT = 32;
+/** How much of a card's foot may be out of sight before it counts as below: its padding and half a button. */
+const CUT = 16;
 const ASK_HINT = "Add marketing to gcare";
 const WHY_HINT = "For example: fewer hires, and leave QA for later";
 const NOTE_NEEDED = "Send back needs a note. To drop the job instead, use Cancel job in its menu.";
@@ -198,11 +200,8 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
     if (!box) return [];
     // On a short window the count stands at the rail's foot, over the last few pixels.
     const fold = box.getBoundingClientRect().bottom - (box === body ? FOOT : 0);
-    // A card counts once most of it is out of sight: one cut near its foot is still read.
-    return [...box.querySelectorAll<HTMLElement>("[data-needs] > .co-card")].filter((c) => {
-      const r = c.getBoundingClientRect();
-      return (r.top + r.bottom) / 2 > fold;
-    });
+    // A card counts once its buttons are cut: a few pixels off its foot leave them readable.
+    return [...box.querySelectorAll<HTMLElement>("[data-needs] > .co-card")].filter((c) => c.getBoundingClientRect().bottom > fold + CUT);
   };
   const edge = () => {
     const more = body?.querySelector<HTMLElement>("[data-below]");
