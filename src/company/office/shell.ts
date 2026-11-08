@@ -4,7 +4,8 @@
 import { OFFICE } from "./palette";
 import type { OfficeFloor, OfficeModel, OfficePerson } from "./model";
 import { BUILDING, clampLevel, crumbs, deskOf, escapeGoesUp, navUp, type Crumb, type DeskLevel, type DeskTab, type Level } from "./nav";
-import { glyph } from "../../icons";
+import { hiveLogo } from "../../hivelogo";
+import { glyph, icon } from "../../icons";
 import { createJobBox, createRail, sendsOnEnter, why } from "./rail";
 import type { DeskReport, ReportCard } from "./report";
 import type { Anchor, OfficeScene, SceneOptions } from "./scene";
@@ -42,8 +43,6 @@ const TICK_MS = 1000;
 const RESIZE_MS = 120;
 const HOVER_MS = 80;
 const PAINT_WAIT_MS = 100;
-/** Space between a tag and what it marks, and between a tag and the stage's edge. */
-const TAG_GAP = 8;
 /** A floor's sign hangs this far off the building, on a line. As --office-leader. */
 const LEADER = 28;
 /** How much of the job box's width the picture moves over for: the plot may run under its edge. */
@@ -58,6 +57,7 @@ const FULL_TAGS = 4;
 const TABS: Array<{ id: DeskTab; label: string }> = [{ id: "terminal", label: "Terminal" }, { id: "changes", label: "Changes" }, { id: "report", label: "Report" }];
 const MOOD: Partial<Record<OfficePerson["state"], string>> = { needs: "needs you", review: "to review", idle: "idle", stopped: "stopped" };
 
+const LOGO = `<svg class="of-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">${hiveLogo("of")}</svg>`;
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const sameLevel = (a: Level, b: Level) => JSON.stringify(a) === JSON.stringify(b);
 const people = (n: number) => (n === 1 ? "1 person" : `${n} people`);
@@ -101,7 +101,7 @@ function floorTag(f: OfficeFloor): Tag {
   const closed = f.open ? "" : " <span>closed</span>";
   // The ring turns only while a terminal up there is really printing.
   const live = f.people.some((p) => p.printing) ? glyph("working") : "";
-  return { key: `floor:${f.id}`, id: f.id, kind: "floor", html: `${live}<b>${esc(f.name)}</b> <span>${people(f.people.length)}</span>${needYou(f.needs)}${closed}`, label: f.name, needs: f.needs > 0, to: { kind: "floor", floorId: f.id } };
+  return { key: `floor:${f.id}`, id: f.id, kind: "floor", html: `${live}<b>${esc(f.name)}</b> <span>${people(f.people.length)}</span>${needYou(f.needs)}${closed}${icon("chevron-right", "sm")}`, label: f.name, needs: f.needs > 0, to: { kind: "floor", floorId: f.id } };
 }
 
 /** `short`: a full floor has room over each head for a name and no more. The rest stays in its label. */
@@ -118,7 +118,7 @@ function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean, hovered: st
     // A plan or a paused Job is nobody's on a floor: without this the tags would not add up to the rail.
     const here = new Set(m.floors.flatMap((f) => f.people.map((p) => p.id)));
     const loose = m.needs.filter((r) => !r.personId || !here.has(r.personId)).length;
-    const top: Tag[] = m.founder ? [{ key: "top:top", id: "top", kind: "top", html: `Founder${needYou(loose)}`, label: "", needs: loose > 0, to: deskOf(m.founder) }] : [];
+    const top: Tag[] = m.founder ? [{ key: "top:top", id: "top", kind: "top", html: `Founder${needYou(loose)}${icon("chevron-right", "sm")}`, label: "", needs: loose > 0, to: deskOf(m.founder) }] : [];
     const named = under ? [personTag(under, m.needs.some((r) => r.personId === under.id) || under.state === "needs", false)] : [];
     return [...top, ...m.floors.map(floorTag), ...named];
   }
@@ -129,7 +129,7 @@ function wantedTags(l: Level, m: OfficeModel, canOpenBoard: boolean, hovered: st
   const tags = f.people.map((p) => personTag(p, p.state === "needs" || wanted.has(p.id), f.people.length > FULL_TAGS));
   if (f.board) {
     const b = f.board;
-    tags.push({ key: `board:${f.id}`, id: f.id, kind: "board", html: `To do ${b.todo}, Doing ${b.doing}, Done ${b.done}`, label: canOpenBoard ? `Open the board. To do ${b.todo}, Doing ${b.doing}, Done ${b.done}` : "", needs: false, ...(canOpenBoard ? { floor: f.id } : {}) });
+    tags.push({ key: `board:${f.id}`, id: f.id, kind: "board", html: `To do ${b.todo}, Doing ${b.doing}, Done ${b.done}${canOpenBoard ? icon("chevron-right", "sm") : ""}`, label: canOpenBoard ? `Open the board. To do ${b.todo}, Doing ${b.doing}, Done ${b.done}` : "", needs: false, ...(canOpenBoard ? { floor: f.id } : {}) });
   }
   return tags;
 }
@@ -269,9 +269,11 @@ export function createShell(source: OfficeSource, host: ShellHost) {
 
   function drawCrumbs(m: OfficeModel): void {
     trail = crumbs(level, m);
+    // The way home starts with the logo, as the app's bar does, drawn by the same code.
+    const words = (c: Crumb, i: number) => `${i === 0 ? LOGO : ""}${esc(c.label)}`;
     const html = `<ol>${trail.map((c, i) => `<li>${c.current
-      ? `<span data-crumb="${i}" aria-current="page" tabindex="-1" title="${esc(c.label)}">${esc(c.label)}</span>`
-      : `<button type="button" data-crumb="${i}" title="${esc(c.label)}">${esc(c.label)}</button>`}</li>`).join("")}</ol>`;
+      ? `<span data-crumb="${i}" aria-current="page" tabindex="-1" title="${esc(c.label)}">${words(c, i)}</span>`
+      : `<button type="button" data-crumb="${i}" title="${esc(c.label)}">${words(c, i)}</button>`}</li>`).join("")}</ol>`;
     if (html === trailHtml) return;
     trailHtml = html;
     crumbsEl.innerHTML = html;
@@ -370,8 +372,9 @@ export function createShell(source: OfficeSource, host: ShellHost) {
       b.hidden = !a.visible;
       const bw = b.offsetWidth;
       const bh = b.offsetHeight;
-      const x = t.kind === "person" ? a.x - bw / 2 : a.x + (t.kind === "board" ? TAG_GAP : LEADER);
-      const y = t.kind === "person" ? a.y - bh - HEAD_GAP : a.y - bh / 2;
+      const above = t.kind === "person" || t.kind === "board";
+      const x = above ? a.x - bw / 2 : a.x + LEADER;
+      const y = above ? a.y - bh - HEAD_GAP : a.y - bh / 2;
       return { x: Math.max(TAG_EDGE, Math.min(x, w - bw - TAG_EDGE)), y: Math.max(TAG_EDGE, Math.min(y, h - bh - TAG_EDGE)), w: bw, h: bh };
     });
     const bubbles = live.flatMap((t): Box[] => {

@@ -15,7 +15,7 @@ const ASK_HINT = "Add marketing to gcare";
 const WHY_HINT = "Fewer hires, and leave QA for later";
 const NOTE_NEEDED = "Send back needs a note. To drop the job instead, use Cancel job in its menu.";
 /** Examples for an empty box: what a first job can sound like. */
-const EXAMPLES = ["Add a pricing page", "Fix the login", "Write a launch post"];
+const EXAMPLES = ["Add a pricing page", "Fix the login", "Write the docs"];
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** A failure as words: the engine rejects with Errors, strings or backend objects. */
@@ -77,21 +77,18 @@ const jobHtml = (j: OfficeJob, busy: Busy, menuOpen: boolean) => {
   const done = j.tokenCap > 0 ? Math.min(100, Math.round((j.tokensUsed / j.tokenCap) * 100)) : 0;
   const tokens = `${j.tokensUsed.toLocaleString("en-US")} of ${j.tokenCap.toLocaleString("en-US")} tokens`;
   return `<li class="co-job" style="--done:${done}%">${glyph(JOB_GLYPH[j.status] ?? "idle")}<b title="${esc(j.title)}">${esc(j.title)}</b>` +
-    `<span class="co-state" title="${esc(tokens)}">${esc(JOB_WORD[j.status] ?? j.label)}, ${done}%</span><span class="of-sr">${esc(j.id)}. ${esc(j.label)}, ${tokens}.</span>` +
+    `<span class="co-state" title="${esc(tokens)}">${esc(JOB_WORD[j.status] ?? j.label)}, ${tokensShort(j.tokensUsed)} of ${tokensShort(j.tokenCap)}</span><span class="of-sr">${esc(j.id)}. ${esc(j.label)}, ${tokens}.</span>` +
     `<button type="button" class="btn icon sm" data-menu="${esc(j.id)}" aria-haspopup="menu" aria-expanded="${menuOpen}" aria-label="${esc(`More for ${j.title}`)}">${icon("ellipsis")}</button>` +
     `<div class="co-menu" role="menu"${menuOpen ? "" : " hidden"}>${actButton(busy, "stop", stopWord(j), j.title, j.id, "danger", ' role="menuitem"')}</div></li>`;
 };
 
 const everyone = (m: OfficeModel | null): OfficePerson[] => (m ? [...(m.founder ? [m.founder] : []), ...m.floors.flatMap((f) => f.people)] : []);
 
-/** The colour behind an initial. It lands in an attribute, so it is only ever a plain hex. */
-const safeColour = (c: string) => (/^#[0-9a-f]{3,8}$/i.test(c) ? c : "#252a37");
-
 /** A face: the rendered portrait when there is one, and until then, or with no 3D, an initial. */
 function faceHtml(p: OfficePerson | undefined, face: Face): string {
   const url = p ? face(p) : null;
   if (url) return `<img class="co-face" src="${esc(url)}" alt="">`;
-  return p ? `<span class="co-face" style="--c:${safeColour(p.shirt)}" aria-hidden="true">${esc([...p.name][0]?.toUpperCase() ?? "?")}</span>` : "";
+  return p ? `<span class="co-face" aria-hidden="true">${esc([...p.name][0]?.toUpperCase() ?? "?")}</span>` : "";
 }
 
 const roleOf = (p: OfficePerson, m: OfficeModel) => {
@@ -102,25 +99,27 @@ const roleOf = (p: OfficePerson, m: OfficeModel) => {
 interface RowLook { goes: boolean; primary: boolean; asking: boolean; short: boolean; open: boolean; face: Face; model: OfficeModel }
 
 function rowHtml(r: NeedRow, busy: Busy, o: RowLook): string {
-  const main = o.primary ? "primary" : "secondary";
+  // Asking for a note, the one thing to press is Send back, and Approve steps down.
+  const main = o.primary && !o.asking ? "primary" : "secondary";
+  const person = everyone(o.model).find((p) => p.id === r.personId);
   const btn = (act: string, label: string, kind: string, extra = "") => actButton(busy, act, label, r.title, r.jobId, kind, extra);
-  const open = (label: string) => (o.goes ? `<button type="button" class="btn ${main}" data-open="${esc(r.key)}" aria-label="${esc(`${label}: ${r.title}`)}">${label}</button>` : "");
+  const open = (label: string) => (o.goes ? `<button type="button" class="btn ${main}" data-open="${esc(r.key)}" aria-label="${esc(`${label}: ${r.title}`)}">${esc(label)}</button>` : "");
   const buttons =
-    r.kind === "plan" ? btn("approve", "Approve", main) + btn("reject", "Send back", "secondary")
+    r.kind === "plan" ? btn("approve", "Approve", main) + btn("reject", "Send back", o.primary && o.asking ? "primary" : "secondary")
     : r.kind === "paused" ? btn("raise", "Add 1M tokens", main)
     : r.kind === "merge" ? open("Review") + btn("finish", "Mark done", o.goes ? "secondary" : main)
-    : r.standing ? btn("dismiss", "Dismiss", "secondary", ` data-key="${esc(r.key)}"`) : open("Open");
-  const person = everyone(o.model).find((p) => p.id === r.personId);
-  const who = r.kind === "plan" ? o.model.founder ?? undefined : person;
-  const named = who && (r.kind === "plan" || person);
-  const head = `${faceHtml(who, o.face)}<span class="co-who">${named ? `<b>${esc(who.name)}</b><span class="co-role">${esc(r.kind === "plan" ? r.title : roleOf(who, o.model))}</span>` : `<b>${esc(r.title)}</b>`}</span>`;
+    : r.standing ? btn("dismiss", "Dismiss", "secondary", ` data-key="${esc(r.key)}"`) : open(person ? `Go to ${person.name}` : "Open");
+  // A plan and a paused job have nobody at a desk: they are the Founder's to bring you.
+  const who = r.kind === "plan" || r.kind === "paused" ? o.model.founder ?? undefined : person;
+  const named = !!who;
+  const head = `${faceHtml(who, o.face)}<span class="co-who">${named ? `<b>${esc(who.name)}</b><span class="co-role">${esc(r.kind === "plan" || r.kind === "paused" ? r.title : roleOf(who, o.model))}</span>` : `<b>${esc(r.title)}</b>`}</span>`;
   const top = o.goes ? `<button type="button" class="co-go" data-row="${esc(r.key)}">${head}${icon("chevron-right")}</button>` : `<div class="co-head">${head}</div>`;
   // With a name on top, the title is what they need. Without one, the title is already up there.
-  const what = r.kind === "plan" && r.plan ? planSentence(r.plan) : named ? r.title : r.detail;
-  const more = named && r.kind !== "plan" && r.detail ? r.detail : "";
+  const what = r.kind === "plan" && r.plan ? planSentence(r.plan) : named && r.kind !== "paused" ? r.title : r.detail;
+  const more = named && r.kind !== "plan" && r.kind !== "paused" && r.detail ? r.detail : "";
   const fold = r.plan ? `<details class="co-more"${o.open || r.plan.newRoles.length ? " open" : ""}><summary data-more="${esc(r.key)}">Details</summary>${planHtml(r.plan, r.detail)}</details>` : "";
   const note = r.kind === "plan" && r.jobId
-    ? `<div class="co-field"${o.asking ? "" : " hidden"}><label>Why send it back?<textarea data-note="${esc(r.jobId)}" rows="2" placeholder="${esc(WHY_HINT)}"></textarea></label>${o.short ? `<p class="co-hint" role="status">${esc(NOTE_NEEDED)}</p>` : ""}</div>`
+    ? `<div class="co-field"${o.asking ? "" : " hidden"}><label>Why send it back?<textarea data-note="${esc(r.jobId)}" rows="2" placeholder="${esc(WHY_HINT)}"></textarea></label>${o.short ? `<p class="co-wrong" role="status">${esc(NOTE_NEEDED)}</p>` : ""}</div>`
     : "";
   const words = `${what ? `<p class="co-what">${esc(what)}</p>` : ""}${more ? `<p class="co-more-line">${esc(more)}</p>` : ""}`;
   const acts = buttons ? `<div class="co-acts">${buttons}</div>` : "";
@@ -149,6 +148,7 @@ async function confirmEnd(j: OfficeJob): Promise<boolean> {
     title: `${stopWord(j)}?`,
     message: `${j.title} ends here, and its people stop working on it. Its cards and branches stay.`,
     okLabel: stopWord(j),
+    cancelLabel: "Keep job",
     danger: true,
   });
   return r.ok;
@@ -182,6 +182,24 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
   };
 
   const busy = (key: string) => pending.has(key);
+
+  /** Cards past the bottom of the list, at least partly: the rail is short and the scrollbar
+   *  hides until hovered, so a cut list would read as the whole of it. */
+  const below = (): HTMLElement[] => {
+    const list = body?.querySelector<HTMLElement>("[data-needs]");
+    if (!list || list.scrollHeight <= list.clientHeight) return [];
+    const fold = list.scrollTop + list.clientHeight;
+    return [...list.querySelectorAll<HTMLElement>(":scope > .co-card")].filter((c) => c.offsetTop + c.offsetHeight > fold + 1);
+  };
+  const edge = () => {
+    const more = body?.querySelector<HTMLElement>("[data-below]");
+    if (!more) return;
+    const n = below().length;
+    more.hidden = !n;
+    const words = `${n} more below`;
+    if (n && more.textContent !== words) more.innerHTML = `${icon("chevron-down")}${words}`;
+  };
+  const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(edge);
 
   const calmLine = (m: OfficeModel) => {
     if (m.counts.working) return `${m.counts.working === 1 ? "1 person is" : `${m.counts.working} people are`} working.`;
@@ -231,6 +249,7 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       model: m,
     })).join("") || `<li class="co-none"><b>Nothing needs you.</b><span>${esc(calmLine(m))}</span></li>`);
     put(jobs, m.jobs.map((j) => jobHtml(j, busy, menu === j.id)).join("") || `<li class="co-none">No job is running.</li>`);
+    edge();
 
     const live = new Set<string>();
     for (const n of body.querySelectorAll<HTMLTextAreaElement>("[data-note]")) {
@@ -281,7 +300,11 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
         `<p class="co-error" role="alert" data-msg hidden></p>` +
         `<h3 id="coNeedsH">Needs you <span class="co-n" data-count></span></h3>` +
         `<ul class="co-needs" aria-labelledby="coNeedsH" data-needs></ul>` +
+        `<button type="button" class="btn quiet sm co-below" data-below hidden></button>` +
         `<h3 id="coJobsH">Jobs</h3><ul class="co-jobs" aria-labelledby="coJobsH" data-jobs></ul>`;
+      const list = el.querySelector<HTMLElement>("[data-needs]")!;
+      list.addEventListener("scroll", edge, { passive: true });
+      sized?.observe(list);
       el.addEventListener("input", (e) => {
         if (short.delete((e.target as HTMLElement).dataset.note ?? "")) draw();
       });
@@ -296,6 +319,10 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       const noteOf = (job: string) => [...el.querySelectorAll<HTMLTextAreaElement>("[data-note]")].find((n) => n.dataset.note === job);
       el.addEventListener("click", (e) => {
         const target = e.target as HTMLElement;
+        if (target.closest("[data-below]")) {
+          below()[0]?.scrollIntoView({ block: "nearest" });
+          return;
+        }
         const opener = target.closest<HTMLElement>("[data-menu]");
         if (opener) {
           menu = menu === opener.dataset.menu ? null : opener.dataset.menu ?? null;
@@ -352,10 +379,17 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
       off?.();
       off = null;
       body = null;
+      sized?.disconnect();
       document.removeEventListener("pointerdown", outside);
     },
   };
 }
+
+/** The head of the column that stands in for the office: why it is there, in words that stay,
+ *  and the one thing to try. A note says it too, but a note goes away. */
+export const fellHtml = (retry: boolean): string =>
+  `<div class="of-fell" role="status"><p><b>The office can't draw on this graphics card.</b> Everything still works here.</p>` +
+  `${retry ? `<button type="button" class="btn secondary sm" data-retry>Try again</button>` : ""}</div>`;
 
 /** Enter sends and Shift+Enter breaks the line. While an IME is composing, Enter belongs to it:
  *  Vietnamese typing would send half a word. */

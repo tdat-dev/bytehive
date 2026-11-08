@@ -90,6 +90,17 @@ describe("the office shell", () => {
     shell.el.querySelector<HTMLElement>('[data-crumb="1"]')!.click();
     expect(shell.level()).toEqual({ kind: "floor", floorId: "bytehive" });
   });
+  it("starts the way home with the app's own logo, at every level", async () => {
+    const { shell } = setup();
+    shell.show();
+    await tick();
+    const first = () => shell.el.querySelector<HTMLElement>('[data-crumb="0"]')!;
+    expect(first().querySelector("svg.of-logo path[fill^='url(#ofHoney)']")).not.toBeNull();
+    shell.go({ kind: "floor", floorId: "bytehive" });
+    expect(first().tagName).toBe("BUTTON");
+    expect(first().querySelector("svg.of-logo")).not.toBeNull();
+    expect(first().textContent).toBe("ByteHive");
+  });
   it("opens the person's real pane at Desk", async () => {
     const { shell, host } = setup();
     shell.show();

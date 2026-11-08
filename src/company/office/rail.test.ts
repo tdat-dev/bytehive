@@ -105,11 +105,11 @@ describe("Needs you rail", () => {
     const { el } = mountRail(s);
     click(el, '[data-act="reject"]');
     click(el, '[data-act="reject"]');
-    expect(el.querySelector(".co-field .co-hint")).not.toBeNull();
+    expect(el.querySelector(".co-wrong")).not.toBeNull();
     const note = el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!;
     note.value = "F";
     note.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(el.querySelector(".co-field .co-hint")).toBeNull();
+    expect(el.querySelector(".co-wrong")).toBeNull();
     expect(el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!.value).toBe("F");
   });
   it("clears the note once the plan went back, even with the row still there", async () => {
@@ -309,7 +309,7 @@ describe("Needs you rail", () => {
     const row = { ...going(), tokensUsed: 1_200_000, tokenCap: 5_000_000 };
     const { el } = mountRail(fake({ model: model([], { jobs: [row] as never }) }));
     expect(el.querySelector<HTMLElement>(".co-job")!.getAttribute("style")).toContain("--done:24%");
-    expect(el.querySelector(".co-state")?.textContent).toBe("Running, 24%");
+    expect(el.querySelector(".co-state")?.textContent).toBe("Running, 1.2M of 5M");
     expect(el.querySelector(".of-sr")?.textContent).toContain("1,200,000 of 5,000,000 tokens");
   });
   it("has no honey and no primary button when nothing needs you", () => {
@@ -322,6 +322,37 @@ describe("Needs you rail", () => {
     const { el } = mountRail(fake({ model: model(rows) }));
     const primary = [...el.querySelectorAll<HTMLElement>(".btn.primary")];
     expect(primary.map((b) => b.dataset.act)).toEqual(["approve"]);
+  });
+  it("hands the one primary to Send back while a note is being written", () => {
+    const { el } = mountRail(fake());
+    click(el, '[data-act="reject"]');
+    expect([...el.querySelectorAll<HTMLElement>(".btn.primary")].map((b) => b.dataset.act)).toEqual(["reject"]);
+  });
+  it("says how many cards wait below a short rail, and goes to the first of them", () => {
+    const rows: NeedRow[] = ["a", "b", "c"].map((k) => ({ key: k, kind: "alert", jobId: null, personId: null, title: `Stuck ${k}`, detail: "" }));
+    const { el } = mountRail(fake({ model: model(rows) }));
+    const list = el.querySelector<HTMLElement>("[data-needs]")!;
+    const more = el.querySelector<HTMLElement>("[data-below]")!;
+    expect(more.hidden).toBe(true);
+    const at = (x: HTMLElement, props: Record<string, number>) => { for (const [k, v] of Object.entries(props)) Object.defineProperty(x, k, { configurable: true, value: v }); };
+    at(list, { scrollHeight: 300, clientHeight: 120, scrollTop: 0 });
+    const cards = [...list.querySelectorAll<HTMLElement>(".co-card")];
+    cards.forEach((c, i) => at(c, { offsetTop: i * 100, offsetHeight: 90 }));
+    const seen = vi.fn();
+    cards[1].scrollIntoView = seen;
+    list.dispatchEvent(new Event("scroll"));
+    expect(more.hidden).toBe(false);
+    expect(more.textContent).toBe("2 more below");
+    more.click();
+    expect(seen).toHaveBeenCalled();
+    at(list, { scrollTop: 180 });
+    list.dispatchEvent(new Event("scroll"));
+    expect(more.hidden).toBe(true);
+  });
+  it("says who a card takes you to", () => {
+    const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };
+    const { el } = mountRail(fake({ model: model([row], { founder: founder as never }) }));
+    expect(el.querySelector("[data-open]")?.textContent).toBe("Go to Founder");
   });
   it("reads the plan as a sentence, with the list folded under it", () => {
     const row: NeedRow = { ...planRow, plan: { hires: ["Developer on bytehive", "Copywriter on gcare"], floors: [{ floor: "bytehive", cards: ["a", "b"] }, { floor: "gcare", cards: ["c"] }], tokenCap: 5_000_000, newRoles: [] } };
@@ -341,7 +372,6 @@ describe("Needs you rail", () => {
     let url: string | null = null;
     const { el } = mountRail(s, vi.fn(), undefined, { face: () => url });
     expect(el.querySelector("span.co-face")?.textContent).toBe("A");
-    expect(el.querySelector("span.co-face")?.getAttribute("style")).toBe("--c:#5fd08a");
     url = "blob:face";
     s.fire();
     expect(el.querySelector<HTMLImageElement>("img.co-face")?.getAttribute("src")).toBe("blob:face");
@@ -353,7 +383,7 @@ describe("Needs you rail", () => {
     expect(el.querySelector("img")).toBeNull();
     expect(el.querySelector("[onerror]")).toBeNull();
     expect(el.querySelector(".co-who b")?.textContent).toBe(`<img src=x onerror=alert(1)>`);
-    expect(el.querySelector("span.co-face")?.getAttribute("style")).toBe("--c:#252a37");
+    expect(el.querySelector("span.co-face")?.getAttribute("style")).toBeNull();
   });
   it("goes from an Open button too, not only the head of the card", () => {
     const row: NeedRow = { key: "k", kind: "alert", jobId: null, personId: "founder", title: "Founder stuck", detail: "" };
