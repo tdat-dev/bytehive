@@ -399,7 +399,7 @@ export function mountTerminal(
     reset: () => { pacer.flush(); term.reset(); },
     dispose: () => {
       disposed = true;
-      pacer.dispose();
+      for (const c of pacer.dispose()) c.parsed?.(); // held for the next draw, never to be parsed now
       ro.disconnect();
       term.dispose();
       if (usedWebgl) liveWebgl--;

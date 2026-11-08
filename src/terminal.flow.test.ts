@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import { mountTerminal } from "./terminal";
+import { setCalmForTest } from "./calm";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 
@@ -37,6 +38,16 @@ describe("terminal output and flow control", () => {
     term.write(new Uint8Array(0), parsed);
     await vi.waitFor(() => expect(parsed).toHaveBeenCalledTimes(1));
     term.dispose();
+  });
+
+  it("acks what the background pacer still held when the pane goes", () => {
+    setCalmForTest(true); // the window is in the background: output waits for the next draw
+    const { term } = mount(false);
+    const parsed = vi.fn();
+    term.write(bytes("held back"), parsed);
+    term.dispose();
+    setCalmForTest(false);
+    expect(parsed).toHaveBeenCalledTimes(1);
   });
 
   it("does not leave the backend waiting when the terminal refuses the write", () => {
