@@ -110,14 +110,14 @@ impl Flow {
     }
 
     /// Let output through for `d` whatever the count says: the program is about
-    /// to answer something the person just did.
+    /// to answer something the person just did. Also when nothing is held yet,
+    /// since the answer itself can be what takes the count over the high mark.
     pub fn open_for(&self, d: Duration) {
         let mut s = self.st();
-        s.last_input = Some(Instant::now());
-        if s.held {
-            s.open_until = Some(Instant::now() + d);
-            self.cv.notify_all();
-        }
+        let now = Instant::now();
+        s.last_input = Some(now);
+        s.open_until = Some(now + d);
+        self.cv.notify_all();
     }
 
     /// The agent is going away: nothing waits on this any more.
@@ -263,6 +263,16 @@ mod tests {
         assert!(!done.load(Ordering::SeqCst), "held again once the moment is over");
         f.close();
         h.join().unwrap();
+    }
+
+    #[test]
+    fn input_just_before_the_window_falls_behind_still_lets_the_answer_through() {
+        let f = on(FlowConfig { stall: Duration::from_secs(2), ..small() });
+        f.open_for(Duration::from_millis(400)); // a key typed while the window keeps up
+        f.sent(100); // the program's answer takes it over the high mark
+        let t = Instant::now();
+        f.wait_ready();
+        assert!(t.elapsed() < Duration::from_millis(100), "the answer to a keystroke waited {:?}", t.elapsed());
     }
 
     #[test]

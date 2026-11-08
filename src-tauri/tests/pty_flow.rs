@@ -67,3 +67,65 @@ fn an_agent_held_back_can_be_killed_without_waiting_for_the_window() {
     pause(500);
     assert_eq!(count.load(Ordering::SeqCst), a, "nothing keeps flowing from a killed agent");
 }
+
+/// A program that prints without end and stops when `q` is pressed, saying so.
+/// Interrupting a printing program is what Ctrl+C is for; a raw 0x03 does not
+/// reach a child of the test harness as a signal, so a key it reads stands in.
+fn stoppable_printer() -> CommandSpec {
+    let script = "$s = ('x' * 240 + [char]13 + [char]10) * 50; \
+        while ($true) { if ([Console]::KeyAvailable -and [Console]::ReadKey($true).KeyChar -eq 'q') { [Console]::Out.Write('STOP' + 'PED'); break }; [Console]::Out.Write($s) }; \
+        Start-Sleep 60";
+    CommandSpec::new("powershell.exe").arg("-NoProfile").arg("-Command").arg(script)
+}
+
+/// Whether pressing `q` stops the printer and its answer arrives within `within`.
+/// With `hold`, the window never acks, and the key is pressed once the reader is
+/// held. The console is big because ConPTY sends what it draws: more cells
+/// reach the 512 KB mark sooner.
+fn interrupt_gets_through(hold: bool, within: Duration) -> Result<(), String> {
+    let out = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    let o = out.clone();
+    let mut reg = Registry::new();
+    let big = PtySize { rows: 100, cols: 250, pixel_width: 0, pixel_height: 0 };
+    reg.spawn("a".into(), &stoppable_printer(), big, move |b| o.lock().unwrap_or_else(|p| p.into_inner()).extend_from_slice(b), |_| {})
+        .expect("spawn");
+    reg.write_input("a", b"\x1b[1;1R").expect("answer the startup query");
+    pause(1_800); // past the moment the typing opened
+    let flow = reg.flow_of("a").expect("flow");
+    if hold {
+        reg.enable_flow("a").expect("flow on");
+        let t = Instant::now();
+        while !flow.is_held() {
+            if t.elapsed() > Duration::from_secs(30) {
+                return Err(format!("never held (in flight: {})", flow.inflight()));
+            }
+            pause(100);
+        }
+        pause(1_000);
+    } else {
+        pause(3_000);
+    }
+    reg.write_input("a", b"q").expect("the key");
+    let t = Instant::now();
+    let answered = loop {
+        if String::from_utf8_lossy(&out.lock().unwrap()).contains("STOPPED") {
+            break true;
+        }
+        if t.elapsed() > within {
+            break false;
+        }
+        pause(50);
+    };
+    let held = flow.is_held();
+    let _ = reg.take("a");
+    if answered { Ok(()) } else { Err(format!("no answer in {within:?} (held: {held})")) }
+}
+
+#[test]
+#[serial_test::serial]
+fn interrupting_a_held_program_gets_its_answer_through() {
+    // The probe works on a console nobody holds back...
+    interrupt_gets_through(false, Duration::from_secs(5)).expect("without flow control");
+    // ...and a window that never acks does not keep the answer from coming.
+    interrupt_gets_through(true, Duration::from_secs(5)).expect("with the reader held back");
+}
