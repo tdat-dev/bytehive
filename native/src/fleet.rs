@@ -30,6 +30,19 @@ pub struct Spec {
     #[serde(default)]
     pub session_id: Option<String>,
     pub started_ms: u64,
+    /// Its job's first line, the queue's and the header's headline.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Two or three agents on the same job: which one, of how many.
+    #[serde(default)]
+    pub race: Option<Race>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Race {
+    pub id: String,
+    pub n: usize,
+    pub of: usize,
 }
 
 pub struct Seat {
@@ -58,6 +71,11 @@ impl Seat {
     }
 
     /// The folder's last part: the project the queue groups it under.
+    /// Program and args as typed, for working out its logo.
+    pub fn command(&self) -> String {
+        std::iter::once(self.spec.cli.as_str()).chain(self.spec.args.iter().map(String::as_str)).collect::<Vec<_>>().join(" ")
+    }
+
     pub fn project(&self) -> String {
         project_of(&self.spec.cwd)
     }
@@ -112,15 +130,17 @@ impl Fleet {
     }
 
     /// Add a new agent and start it.
-    pub fn add(&mut self, cli: &str, cwd: &str, cx: &mut App) -> anyhow::Result<usize> {
+    pub fn add(&mut self, cli: &str, args: Vec<String>, cwd: &str, title: Option<String>, race: Option<Race>, cx: &mut App) -> anyhow::Result<usize> {
         let spec = Spec {
             id: uuid::Uuid::new_v4().to_string(),
             name: self.free_name(),
             cli: cli.to_string(),
-            args: Vec::new(),
+            args,
             cwd: cwd.to_string(),
             session_id: None,
             started_ms: now_ms(),
+            title,
+            race,
         };
         self.seats.push(Seat { spec, terminal: None, branch: None });
         let index = self.seats.len() - 1;

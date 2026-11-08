@@ -2,10 +2,12 @@
 //! with the live fleet in its queue and the focused agent on its stage.
 
 mod boxdraw;
+mod brand;
 mod fleet;
 mod icons;
 mod inbox;
 mod keys;
+mod presets;
 mod terminal;
 
 use std::borrow::Cow;

@@ -13,6 +13,7 @@ macro_rules! icons {
 }
 
 icons!(
+    "check",
     "chev",
     "chev-open",
     "chevron-down",
@@ -27,6 +28,7 @@ icons!(
     "layout-grid",
     "minus",
     "notebook-text",
+    "prompt",
     "pencil",
     "rectangle-horizontal",
     "rotate-ccw",

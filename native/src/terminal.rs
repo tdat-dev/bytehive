@@ -285,9 +285,24 @@ impl Terminal {
     }
 
     /// How long since the CLI last wrote anything, in ms.
+    /// Bytes straight to the CLI's input, as a paste or a typed message goes.
+    pub fn write_raw(&self, bytes: Vec<u8>) {
+        self.write(bytes);
+    }
+
+    /// The CLI turned bracketed paste on (DECSET 2004).
+    pub fn bracketed_paste(&self) -> bool {
+        self.term.lock().unwrap().mode().contains(TermMode::BRACKETED_PASTE)
+    }
+
     /// Type 	ext into the CLI as if it came from the keyboard.
     pub fn type_text(&self, text: &str) {
         self.write(keys::text_records(text));
+    }
+
+    /// How long since the CLI last wrote anything, in ms.
+    pub fn quiet_for_ms(&self) -> u64 {
+        now_ms().saturating_sub(self.last_output_ms())
     }
 
     /// When the CLI last wrote anything, ms since the epoch.
