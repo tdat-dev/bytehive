@@ -106,8 +106,11 @@ pub fn run() {
     #[cfg(windows)]
     {
         // Before any window: single-threaded here, and every webview reads it when it starts.
-        let key = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
-        std::env::set_var(key, webview_args(std::env::var(key).ok().as_deref()));
+        // The agents get it back as it was (core/pty_session.rs).
+        let key = core::pty_session::WEBVIEW_ARGS;
+        let before = std::env::var(key).ok();
+        std::env::set_var(key, webview_args(before.as_deref()));
+        core::pty_session::remember_webview_args(before);
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

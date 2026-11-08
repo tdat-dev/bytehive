@@ -24,6 +24,24 @@ pub(crate) const INHERITED_SESSION_MARKERS: [&str; 4] = [
     "CLAUDE_CODE_EXECPATH",
 ];
 
+/// ByteHive sets this on itself so its own windows keep their timers while
+/// hidden (lib.rs). It is for ByteHive's webviews only: an agent, and a WebView2
+/// app it starts, gets what the variable held before ByteHive changed it.
+pub const WEBVIEW_ARGS: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+
+static WEBVIEW_ARGS_BEFORE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Called once, right before ByteHive changes WEBVIEW_ARGS on itself.
+pub fn remember_webview_args(before: Option<String>) {
+    let _ = WEBVIEW_ARGS_BEFORE.set(before);
+}
+
+/// WEBVIEW_ARGS for an agent: `None` while ByteHive never changed it (inherit
+/// it as it is), else the value from before, or `Some(None)` for unset.
+pub(crate) fn agent_webview_args() -> Option<Option<&'static str>> {
+    WEBVIEW_ARGS_BEFORE.get().map(|b| b.as_deref())
+}
+
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
@@ -51,6 +69,11 @@ impl PtySession {
         // an explicit spec.env entry could still set one deliberately.
         for k in INHERITED_SESSION_MARKERS {
             cmd.env_remove(k);
+        }
+        match agent_webview_args() {
+            Some(Some(before)) => cmd.env(WEBVIEW_ARGS, before),
+            Some(None) => cmd.env_remove(WEBVIEW_ARGS),
+            None => {}
         }
         for (k, v) in &spec.env {
             cmd.env(k, v);

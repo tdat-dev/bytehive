@@ -31,7 +31,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 use crate::core::command_spec::CommandSpec;
-use crate::core::pty_session::INHERITED_SESSION_MARKERS;
+use crate::core::pty_session::{agent_webview_args, INHERITED_SESSION_MARKERS, WEBVIEW_ARGS};
 
 /// What the agent reads: each line written here is one message to it.
 pub struct PipeSession {
@@ -201,11 +201,17 @@ fn command_line(exe: &Path, args: &[String]) -> (Option<PathBuf>, String) {
     (Some(exe.to_path_buf()), line)
 }
 
-/// Our environment, minus the launching Claude session's identity, plus `extra`.
+/// Our environment, minus the launching Claude session's identity and with
+/// WEBVIEW_ARGS as it was before ByteHive set it, plus `extra`.
 fn environment(extra: &[(String, String)]) -> Vec<u16> {
+    let webview = agent_webview_args();
     let mut vars: Vec<(OsString, OsString)> = std::env::vars_os()
         .filter(|(k, _)| !INHERITED_SESSION_MARKERS.iter().any(|m| k.to_string_lossy().eq_ignore_ascii_case(m)))
+        .filter(|(k, _)| webview.is_none() || !k.to_string_lossy().eq_ignore_ascii_case(WEBVIEW_ARGS))
         .collect();
+    if let Some(Some(before)) = webview {
+        vars.push((WEBVIEW_ARGS.into(), before.into()));
+    }
     for (k, v) in extra {
         vars.retain(|(x, _)| !x.to_string_lossy().eq_ignore_ascii_case(k));
         vars.push((k.into(), v.into()));
