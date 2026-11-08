@@ -10,10 +10,10 @@ use agent_core::{claude, codex, launch, opencode};
 use gpui_kit::*;
 use serde::{Deserialize, Serialize};
 
+use supervise::task_state::{TaskFacts, TaskState, TaskStatus, derive_task_state};
+
 use crate::terminal::{SCROLLBACK, SCROLLBACK_HIDDEN, Terminal};
 
-/// Output within this long ago reads as working.
-const WORKING_MS: u64 = 1500;
 const NAMES: [&str; 12] = ["Ana", "Bob", "Cid", "Dee", "Eve", "Fay", "Gus", "Hal", "Ivy", "Jon", "Kai", "Lou"];
 
 /// What it takes to start or resume an agent.
@@ -32,33 +32,27 @@ pub struct Spec {
     pub started_ms: u64,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum State {
-    Working,
-    Idle,
-    Stopped,
-}
-
 pub struct Seat {
     pub spec: Spec,
     pub terminal: Option<Entity<Terminal>>,
 }
 
 impl Seat {
-    pub fn state(&self, cx: &App) -> State {
-        match &self.terminal {
-            None => State::Stopped,
-            Some(t) => {
+    /// What the agent is doing, read from facts the way today's app does
+    /// (supervise::task_state): asking you, blocked, working, idle, stopped.
+    pub fn status(&self, cx: &App) -> TaskStatus {
+        let facts = match &self.terminal {
+            Some(t) if t.read(cx).exit_code().is_none() => {
                 let t = t.read(cx);
-                if t.exit_code().is_some() {
-                    State::Stopped
-                } else if t.quiet_for_ms() < WORKING_MS {
-                    State::Working
-                } else {
-                    State::Idle
-                }
+                TaskFacts { running: true, last_output_at: t.last_output_ms(), screen: t.screen_text(), ..TaskFacts::default() }
             }
-        }
+            _ => TaskFacts::default(),
+        };
+        derive_task_state(&facts, now_ms())
+    }
+
+    pub fn state(&self, cx: &App) -> TaskState {
+        self.status(cx).state
     }
 
     /// The folder's last part: the project the queue groups it under.

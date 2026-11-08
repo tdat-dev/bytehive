@@ -285,8 +285,30 @@ impl Terminal {
     }
 
     /// How long since the CLI last wrote anything, in ms.
-    pub fn quiet_for_ms(&self) -> u64 {
-        now_ms().saturating_sub(self.last_output.load(Ordering::Relaxed))
+    /// When the CLI last wrote anything, ms since the epoch.
+    pub fn last_output_ms(&self) -> u64 {
+        self.last_output.load(Ordering::Relaxed)
+    }
+
+    /// The visible screen as plain text, one line per row, trailing blanks
+    /// trimmed: what supervise reads a question or a sign-in notice from.
+    pub fn screen_text(&self) -> String {
+        let term = self.term.lock().unwrap();
+        let grid = term.grid();
+        let mut out = String::new();
+        for row in 0..grid.screen_lines() {
+            let line = &grid[Line(row as i32)];
+            let mut text = String::with_capacity(grid.columns());
+            for col in 0..grid.columns() {
+                let cell = &line[Column(col)];
+                if !cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    text.push(cell.c);
+                }
+            }
+            out.push_str(text.trim_end());
+            out.push('\n');
+        }
+        out
     }
 
     /// How many lines of history to keep; older ones are dropped.

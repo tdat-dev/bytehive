@@ -10,7 +10,9 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::fleet::{Fleet, Seat, State, now_ms};
+use supervise::task_state::TaskState as State;
+
+use crate::fleet::{Fleet, Seat, now_ms};
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -19,6 +21,10 @@ const INK: u32 = 0xf4f4f5;
 const INK_2: u32 = 0xb4b4bc;
 const INK_3: u32 = 0x8c8c96;
 const WORK: u32 = 0x6fd6a0;
+/// --ib-needs: amber, for whoever waits on you.
+const NEEDS: u32 = 0xf0bf6a;
+/// --ib-review: blue, for work ready to look at.
+const REVIEW: u32 = 0x9ab8ee;
 const QUEUE_W: f32 = 320.0;
 const DOCK_H: f32 = 84.0;
 /// How often the queue rereads who is working.
@@ -75,10 +81,57 @@ fn brand(cli: &str) -> (&'static str, u32) {
 
 fn state_look(state: State) -> (&'static str, u32) {
     match state {
+        State::Needs => ("Needs you", NEEDS),
+        State::Blocked => ("Blocked", NEEDS),
+        State::Review => ("Ready to review", REVIEW),
         State::Working => ("Working", WORK),
         State::Idle => ("Idle", INK_3),
         State::Stopped => ("Stopped", INK_3),
+        State::Merged => ("Merged", INK_3),
     }
+}
+
+/// It is waiting on you: marked where it is, never moved to the top.
+fn waits(state: State) -> bool {
+    matches!(state, State::Needs | State::Blocked)
+}
+
+fn ended(state: State) -> bool {
+    matches!(state, State::Stopped | State::Merged)
+}
+
+/// The top bar's sentence, worded as today's app words it (inbox.ts headline).
+fn headline(states: &[State]) -> (String, String) {
+    let n = |s: State| states.iter().filter(|x| **x == s).count();
+    let are = |k: usize| if k == 1 { "is" } else { "are" };
+    if states.is_empty() {
+        return ("No agents yet.".to_string(), "Start one with New agent.".to_string());
+    }
+    let needs = n(State::Needs) + n(State::Blocked);
+    let lead = match needs {
+        0 => "Nothing needs you.".to_string(),
+        1 => "1 agent needs you.".to_string(),
+        k => format!("{k} agents need you."),
+    };
+    let (review, working) = (n(State::Review), n(State::Working));
+    let mut parts: Vec<String> = Vec::new();
+    if review > 0 {
+        parts.push(format!("{review} {} ready to review", are(review)));
+    }
+    if working > 0 {
+        parts.push(format!("{working} {} working", are(working)));
+    }
+    if parts.is_empty() {
+        let (idle, stopped) = (n(State::Idle), n(State::Stopped));
+        if idle > 0 {
+            parts.push(format!("{idle} {} waiting for a task", are(idle)));
+        }
+        if stopped > 0 {
+            parts.push(format!("{stopped} {} stopped", are(stopped)));
+        }
+    }
+    let rest = if parts.is_empty() { String::new() } else { format!("{}.", parts.join(", ")) };
+    (lead, rest)
 }
 
 /// "12s", "4m", "2h", "3d" since `ms`.
@@ -158,7 +211,7 @@ impl Inbox {
         let ring = if current { RAISE } else { PANEL };
         let dot = div().absolute().right(px(-3.0)).bottom(px(-3.0)).size(px(13.0)).rounded_full().bg(color(ring)).flex().items_center().justify_center().child(
             match state {
-                State::Stopped => div().size(px(9.0)).rounded_full().border_1().border_color(color(INK_3)),
+                s if ended(s) => div().size(px(9.0)).rounded_full().border_1().border_color(color(INK_3)),
                 _ => div().size(px(9.0)).rounded_full().bg(color(hue)),
             },
         );
@@ -169,14 +222,15 @@ impl Inbox {
             .gap(px(10.0))
             .p(px(10.0))
             .rounded(px(12.0))
-            .text_color(color(if state == State::Stopped { INK_2 } else { INK }))
-            .when(current, |row| row.bg(color(RAISE)).border_1().border_color(white(0.1)))
-            .when(!current, |row| row.hover(|row| row.bg(white(0.03))))
+            .text_color(color(if ended(state) { INK_2 } else { INK }))
+            .when(waits(state), |row| row.bg(tint(NEEDS, if current { 0.2 } else { 0.12 })).border_1().border_color(tint(NEEDS, 0.3)))
+            .when(current && !waits(state), |row| row.bg(color(RAISE)).border_1().border_color(white(0.1)))
+            .when(!current && !waits(state), |row| row.hover(|row| row.bg(white(0.03))))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.fleet.focus(index, window, cx);
                 cx.notify();
             }))
-            .child(self.mark(&seat.spec.cli, 24.0, 7.0).when(state == State::Stopped, |mark| mark.opacity(0.55)).child(dot))
+            .child(self.mark(&seat.spec.cli, 24.0, 7.0).when(ended(state), |mark| mark.opacity(0.55)).child(dot))
             .child(
                 div()
                     .flex()
@@ -188,7 +242,7 @@ impl Inbox {
                         div()
                             .flex()
                             .justify_between()
-                            .child(div().font_weight(if state == State::Stopped { FontWeight::NORMAL } else { FontWeight::MEDIUM }).text_size(px(14.0)).truncate().child(seat.spec.name.clone()))
+                            .child(div().font_weight(if ended(state) { FontWeight::NORMAL } else { FontWeight::MEDIUM }).text_size(px(14.0)).truncate().child(seat.spec.name.clone()))
                             .child(mono().text_size(px(12.0)).text_color(color(INK_3)).child(age(seat.spec.started_ms))),
                     )
                     .child(
@@ -293,10 +347,10 @@ impl Inbox {
                     .h(px(28.0))
                     .px(px(12.0))
                     .rounded_full()
-                    .bg(if state == State::Working { tint(WORK, 0.12) } else { white(0.06) })
+                    .bg(if matches!(state, State::Idle | State::Stopped | State::Merged) { white(0.06) } else { tint(hue, 0.12) })
                     .text_size(px(12.5))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(color(if state == State::Working { WORK } else { INK_2 }))
+                    .text_color(color(if matches!(state, State::Idle | State::Stopped | State::Merged) { INK_2 } else { hue }))
                     .child(div().size(px(8.0)).rounded_full().bg(color(hue)))
                     .child(label),
             )
@@ -315,7 +369,7 @@ impl Inbox {
                     .child(tab("Changes"))
                     .child(tab("History")),
             )
-            .when(state != State::Stopped, |head| {
+            .when(!ended(state), |head| {
                 head.child(
                     div()
                         .id("stop")
@@ -404,20 +458,15 @@ impl Inbox {
             .when(state == State::Working, |panel| panel.child(div().absolute().top_0().left_0().right_0().h(px(2.0)).flex().child(edge(clear, lit)).child(edge(lit, clear))))
             .child(self.stage_head(seat, index, cx));
         match (&seat.terminal, state) {
-            (Some(terminal), State::Working | State::Idle) => panel.child(div().flex_1().min_h_0().pt(px(4.0)).px(px(24.0)).pb(px(12.0)).child(terminal.clone())),
+            (Some(terminal), s) if !ended(s) => panel.child(div().flex_1().min_h_0().pt(px(4.0)).px(px(24.0)).pb(px(12.0)).child(terminal.clone())),
             _ => panel.child(self.stopped_panel(seat, index, cx)),
         }
     }
 
     fn top_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let states: Vec<State> = self.fleet.seats.iter().map(|s| s.state(cx)).collect();
-        let working = states.iter().filter(|s| **s == State::Working).count();
         let stopped = states.iter().filter(|s| **s == State::Stopped).count();
-        let rest = match working {
-            0 => String::new(),
-            1 => "1 is working.".to_string(),
-            n => format!("{n} are working."),
-        };
+        let (lead, rest) = headline(&states);
         let window_button = |name: &'static str, area: WindowControlArea, id: &'static str| {
             div().id(id).w(px(46.0)).h(px(38.0)).flex().items_center().justify_center().window_control_area(area).hover(|button| button.bg(white(0.08))).child(icon(name, 14.0, color(INK_2)))
         };
@@ -441,7 +490,7 @@ impl Inbox {
                     .text_size(px(24.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(color(INK_3))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child("Nothing needs you."))
+                    .child(div().font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(lead))
                     .child(rest),
             )
             .when(stopped > 0, |bar| {
