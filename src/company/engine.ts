@@ -457,10 +457,12 @@ async function placeCards(job: Job): Promise<string[]> {
   return failed;
 }
 
-/** Start the new hires. Gives back who did not start, and why. */
+/** Start the new hires, and anyone a plan reuses whose floor was closed. Gives back who did
+ *  not start, and why: only a pane started here can have failed to, not one already running. */
 async function startHires(hired: Person[]): Promise<string[]> {
   const failed: string[] = [];
   for (const p of hired) {
+    if (paneOf(p.id)) continue;
     try {
       await ensurePerson(p);
       const error = paneOf(p.id)?.pane.error;

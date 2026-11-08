@@ -335,6 +335,20 @@ describe("approve", () => {
     expect(io.spawned).toContain(dev.name);
   });
 
+  it("does not blame a reused person for an old error on a pane that was already running", async () => {
+    await waitingJob({ summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] });
+    await engine.approve(job().id);
+    const dev = engine.companyView()!.company.people.find((p) => p.rank === "staff")!;
+    for (const ws of workspaces.values()) for (const p of ws.panes.values()) if (p.spec.personId === dev.id) (p as { error?: string }).error = "an old crash";
+    await engine.giveJob("more");
+    await request({ type: "plan", ts: 1, from: "founder", job: job(1).id, plan: { summary: "s", cards: [], hires: [{ role: "developer", floor: "a" }] } });
+    io.told.length = 0;
+    io.sent.length = 0;
+    await engine.approve(job(1).id);
+    const said = [...io.told.map((m) => m.text), ...io.sent.map(([, t]) => t)].join();
+    expect(said).not.toContain("did not start");
+  });
+
   it("places the cards once, however many clicks", async () => {
     await waitingJob(planFor("a"));
     await Promise.all([engine.approve(job().id), engine.approve(job().id)]);
