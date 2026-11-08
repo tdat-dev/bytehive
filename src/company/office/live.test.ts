@@ -84,6 +84,25 @@ describe("cards by job", () => {
 describe("reading the boards", () => {
   beforeEach(() => { eng.boards.clear(); vi.useFakeTimers(); });
 
+  it("forgets a floor's count once its board file is gone", async () => {
+    eng.view = { company: { floors: [{ id: "a", dir: "D:/a", name: "alpha" }], people: [{ ...person("hai", "lead", "a"), role: "lead", boss: "founder", cli: "claude", look: { shirt: "#fff", hair: "#000", prop: "none" } }] }, jobs: [], roles: [] };
+    eng.boards.set("D:/a", lists([card("J-1")], []));
+    const src = liveSource();
+    const read = async () => {
+      src.watching(true);
+      await vi.advanceTimersByTimeAsync(0);
+      src.watching(false);
+    };
+    await read();
+    eng.boards.delete("D:/a");
+    await read();
+    const job = { id: "J-1", title: "x", ask: "x", status: "running", plan: null, tokenCap: 1, tokensUsed: 0, tokenBase: {}, people: [], createdAt: 0 };
+    eng.view = { ...(eng.view as object), jobs: [job] };
+    const m = src.snapshot(0).model!;
+    expect(m.jobs[0].cards).toBeNull();
+    expect(m.floors[0].board).toBeNull();
+    vi.useRealTimers();
+  });
   it("keeps a floor's last count when its board cannot be read this time", async () => {
     eng.view = { company: { floors: [{ id: "a", dir: "D:/a", name: "alpha" }], people: [{ ...person("hai", "lead", "a"), role: "lead", boss: "founder", cli: "claude", look: { shirt: "#fff", hair: "#000", prop: "none" } }] }, jobs: [], roles: [] };
     eng.boards.set("D:/a", lists([card("J-1")], [card("J-1")]));

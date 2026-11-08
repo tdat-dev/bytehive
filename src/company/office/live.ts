@@ -62,8 +62,14 @@ export function liveSource(): OfficeSource {
     const floors = s?.company.floors.filter((x) => s.company.people.some((p) => p.floor === x.id)) ?? [];
     for (const id of [...floorCards.keys()]) if (!floors.some((f) => f.id === id)) floorCards.delete(id);
     for (const f of floors) {
-      const file = await readBoardFile(f.dir).catch(() => null);
-      if (!file) continue;
+      // A read that failed keeps the last count; a board that is gone has no count.
+      const file = await readBoardFile(f.dir).catch(() => undefined);
+      if (file === undefined) continue;
+      if (file === null) {
+        delete boards[f.id];
+        floorCards.delete(f.id);
+        continue;
+      }
       boards[f.id] = { todo: count(file.board.lists, "to do"), doing: count(file.board.lists, "doing"), done: count(file.board.lists, "done") };
       floorCards.set(f.id, cardsOnBoard(file.board.lists));
     }
