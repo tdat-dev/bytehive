@@ -42,6 +42,7 @@ function ensureStyle(): void {
   font-size:13px;color:var(--text);opacity:0;transform:translateY(8px);pointer-events:none;
   transition:opacity .28s,transform .28s}
 .deleg-toast.on{opacity:1;transform:translateY(0)}
+.deleg-toast-av[hidden]{display:none}
 .deleg-toast-av{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;
   font-size:11px;font-weight:700;color:var(--accent-ink);background:var(--muted-2)}
 .deleg-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
@@ -244,8 +245,11 @@ export function showDelegationToast(fromName: string | null, toNames: string[], 
   const { root, av, text, act } = ensureToast();
   const from = fromName.trim();
   const color = findPaneColor(from);
+  // An agent gets its own colour; a sender that is not an agent (you) gets no
+  // tile, since a grey letter says nothing the words don't.
+  av.hidden = !color;
   av.textContent = from.slice(0, 1).toUpperCase() || "?";
-  av.style.background = color ?? "var(--muted-2)";
+  av.style.background = color ?? "";
   const toLabel = toNames.length <= 2 ? toNames.join(" & ") : `${toNames[0]} +${toNames.length - 1}`;
   text.innerHTML =
     `${escapeHtml(from)} <span class="deleg-toast-arw">&rarr;</span> ${escapeHtml(toLabel)}: ` +
