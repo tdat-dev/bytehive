@@ -9,6 +9,7 @@ mod inbox;
 mod keys;
 mod plan;
 mod presets;
+mod single;
 mod terminal;
 mod transcript;
 mod usage;
@@ -28,6 +29,9 @@ const FONTS: [&[u8]; 5] = [
 ];
 
 fn main() {
+    if !single::claim() {
+        return;
+    }
     gpui_kit::application().with_assets(icons::Icons).run(|cx| {
         gpui_kit::init(cx);
         // The kit's own widgets (the New agent folder field) follow its theme:
