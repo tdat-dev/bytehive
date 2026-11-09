@@ -13,10 +13,15 @@ pub(super) struct Toast {
 
 impl Inbox {
     pub(super) fn toast(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
+        self.toast_for(text, SHOW_MS, cx);
+    }
+
+    /// A note that stays `ms`, for one said while the window is still opening.
+    pub(super) fn toast_for(&mut self, text: impl Into<String>, ms: u64, cx: &mut Context<Self>) {
         let no = self.toast.as_ref().map_or(0, |t| t.no) + 1;
         self.toast = Some(Toast { text: text.into(), no });
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(SHOW_MS)).await;
+            cx.background_executor().timer(Duration::from_millis(ms)).await;
             let _ = this.update(cx, |this, cx| {
                 if this.toast.as_ref().is_some_and(|t| t.no == no) {
                     this.toast = None;

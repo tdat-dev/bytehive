@@ -138,7 +138,7 @@ pub const DELAY_MIN: u64 = 1;
 pub const DELAY_MAX: u64 = 20;
 
 /// recents.ts keeps this many.
-const RECENTS: usize = 6;
+pub const RECENTS: usize = 6;
 
 fn store() -> Option<PathBuf> {
     Some(crate::fleet::data_dir()?.join("prefs.json"))

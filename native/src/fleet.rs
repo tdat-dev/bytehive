@@ -288,6 +288,26 @@ impl Fleet {
         moved
     }
 
+    /// Add agents brought over from the old app, stopped. One already here
+    /// (the same conversation) is not added twice. How many came.
+    pub fn adopt(&mut self, specs: Vec<Spec>) -> usize {
+        let mut added = 0;
+        for spec in specs {
+            let known = spec.session_id.is_some() && self.seats.iter().any(|s| s.spec.session_id == spec.session_id);
+            if known {
+                continue;
+            }
+            let branch = agent_core::git::current_branch(std::path::Path::new(spec.run_dir()));
+            self.seats.push(Seat { spec, terminal: None, branch, pid: None, preparing: false });
+            added += 1;
+        }
+        if added > 0 {
+            self.focused = self.focused.or(Some(0));
+            self.save();
+        }
+        added
+    }
+
     /// Take the agent off the list: it stops, its spec is forgotten. Its
     /// branch and its changes stay in git.
     pub fn remove(&mut self, index: usize) {

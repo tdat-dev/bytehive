@@ -198,11 +198,18 @@ impl Inbox {
                 }
             }
         });
-        let prefs = Prefs::load();
+        let mut prefs = Prefs::load();
+        // Once: the fleet and settings of the app before this one.
+        let imported = crate::import::take(&mut prefs);
         crate::terminal::set_font_size(prefs.font_size);
         // Settings → Reopen my projects on start.
-        let fleet = if prefs.restore { Fleet::load() } else { Fleet::default() };
-        let inbox = Self {
+        let mut fleet = if prefs.restore { Fleet::load() } else { Fleet::default() };
+        let came = imported.map(|found| {
+            let n = fleet.adopt(found.specs.clone());
+            crate::import::finish(&found, n);
+            n
+        });
+        let mut inbox = Self {
             home: fleet.seats.is_empty(),
             compose: None,
             popup: None,
@@ -228,6 +235,10 @@ impl Inbox {
             _follow: follow,
         };
         inbox.show_tray();
+        if let Some(n) = came {
+            let agents = if n == 1 { "1 agent".to_string() } else { format!("{n} agents") };
+            inbox.toast_for(format!("Brought over {agents} and your settings from ByteHive. Resume an agent to carry on its conversation."), 15_000, cx);
+        }
         inbox
     }
 
