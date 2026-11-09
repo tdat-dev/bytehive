@@ -56,6 +56,9 @@ struct State {
     parsed: u64,
     held: bool,
     closed: bool,
+    /// A window took the output over (`begin`): the spawning one's `enable`,
+    /// should it come late, no longer applies.
+    begun: bool,
     /// After input the reader reads freely until this time, while `sent` is under `open_to`.
     open_until: Option<Instant>,
     open_to: u64,
@@ -89,6 +92,7 @@ impl Flow {
                 parsed: 0,
                 held: false,
                 closed: false,
+                begun: false,
                 open_until: None,
                 open_to: 0,
                 trickle_to: 0,
@@ -103,9 +107,14 @@ impl Flow {
     }
 
     /// The window that has had every byte since the agent started acks from
-    /// now on, as `epoch` (pty_spawn). The count of what was sent stays.
+    /// now on, as `epoch` (pty_spawn). The count of what was sent stays. Does
+    /// nothing once another window took the output over: pty_spawn can finish
+    /// after a pty_attach for the same agent.
     pub fn enable(&self, epoch: u64) {
         let mut s = self.st();
+        if s.begun {
+            return;
+        }
         s.on = true;
         s.epoch = epoch;
         self.cv.notify_all();
@@ -116,6 +125,7 @@ impl Flow {
     pub fn begin(&self, epoch: u64) {
         let mut s = self.st();
         s.on = true;
+        s.begun = true;
         s.epoch = epoch;
         s.sent = 0;
         s.parsed = 0;
@@ -128,6 +138,19 @@ impl Flow {
     /// everything through until a window takes the output over again.
     pub fn off(&self) {
         let mut s = self.st();
+        s.on = false;
+        s.held = false;
+        self.cv.notify_all();
+    }
+
+    /// The window of `epoch` is gone: `off`, unless another window has taken
+    /// the output over since. An old window's sink drops after the new one's
+    /// `begin`, and its last send failing says nothing about the new window.
+    pub fn off_if(&self, epoch: u64) {
+        let mut s = self.st();
+        if s.epoch != epoch {
+            return;
+        }
         s.on = false;
         s.held = false;
         self.cv.notify_all();
@@ -158,11 +181,16 @@ impl Flow {
     /// Let output through for `d`, and at most `budget` bytes, whatever the
     /// count says: the program is about to answer something the person just
     /// did. Also when nothing is held yet, since the answer itself can be what
-    /// takes the count over the high mark. Each input starts a new moment.
+    /// takes the count over the high mark. Input while the gate is still open
+    /// (moment not over, budget not spent) changes nothing, so a program that
+    /// keeps querying the terminal gets one budget, not one per query.
     pub fn open_for(&self, d: Duration, budget: u64) {
         let mut s = self.st();
         let now = Instant::now();
         s.last_input = Some(now);
+        if s.open_until.is_some_and(|t| now < t) && s.sent < s.open_to {
+            return;
+        }
         s.open_until = Some(now + d);
         s.open_to = s.sent.saturating_add(budget);
         self.cv.notify_all();
@@ -438,6 +466,64 @@ mod tests {
         f.begin(2);
         f.sent(100);
         assert!(f.is_held(), "the new window's count holds again");
+    }
+
+    #[test]
+    fn a_dying_old_window_cannot_turn_the_new_ones_flow_off() {
+        let f = on(small()); // window 1
+        f.begin(2); // window 2 took over; window 1's sink drops and its last send fails
+        f.off_if(1);
+        assert!(f.is_on(), "the old window's failure is not the new one's");
+        f.sent(100);
+        assert!(f.is_held());
+        f.off_if(2); // the new window's own failure does count
+        assert!(!f.is_on());
+        assert!(!f.is_held());
+    }
+
+    #[test]
+    fn input_while_the_gate_is_open_does_not_renew_its_budget() {
+        let f = on(small());
+        f.sent(100);
+        f.open_for(NEVER, 50);
+        f.sent(40);
+        f.open_for(NEVER, 50); // the gate is still open: no new budget
+        f.sent(10);
+        let (done, h) = reader(&f);
+        settle();
+        assert!(!done.load(Ordering::SeqCst), "a program queried 5 times a second still stops at one budget");
+        f.open_for(NEVER, 50); // spent: this one opens it again
+        joined(h, "a key after the budget is spent opens it");
+    }
+
+    #[test]
+    fn input_while_the_gate_is_open_does_not_renew_its_moment() {
+        let f = on(small());
+        f.sent(100);
+        f.open_for(Duration::from_millis(400), 1 << 20);
+        thread::sleep(Duration::from_millis(250));
+        f.open_for(Duration::from_millis(400), 1 << 20); // still open: the moment stays as it was
+        thread::sleep(Duration::from_millis(250)); // 500 ms after the first key
+        let (done, h) = reader(&f);
+        settle();
+        assert!(!done.load(Ordering::SeqCst), "closed 400 ms after the key that opened it");
+        f.close();
+        joined(h, "close wakes it");
+    }
+
+    #[test]
+    fn enable_after_a_window_took_over_changes_nothing() {
+        let f = Arc::new(Flow::new(small()));
+        f.begin(2); // pty_attach got there first
+        f.sent(100);
+        f.enable(1); // pty_spawn finishing late
+        f.ack(1, 100);
+        assert!(f.is_held(), "the spawning window's epoch does not come back");
+        f.ack(2, 100);
+        assert!(!f.is_held());
+        f.off_if(2);
+        f.enable(1);
+        assert!(!f.is_on(), "nor does it switch a gone window's flow back on");
     }
 
     #[test]

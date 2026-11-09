@@ -51,12 +51,15 @@ fn flow_control_on() -> bool {
 /// many; each one sent alone is a script the webview compiles and runs, so they
 /// are joined (core/coalesce.rs). A pipe agent's output is whole JSON lines and
 /// stays as it is. `flow` is filled in once the agent exists, so the joiner can
-/// tell when someone is typing into it. A message the window cannot take (it
-/// closed, or it is reloading) turns the flow off: nobody is left to ack, and
-/// the reader must not wait on them. Attaching a window turns it on again.
+/// tell when someone is typing into it. A message the window of `epoch` cannot
+/// take turns the flow off: nobody is left to ack, and the reader must not wait
+/// on them. Only for that window: an old sink drops after a new window took
+/// over, and its last send failing must not turn the new one's flow off.
+/// Attaching a window turns it on again.
 fn window_sink(
     on_bytes: Channel<InvokeResponseBody>,
     pipe: bool,
+    epoch: u64,
     flow: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<crate::core::flow::Flow>>>,
 ) -> Box<dyn FnMut(&[u8]) + Send> {
     if pipe {
@@ -69,7 +72,7 @@ fn window_sink(
     let joined = Coalescer::new(MESSAGE_EVERY, MESSAGE_EVERY_TYPING, MESSAGE_BIG, typing, move |batch| {
         if on_bytes.send(InvokeResponseBody::Raw(batch)).is_err() {
             if let Some(f) = gone.get() {
-                f.off();
+                f.off_if(epoch);
             }
         }
     });
@@ -138,7 +141,7 @@ pub async fn pty_spawn(
             &spec,
             size,
             pipe,
-            window_sink(on_bytes, pipe, flow.clone()),
+            window_sink(on_bytes, pipe, epoch.unwrap_or(0), flow.clone()),
             move |code| {
                 let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code, run });
             },
@@ -179,11 +182,12 @@ pub async fn pty_attach(
             flows.put(&agent_id, &f);
             let _ = flow.set(f);
         }
-        reg.attach(&agent_id, window_sink(on_bytes, pipe, flow.clone()), epoch.unwrap_or(0))
+        let epoch_or_none = epoch.unwrap_or(0);
+        reg.attach(&agent_id, window_sink(on_bytes, pipe, epoch_or_none, flow.clone()), epoch_or_none)
             .map_err(CommandError::from)?;
         if epoch.is_none() || !flow_control_on() {
             if let Some(f) = flow.get() {
-                f.off(); // a window that will not ack is never waited on
+                f.off_if(epoch_or_none); // a window that will not ack is never waited on
             }
         }
         Ok(())
@@ -1455,7 +1459,7 @@ mod window_sink_tests {
         let slot = Arc::new(OnceLock::new());
         let _ = slot.set(flow.clone());
         let gone = Channel::new(|_| Err(std::io::Error::other("the window is gone").into()));
-        let mut sink = window_sink(gone, false, slot);
+        let mut sink = window_sink(gone, false, 7, slot);
         sink(b"one more line");
         let t = Instant::now();
         while !reader.is_finished() {
@@ -1465,5 +1469,29 @@ mod window_sink_tests {
         assert!(!flow.is_on(), "nobody is left to ack");
         flow.begin(8); // a window attaches
         assert!(flow.is_on());
+    }
+
+    #[test]
+    fn the_old_windows_sink_dying_after_an_attach_leaves_the_new_window_in_control() {
+        let flow = Arc::new(Flow::new(FlowConfig { high: 10, low: 5, stall: Duration::from_secs(60), trickle: 1 }));
+        flow.enable(7);
+        let slot = Arc::new(OnceLock::new());
+        let _ = slot.set(flow.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dead = Channel::new(move |_| {
+            let _ = tx.send(());
+            Err(std::io::Error::other("the old window is gone").into())
+        });
+        let mut old = window_sink(dead, false, 7, slot);
+        old(b"first"); // goes out at once
+        rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        old(b"held by the coalescer");
+        flow.begin(8); // pty_attach: the new window takes over...
+        drop(old); // ...and the old sink drops, flushing to the dead channel
+        rx.recv_timeout(Duration::from_secs(10)).expect("the old sink's last send fails");
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(flow.is_on(), "window 8's flow control must survive window 7's sink");
+        flow.sent(10);
+        assert!(flow.is_held());
     }
 }
