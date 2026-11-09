@@ -16,7 +16,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn().mockResolvedValue("D:\\projects\\demo"),
 }));
 
-import { spawnPty, attachPty, sendInput, resizePty, killPty } from "./ipc";
+import { spawnPty, attachPty, sendInput, resizePty, killPty, IDLE_ACK_MS } from "./ipc";
 
 beforeEach(() => {
   invoke.mockReset();
@@ -57,7 +57,7 @@ describe("ipc", () => {
 describe("output flow control", () => {
   /** The channel a spawn handed the backend and the epoch it named, so a test can play the backend's part. */
   async function channelOf(handler: Parameters<typeof spawnPty>[7]) {
-    await spawnPty("agent-9", "powershell.exe", [], null, 80, 24, [], handler);
+    await spawnPty("agent-9", "powershell.exe", [], null, 80, 24, [], handler, { acks: true });
     const args = invoke.mock.calls[0][1];
     return { ch: args.onBytes as { onmessage: (m: ArrayBuffer) => void }, epoch: args.epoch as number };
   }
@@ -105,16 +105,57 @@ describe("output flow control", () => {
     expect(all[all.length - 1]).toEqual({ agentId: "agent-9", epoch, parsed: 150 });
   });
 
-  it("acks at once for a handler that does not ask for the callback", async () => {
-    const { ch, epoch } = await channelOf(() => {});
+  it("a window that does not opt in names no epoch and never acks, so it is never waited on", async () => {
+    let got = 0;
+    await spawnPty("a", "x", [], null, 80, 24, [], (bytes, parsed) => { got += bytes.length; parsed(); });
+    await attachPty("a", (bytes) => { got += bytes.length; }); // takes the callback, never calls it
+    const [spawn, attach] = invoke.mock.calls.map((c) => c[1]);
+    expect(spawn.epoch).toBeUndefined();
+    expect(attach.epoch).toBeUndefined();
+    spawn.onBytes.onmessage(new ArrayBuffer(50));
+    attach.onBytes.onmessage(new ArrayBuffer(70));
+    vi.advanceTimersByTime(10 * IDLE_ACK_MS);
+    expect(got).toBe(120);
+    expect(acks()).toEqual([]);
+  });
+
+  it("a handler that opts in is not acked for a chunk it has not parsed", async () => {
+    const { ch } = await channelOf(() => {}); // two parameters or not, it said it acks
     invoke.mockClear();
     ch.onmessage(new ArrayBuffer(50));
-    expect(acks()).toEqual([{ agentId: "agent-9", epoch, parsed: 50 }]);
+    expect(acks()).toEqual([]);
+  });
+
+  it("a last chunk whose callback never comes is acked once the stream goes quiet", async () => {
+    const done: Array<() => void> = [];
+    const { ch, epoch } = await channelOf((_bytes, d) => { done.push(d); });
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(300));
+    done[0]();
+    vi.advanceTimersByTime(1000);
+    ch.onmessage(new ArrayBuffer(200)); // its callback is lost
+    vi.advanceTimersByTime(IDLE_ACK_MS - 1);
+    expect(acks().map((a) => a.parsed)).toEqual([300]);
+    vi.advanceTimersByTime(1);
+    expect(acks()[acks().length - 1]).toEqual({ agentId: "agent-9", epoch, parsed: 500 });
+  });
+
+  it("a quiet stream with more than its last chunk unparsed is still a window behind: no idle ack", async () => {
+    const done: Array<() => void> = [];
+    const { ch } = await channelOf((_bytes, d) => { done.push(d); });
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(300)); // xterm still busy with this one
+    ch.onmessage(new ArrayBuffer(200));
+    vi.advanceTimersByTime(10 * IDLE_ACK_MS);
+    expect(acks()).toEqual([]);
+    done[0]();
+    vi.advanceTimersByTime(IDLE_ACK_MS);
+    expect(acks().map((a) => a.parsed)).toEqual([300, 500]); // now only the last one is owed
   });
 
   it("every spawn and attach gets an epoch of its own", async () => {
-    await spawnPty("a", "x", [], null, 80, 24, [], () => {});
-    await attachPty("a", () => {});
+    await spawnPty("a", "x", [], null, 80, 24, [], () => {}, { acks: true });
+    await attachPty("a", () => {}, { acks: true });
     const [spawn, attach] = invoke.mock.calls.map((c) => c[1].epoch);
     expect(spawn).not.toEqual(attach);
     expect(invoke).toHaveBeenLastCalledWith("pty_attach", expect.objectContaining({ agentId: "a", epoch: attach }));

@@ -15,11 +15,22 @@ export async function openExternal(url: string): Promise<void> {
   await openUrl(url);
 }
 
-/** Takes a terminal's output. Call `parsed` once the terminal has finished with
- *  the bytes (xterm's write callback): the backend holds the program back while
- *  too much is unparsed, and this is what lets it go on. A handler that takes
- *  no `parsed` is acked at once, so it is never held. */
+/** Takes a terminal's output. With `{ acks: true }` call `parsed` once the
+ *  terminal has finished with the bytes (xterm's write callback): the backend
+ *  holds the program back while too much is unparsed, and this is what lets it
+ *  go on. Without it `parsed` does nothing and the program is never held. */
 export type PtyHandler = (bytes: Uint8Array, parsed: () => void) => void;
+
+/** `acks`: this window acks what it parses, so the backend may hold the
+ *  program back while it is behind. Off unless asked for. */
+export interface PtyFlow {
+  acks?: boolean;
+}
+
+/** A stream quiet this long, with only its last chunk unparsed, has that chunk
+ *  acked anyway: a callback that never came must not leave a tail counted
+ *  against the window. More than the last chunk owed is a window still behind. */
+export const IDLE_ACK_MS = 1000;
 
 /** A name for one channel in its acks, so the backend can tell them from those
  *  of a window that no longer owns the output (tab detach, restart). */
@@ -34,14 +45,37 @@ export function newEpoch(): number {
 function withAcks(agentId: string, epoch: number, onBytes: PtyHandler): (buf: ArrayBuffer) => void {
   const acker = createAcker((parsed) => void invoke("pty_ack", { agentId, epoch, parsed }).catch(() => {}));
   let received = 0;
+  let lastStart = 0; // where the newest chunk begins
+  let best = 0; // parsed so far
+  let idle: ReturnType<typeof setTimeout> | null = null;
+  const arm = () => {
+    if (idle !== null) clearTimeout(idle);
+    idle = setTimeout(() => {
+      idle = null;
+      if (best >= lastStart && best < received) {
+        acker.parsedTo(received);
+        acker.flush();
+      }
+    }, IDLE_ACK_MS);
+  };
   return (buf) => {
     const bytes = new Uint8Array(buf);
+    lastStart = received;
     received += bytes.length;
     const end = received;
-    const parsed = () => acker.parsedTo(end);
-    onBytes(bytes, parsed);
-    if (onBytes.length < 2) parsed();
+    arm();
+    onBytes(bytes, () => {
+      if (end > best) best = end;
+      acker.parsedTo(end);
+      arm();
+    });
   };
+}
+
+/** The channel's handler: acked as `epoch` with `acks`, plain otherwise. */
+function handlerOf(agentId: string, epoch: number | undefined, onBytes: PtyHandler): (buf: ArrayBuffer) => void {
+  if (epoch === undefined) return (buf) => onBytes(new Uint8Array(buf), () => {});
+  return withAcks(agentId, epoch, onBytes);
 }
 
 /**
@@ -57,13 +91,14 @@ export async function spawnPty(
   rows: number,
   env: Array<[string, string]>,
   onBytes: PtyHandler,
+  flow: PtyFlow = {},
 ): Promise<number> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
   // number[] path serialized every byte as a JSON number on both sides and
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
-  const epoch = newEpoch();
-  ch.onmessage = withAcks(agentId, epoch, onBytes);
+  const epoch = flow.acks ? newEpoch() : undefined; // no epoch: never held
+  ch.onmessage = handlerOf(agentId, epoch, onBytes);
   // The run number of this start; its exit event carries the same number.
   return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe: false, epoch, onBytes: ch });
 }
@@ -74,10 +109,11 @@ export async function spawnPty(
 export async function attachPty(
   agentId: string,
   onBytes: PtyHandler,
+  flow: PtyFlow = {},
 ): Promise<void> {
   const ch = new Channel<ArrayBuffer>();
-  const epoch = newEpoch();
-  ch.onmessage = withAcks(agentId, epoch, onBytes);
+  const epoch = flow.acks ? newEpoch() : undefined;
+  ch.onmessage = handlerOf(agentId, epoch, onBytes);
   await invoke("pty_attach", { agentId, epoch, onBytes: ch });
 }
 

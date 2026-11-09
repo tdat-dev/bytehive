@@ -372,7 +372,7 @@ export function createAgent(
         // program write) more; a dropped pane has nothing left to wait for.
         if (ws.panes.has(id)) term.write(bytes, parsed);
         else parsed();
-      });
+      }, { acks: true });
       pane.spawning = false;
       pane.running = true;
       pane.error = undefined;
@@ -444,7 +444,7 @@ export function createAgent(
           if (pane.attention) clearAttention(pane); // agent is producing output again
           if (ws.panes.has(id)) term.write(bytes, parsed);
           else parsed();
-        });
+        }, { acks: true });
         pane.running = true;
         pane.spawnedAt = attach.spawnedAt ?? Date.now();
         pane.lastOutputAt = Date.now();
