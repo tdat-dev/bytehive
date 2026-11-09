@@ -209,7 +209,7 @@ impl Inbox {
     }
 
     pub(super) fn resume(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let _ = self.fleet.start(index, cx);
+        self.start_seat(index, cx);
         self.fleet.focus(index, window, cx);
         cx.notify();
     }

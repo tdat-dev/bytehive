@@ -193,6 +193,11 @@ impl Fleet {
         let cwd = seat.spec.run_dir().to_string();
         let base = seat.spec.args.clone();
         let known = seat.spec.session_id.clone();
+        if program == "claude" {
+            if let Some(pid) = known.as_deref().and_then(follow::held_by) {
+                anyhow::bail!("{}'s conversation is open in another app (process {pid}). Close it there, then Resume.", seat.spec.name);
+            }
+        }
         let (extra, session) = match program.as_str() {
             "claude" => launch::claude_session_args(&base, known, &cwd, claude::session_exists, || uuid::Uuid::new_v4().to_string()),
             "codex" => match codex::store_root() {

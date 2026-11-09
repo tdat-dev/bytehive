@@ -102,7 +102,7 @@ impl Inbox {
             PalRun::ResumeAll => {
                 for index in 0..self.fleet.seats.len() {
                     if self.fleet.seats[index].state(cx) == State::Stopped {
-                        let _ = self.fleet.start(index, cx);
+                        self.start_seat(index, cx);
                     }
                 }
                 if let Some(index) = self.fleet.focused {

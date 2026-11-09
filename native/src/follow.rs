@@ -57,6 +57,29 @@ pub fn follow(runs: &[Run], live: &[LiveSession]) -> Vec<Option<(u32, String)>> 
     found
 }
 
+/// The live Claude process already in this conversation, if one is: the
+/// old app's, or a terminal's. Two processes writing one conversation spoil
+/// it, so the agent is not resumed then. A file left by a crashed process
+/// does not count.
+pub fn held_by(session: &str) -> Option<u32> {
+    agent_core::claude::live_sessions().into_iter().find(|l| l.session_id == session && alive(l.pid)).map(|l| l.pid)
+}
+
+fn alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(h, &mut code) != 0;
+        CloseHandle(h);
+        ok && code == STILL_ACTIVE as u32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{LiveSession, Run, follow};

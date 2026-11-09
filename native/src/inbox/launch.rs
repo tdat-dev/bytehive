@@ -106,6 +106,17 @@ impl Inbox {
         .detach();
     }
 
+    /// Start a stopped agent again; why it could not, as a toast.
+    pub(super) fn start_seat(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
+        match self.fleet.start(index, cx) {
+            Ok(()) => true,
+            Err(e) => {
+                self.toast(e.to_string(), cx);
+                false
+            }
+        }
+    }
+
     /// The CLI's args for a preset, with its skip flag when asked.
     pub(super) fn preset_command(id: &str, skip_perms: bool) -> Option<(String, Vec<String>)> {
         let p = presets::preset(id)?;

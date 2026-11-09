@@ -71,7 +71,7 @@ impl Inbox {
                         .on_click(cx.listener(|this, _, window, cx| {
                             for index in 0..this.fleet.seats.len() {
                                 if this.fleet.seats[index].state(cx) == State::Stopped {
-                                    let _ = this.fleet.start(index, cx);
+                                    this.start_seat(index, cx);
                                 }
                             }
                             if let Some(index) = this.fleet.focused {
