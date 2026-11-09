@@ -15,6 +15,24 @@ pub(super) fn file_list(files: &[String]) -> String {
     }
 }
 
+/// `.ir-close`: Close, at the top right of a drawer.
+pub(in crate::inbox) fn close_button(id: &'static str) -> Stateful<Div> {
+    div()
+        .id(id)
+        .tooltip(tip("Close (Esc)"))
+        .flex_none()
+        .h(px(28.0))
+        .px(px(12.0))
+        .flex()
+        .items_center()
+        .rounded_full()
+        .bg(white(0.06))
+        .text_size(px(12.5))
+        .text_color(color(INK_2))
+        .hover(|b| b.bg(white(0.12)).text_color(color(INK)))
+        .child("Close")
+}
+
 /// `.hbtn`: the small pill buttons.
 pub(super) fn hbtn(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Stateful<Div> {
     div()

@@ -71,6 +71,7 @@ impl Inbox {
                             seat.branch = agent_core::git::current_branch(std::path::Path::new(seat.spec.run_dir()));
                         }
                         let id = seat.spec.id.clone();
+                        this.history.log(&id, super::super::history::Event { at: now_ms(), state: State::Merged, text: format!("Merged {branch} into {base}") });
                         this.fleet.save();
                         this.kept.remove(&id);
                         this.close_changes(window, cx);

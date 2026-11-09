@@ -9,6 +9,8 @@ mod diff;
 mod foot;
 mod view;
 
+pub(super) use view::close_button;
+
 use crate::review::diff::DiffFile;
 use crate::review::land::{self, LandResult};
 use crate::review::text::{Conflict, LineComment, Side};
@@ -83,6 +85,7 @@ impl Inbox {
         self.palette = None;
         self.menu = None;
         self.popup = None;
+        self.history.open = None;
         crate::keys::set_active(false);
         let kept_note = self.kept.get(&id).map(|k| k.note.clone()).unwrap_or_default();
         let note = cx.new(|cx| TextareaState::new(window, cx).placeholder(format!("What should {name} change? Needed only for Send back.")).auto_grow(2, 5).default_value(kept_note));

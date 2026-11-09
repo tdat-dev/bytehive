@@ -40,7 +40,7 @@ impl Inbox {
                     .child("Resume"),
             )
             .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")).on_click(cx.listener(move |this, _, window, cx| this.open_changes(index, window, cx))))
-            .child(act("history", "History", format!("What {name} has done (Alt+H)")))
+            .child(act("history", "History", format!("What {name} has done (Alt+H)")).on_click(cx.listener(move |this, _, window, cx| this.open_history(index, window, cx))))
         } else {
             let terminal = seat.terminal.clone();
             let model_terminal = seat.terminal.clone();
@@ -60,7 +60,7 @@ impl Inbox {
                 })))
             })
             .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")).on_click(cx.listener(move |this, _, window, cx| this.open_changes(index, window, cx))))
-            .child(act("history", "History", format!("What {name} has done (Alt+H)")))
+            .child(act("history", "History", format!("What {name} has done (Alt+H)")).on_click(cx.listener(move |this, _, window, cx| this.open_history(index, window, cx))))
         };
         let control = |id: &'static str, name: &'static str| {
             div().id(id).size(px(30.0)).rounded_full().flex().items_center().justify_center().opacity(0.0).group_hover("stage", |c| c.opacity(1.0)).hover(|c| c.bg(white(0.06))).child(icon(name, 15.0, color(INK_3)))

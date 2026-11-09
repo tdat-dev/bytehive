@@ -22,6 +22,7 @@ mod settings;
 mod sessions;
 mod toast;
 mod changes;
+mod history;
 #[cfg(test)]
 mod tests;
 
@@ -53,6 +54,7 @@ use settings::Settings;
 use sessions::Sessions;
 use toast::Toast;
 use changes::{Changes, Kept};
+use history::Histories;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -134,6 +136,7 @@ pub struct Inbox {
     changes: Option<Changes>,
     /// Changes' note, viewed files and line comments, per agent id.
     kept: HashMap<String, Kept>,
+    history: Histories,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -223,6 +226,7 @@ impl Inbox {
             toast: None,
             changes: None,
             kept: HashMap::new(),
+            history: Histories::default(),
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -266,7 +270,9 @@ impl Inbox {
         let mut changed = self.fleet.absorb();
         let now = now_ms();
         for seat in &self.fleet.seats {
-            let state = seat.state(cx);
+            let status = seat.status(cx);
+            self.history.observe(&seat.spec.id, &status, now);
+            let state = status.state;
             if state == State::Working {
                 self.worked.insert(seat.spec.id.clone());
             }
@@ -303,6 +309,7 @@ impl Render for Inbox {
         if self.home {
             self.ensure_compose(window, cx);
         }
+        let history = self.history_view(cx);
         let view = self.view(cx);
         let body = if self.home { self.home_view(&view, window, cx).into_any_element() } else { self.agents_view(&view, cx).into_any_element() };
         let sheet = self.sheet.as_ref().map(|sheet| self.sheet_view(sheet, cx));
@@ -349,6 +356,12 @@ impl Render for Inbox {
                     this.cancel_comment(window, cx);
                 } else if k.key == "escape" && this.changes.is_some() {
                     this.close_changes(window, cx);
+                } else if k.key == "escape" && this.history.open.is_some() {
+                    this.close_history(window, cx);
+                } else if m.alt && !m.control && !m.shift && k.key == "h" {
+                    if let Some(index) = this.fleet.focused {
+                        this.open_history(index, window, cx);
+                    }
                 } else if m.alt && !m.control && !m.shift && k.key == "r" {
                     if let Some(index) = this.fleet.focused {
                         this.open_changes(index, window, cx);
@@ -359,6 +372,7 @@ impl Render for Inbox {
             .line_height(relative(1.2))
             .child(body)
             .children(changes)
+            .children(history)
             .children(sheet)
             .children(settings)
             .children(sessions)

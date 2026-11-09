@@ -51,3 +51,21 @@ fn sessions_say_where_and_when() {
     assert_eq!(day_label(now, now), "Today");
     assert_eq!(day_label(now - 86_400_000, now), "Yesterday");
 }
+
+#[test]
+fn history_says_what_happened_once() {
+    use super::history::{Event, Histories, describe};
+    use supervise::task_state::TaskStatus;
+    let status = |state| TaskStatus { state, ask: None, limit: None, blocked: None, spent: false, stuck: None, clash: None };
+    assert_eq!(describe(&status(State::Working)).as_deref(), Some("Started working"));
+    assert_eq!(describe(&status(State::Needs)).as_deref(), Some("Waited for you"));
+    assert_eq!(describe(&status(State::Idle)), None);
+    let mut h = Histories::default();
+    for (at, state) in [(1, State::Working), (2, State::Idle), (3, State::Working), (4, State::Stopped)] {
+        h.observe("a", &status(state), at);
+    }
+    let texts: Vec<&str> = h.of("a").iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts, vec!["Started working", "Stopped"], "one line per stretch of work");
+    h.log("a", Event { at: 5, state: State::Merged, text: "Merged x into main".into() });
+    assert_eq!(h.of("a").len(), 3);
+}
