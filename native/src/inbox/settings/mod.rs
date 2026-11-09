@@ -19,6 +19,8 @@ pub(super) struct Settings {
     on: usize,
     /// "Reset settings?" waiting for an answer.
     resetting: bool,
+    /// Show tips again was pressed a moment ago.
+    tips_again: bool,
     cli_spot: Spot,
     /// Keys land here while Settings is open, never in a terminal behind it.
     focus: FocusHandle,
@@ -32,7 +34,7 @@ impl Inbox {
         crate::keys::set_active(false);
         let focus = cx.focus_handle();
         focus.focus(window, cx);
-        self.settings = Some(Settings { scroll: ScrollHandle::new(), on: 0, resetting: false, cli_spot: Default::default(), focus });
+        self.settings = Some(Settings { scroll: ScrollHandle::new(), on: 0, resetting: false, tips_again: false, cli_spot: Default::default(), focus });
         self.remote_open_settings(window, cx);
         cx.notify();
     }

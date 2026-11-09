@@ -140,6 +140,12 @@ pub struct Prefs {
     /// agent runs out.
     #[serde(default = "yes")]
     pub limit_notify: bool,
+    /// One-time tips the first time a feature is useful.
+    #[serde(default = "yes")]
+    pub tips: bool,
+    /// The tips already shown, by id.
+    #[serde(default)]
+    pub tips_seen: Vec<String>,
     /// Settings → Remote: the phone dashboard runs, other devices may reach
     /// it, and the port its page listens on (its terminal takes the next).
     #[serde(default)]
@@ -237,6 +243,7 @@ impl Prefs {
         self.review_on_done = fresh.review_on_done;
         self.split_max = fresh.split_max;
         self.limit_notify = fresh.limit_notify;
+        self.tips = fresh.tips;
         self.skip_perms = false;
         self.save();
     }

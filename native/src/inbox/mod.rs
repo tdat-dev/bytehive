@@ -39,6 +39,7 @@ mod board;
 mod browser;
 mod remote;
 mod grid;
+mod tips;
 #[cfg(test)]
 mod tests;
 
@@ -174,6 +175,7 @@ pub struct Inbox {
     moves: moves::Moves,
     /// Grid: one terminal and the others as cards beside it.
     grid: grid::Grid,
+    tips: tips::Tips,
     /// The browser hub, its live view, held clicks and Settings > Browser.
     browser: browser::BrowserWatch,
     /// The phone dashboard and Settings > Remote.
@@ -281,6 +283,7 @@ impl Inbox {
             notices: notices::Notices::default(),
             moves: moves::Moves::default(),
             grid: grid::Grid::default(),
+            tips: tips::Tips::default(),
             browser: browser::BrowserWatch::default(),
             remote: remote::Remote::new(),
             tray: crate::tray::Tray::new(),
@@ -350,6 +353,7 @@ impl Inbox {
         }
         self.notices_tick(&statuses, now, cx);
         self.note_moves(&moved, &statuses);
+        self.tips_tick(&moved, now, cx);
         if !moved.is_empty() {
             changed = true;
         }
@@ -402,6 +406,7 @@ impl Render for Inbox {
         let memory = self.memory.as_ref().map(|m| self.memory_view(m, cx));
         let dialogs = self.dialogs(window, cx);
         let toast = self.toast_view();
+        let tip = self.tip_view();
         let browser_card = self.browser_card_view(window, cx);
         let browser_asks = self.browser_asks_view(window, cx);
         let update_card = self.update_card(cx);
@@ -431,6 +436,7 @@ impl Render for Inbox {
             .children(confirm)
             .children(palette)
             .children(update_card)
+            .children(tip)
             .children(toast)
     }
 }

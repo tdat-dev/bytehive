@@ -77,6 +77,8 @@ pub struct Found {
     pub director_first: Option<bool>,
     pub font_size: Option<u32>,
     pub hide_to_tray: bool,
+    pub tips: Option<bool>,
+    pub tips_seen: Option<Vec<String>>,
     pub exported_at: u64,
 }
 
@@ -138,6 +140,10 @@ pub fn read(json: &str) -> Result<Found, String> {
         found.review_on_done = p.get("reviewOnDone").and_then(Value::as_bool);
         found.split_max = p.get("splitMax").and_then(Value::as_u64).map(|n| n as usize);
         found.director_first = p.get("directorFirst").and_then(Value::as_bool);
+        found.tips = p.get("tips").and_then(Value::as_bool);
+    }
+    if let Some(Value::Array(list)) = parsed("maestro.tips.seen") {
+        found.tips_seen = Some(list.into_iter().filter_map(|v| v.as_str().map(str::to_string)).collect());
     }
     found.font_size = raw("maestro.termFontSize").and_then(|s| s.trim().parse::<f64>().ok()).map(|n| n.round() as u32);
     found.hide_to_tray = raw("maestro.hideToTray") == Some("1");
@@ -179,7 +185,7 @@ impl Found {
         if let Some(v) = self.restore {
             prefs.restore = v;
         }
-        for (from, to) in [(self.notify_needs, &mut prefs.notify_needs), (self.notify_done, &mut prefs.notify_done), (self.auto_handover, &mut prefs.auto_handover), (self.auto_resume, &mut prefs.auto_resume), (self.limit_notify, &mut prefs.limit_notify), (self.jump_to_needs, &mut prefs.jump_to_needs), (self.review_on_done, &mut prefs.review_on_done), (self.director_first, &mut prefs.director_first)] {
+        for (from, to) in [(self.notify_needs, &mut prefs.notify_needs), (self.notify_done, &mut prefs.notify_done), (self.auto_handover, &mut prefs.auto_handover), (self.auto_resume, &mut prefs.auto_resume), (self.limit_notify, &mut prefs.limit_notify), (self.jump_to_needs, &mut prefs.jump_to_needs), (self.review_on_done, &mut prefs.review_on_done), (self.director_first, &mut prefs.director_first), (self.tips, &mut prefs.tips)] {
             if let Some(v) = from {
                 *to = v;
             }
@@ -191,6 +197,9 @@ impl Found {
             prefs.split_max = v;
         }
         prefs.hide_to_tray = self.hide_to_tray;
+        if let Some(seen) = &self.tips_seen {
+            prefs.tips_seen = seen.clone();
+        }
         prefs.clamp();
     }
 }

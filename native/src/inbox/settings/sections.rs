@@ -109,6 +109,30 @@ impl Inbox {
                     cx.notify();
                 })),
             )
+            .child(
+                toggle("pref-tips", p.tips, "Show tips", "A one-line tip the first time a feature is useful: the right-click menu, the Grid, reviewing changes. Each shows once.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.tips = !this.prefs.tips;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
+            .child(row("Tips you have seen", "Bring them back, one at a time, as they become useful again. Press ? any time for the full list.").child(button("pref-tips-again", if s.tips_again { "Tips will show again" } else { "Show tips again" }).on_click(cx.listener(|this, _, _, cx| {
+                this.reset_tips();
+                if let Some(s) = &mut this.settings {
+                    s.tips_again = true;
+                }
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(Duration::from_millis(2500)).await;
+                    let _ = this.update(cx, |this, cx| {
+                        if let Some(s) = &mut this.settings {
+                            s.tips_again = false;
+                        }
+                        cx.notify();
+                    });
+                })
+                .detach();
+                cx.notify();
+            }))))
             .child(row("Agents in the Grid", "Most agents the Grid shows: the one you work with as a terminal, the others as cards beside it, taken from the top of the list.").child(seg().children(presets::SPLIT_SIZES.into_iter().map(|n| {
                 seg_button(("pref-split", n), n.to_string(), p.split_max == n).on_click(cx.listener(move |this, _, _, cx| {
                     this.prefs.split_max = n;
