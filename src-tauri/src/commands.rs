@@ -40,6 +40,13 @@ const TYPING_FOR: std::time::Duration = std::time::Duration::from_millis(1500);
 /// A pile this big goes out at once.
 const MESSAGE_BIG: usize = 64 * 1024;
 
+/// BYTEHIVE_PTY_FLOW=off starts ByteHive with every terminal outside flow
+/// control (acks are then ignored): for measuring what the gate costs or saves.
+fn flow_control_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("BYTEHIVE_PTY_FLOW").map_or(true, |v| v != "off"))
+}
+
 /// Where an agent's output goes in the window. A terminal's reads are tiny and
 /// many; each one sent alone is a script the webview compiles and runs, so they
 /// are joined (core/coalesce.rs). A pipe agent's output is whole JSON lines and
@@ -143,7 +150,7 @@ pub async fn pty_spawn(
         flows.put(&flow_id, &f);
         // The window acks what it parses (pty_ack); a terminal is held back when
         // it falls behind. A pipe agent is never held.
-        if let (false, Some(epoch)) = (pipe, epoch) {
+        if let (false, Some(epoch), true) = (pipe, epoch, flow_control_on()) {
             f.enable(epoch);
         }
         let _ = flow.set(f);
@@ -174,7 +181,7 @@ pub async fn pty_attach(
         }
         reg.attach(&agent_id, window_sink(on_bytes, pipe, flow.clone()), epoch.unwrap_or(0))
             .map_err(CommandError::from)?;
-        if epoch.is_none() {
+        if epoch.is_none() || !flow_control_on() {
             if let Some(f) = flow.get() {
                 f.off(); // a window that will not ack is never waited on
             }
