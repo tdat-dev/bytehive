@@ -73,6 +73,7 @@ use changes::{Changes, Kept};
 use history::Histories;
 use files::Files;
 use memory::MemoryView;
+use palette::Palette;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -450,44 +451,4 @@ impl Inbox {
             .child(div().flex().flex_1().min_h_0().children(self.queue_unless_wide(view, cx)).child(self.stage_or_grid(view, cx)).children(self.files_view(cx)))
             .child(self.dock(cx))
     }
-}
-
-/// What a palette line does.
-#[derive(Clone, Copy)]
-enum PalRun {
-    Agent(usize),
-    NewAgent,
-    ResumeAll,
-    Sessions,
-    Settings,
-    Files,
-    Memory,
-    Schedules,
-    Usage,
-    Board,
-    Changes,
-    History,
-    Merge,
-    /// Alt+S and Alt+P.
-    Grid,
-    Pin,
-    /// The project of the agent at this index.
-    Project(usize),
-}
-
-/// One line of Ctrl K (inboxpalette.ts PaletteItem).
-struct PalItem {
-    group: String,
-    label: String,
-    sub: Option<String>,
-    keys: Option<&'static str>,
-    agent: Option<String>,
-    run: PalRun,
-}
-
-/// Ctrl K: the box, and which line is lit.
-pub struct Palette {
-    query: Entity<InputState>,
-    at: usize,
-    _sub: Subscription,
 }

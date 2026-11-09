@@ -2,6 +2,46 @@
 
 use super::*;
 
+/// What a palette line does.
+#[derive(Clone, Copy)]
+pub(super) enum PalRun {
+    Agent(usize),
+    NewAgent,
+    ResumeAll,
+    Sessions,
+    Settings,
+    Files,
+    Memory,
+    Schedules,
+    Usage,
+    Board,
+    Changes,
+    History,
+    Merge,
+    /// Alt+S and Alt+P.
+    Grid,
+    Pin,
+    /// The project of the agent at this index.
+    Project(usize),
+}
+
+/// One line of Ctrl K (inboxpalette.ts PaletteItem).
+pub(super) struct PalItem {
+    group: String,
+    label: String,
+    sub: Option<String>,
+    keys: Option<&'static str>,
+    agent: Option<String>,
+    run: PalRun,
+}
+
+/// Ctrl K: the box, and which line is lit.
+pub(super) struct Palette {
+    query: Entity<InputState>,
+    at: usize,
+    _sub: Subscription,
+}
+
 /// filterItems: every word appears in the label, the second line or the group.
 pub(super) fn filter_items(items: Vec<PalItem>, query: &str) -> Vec<PalItem> {
     let words: Vec<String> = query.to_lowercase().split_whitespace().map(str::to_string).collect();
