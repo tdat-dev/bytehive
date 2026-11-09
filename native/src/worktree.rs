@@ -33,7 +33,7 @@ pub fn branch_name(agent: &str, id: &str) -> String {
     format!("bytehive/{}-{short}", if base.is_empty() { "agent" } else { &base })
 }
 
-fn git(args: &[&str], cwd: &str) -> Result<String, String> {
+pub(crate) fn git(args: &[&str], cwd: &str) -> Result<String, String> {
     let out = Command::new("git").args(args).current_dir(cwd).creation_flags(CREATE_NO_WINDOW).output().map_err(|e| format!("git not available: {e}"))?;
     if !out.status.success() {
         let why = String::from_utf8_lossy(&out.stderr).trim().to_string();

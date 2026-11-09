@@ -809,6 +809,7 @@ dependencies = [
  "serde_json",
  "supervise",
  "tauri-winrt-notification 0.7.3",
+ "tempfile",
  "tray-icon",
  "ureq",
  "uuid",

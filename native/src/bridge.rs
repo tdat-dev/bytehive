@@ -116,6 +116,8 @@ pub fn bytehive_dir(project: &str) -> PathBuf {
 pub struct BridgeFiles {
     offsets: HashMap<PathBuf, u64>,
     last_fleet: HashMap<PathBuf, String>,
+    /// Projects whose `.bytehive/` was kept out of git status this run.
+    excluded: std::collections::HashSet<String>,
 }
 
 impl BridgeFiles {
@@ -126,6 +128,9 @@ impl BridgeFiles {
             return;
         }
         let _ = std::fs::create_dir_all(bytehive_dir(project));
+        if !self.excluded.contains(project) && crate::gitexclude::keep_out(project).is_ok() {
+            self.excluded.insert(project.to_string());
+        }
         if std::fs::write(&path, &content).is_ok() {
             self.last_fleet.insert(path, content);
         }

@@ -8,6 +8,7 @@ mod bridge;
 mod finishnote;
 mod fleet;
 mod follow;
+mod gitexclude;
 mod icons;
 mod import;
 mod inbox;
