@@ -6,6 +6,7 @@ pub mod core;
 pub mod dashauth;
 pub mod dashboard;
 pub mod error;
+pub mod export;
 pub mod gitexclude;
 pub mod land;
 pub mod planusage;
@@ -119,6 +120,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             adopt::adopt_old_folder,
+            export::export_web_state,
             commands::pty_spawn,
             commands::pty_attach,
             commands::pty_input,

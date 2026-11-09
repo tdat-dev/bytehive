@@ -15,6 +15,8 @@ import { configureSpawnModal, spawnCrew, loadTemplates, refreshCliAvailability }
 import { addRecent } from "./recents";
 import { closeSettings, initSettingsModal } from "./settingsmodal";
 import { configureSession, saveSession, restoreSession } from "./session";
+import { startExport } from "./export";
+import { getVersion } from "@tauri-apps/api/app";
 import { configureScheduler, initScheduler } from "./scheduler";
 import { configurePane, createAgent, removeAgent, stopRecording, paneToast, setStatus, clearAttention, updateAttention, retheme, applyZoom } from "./pane";
 import { configureWorkspace, initWorkspace, createWorkspace, closeWorkspace, activateWorkspace, bootDetached } from "./workspace";
@@ -469,6 +471,8 @@ if (isDetachedWindow) {
   // Recreate last session's tabs as STOPPED panes (no PTY spawn) before showing
   // the view, so reopening the app doesn't auto-launch a heavy fleet.
   if (getPref("restore")) restoreSession();
+  // Hand the fleet and settings over to the native app (export.ts).
+  void getVersion().then(startExport, () => startExport(""));
 }
 showView();
 
