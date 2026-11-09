@@ -9,6 +9,19 @@ pub const GRACE_MS: u64 = 90_000;
 /// Never tell the same agent to carry on twice within this.
 pub const RESUME_GAP_MS: u64 = 20 * 60_000;
 
+/// A plan past this share of a limit gets a warning.
+pub const WARN_AT: f64 = 90.0;
+
+/// A limit's name in a sentence (planmeter.ts limitName).
+pub fn limit_name(kind: &str, model: Option<&str>) -> String {
+    match (kind, model) {
+        ("session", _) => "5-hour limit".to_string(),
+        ("weekly_all", _) => "weekly limit".to_string(),
+        (_, Some(m)) => format!("{m} weekly limit"),
+        _ => "limit".to_string(),
+    }
+}
+
 pub const CARRY_ON: &str = "Your usage limit has reset. Carry on with the task where you left off.";
 pub const LIMIT_WHY: &str = "it hit its plan's usage limit";
 
@@ -101,8 +114,16 @@ pub fn handoff_brief(name: &str, cli: &str, why: &str, title: Option<&str>, asks
 
 #[cfg(test)]
 mod tests {
-    use super::{handed_title, handoff_brief, plan_reset_for, take_over_line};
+    use super::{handed_title, handoff_brief, limit_name, plan_reset_for, take_over_line};
     use agent_core::planusage::{PlanLimit, PlanUsage};
+
+    #[test]
+    fn names_limits_as_the_planmeter_does() {
+        assert_eq!(limit_name("session", None), "5-hour limit");
+        assert_eq!(limit_name("weekly_all", None), "weekly limit");
+        assert_eq!(limit_name("weekly_scoped", Some("Opus")), "Opus weekly limit");
+        assert_eq!(limit_name("window_300", None), "limit");
+    }
 
     #[test]
     fn a_full_plan_comes_back_at_its_soonest_reset() {

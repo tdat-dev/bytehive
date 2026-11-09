@@ -3,12 +3,13 @@
 //! task over at once: an agent already open in the same folder first, else a
 //! new one briefed from its conversation (Settings: Hand over when an agent
 //! runs out of usage). When the limit lifts, it is told to carry on (Settings:
-//! Carry on when a usage limit resets). Windows notifications are not ported
-//! yet: what happens shows as a toast.
+//! Carry on when a usage limit resets). It says so in Windows notifications,
+//! and warns when a plan passes 90% of a limit (Settings: Warn me before a
+//! usage limit runs out).
 
 use supervise::screens::LimitHit;
 
-use crate::limits::{CARRY_ON, GRACE_MS, LIMIT_WHY, RESUME_GAP_MS, cli_label, handed_title, handoff_brief, plan_of, plan_reset_for, take_over_line};
+use crate::limits::{WARN_AT, limit_name, CARRY_ON, GRACE_MS, LIMIT_WHY, RESUME_GAP_MS, cli_label, handed_title, handoff_brief, plan_of, plan_reset_for, take_over_line};
 use crate::transcript::Item;
 
 use super::*;
@@ -30,6 +31,8 @@ pub(super) struct LimitGuard {
     resumed_at: HashMap<String, u64>,
     /// Who has an agent's task, for the run it was handed over in.
     handed_to: HashMap<String, (String, u64)>,
+    /// Plan limits warned about: provider, kind, model and reset.
+    warned: HashSet<String>,
 }
 
 fn cli_of(seat: &Seat) -> String {
@@ -77,7 +80,7 @@ impl Inbox {
                     let e = self.limits.episodes.get_mut(&id).expect("episode");
                     e.handed = true;
                     e.notified = true;
-                    self.toast_for(format!("{name} ran out of usage. {label} takes its task over."), 8000, cx);
+                    crate::notify::show(format!("{name} ran out of usage"), format!("{label} takes its task over."), id.clone());
                 }
             }
             let e = self.limits.episodes.get_mut(&id).expect("episode");
@@ -88,10 +91,12 @@ impl Inbox {
             if !e.notified {
                 e.notified = true;
                 let words = match reset {
-                    Some(at) => format!("{name} is out of usage. Its limit resets at {}.{}", supervise::task_state::clock_of(at, now), if self.prefs.auto_resume { " ByteHive will tell it to carry on then." } else { "" }),
-                    None => format!("{name} is out of usage. Its plan's usage limit ran out."),
+                    Some(at) => format!("Its limit resets at {}.{}", supervise::task_state::clock_of(at, now), if self.prefs.auto_resume { " ByteHive will tell it to carry on then." } else { "" }),
+                    None => "Its plan's usage limit ran out. You can hand its task to another CLI from its menu.".to_string(),
                 };
-                self.toast_for(words, 8000, cx);
+                if self.prefs.limit_notify {
+                    crate::notify::show(format!("{name} is out of usage"), words, id.clone());
+                }
             }
             if handed_now || !self.prefs.auto_resume {
                 continue;
@@ -104,8 +109,36 @@ impl Inbox {
                 continue;
             }
             self.limits.resumed_at.insert(id.clone(), now);
-            self.queue_message(id, CARRY_ON.to_string(), cx);
-            self.toast(format!("{name} is back at work: its usage limit reset, so ByteHive told it to carry on."), cx);
+            self.queue_message(id.clone(), CARRY_ON.to_string(), cx);
+            if self.prefs.limit_notify {
+                crate::notify::show(format!("{name} is back at work"), "Its usage limit reset, so ByteHive told it to carry on.".to_string(), id.clone());
+            }
+        }
+        self.check_plans(now);
+    }
+
+    /// A plan past 90% of a limit, once per limit and reset.
+    fn check_plans(&mut self, now: u64) {
+        if !self.prefs.limit_notify {
+            return;
+        }
+        let now_i = now as i64;
+        for u in [self.plans.0.usage.as_ref(), self.plans.1.usage.as_ref()].into_iter().flatten().filter(|u| !plan::all_reset(u, now_i)) {
+            for l in &u.limits {
+                if l.percent < WARN_AT || l.resets_ms.is_some_and(|at| at <= now_i) {
+                    continue;
+                }
+                let key = format!("{}|{}|{}|{}", u.provider, l.kind, l.model.as_deref().unwrap_or(""), l.resets_ms.map(|r| r.to_string()).unwrap_or_default());
+                if !self.limits.warned.insert(key) {
+                    continue;
+                }
+                let resets = l.resets_ms.map(|at| format!("It resets at {}. ", supervise::task_state::clock_of(at as u64, now))).unwrap_or_default();
+                crate::notify::show(
+                    format!("{} {}: {}% used", u.provider, limit_name(&l.kind, l.model.as_deref()), l.percent.round()),
+                    format!("{resets}Agents stop when it runs out; another CLI can take over their tasks."),
+                    String::new(),
+                );
+            }
         }
     }
 

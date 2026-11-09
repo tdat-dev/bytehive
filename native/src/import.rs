@@ -70,6 +70,7 @@ pub struct Found {
     pub notify_done: Option<bool>,
     pub auto_handover: Option<bool>,
     pub auto_resume: Option<bool>,
+    pub limit_notify: Option<bool>,
     pub font_size: Option<u32>,
     pub hide_to_tray: bool,
     pub exported_at: u64,
@@ -127,6 +128,7 @@ pub fn read(json: &str) -> Result<Found, String> {
         found.notify_done = p.get("notifyDone").and_then(Value::as_bool);
         found.auto_handover = p.get("autoHandover").and_then(Value::as_bool);
         found.auto_resume = p.get("autoResume").and_then(Value::as_bool);
+        found.limit_notify = p.get("limitNotify").and_then(Value::as_bool);
     }
     found.font_size = raw("maestro.termFontSize").and_then(|s| s.trim().parse::<f64>().ok()).map(|n| n.round() as u32);
     found.hide_to_tray = raw("maestro.hideToTray") == Some("1");
@@ -168,7 +170,7 @@ impl Found {
         if let Some(v) = self.restore {
             prefs.restore = v;
         }
-        for (from, to) in [(self.notify_needs, &mut prefs.notify_needs), (self.notify_done, &mut prefs.notify_done), (self.auto_handover, &mut prefs.auto_handover), (self.auto_resume, &mut prefs.auto_resume)] {
+        for (from, to) in [(self.notify_needs, &mut prefs.notify_needs), (self.notify_done, &mut prefs.notify_done), (self.auto_handover, &mut prefs.auto_handover), (self.auto_resume, &mut prefs.auto_resume), (self.limit_notify, &mut prefs.limit_notify)] {
             if let Some(v) = from {
                 *to = v;
             }

@@ -80,6 +80,13 @@ impl Inbox {
                     this.prefs.save();
                     cx.notify();
                 })),
+            )
+            .child(
+                toggle("pref-limit-notify", p.limit_notify, "Warn me before a usage limit runs out", "A Windows notification when Claude's or Codex's limit passes 90%, and when an agent runs out.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.limit_notify = !this.prefs.limit_notify;
+                    this.prefs.save();
+                    cx.notify();
+                })),
             );
 
         let terminal = section("Terminal").child(row("Font size", "Applies live to every agent's terminal.").child(stepper(

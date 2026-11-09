@@ -123,6 +123,10 @@ pub struct Prefs {
     /// A Windows notification when an agent finishes.
     #[serde(default = "yes")]
     pub notify_done: bool,
+    /// A Windows notification when a plan passes 90% of a limit, and when an
+    /// agent runs out.
+    #[serde(default = "yes")]
+    pub limit_notify: bool,
     /// Settings → Remote: the phone dashboard runs, other devices may reach
     /// it, and the port its page listens on (its terminal takes the next).
     #[serde(default)]
@@ -206,6 +210,7 @@ impl Prefs {
         self.auto_resume = fresh.auto_resume;
         self.notify_needs = fresh.notify_needs;
         self.notify_done = fresh.notify_done;
+        self.limit_notify = fresh.limit_notify;
         self.skip_perms = false;
         self.save();
     }
