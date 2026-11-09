@@ -44,7 +44,13 @@ const MESSAGE_BIG: usize = 64 * 1024;
 /// control (acks are then ignored): for measuring what the gate costs or saves.
 fn flow_control_on() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("BYTEHIVE_PTY_FLOW").map_or(true, |v| v != "off"))
+    *ON.get_or_init(|| {
+        let on = std::env::var("BYTEHIVE_PTY_FLOW").map_or(true, |v| v != "off");
+        if !on {
+            eprintln!("BYTEHIVE_PTY_FLOW=off: terminal output flow control is off for this run");
+        }
+        on
+    })
 }
 
 /// Where an agent's output goes in the window. A terminal's reads are tiny and
