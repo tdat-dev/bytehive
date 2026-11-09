@@ -28,6 +28,7 @@ mod bridge;
 mod memory;
 mod limits;
 mod diffs;
+mod app_keys;
 mod dialog;
 mod usage_view;
 mod schedules;
@@ -367,57 +368,7 @@ impl Render for Inbox {
             .bg(color(GROUND))
             // Today's app takes these before the terminal sees them (keys.rs
             // lets them through): Ctrl+K the palette, Ctrl+Shift+T New agent.
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                let k = &event.keystroke;
-                let m = k.modifiers;
-                if m.control && !m.alt && !m.shift && k.key == "k" {
-                    if this.palette.is_some() { this.close_palette(window, cx) } else { this.open_palette(window, cx) }
-                } else if m.control && m.shift && !m.alt && k.key == "t" {
-                    this.palette = None;
-                    this.open_sheet(window, cx);
-                } else if m.control && m.shift && !m.alt && k.key == "e" {
-                    this.toggle_files(window, cx);
-                } else if m.control && m.shift && !m.alt && k.key == "k" {
-                    if this.board.is_some() { this.close_board(window, cx) } else { this.open_board(window, cx) }
-                } else if m.control && !m.alt && !m.shift && k.key == "," {
-                    this.open_settings(window, cx);
-                } else if m.alt && !m.control && !m.shift && k.key == "o" {
-                    this.open_sessions(window, cx);
-                } else if k.key == "escape" && this.dialog_open() {
-                    this.dialog_escape(window, cx);
-                } else if k.key == "escape" && this.settings.is_some() {
-                    if this.popup.take().is_none() {
-                        this.close_settings(window, cx);
-                    }
-                    cx.notify();
-                } else if k.key == "escape" && this.sessions.is_some() {
-                    this.close_sessions(window, cx);
-                } else if k.key == "escape" && this.board.is_some() {
-                    this.board_escape(window, cx);
-                } else if k.key == "escape" && this.changes.as_ref().is_some_and(|c| c.discarding) {
-                    if let Some(c) = &mut this.changes {
-                        c.discarding = false;
-                    }
-                    cx.notify();
-                } else if k.key == "escape" && this.changes.as_ref().is_some_and(|c| c.editing.is_some()) {
-                    // Esc puts the comment away, not the whole drawer.
-                    this.cancel_comment(window, cx);
-                } else if k.key == "escape" && this.changes.is_some() {
-                    this.close_changes(window, cx);
-                } else if k.key == "escape" && this.memory.is_some() {
-                    this.memory_escape(window, cx);
-                } else if k.key == "escape" && this.history.open.is_some() {
-                    this.close_history(window, cx);
-                } else if m.alt && !m.control && !m.shift && k.key == "h" {
-                    if let Some(index) = this.fleet.focused {
-                        this.open_history(index, window, cx);
-                    }
-                } else if m.alt && !m.control && !m.shift && k.key == "r" {
-                    if let Some(index) = this.fleet.focused {
-                        this.open_changes(index, window, cx);
-                    }
-                }
-            }))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| this.app_keys(event, window, cx)))
             .font_family("Geist")
             .line_height(relative(1.2))
             .child(body)
