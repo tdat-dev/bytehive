@@ -42,6 +42,9 @@ pub struct Spec {
     pub worktree: Option<String>,
     #[serde(default)]
     pub branch: Option<String>,
+    /// Its branch went into this one from Changes: its job is done.
+    #[serde(default)]
+    pub merged_into: Option<String>,
 }
 
 impl Spec {
@@ -79,7 +82,7 @@ impl Seat {
                 let t = t.read(cx);
                 TaskFacts { running: true, last_output_at: t.last_output_ms(), screen: t.screen_text(), ..TaskFacts::default() }
             }
-            _ => TaskFacts::default(),
+            _ => TaskFacts { merged: self.spec.merged_into.is_some(), ..TaskFacts::default() },
         };
         derive_task_state(&facts, now_ms())
     }
@@ -178,6 +181,7 @@ impl Fleet {
             race,
             worktree: None,
             branch: None,
+            merged_into: None,
         };
         self.seats.push(Seat { spec, terminal: None, branch: None, pid: None, preparing: true });
         self.save();
@@ -190,6 +194,7 @@ impl Fleet {
         let seat = &mut self.seats[index];
         let program = seat.spec.cli.to_ascii_lowercase();
         seat.preparing = false;
+        seat.spec.merged_into = None;
         let cwd = seat.spec.run_dir().to_string();
         let base = seat.spec.args.clone();
         let known = seat.spec.session_id.clone();

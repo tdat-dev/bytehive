@@ -21,6 +21,7 @@ mod logo;
 mod settings;
 mod sessions;
 mod toast;
+mod changes;
 #[cfg(test)]
 mod tests;
 
@@ -51,6 +52,7 @@ use launch::Launch;
 use settings::Settings;
 use sessions::Sessions;
 use toast::Toast;
+use changes::{Changes, Kept};
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -129,6 +131,9 @@ pub struct Inbox {
     /// Earlier conversations, read back, while open.
     sessions: Option<Sessions>,
     toast: Option<Toast>,
+    changes: Option<Changes>,
+    /// Changes' note, viewed files and line comments, per agent id.
+    kept: HashMap<String, Kept>,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -216,6 +221,8 @@ impl Inbox {
             settings: None,
             sessions: None,
             toast: None,
+            changes: None,
+            kept: HashMap::new(),
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -306,6 +313,7 @@ impl Render for Inbox {
         let sessions = self.sessions.as_ref().map(|s| self.sessions_view(s, window, cx));
         let popup = self.popup.as_ref().map(|p| self.popup_view(p, cx));
         let toast = self.toast_view();
+        let changes = self.changes.as_ref().and_then(|c| self.changes_view(c, cx));
         div()
             .relative()
             .size_full()
@@ -331,11 +339,26 @@ impl Render for Inbox {
                     cx.notify();
                 } else if k.key == "escape" && this.sessions.is_some() {
                     this.close_sessions(window, cx);
+                } else if k.key == "escape" && this.changes.as_ref().is_some_and(|c| c.discarding) {
+                    if let Some(c) = &mut this.changes {
+                        c.discarding = false;
+                    }
+                    cx.notify();
+                } else if k.key == "escape" && this.changes.as_ref().is_some_and(|c| c.editing.is_some()) {
+                    // Esc puts the comment away, not the whole drawer.
+                    this.cancel_comment(window, cx);
+                } else if k.key == "escape" && this.changes.is_some() {
+                    this.close_changes(window, cx);
+                } else if m.alt && !m.control && !m.shift && k.key == "r" {
+                    if let Some(index) = this.fleet.focused {
+                        this.open_changes(index, window, cx);
+                    }
                 }
             }))
             .font_family("Geist")
             .line_height(relative(1.2))
             .child(body)
+            .children(changes)
             .children(sheet)
             .children(settings)
             .children(sessions)

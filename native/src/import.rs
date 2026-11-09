@@ -103,6 +103,7 @@ pub fn read(json: &str) -> Result<Found, String> {
                 // A conversation carried on in another folder runs there.
                 worktree: a.worktree.or(a.resume_in),
                 branch: a.branch,
+                merged_into: None,
             });
         }
     }

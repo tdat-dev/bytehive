@@ -39,7 +39,7 @@ impl Inbox {
                     .on_click(cx.listener(move |this, _, window, cx| this.resume(index, window, cx)))
                     .child("Resume"),
             )
-            .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")))
+            .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")).on_click(cx.listener(move |this, _, window, cx| this.open_changes(index, window, cx))))
             .child(act("history", "History", format!("What {name} has done (Alt+H)")))
         } else {
             let terminal = seat.terminal.clone();
@@ -59,7 +59,7 @@ impl Inbox {
                     }
                 })))
             })
-            .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")))
+            .child(act("changes", "Changes", format!("What {name} changed (Alt+R)")).on_click(cx.listener(move |this, _, window, cx| this.open_changes(index, window, cx))))
             .child(act("history", "History", format!("What {name} has done (Alt+H)")))
         };
         let control = |id: &'static str, name: &'static str| {
