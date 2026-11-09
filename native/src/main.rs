@@ -41,6 +41,10 @@ const FONTS: [&[u8]; 5] = [
 ];
 
 fn main() {
+    // Started by Chrome as the extension's native messaging host: relay, no window.
+    if browser_hub::host::wanted() {
+        browser_hub::host::run();
+    }
     if !single::claim() {
         return;
     }

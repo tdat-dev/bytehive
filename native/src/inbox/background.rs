@@ -60,7 +60,7 @@ impl Inbox {
         self.queue_typing(Job { id, text, started, typer: None }, cx);
     }
 
-    fn queue_typing(&mut self, job: Job, cx: &mut Context<Self>) {
+    pub(super) fn queue_typing(&mut self, job: Job, cx: &mut Context<Self>) {
         self.jobs.push(job);
         if self.typing {
             return;

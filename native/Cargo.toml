@@ -14,9 +14,13 @@ agent-core = { path = "../crates/agent-core" }
 alacritty_terminal = "0.26.0"
 anyhow = "1"
 base64 = "0.22"
+browser-hub = { path = "../crates/browser-hub" }
+# The live view decodes the browser's JPEG frames (the same image crate GPUI uses).
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 minisign-verify = "0.2"
 async-channel = "2"
 chrono = "0.4"
+dashboard = { path = "../crates/dashboard" }
 # gpui-pre has no semver promise: exact pin, upgrades are deliberate.
 gpui-kit = "=0.9.0"
 portable-pty = "0.9"
@@ -27,7 +31,7 @@ supervise = { path = "../crates/supervise" }
 tray-icon = "0.23"
 ureq = { version = "3", features = ["json"] }
 uuid = { version = "1", features = ["v4"] }
-windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
 embed-resource = "3"
@@ -41,6 +45,13 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 opt-level = 1
+
+# An unoptimised argon2 takes seconds per dashboard sign-in.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
 
 [profile.release]
 lto = "thin"

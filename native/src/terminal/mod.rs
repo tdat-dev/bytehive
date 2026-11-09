@@ -7,6 +7,9 @@ mod colors;
 mod mouse;
 mod paint;
 mod ime;
+mod remote;
+
+pub use remote::RemoteTerm;
 
 use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};

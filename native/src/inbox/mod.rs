@@ -34,6 +34,8 @@ mod dialog;
 mod usage_view;
 mod schedules;
 mod board;
+mod browser;
+mod remote;
 #[cfg(test)]
 mod tests;
 
@@ -162,6 +164,10 @@ pub struct Inbox {
     board: Option<board::BoardView>,
     limits: limits::LimitGuard,
     updates: updates::Updates,
+    /// The browser hub, its live view, held clicks and Settings > Browser.
+    browser: browser::BrowserWatch,
+    /// The phone dashboard and Settings > Remote.
+    remote: remote::Remote,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -261,6 +267,8 @@ impl Inbox {
             board: None,
             limits: limits::LimitGuard::default(),
             updates: updates::Updates::default(),
+            browser: browser::BrowserWatch::default(),
+            remote: remote::Remote::new(),
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -280,6 +288,8 @@ impl Inbox {
             _follow: follow,
         };
         inbox.show_tray();
+        inbox.start_browser(cx);
+        inbox.boot_remote(cx);
         if let Some(n) = came {
             let agents = if n == 1 { "1 agent".to_string() } else { format!("{n} agents") };
             inbox.toast_for(format!("Brought over {agents} and your settings from ByteHive. Resume an agent to carry on its conversation."), 15_000, cx);
@@ -365,6 +375,8 @@ impl Render for Inbox {
         let memory = self.memory.as_ref().map(|m| self.memory_view(m, cx));
         let dialogs = self.dialogs(window, cx);
         let toast = self.toast_view();
+        let browser_card = self.browser_card_view(window, cx);
+        let browser_asks = self.browser_asks_view(window, cx);
         let update_card = self.update_card(cx);
         let changes = self.changes.as_ref().and_then(|c| self.changes_view(c, cx));
         div()
@@ -377,6 +389,7 @@ impl Render for Inbox {
             .font_family("Geist")
             .line_height(relative(1.2))
             .child(body)
+            .children(browser_card)
             .children(changes)
             .children(history)
             .children(board)
@@ -384,6 +397,7 @@ impl Render for Inbox {
             .children(settings)
             .children(sessions)
             .children(memory)
+            .children(browser_asks)
             .children(dialogs)
             .children(popup)
             .children(menu)

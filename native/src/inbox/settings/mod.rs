@@ -2,6 +2,8 @@
 //! inbox.css): sections down the left, one scrolling column of rows on the
 //! right. Every change is saved the moment it is made.
 
+mod browser;
+mod remote;
 mod rows;
 mod sections;
 
@@ -9,7 +11,7 @@ use super::dropdown::{Pick, Spot, track};
 use super::*;
 
 /// The sections, as the left column lists them.
-const SECTIONS: [&str; 4] = ["Agents", "Inbox", "Terminal", "System"];
+const SECTIONS: [&str; 6] = ["Agents", "Inbox", "Terminal", "Browser", "Remote", "System"];
 
 pub(super) struct Settings {
     scroll: ScrollHandle,
@@ -31,6 +33,7 @@ impl Inbox {
         let focus = cx.focus_handle();
         focus.focus(window, cx);
         self.settings = Some(Settings { scroll: ScrollHandle::new(), on: 0, resetting: false, cli_spot: Default::default(), focus });
+        self.remote_open_settings(window, cx);
         cx.notify();
     }
 
@@ -82,6 +85,7 @@ impl Inbox {
         });
         let nav: Vec<_> = nav.collect();
         let confirm = s.resetting.then(|| self.reset_confirm(cx));
+        let remote_confirm = self.remote_confirm(cx);
         div()
             .id("set-scrim")
             .absolute()
@@ -141,7 +145,8 @@ impl Inbox {
                             .child(div().w(px(196.0)).flex_none().flex().flex_col().gap(px(2.0)).p(px(14.0)).border_r_1().border_color(hairline()).children(nav))
                             .child(div().id("set-content").flex_1().min_w_0().overflow_y_scroll().track_scroll(&s.scroll).py(px(20.0)).px(px(26.0)).children(self.sections(s, cx))),
                     )
-                    .children(confirm),
+                    .children(confirm)
+                    .children(remote_confirm),
             )
     }
 

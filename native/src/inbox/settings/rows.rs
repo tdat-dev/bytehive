@@ -21,7 +21,7 @@ pub(super) fn row(title: &'static str, sub: impl Into<SharedString>) -> Div {
 }
 
 /// .toggle: the whole row flips the switch on its right.
-pub(super) fn toggle(id: &'static str, on: bool, title: &'static str, sub: &'static str) -> Stateful<Div> {
+pub(super) fn toggle(id: &'static str, on: bool, title: &'static str, sub: impl Into<SharedString>) -> Stateful<Div> {
     let switch = div()
         .relative()
         .flex_none()

@@ -6,7 +6,7 @@ use super::rows::{button, row, select, seg, seg_button, step_button, stepper, to
 use super::*;
 
 /// .sec: a heading over its rows.
-fn section(title: &'static str) -> Div {
+pub(super) fn section(title: &'static str) -> Div {
     div().mb(px(28.0)).child(div().mb(px(12.0)).text_size(px(12.5)).font_weight(FontWeight::MEDIUM).text_color(color(INK_3)).child(title))
 }
 
@@ -98,7 +98,9 @@ impl Inbox {
                 cx.notify();
             }))));
 
-        vec![agents.into_any_element(), inbox.into_any_element(), terminal.into_any_element(), system.into_any_element()]
+        let browser = self.browser_section(cx);
+        let remote = self.remote_section(cx);
+        vec![agents.into_any_element(), inbox.into_any_element(), terminal.into_any_element(), browser.into_any_element(), remote.into_any_element(), system.into_any_element()]
     }
 
     fn set_delay(&mut self, by: i64, cx: &mut Context<Self>) {

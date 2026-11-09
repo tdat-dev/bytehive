@@ -117,6 +117,18 @@ pub struct Prefs {
     /// An agent that stopped at its limit is told to carry on when it resets.
     #[serde(default = "yes")]
     pub auto_resume: bool,
+    /// Settings → Remote: the phone dashboard runs, other devices may reach
+    /// it, and the port its page listens on (its terminal takes the next).
+    #[serde(default)]
+    pub remote_on: bool,
+    #[serde(default)]
+    pub remote_lan: bool,
+    #[serde(default = "dash_port")]
+    pub remote_port: u16,
+}
+
+fn dash_port() -> u16 {
+    dashboard::DEFAULT_PORT
 }
 
 fn last_used() -> String {
@@ -171,6 +183,7 @@ impl Prefs {
         }
         self.job_delay = self.job_delay.clamp(DELAY_MIN, DELAY_MAX);
         self.font_size = self.font_size.clamp(FONT_MIN, FONT_MAX);
+        self.remote_port = self.remote_port.clamp(1024, 65534);
     }
 
     /// Settings back to how ByteHive ships; projects and presets stay.
