@@ -117,6 +117,12 @@ pub struct Prefs {
     /// An agent that stopped at its limit is told to carry on when it resets.
     #[serde(default = "yes")]
     pub auto_resume: bool,
+    /// A Windows notification when an agent starts waiting on you.
+    #[serde(default = "yes")]
+    pub notify_needs: bool,
+    /// A Windows notification when an agent finishes.
+    #[serde(default = "yes")]
+    pub notify_done: bool,
     /// Settings → Remote: the phone dashboard runs, other devices may reach
     /// it, and the port its page listens on (its terminal takes the next).
     #[serde(default)]
@@ -198,6 +204,8 @@ impl Prefs {
         self.hide_to_tray = fresh.hide_to_tray;
         self.auto_handover = fresh.auto_handover;
         self.auto_resume = fresh.auto_resume;
+        self.notify_needs = fresh.notify_needs;
+        self.notify_done = fresh.notify_done;
         self.skip_perms = false;
         self.save();
     }

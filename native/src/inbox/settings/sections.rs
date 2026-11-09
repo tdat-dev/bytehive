@@ -54,6 +54,20 @@ impl Inbox {
 
         let inbox = section("Inbox")
             .child(
+                toggle("pref-notify", p.notify_needs, "Notify me when an agent needs me", "A Windows notification that says what it wants (\u{201c}Ana wants to run npm test\u{201d}), only while ByteHive is in the background.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.notify_needs = !this.prefs.notify_needs;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
+            .child(
+                toggle("pref-notify-done", p.notify_done, "Tell me when an agent finishes", "A Windows notification when an agent is done, has changes to review, or stops with an error. Not for quick replies, and not for the agent you are looking at. Click it to open that agent.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.notify_done = !this.prefs.notify_done;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
+            .child(
                 toggle("pref-handover", p.auto_handover, "Hand over when an agent runs out of usage", "Another CLI whose plan has room takes the task over at once: an agent already open in the same folder first, else a new one. Off, the agent waits for its limit to reset.").on_click(cx.listener(|this, _, _, cx| {
                     this.prefs.auto_handover = !this.prefs.auto_handover;
                     this.prefs.save();

@@ -808,6 +808,7 @@ dependencies = [
  "serde",
  "serde_json",
  "supervise",
+ "tauri-winrt-notification 0.7.3",
  "tray-icon",
  "ureq",
  "uuid",
@@ -4461,7 +4462,7 @@ dependencies = [
  "log",
  "mac-notification-sys",
  "serde",
- "tauri-winrt-notification",
+ "tauri-winrt-notification 0.8.1",
  "zbus",
 ]
 
@@ -7019,6 +7020,17 @@ name = "target-lexicon"
 version = "0.12.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
+
+[[package]]
+name = "tauri-winrt-notification"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ed071c670382e85fc2f48ae706492d8c338f4f89bf72520d32f8abfe880aade"
+dependencies = [
+ "thiserror 2.0.21",
+ "windows 0.61.3",
+ "windows-version",
+]
 
 [[package]]
 name = "tauri-winrt-notification"

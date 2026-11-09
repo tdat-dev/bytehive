@@ -30,6 +30,7 @@ mod limits;
 mod diffs;
 mod app_keys;
 mod updates;
+mod notices;
 mod dialog;
 mod usage_view;
 mod schedules;
@@ -164,6 +165,7 @@ pub struct Inbox {
     board: Option<board::BoardView>,
     limits: limits::LimitGuard,
     updates: updates::Updates,
+    notices: notices::Notices,
     /// The browser hub, its live view, held clicks and Settings > Browser.
     browser: browser::BrowserWatch,
     /// The phone dashboard and Settings > Remote.
@@ -267,6 +269,7 @@ impl Inbox {
             board: None,
             limits: limits::LimitGuard::default(),
             updates: updates::Updates::default(),
+            notices: notices::Notices::default(),
             browser: browser::BrowserWatch::default(),
             remote: remote::Remote::new(),
             tray: crate::tray::Tray::new(),
@@ -314,6 +317,7 @@ impl Inbox {
         let mut changed = self.fleet.absorb();
         let now = now_ms();
         let mut hits = Vec::new();
+        let mut statuses = Vec::with_capacity(self.fleet.seats.len());
         for (i, seat) in self.fleet.seats.iter().enumerate() {
             let status = seat.status(cx);
             if let Some(hit) = &status.limit {
@@ -329,7 +333,9 @@ impl Inbox {
                 *entry = (state, now);
                 changed = true;
             }
+            statuses.push(status);
         }
+        self.notices_tick(&statuses, now, cx);
         self.check_limits(hits, cx);
         self.poll_changes(cx);
         // The times on the rows count in seconds under a minute.
@@ -358,6 +364,7 @@ impl Render for Inbox {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.start_bridge(window, cx);
         self.start_updates(cx);
+        self.open_noticed(window, cx);
         if self.home {
             self.ensure_compose(window, cx);
         }

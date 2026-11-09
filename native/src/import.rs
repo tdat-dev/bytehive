@@ -66,6 +66,10 @@ pub struct Found {
     pub job_delay: Option<u64>,
     pub worktree: Option<bool>,
     pub restore: Option<bool>,
+    pub notify_needs: Option<bool>,
+    pub notify_done: Option<bool>,
+    pub auto_handover: Option<bool>,
+    pub auto_resume: Option<bool>,
     pub font_size: Option<u32>,
     pub hide_to_tray: bool,
     pub exported_at: u64,
@@ -119,6 +123,10 @@ pub fn read(json: &str) -> Result<Found, String> {
         found.job_delay = p.get("jobDelay").and_then(Value::as_f64).map(|n| n.round() as u64);
         found.worktree = p.get("worktree").and_then(Value::as_bool);
         found.restore = p.get("restore").and_then(Value::as_bool);
+        found.notify_needs = p.get("notifyNeeds").and_then(Value::as_bool);
+        found.notify_done = p.get("notifyDone").and_then(Value::as_bool);
+        found.auto_handover = p.get("autoHandover").and_then(Value::as_bool);
+        found.auto_resume = p.get("autoResume").and_then(Value::as_bool);
     }
     found.font_size = raw("maestro.termFontSize").and_then(|s| s.trim().parse::<f64>().ok()).map(|n| n.round() as u32);
     found.hide_to_tray = raw("maestro.hideToTray") == Some("1");
@@ -159,6 +167,11 @@ impl Found {
         }
         if let Some(v) = self.restore {
             prefs.restore = v;
+        }
+        for (from, to) in [(self.notify_needs, &mut prefs.notify_needs), (self.notify_done, &mut prefs.notify_done), (self.auto_handover, &mut prefs.auto_handover), (self.auto_resume, &mut prefs.auto_resume)] {
+            if let Some(v) = from {
+                *to = v;
+            }
         }
         if let Some(v) = self.font_size {
             prefs.font_size = v;

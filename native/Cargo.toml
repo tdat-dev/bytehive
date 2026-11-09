@@ -18,6 +18,7 @@ browser-hub = { path = "../crates/browser-hub" }
 # The live view decodes the browser's JPEG frames (the same image crate GPUI uses).
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 minisign-verify = "0.2"
+tauri-winrt-notification = "0.7"
 async-channel = "2"
 chrono = "0.4"
 dashboard = { path = "../crates/dashboard" }
