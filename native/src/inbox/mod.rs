@@ -23,6 +23,7 @@ mod sessions;
 mod toast;
 mod changes;
 mod history;
+mod files;
 #[cfg(test)]
 mod tests;
 
@@ -55,6 +56,7 @@ use sessions::Sessions;
 use toast::Toast;
 use changes::{Changes, Kept};
 use history::Histories;
+use files::Files;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -137,6 +139,7 @@ pub struct Inbox {
     /// Changes' note, viewed files and line comments, per agent id.
     kept: HashMap<String, Kept>,
     history: Histories,
+    files: Option<Files>,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -227,6 +230,7 @@ impl Inbox {
             changes: None,
             kept: HashMap::new(),
             history: Histories::default(),
+            files: None,
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -335,6 +339,8 @@ impl Render for Inbox {
                 } else if m.control && m.shift && !m.alt && k.key == "t" {
                     this.palette = None;
                     this.open_sheet(window, cx);
+                } else if m.control && m.shift && !m.alt && k.key == "e" {
+                    this.toggle_files(window, cx);
                 } else if m.control && !m.alt && !m.shift && k.key == "," {
                     this.open_settings(window, cx);
                 } else if m.alt && !m.control && !m.shift && k.key == "o" {
@@ -397,7 +403,7 @@ impl Inbox {
             // since GPUI draws no radial gradients.
             .child(div().absolute().left(relative(0.62)).ml(px(-1100.0)).top(relative(-0.12)).mt(px(-460.0)).w(px(2200.0)).h(px(920.0)).child(img(haze()).size_full().object_fit(ObjectFit::Fill)))
             .child(self.top_bar(view, cx))
-            .child(div().flex().flex_1().min_h_0().child(self.queue(view, cx)).child(self.stage(view, cx)))
+            .child(div().flex().flex_1().min_h_0().child(self.queue(view, cx)).child(self.stage(view, cx)).children(self.files_view(cx)))
             .child(self.dock(cx))
     }
 }
@@ -410,6 +416,7 @@ enum PalRun {
     ResumeAll,
     Sessions,
     Settings,
+    Files,
     /// The project of the agent at this index.
     Project(usize),
 }

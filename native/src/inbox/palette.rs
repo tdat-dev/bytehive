@@ -45,6 +45,7 @@ impl Inbox {
         }
         let act = |label: &str, keys: &'static str, sub: Option<&str>, run: PalRun| PalItem { group: "Actions".into(), label: label.into(), sub: sub.map(str::to_string), keys: Some(keys), agent: None, run };
         items.push(act("Sessions", "Alt+O", Some("Read back earlier Claude conversations"), PalRun::Sessions));
+        items.push(act("Files", "Ctrl+Shift+E", Some("Folder tree; files open in VS Code"), PalRun::Files));
         items.push(act("Settings", "Ctrl+,", None, PalRun::Settings));
         // Every other project with agents, by its first agent.
         let here = self.prefs.project.clone().unwrap_or_default();
@@ -94,6 +95,7 @@ impl Inbox {
             PalRun::NewAgent => self.open_sheet(window, cx),
             PalRun::Sessions => self.open_sessions(window, cx),
             PalRun::Settings => self.open_settings(window, cx),
+            PalRun::Files => self.toggle_files(window, cx),
             PalRun::Project(index) => {
                 if let Some(dir) = self.fleet.seats.get(index).map(|s| s.spec.cwd.clone()) {
                     self.open_project(dir, window, cx);
