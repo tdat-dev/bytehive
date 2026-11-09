@@ -19,6 +19,7 @@ mod compose;
 mod dropdown;
 mod logo;
 mod settings;
+mod sessions;
 #[cfg(test)]
 mod tests;
 
@@ -47,6 +48,7 @@ use compose::Compose;
 use dropdown::Popup;
 use launch::Launch;
 use settings::Settings;
+use sessions::Sessions;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -122,6 +124,8 @@ pub struct Inbox {
     /// A Home chip's drop-down, while open.
     popup: Option<Popup>,
     settings: Option<Settings>,
+    /// Earlier conversations, read back, while open.
+    sessions: Option<Sessions>,
     prefs: Prefs,
     sheet: Option<Sheet>,
     jobs: Vec<Job>,
@@ -184,6 +188,7 @@ impl Inbox {
             compose: None,
             popup: None,
             settings: None,
+            sessions: None,
             plans: Default::default(),
             uses: HashMap::new(),
             _plans: plans,
@@ -245,6 +250,7 @@ impl Render for Inbox {
         let confirm = self.removing.filter(|i| *i < self.fleet.seats.len()).map(|i| self.confirm_view(i, cx));
         let palette = self.palette.as_ref().map(|p| self.palette_view(p, &view, cx));
         let settings = self.settings.as_ref().map(|s| self.settings_view(s, cx));
+        let sessions = self.sessions.as_ref().map(|s| self.sessions_view(s, window, cx));
         let popup = self.popup.as_ref().map(|p| self.popup_view(p, cx));
         div()
             .relative()
@@ -262,11 +268,15 @@ impl Render for Inbox {
                     this.open_sheet(window, cx);
                 } else if m.control && !m.alt && !m.shift && k.key == "," {
                     this.open_settings(window, cx);
+                } else if m.alt && !m.control && !m.shift && k.key == "o" {
+                    this.open_sessions(window, cx);
                 } else if k.key == "escape" && this.settings.is_some() {
                     if this.popup.take().is_none() {
                         this.close_settings(window, cx);
                     }
                     cx.notify();
+                } else if k.key == "escape" && this.sessions.is_some() {
+                    this.close_sessions(window, cx);
                 }
             }))
             .font_family("Geist")
@@ -274,6 +284,7 @@ impl Render for Inbox {
             .child(body)
             .children(sheet)
             .children(settings)
+            .children(sessions)
             .children(popup)
             .children(menu)
             .children(confirm)

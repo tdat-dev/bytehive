@@ -39,3 +39,15 @@ fn settings_ship_with_todays_defaults() {
     odd.clamp();
     assert_eq!((odd.default_count, odd.job_delay, odd.font_size), (1, 1, 20));
 }
+
+#[test]
+fn sessions_say_where_and_when() {
+    use super::sessions::list::{day_label, place_of};
+    assert_eq!(place_of("D:/app", Some(r"D:\app")), "");
+    assert_eq!(place_of("D:/.bytehive-worktrees/app-1a2b3c/fix-upload-9z8y7x", None), "worktree fix-upload");
+    assert_eq!(place_of("C:/Users/me/.claude/worktrees/try", None), "worktree try");
+    assert_eq!(place_of("C:/Users/me/code/app", None), "code/app");
+    let now = 1_794_000_000_000;
+    assert_eq!(day_label(now, now), "Today");
+    assert_eq!(day_label(now - 86_400_000, now), "Yesterday");
+}

@@ -10,6 +10,7 @@ mod keys;
 mod plan;
 mod presets;
 mod terminal;
+mod transcript;
 mod usage;
 
 use std::borrow::Cow;

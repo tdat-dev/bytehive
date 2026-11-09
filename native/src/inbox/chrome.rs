@@ -169,7 +169,7 @@ impl Inbox {
                     .on_click(cx.listener(|this, _, window, cx| this.open_sheet(window, cx)))
                     .child("New agent"),
             )
-            .child(round("dock-sessions", "Sessions: read back earlier conversations (Alt+O)").child(icon("sessions", 17.0, color(INK_2))))
+            .child(round("dock-sessions", "Sessions: read back earlier conversations (Alt+O)").on_click(cx.listener(|this, _, window, cx| this.open_sessions(window, cx))).child(icon("sessions", 17.0, color(INK_2))))
             .child(round("dock-help", "What ByteHive can do (?)").text_size(px(16.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK_2)).child("?"))
             .child(round("dock-settings", "Settings (Ctrl+,)").on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))).child(icon("settings", 17.0, color(INK_2))))
     }
