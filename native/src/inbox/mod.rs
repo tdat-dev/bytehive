@@ -417,6 +417,9 @@ enum PalRun {
     Sessions,
     Settings,
     Files,
+    Changes,
+    History,
+    Merge,
     /// The project of the agent at this index.
     Project(usize),
 }

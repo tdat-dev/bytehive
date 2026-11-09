@@ -24,7 +24,7 @@ impl Inbox {
 
     /// Merge its branch in and remove the worktree, once a dry run says the
     /// merge is clean. The agent stops first; if the merge fails it starts again.
-    pub(super) fn merge_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::inbox) fn merge_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(index) = self.changes_seat() else { return };
         let Some(c) = self.changes.as_mut().filter(|c| c.own && !c.busy) else { return };
         let Some(wt) = self.fleet.seats[index].spec.worktree.clone() else { return };

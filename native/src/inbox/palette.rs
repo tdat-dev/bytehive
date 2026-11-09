@@ -44,6 +44,13 @@ impl Inbox {
             items.push(PalItem { group: "Actions".into(), label: "Resume all".into(), sub: Some("Resume every stopped agent".into()), keys: None, agent: None, run: PalRun::ResumeAll });
         }
         let act = |label: &str, keys: &'static str, sub: Option<&str>, run: PalRun| PalItem { group: "Actions".into(), label: label.into(), sub: sub.map(str::to_string), keys: Some(keys), agent: None, run };
+        if let Some(seat) = self.fleet.focused_seat() {
+            items.push(act("Changes of the current agent", "Alt+R", Some("Merge them, or send it back with a note"), PalRun::Changes));
+            if seat.spec.worktree.is_some() && view.statuses.get(self.fleet.focused.unwrap_or(0)).is_some_and(|s| s.state != State::Working) {
+                items.push(act(&format!("Merge {}'s branch", seat.spec.name), "M", Some("From Changes: its worktree is removed after"), PalRun::Merge));
+            }
+            items.push(act("History of the current agent", "Alt+H", Some("What it did and what you answered"), PalRun::History));
+        }
         items.push(act("Sessions", "Alt+O", Some("Read back earlier Claude conversations"), PalRun::Sessions));
         items.push(act("Files", "Ctrl+Shift+E", Some("Folder tree; files open in VS Code"), PalRun::Files));
         items.push(act("Settings", "Ctrl+,", None, PalRun::Settings));
@@ -96,6 +103,19 @@ impl Inbox {
             PalRun::Sessions => self.open_sessions(window, cx),
             PalRun::Settings => self.open_settings(window, cx),
             PalRun::Files => self.toggle_files(window, cx),
+            PalRun::Changes | PalRun::Merge => {
+                if let Some(index) = self.fleet.focused {
+                    self.open_changes(index, window, cx);
+                    if matches!(run, PalRun::Merge) {
+                        self.merge_changes(window, cx);
+                    }
+                }
+            }
+            PalRun::History => {
+                if let Some(index) = self.fleet.focused {
+                    self.open_history(index, window, cx);
+                }
+            }
             PalRun::Project(index) => {
                 if let Some(dir) = self.fleet.seats.get(index).map(|s| s.spec.cwd.clone()) {
                     self.open_project(dir, window, cx);
