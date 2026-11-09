@@ -28,6 +28,10 @@ mod bridge;
 mod memory;
 mod limits;
 mod diffs;
+mod dialog;
+mod usage_view;
+mod schedules;
+mod board;
 #[cfg(test)]
 mod tests;
 
@@ -148,6 +152,12 @@ pub struct Inbox {
     /// The bytehive-mcp file bridge, started on the first render.
     bridge: Option<Task<()>>,
     memory: Option<MemoryView>,
+    usage_view: Option<usage_view::UsageView>,
+    schedules: Option<schedules::SchedulesView>,
+    /// Scheduled agents' 30-second check, started on the first render.
+    scheduler: Option<Task<()>>,
+    /// The Board (Ctrl+Shift+K), while open.
+    board: Option<board::BoardView>,
     limits: limits::LimitGuard,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
@@ -242,6 +252,10 @@ impl Inbox {
             files: None,
             bridge: None,
             memory: None,
+            usage_view: None,
+            schedules: None,
+            scheduler: None,
+            board: None,
             limits: limits::LimitGuard::default(),
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
@@ -333,6 +347,7 @@ impl Render for Inbox {
             self.ensure_compose(window, cx);
         }
         let history = self.history_view(cx);
+        let board = self.board_view(cx);
         let view = self.view(cx);
         let body = if self.home { self.home_view(&view, window, cx).into_any_element() } else { self.agents_view(&view, cx).into_any_element() };
         let sheet = self.sheet.as_ref().map(|sheet| self.sheet_view(sheet, cx));
@@ -343,6 +358,7 @@ impl Render for Inbox {
         let sessions = self.sessions.as_ref().map(|s| self.sessions_view(s, window, cx));
         let popup = self.popup.as_ref().map(|p| self.popup_view(p, cx));
         let memory = self.memory.as_ref().map(|m| self.memory_view(m, cx));
+        let dialogs = self.dialogs(window, cx);
         let toast = self.toast_view();
         let changes = self.changes.as_ref().and_then(|c| self.changes_view(c, cx));
         div()
@@ -361,10 +377,14 @@ impl Render for Inbox {
                     this.open_sheet(window, cx);
                 } else if m.control && m.shift && !m.alt && k.key == "e" {
                     this.toggle_files(window, cx);
+                } else if m.control && m.shift && !m.alt && k.key == "k" {
+                    if this.board.is_some() { this.close_board(window, cx) } else { this.open_board(window, cx) }
                 } else if m.control && !m.alt && !m.shift && k.key == "," {
                     this.open_settings(window, cx);
                 } else if m.alt && !m.control && !m.shift && k.key == "o" {
                     this.open_sessions(window, cx);
+                } else if k.key == "escape" && this.dialog_open() {
+                    this.dialog_escape(window, cx);
                 } else if k.key == "escape" && this.settings.is_some() {
                     if this.popup.take().is_none() {
                         this.close_settings(window, cx);
@@ -372,6 +392,8 @@ impl Render for Inbox {
                     cx.notify();
                 } else if k.key == "escape" && this.sessions.is_some() {
                     this.close_sessions(window, cx);
+                } else if k.key == "escape" && this.board.is_some() {
+                    this.board_escape(window, cx);
                 } else if k.key == "escape" && this.changes.as_ref().is_some_and(|c| c.discarding) {
                     if let Some(c) = &mut this.changes {
                         c.discarding = false;
@@ -401,10 +423,12 @@ impl Render for Inbox {
             .child(body)
             .children(changes)
             .children(history)
+            .children(board)
             .children(sheet)
             .children(settings)
             .children(sessions)
             .children(memory)
+            .children(dialogs)
             .children(popup)
             .children(menu)
             .children(confirm)
@@ -441,6 +465,9 @@ enum PalRun {
     Settings,
     Files,
     Memory,
+    Schedules,
+    Usage,
+    Board,
     Changes,
     History,
     Merge,

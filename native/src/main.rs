@@ -1,6 +1,7 @@
 //! ByteHive drawn by itself: Rust + GPUI, no WebView. One window: the Inbox,
 //! with the live fleet in its queue and the focused agent on its stage.
 
+mod board;
 mod boxdraw;
 mod brand;
 mod bridge;
@@ -14,7 +15,9 @@ mod limits;
 mod memory;
 mod plan;
 mod presets;
+mod project_usage;
 mod review;
+mod schedule;
 mod single;
 mod terminal;
 mod transcript;

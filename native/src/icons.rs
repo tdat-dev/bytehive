@@ -13,6 +13,13 @@ macro_rules! icons {
 }
 
 icons!(
+    "kb-due",
+    "kb-checklist",
+    "kb-desc",
+    "kb-trash",
+    "kb-swatch-on",
+    "kb-box",
+    "kb-close",
     "ft-file",
     "ft-doc",
     "ft-code",

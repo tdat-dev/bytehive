@@ -51,6 +51,7 @@ impl Inbox {
             }
             items.push(act("History of the current agent", "Alt+H", Some("What it did and what you answered"), PalRun::History));
         }
+        items.push(act("Board", "Ctrl+Shift+K", Some("Cards the agents move as they work"), PalRun::Board));
         items.push(act("Sessions", "Alt+O", Some("Read back earlier Claude conversations"), PalRun::Sessions));
         if let Some(dir) = self.project_dir() {
             let name = crate::fleet::project_of(&dir);
@@ -58,6 +59,8 @@ impl Inbox {
         }
         items.push(act("Files", "Ctrl+Shift+E", Some("Folder tree; files open in VS Code"), PalRun::Files));
         items.push(act("Settings", "Ctrl+,", None, PalRun::Settings));
+        items.push(PalItem { group: "Actions".into(), label: "Scheduled agents".into(), sub: Some("Start a preset at a set time".into()), keys: None, agent: None, run: PalRun::Schedules });
+        items.push(PalItem { group: "Actions".into(), label: "Usage".into(), sub: Some("Tokens and estimated cost".into()), keys: None, agent: None, run: PalRun::Usage });
         // Every other project with agents, by its first agent.
         let here = self.prefs.project.clone().unwrap_or_default();
         let mut seen: Vec<&str> = Vec::new();
@@ -107,6 +110,9 @@ impl Inbox {
             PalRun::Sessions => self.open_sessions(window, cx),
             PalRun::Settings => self.open_settings(window, cx),
             PalRun::Files => self.toggle_files(window, cx),
+            PalRun::Schedules => self.open_schedules(window, cx),
+            PalRun::Usage => self.open_usage(window, cx),
+            PalRun::Board => self.open_board(window, cx),
             PalRun::Memory => {
                 if let Some(dir) = self.project_dir() {
                     self.open_memory(dir, window, cx);
