@@ -2,16 +2,20 @@
 //! dock.css): the current project's lists and cards, in the drawer today's
 //! app opens with Ctrl+Shift+K. Agents move the same cards through the
 //! bytehive MCP tools, so the file is followed every 1.5 s and every change
-//! is applied to a fresh read of it, off the UI thread.
+//! is applied to a fresh read of it, off the UI thread. The conductor and
+//! plan.json's import run on their own timer, open or not (conduct.rs).
 
 mod act;
 mod card;
+mod conduct;
 mod detail;
 mod events;
+mod keep;
 mod lists;
 mod look;
 mod panel;
 mod pick;
+mod toggle;
 
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -21,6 +25,7 @@ use crate::board::{self as model, Board};
 use super::dropdown::Spot;
 use super::*;
 
+pub(in crate::inbox) use conduct::Conductor;
 pub(in crate::inbox) use events::Field;
 
 /// How often an open board looks for an agent's change.

@@ -164,6 +164,8 @@ pub struct Inbox {
     scheduler: Option<Task<()>>,
     /// The Board (Ctrl+Shift+K), while open.
     board: Option<board::BoardView>,
+    /// The Board's conductor and plan import, open or not.
+    conductor: board::Conductor,
     limits: limits::LimitGuard,
     updates: updates::Updates,
     notices: notices::Notices,
@@ -269,6 +271,7 @@ impl Inbox {
             schedules: None,
             scheduler: None,
             board: None,
+            conductor: Default::default(),
             limits: limits::LimitGuard::default(),
             updates: updates::Updates::default(),
             notices: notices::Notices::default(),
@@ -347,6 +350,7 @@ impl Inbox {
         }
         self.check_limits(hits, cx);
         self.poll_changes(cx);
+        self.conductor_tick(cx);
         // The times on the rows count in seconds under a minute.
         if changed || self.fleet.seats.iter().any(|s| self.since.get(&s.spec.id).is_some_and(|(_, at)| now - at < 60_000)) {
             cx.notify();

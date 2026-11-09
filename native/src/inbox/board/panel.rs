@@ -39,7 +39,7 @@ impl Inbox {
                         cx.stop_propagation();
                     }),
                 )
-                .child(head(cx))
+                .child(head(self.conductor.mode, cx))
                 .child(div().flex_1().min_h_0().flex().flex_col().overflow_hidden().child(body))
                 .children(ask)
                 .children(pick)
@@ -48,8 +48,8 @@ impl Inbox {
     }
 }
 
-/// .dp-head: "Board" and Close.
-fn head(cx: &mut Context<Inbox>) -> impl IntoElement + use<> {
+/// .dp-head: "Board", the conductor in .dp-actions, and Close.
+fn head(mode: crate::conductor::Mode, cx: &mut Context<Inbox>) -> impl IntoElement + use<> {
     div()
         .flex_none()
         .h(px(56.0))
@@ -61,11 +61,11 @@ fn head(cx: &mut Context<Inbox>) -> impl IntoElement + use<> {
         .border_b_1()
         .border_color(hairline())
         .child(div().text_size(px(15.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child("Board"))
+        .child(div().ml_auto().flex().items_center().gap(px(4.0)).child(super::toggle::conductor_btn(mode, cx)))
         .child(
             div()
                 .id("dp-close")
                 .group("dp-close")
-                .ml_auto()
                 .size(px(30.0))
                 .flex()
                 .items_center()

@@ -362,6 +362,7 @@ pub fn board_to_markdown(board: &Board) -> String {
 }
 
 mod file;
+pub mod round;
 
 pub use file::{change, mtime, read, save, write_mirror};
 #[cfg(test)]
