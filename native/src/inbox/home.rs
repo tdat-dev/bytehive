@@ -87,7 +87,7 @@ impl Inbox {
     }
 
     /// openProject: make the folder the project, then offer New agent when it has none.
-    fn open_project(&mut self, dir: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_project(&mut self, dir: String, window: &mut Window, cx: &mut Context<Self>) {
         self.prefs.open_project(&dir);
         let first = self.fleet.seats.iter().position(|s| presets::same_folder(&s.spec.cwd, &dir));
         self.leave_home(first, window, cx);

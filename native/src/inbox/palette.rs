@@ -43,6 +43,22 @@ impl Inbox {
         if view.statuses.iter().any(|s| s.state == State::Stopped) {
             items.push(PalItem { group: "Actions".into(), label: "Resume all".into(), sub: Some("Resume every stopped agent".into()), keys: None, agent: None, run: PalRun::ResumeAll });
         }
+        let act = |label: &str, keys: &'static str, sub: Option<&str>, run: PalRun| PalItem { group: "Actions".into(), label: label.into(), sub: sub.map(str::to_string), keys: Some(keys), agent: None, run };
+        items.push(act("Sessions", "Alt+O", Some("Read back earlier Claude conversations"), PalRun::Sessions));
+        items.push(act("Settings", "Ctrl+,", None, PalRun::Settings));
+        // Every other project with agents, by its first agent.
+        let here = self.prefs.project.clone().unwrap_or_default();
+        let mut seen: Vec<&str> = Vec::new();
+        for (i, seat) in self.fleet.seats.iter().enumerate() {
+            let dir = seat.spec.cwd.as_str();
+            if presets::same_folder(dir, &here) || seen.iter().any(|d| presets::same_folder(d, dir)) {
+                continue;
+            }
+            seen.push(dir);
+            let n = self.fleet.seats.iter().filter(|s| presets::same_folder(&s.spec.cwd, dir)).count();
+            let sub = format!("{n} agent{} · {dir}", if n == 1 { "" } else { "s" });
+            items.push(PalItem { group: "Projects".into(), label: seat.project(), sub: Some(sub), keys: None, agent: None, run: PalRun::Project(i) });
+        }
         items
     }
 
@@ -76,6 +92,13 @@ impl Inbox {
                 self.fleet.focus(index, window, cx);
             }
             PalRun::NewAgent => self.open_sheet(window, cx),
+            PalRun::Sessions => self.open_sessions(window, cx),
+            PalRun::Settings => self.open_settings(window, cx),
+            PalRun::Project(index) => {
+                if let Some(dir) = self.fleet.seats.get(index).map(|s| s.spec.cwd.clone()) {
+                    self.open_project(dir, window, cx);
+                }
+            }
             PalRun::ResumeAll => {
                 for index in 0..self.fleet.seats.len() {
                     if self.fleet.seats[index].state(cx) == State::Stopped {

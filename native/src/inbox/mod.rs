@@ -338,6 +338,10 @@ enum PalRun {
     Agent(usize),
     NewAgent,
     ResumeAll,
+    Sessions,
+    Settings,
+    /// The project of the agent at this index.
+    Project(usize),
 }
 
 /// One line of Ctrl K (inboxpalette.ts PaletteItem).
