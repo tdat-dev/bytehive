@@ -14,6 +14,7 @@ mod single;
 mod terminal;
 mod transcript;
 mod usage;
+mod worktree;
 
 use std::borrow::Cow;
 

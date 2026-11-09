@@ -39,6 +39,13 @@ impl Inbox {
                     cx.notify();
                 })),
             )
+            .child(
+                toggle("pref-worktree", p.worktree, "Own branch for every agent", "Each agent works in its own git worktree, so Changes, Compare and merge see exactly what it did. Needs the project to be a git repo.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.worktree = !this.prefs.worktree;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
             .child(row("Wait before giving the job", "Time a new CLI gets to reach its prompt before ByteHive types the job in. Raise it if jobs get lost on a slow machine.").child(stepper(
                 format!("{} s", p.job_delay),
                 step_button("delay-less", "−", p.job_delay > presets::DELAY_MIN).on_click(cx.listener(|this, _, _, cx| this.set_delay(-1, cx))),

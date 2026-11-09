@@ -34,7 +34,7 @@ fn names_folders_and_counts() {
 #[test]
 fn settings_ship_with_todays_defaults() {
     let p = crate::presets::Prefs::default();
-    assert_eq!((p.default_cli.as_str(), p.default_count, p.job_delay, p.font_size, p.restore), ("last", 1, 4, 15, true));
+    assert_eq!((p.default_cli.as_str(), p.default_count, p.job_delay, p.font_size, p.restore, p.worktree), ("last", 1, 4, 15, true, false));
     let mut odd: crate::presets::Prefs = serde_json::from_str(r#"{"default_count":7,"job_delay":0,"font_size":40}"#).unwrap();
     odd.clamp();
     assert_eq!((odd.default_count, odd.job_delay, odd.font_size), (1, 1, 20));

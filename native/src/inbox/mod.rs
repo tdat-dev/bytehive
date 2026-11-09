@@ -20,6 +20,7 @@ mod dropdown;
 mod logo;
 mod settings;
 mod sessions;
+mod toast;
 #[cfg(test)]
 mod tests;
 
@@ -49,6 +50,7 @@ use dropdown::Popup;
 use launch::Launch;
 use settings::Settings;
 use sessions::Sessions;
+use toast::Toast;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -126,6 +128,7 @@ pub struct Inbox {
     settings: Option<Settings>,
     /// Earlier conversations, read back, while open.
     sessions: Option<Sessions>,
+    toast: Option<Toast>,
     prefs: Prefs,
     sheet: Option<Sheet>,
     jobs: Vec<Job>,
@@ -204,6 +207,7 @@ impl Inbox {
             popup: None,
             settings: None,
             sessions: None,
+            toast: None,
             plans: Default::default(),
             uses: HashMap::new(),
             _plans: plans,
@@ -268,6 +272,7 @@ impl Render for Inbox {
         let settings = self.settings.as_ref().map(|s| self.settings_view(s, cx));
         let sessions = self.sessions.as_ref().map(|s| self.sessions_view(s, window, cx));
         let popup = self.popup.as_ref().map(|p| self.popup_view(p, cx));
+        let toast = self.toast_view();
         div()
             .relative()
             .size_full()
@@ -305,6 +310,7 @@ impl Render for Inbox {
             .children(menu)
             .children(confirm)
             .children(palette)
+            .children(toast)
     }
 }
 

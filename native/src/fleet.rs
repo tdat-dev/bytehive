@@ -37,6 +37,18 @@ pub struct Spec {
     /// Two or three agents on the same job: which one, of how many.
     #[serde(default)]
     pub race: Option<Race>,
+    /// Its own worktree, where it runs, when it has one; `cwd` stays the project.
+    #[serde(default)]
+    pub worktree: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+
+impl Spec {
+    /// The folder its CLI runs in: its worktree, else the project.
+    pub fn run_dir(&self) -> &str {
+        self.worktree.as_deref().unwrap_or(&self.cwd)
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -53,6 +65,8 @@ pub struct Seat {
     pub branch: Option<String>,
     /// The Claude process this run is, once found (follow.rs).
     pub pid: Option<u32>,
+    /// Its worktree is being made; it starts once that is done.
+    pub preparing: bool,
 }
 
 impl Seat {
@@ -60,6 +74,7 @@ impl Seat {
     /// (supervise::task_state): asking you, blocked, working, idle, stopped.
     pub fn status(&self, cx: &App) -> TaskStatus {
         let facts = match &self.terminal {
+            None if self.preparing => TaskFacts { running: true, last_output_at: now_ms(), ..TaskFacts::default() },
             Some(t) if t.read(cx).exit_code().is_none() => {
                 let t = t.read(cx);
                 TaskFacts { running: true, last_output_at: t.last_output_ms(), screen: t.screen_text(), ..TaskFacts::default() }
@@ -118,7 +133,7 @@ impl Fleet {
     /// The saved fleet, every agent stopped.
     pub fn load() -> Self {
         let specs: Vec<Spec> = store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(&spec.cwd)), spec, terminal: None, pid: None }).collect();
+        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(spec.run_dir())), spec, terminal: None, pid: None, preparing: false }).collect();
         let focused = if seats.is_empty() { None } else { Some(0) };
         Self { seats, focused, learned: Arc::default() }
     }
@@ -143,6 +158,14 @@ impl Fleet {
 
     /// Add a new agent and start it.
     pub fn add(&mut self, cli: &str, args: Vec<String>, cwd: &str, title: Option<String>, race: Option<Race>, cx: &mut App) -> anyhow::Result<usize> {
+        let index = self.reserve(cli, args, cwd, title, race);
+        self.seats[index].preparing = false;
+        self.start(index, cx)?;
+        Ok(index)
+    }
+
+    /// Add a new agent that starts later, once its worktree is made.
+    pub fn reserve(&mut self, cli: &str, args: Vec<String>, cwd: &str, title: Option<String>, race: Option<Race>) -> usize {
         let spec = Spec {
             id: uuid::Uuid::new_v4().to_string(),
             name: self.free_name(),
@@ -153,11 +176,12 @@ impl Fleet {
             started_ms: now_ms(),
             title,
             race,
+            worktree: None,
+            branch: None,
         };
-        self.seats.push(Seat { spec, terminal: None, branch: None, pid: None });
-        let index = self.seats.len() - 1;
-        self.start(index, cx)?;
-        Ok(index)
+        self.seats.push(Seat { spec, terminal: None, branch: None, pid: None, preparing: true });
+        self.save();
+        self.seats.len() - 1
     }
 
     /// Start the agent at `index`, carrying on its conversation when the CLI
@@ -165,7 +189,8 @@ impl Fleet {
     pub fn start(&mut self, index: usize, cx: &mut App) -> anyhow::Result<()> {
         let seat = &mut self.seats[index];
         let program = seat.spec.cli.to_ascii_lowercase();
-        let cwd = seat.spec.cwd.clone();
+        seat.preparing = false;
+        let cwd = seat.spec.run_dir().to_string();
         let base = seat.spec.args.clone();
         let known = seat.spec.session_id.clone();
         let (extra, session) = match program.as_str() {
@@ -243,7 +268,7 @@ impl Fleet {
             .iter()
             .map(|&i| {
                 let s = &self.seats[i];
-                follow::Run { session: s.spec.session_id.as_deref(), cwd: &s.spec.cwd, started_ms: s.spec.started_ms, pid: s.pid }
+                follow::Run { session: s.spec.session_id.as_deref(), cwd: s.spec.run_dir(), started_ms: s.spec.started_ms, pid: s.pid }
             })
             .collect();
         let found = follow::follow(&runs, live);

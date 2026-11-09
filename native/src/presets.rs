@@ -105,6 +105,9 @@ pub struct Prefs {
     /// Bring back last session's agents, stopped, at start.
     #[serde(default = "yes")]
     pub restore: bool,
+    /// Every new agent in a git repo gets its own worktree and branch.
+    #[serde(default)]
+    pub worktree: bool,
 }
 
 fn last_used() -> String {
@@ -169,6 +172,7 @@ impl Prefs {
         self.job_delay = fresh.job_delay;
         self.font_size = fresh.font_size;
         self.restore = fresh.restore;
+        self.worktree = fresh.worktree;
         self.skip_perms = false;
         self.save();
     }

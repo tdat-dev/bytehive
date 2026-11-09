@@ -16,7 +16,12 @@ impl Inbox {
                 continue;
             };
             let Some(terminal) = seat.terminal.clone() else {
-                done.push(job.id.clone());
+                // Its worktree is being made: the wait starts when it does.
+                if seat.preparing {
+                    job.started = now;
+                } else {
+                    done.push(job.id.clone());
+                }
                 continue;
             };
             let t = terminal.read(cx);
