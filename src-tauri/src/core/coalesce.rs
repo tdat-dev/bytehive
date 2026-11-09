@@ -77,8 +77,12 @@ impl Coalescer {
         if b.delivered >= want {
             return;
         }
-        b.flush = true;
-        self.shared.cv.notify_one();
+        // Nothing held means the rest is on its way already; a flag left set
+        // would cut the next interval short.
+        if !b.data.is_empty() {
+            b.flush = true;
+            self.shared.cv.notify_one();
+        }
         let until = Instant::now() + FLUSH_WAIT;
         while b.delivered < want {
             let Some(left) = until.checked_duration_since(Instant::now()) else { return };
@@ -205,6 +209,25 @@ mod tests {
         assert!(rx.recv_timeout(Duration::from_millis(300)).is_err(), "a flush does not change the interval");
         c.flush(); // ...until the next flush
         assert_eq!(rx.try_recv().expect("the next flush sends it"), b"more");
+    }
+
+    #[test]
+    fn a_flush_while_a_batch_is_on_its_way_leaves_the_interval_alone() {
+        let (tx, rx) = mpsc::channel();
+        let mut first = true;
+        let c = Coalescer::new(Duration::from_secs(30), Duration::from_secs(30), 1 << 20, || false, move |v| {
+            if first {
+                first = false;
+                thread::sleep(Duration::from_millis(300)); // a slow window
+            }
+            let _ = tx.send(v);
+        });
+        c.push(b"first");
+        thread::sleep(Duration::from_millis(100)); // taken, still being delivered: nothing is held
+        c.flush();
+        assert_eq!(rx.try_recv().expect("out once flush returned"), b"first");
+        c.push(b"more"); // within the interval: held as usual
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err(), "a flush with nothing held must not cut the next interval short");
     }
 
     #[test]
