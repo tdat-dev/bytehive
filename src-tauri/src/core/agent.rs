@@ -507,21 +507,28 @@ fn spawn_waiter(
     thread::spawn(move || {
         let mut child = child;
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
-        // Final output first, then the exit: let a held reader drain what is
-        // left (nobody runs to protect any more), give the console a moment,
-        // and have the sink send what it holds.
-        flow.off();
-        let t = Instant::now();
-        while t.elapsed() < EXIT_WAIT {
-            let last = output.lock().unwrap_or_else(|p| p.into_inner()).last_read;
-            if last.is_none_or(|r| r.elapsed() >= EXIT_QUIET) {
-                break;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        (output.lock().unwrap_or_else(|p| p.into_inner()).sink)(&[]);
+        last_words(&output, &flow);
         on_exit(code);
     })
+}
+
+/// Final output first, then the exit: let a held reader drain what is left
+/// (nobody runs to protect any more), give the console a moment, and have the
+/// sink send what it holds.
+fn last_words(output: &Arc<Mutex<Output>>, flow: &Flow) {
+    flow.off();
+    // A reader that was held has not read for a while: count the quiet from
+    // now, or the exit would not wait for the tail it is about to drain.
+    output.lock().unwrap_or_else(|p| p.into_inner()).last_read = Some(Instant::now());
+    let t = Instant::now();
+    while t.elapsed() < EXIT_WAIT {
+        let last = output.lock().unwrap_or_else(|p| p.into_inner()).last_read;
+        if last.is_none_or(|r| r.elapsed() >= EXIT_QUIET) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    (output.lock().unwrap_or_else(|p| p.into_inner()).sink)(&[]);
 }
 
 #[cfg(test)]
@@ -645,6 +652,51 @@ mod flow_tests {
         let after = count.load(Ordering::SeqCst);
         assert!(after <= held + 3 * HIGH + 16384, "and stop at the budget, got {} more", after - held);
         flow.close();
+        reader.join().unwrap();
+    }
+
+    /// What a console still sends after its child exited: 16 KB reads, a moment apart, then EOF.
+    struct Tail {
+        left: usize,
+    }
+
+    impl Read for Tail {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            thread::sleep(Duration::from_millis(2));
+            let n = buf.len().min(self.left);
+            buf[..n].fill(b'x');
+            self.left -= n;
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn a_held_readers_tail_reaches_the_sink_before_the_exit() {
+        const TOTAL: usize = HIGH + 400 * 1024;
+        let count = Arc::new(AtomicUsize::new(0));
+        let at_exit = Arc::new(AtomicUsize::new(usize::MAX));
+        let (c, e) = (count.clone(), at_exit.clone());
+        let output = Arc::new(Mutex::new(Output {
+            buf: VecDeque::new(),
+            sink: Box::new(move |b| {
+                if b.is_empty() {
+                    e.store(c.load(Ordering::SeqCst), Ordering::SeqCst); // the exit is about to be emitted
+                } else {
+                    c.fetch_add(b.len(), Ordering::SeqCst);
+                }
+            }),
+            taps: Vec::new(),
+            rec: None,
+            pipe: false,
+            last_read: None,
+        }));
+        let flow = Arc::new(Flow::new(FlowConfig { high: HIGH as u64, low: HIGH as u64 / 4, stall: Duration::from_secs(60), trickle: 4096 }));
+        flow.enable(1);
+        let reader = spawn_reader(Box::new(Tail { left: TOTAL }), output.clone(), flow.clone());
+        until("held", || flow.is_held());
+        thread::sleep(Duration::from_millis(100)); // held long enough that its last read is old
+        last_words(&output, &flow); // the child exited
+        assert_eq!(at_exit.load(Ordering::SeqCst), TOTAL, "the whole tail was in the sink before the exit");
         reader.join().unwrap();
     }
 
