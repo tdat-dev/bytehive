@@ -13,6 +13,13 @@ mod chrome;
 mod menu;
 mod sheet;
 mod palette;
+mod launch;
+mod home;
+mod compose;
+mod dropdown;
+mod logo;
+#[cfg(test)]
+mod tests;
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -34,6 +41,10 @@ use crate::{plan, usage};
 // Named, not globbed: white() would clash with gpui_kit's own.
 use style::{color, float, hairline, haze, icon, mono, ring, tile, tint, tip, white};
 use words::*;
+use chrome::window_buttons;
+use compose::Compose;
+use dropdown::Popup;
+use launch::Launch;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -105,6 +116,12 @@ struct View {
 
 pub struct Inbox {
     fleet: Fleet,
+    /// Home, the start screen, instead of the agents.
+    home: bool,
+    /// Home's composer, made the first time Home shows.
+    compose: Option<Compose>,
+    /// A Home chip's drop-down, while open.
+    popup: Option<Popup>,
     prefs: Prefs,
     sheet: Option<Sheet>,
     jobs: Vec<Job>,
@@ -158,11 +175,15 @@ impl Inbox {
                 cx.background_executor().timer(Duration::from_millis(plan::EVERY_MS)).await;
             }
         });
+        let fleet = Fleet::load();
         Self {
+            home: fleet.seats.is_empty(),
+            compose: None,
+            popup: None,
             plans: Default::default(),
             uses: HashMap::new(),
             _plans: plans,
-            fleet: Fleet::load(),
+            fleet,
             prefs: Prefs::load(),
             sheet: None,
             jobs: Vec::new(),
@@ -209,20 +230,19 @@ impl Inbox {
 }
 
 impl Render for Inbox {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.home {
+            self.ensure_compose(window, cx);
+        }
         let view = self.view(cx);
-        let queue = self.queue(&view, cx);
-        let stage = self.stage(&view, cx);
-        let top = self.top_bar(&view, cx);
-        let dock = self.dock(cx);
+        let body = if self.home { self.home_view(&view, window, cx).into_any_element() } else { self.agents_view(&view, cx).into_any_element() };
         let sheet = self.sheet.as_ref().map(|sheet| self.sheet_view(sheet, cx));
         let menu = self.menu.as_ref().filter(|m| m.index < self.fleet.seats.len()).map(|m| self.menu_view(m, &view, cx));
         let confirm = self.removing.filter(|i| *i < self.fleet.seats.len()).map(|i| self.confirm_view(i, cx));
         let palette = self.palette.as_ref().map(|p| self.palette_view(p, &view, cx));
+        let popup = self.popup.as_ref().filter(|_| self.home).map(|p| self.popup_view(p, cx));
         div()
             .relative()
-            .flex()
-            .flex_col()
             .size_full()
             .bg(color(GROUND))
             // Today's app takes these before the terminal sees them (keys.rs
@@ -239,17 +259,30 @@ impl Render for Inbox {
             }))
             .font_family("Geist")
             .line_height(relative(1.2))
-            // The faint amber haze over the top of the stage: inbox.css's
-            // radial-gradient(1100px 460px at 62% -12%), baked into haze.png
-            // since GPUI draws no radial gradients.
-            .child(div().absolute().left(relative(0.62)).ml(px(-1100.0)).top(relative(-0.12)).mt(px(-460.0)).w(px(2200.0)).h(px(920.0)).child(img(haze()).size_full().object_fit(ObjectFit::Fill)))
-            .child(top)
-            .child(div().flex().flex_1().min_h_0().child(queue).child(stage))
-            .child(dock)
+            .child(body)
+            .children(popup)
             .children(sheet)
             .children(menu)
             .children(confirm)
             .children(palette)
+    }
+}
+
+impl Inbox {
+    /// The agents: queue, stage, top bar and dock.
+    fn agents_view(&self, view: &View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .relative()
+            .flex()
+            .flex_col()
+            .size_full()
+            // The faint amber haze over the top of the stage: inbox.css's
+            // radial-gradient(1100px 460px at 62% -12%), baked into haze.png
+            // since GPUI draws no radial gradients.
+            .child(div().absolute().left(relative(0.62)).ml(px(-1100.0)).top(relative(-0.12)).mt(px(-460.0)).w(px(2200.0)).h(px(920.0)).child(img(haze()).size_full().object_fit(ObjectFit::Fill)))
+            .child(self.top_bar(view, cx))
+            .child(div().flex().flex_1().min_h_0().child(self.queue(view, cx)).child(self.stage(view, cx)))
+            .child(self.dock(cx))
     }
 }
 

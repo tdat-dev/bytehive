@@ -2,23 +2,32 @@
 
 use super::*;
 
+/// Minimise, maximise, close: Windows' own caption buttons, drawn.
+pub(super) fn window_buttons() -> Div {
+    let button = |name: &'static str, area: WindowControlArea, id: &'static str, close: bool| {
+        div()
+            .id(id)
+            .w(px(46.0))
+            .h(px(38.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .window_control_area(area)
+            .when(close, |b| b.hover(|b| b.bg(color(0xe81123))))
+            .when(!close, |b| b.hover(|b| b.bg(white(0.08))))
+            .child(icon(name, 14.0, color(INK_2)))
+    };
+    div()
+        .flex()
+        .child(button("minus", WindowControlArea::Min, "win-min", false))
+        .child(button("square", WindowControlArea::Max, "win-max", false))
+        .child(button("x", WindowControlArea::Close, "win-close", true))
+}
+
 impl Inbox {
     pub(super) fn top_bar(&self, view: &View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let stopped = view.statuses.iter().filter(|s| s.state == State::Stopped).count();
         let (lead, rest) = headline(&view.statuses, &view.worked);
-        let window_button = |name: &'static str, area: WindowControlArea, id: &'static str, close: bool| {
-            div()
-                .id(id)
-                .w(px(46.0))
-                .h(px(38.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .window_control_area(area)
-                .when(close, |b| b.hover(|b| b.bg(color(0xe81123))))
-                .when(!close, |b| b.hover(|b| b.bg(white(0.08))))
-                .child(icon(name, 14.0, color(INK_2)))
-        };
         div()
             .relative()
             .flex()
@@ -28,7 +37,7 @@ impl Inbox {
             .pl(px(12.0))
             .pr(px(4.0))
             .window_control_area(WindowControlArea::Drag)
-            .child(div().id("home").tooltip(tip("Home (keep agents running)")).size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("home", 16.0, color(INK_3))))
+            .child(div().id("home").tooltip(tip("Home (keep agents running)")).on_click(cx.listener(|this, _, window, cx| this.open_home(window, cx))).size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("home", 16.0, color(INK_3))))
             .child(
                 div()
                     .flex()
@@ -75,16 +84,7 @@ impl Inbox {
                         .child(mono().ml(px(2.0)).px(px(6.0)).rounded_full().bg(white(0.14)).text_size(px(11.0)).child(stopped.to_string())),
                 )
             })
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .right_0()
-                    .flex()
-                    .child(window_button("minus", WindowControlArea::Min, "win-min", false))
-                    .child(window_button("square", WindowControlArea::Max, "win-max", false))
-                    .child(window_button("x", WindowControlArea::Close, "win-close", true)),
-            )
+            .child(div().absolute().top_0().right_0().child(window_buttons()))
     }
 
     pub(super) fn dock(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {

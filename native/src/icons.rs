@@ -13,7 +13,10 @@ macro_rules! icons {
 }
 
 icons!(
+    "back",
     "check",
+    "chev-down",
+    "folder",
     "chev",
     "chev-open",
     "chevron-down",

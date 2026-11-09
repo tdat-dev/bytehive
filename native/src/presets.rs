@@ -48,6 +48,20 @@ pub fn task_title(task: &str) -> Option<String> {
     }
 }
 
+/// The same folder however it is spelt: case, slashes, a trailing separator.
+pub fn same_folder(a: &str, b: &str) -> bool {
+    let norm = |s: &str| s.replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
+    norm(a) == norm(b)
+}
+
+/// A path as people say it: the home folder reads as ~ (shortPath).
+pub fn short_path(dir: &str) -> String {
+    match std::env::var("USERPROFILE") {
+        Ok(home) if dir.len() >= home.len() && same_folder(&dir[..home.len()], &home) => format!("~{}", &dir[home.len()..]),
+        _ => dir.to_string(),
+    }
+}
+
 /// A setup kept with Save as preset.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Template {
@@ -69,7 +83,16 @@ pub struct Prefs {
     pub skip_perms: bool,
     #[serde(default)]
     pub templates: Vec<Template>,
+    /// Project folders opened lately, newest first (recents.ts keeps six).
+    #[serde(default)]
+    pub recents: Vec<String>,
+    /// The project New agent starts in.
+    #[serde(default)]
+    pub project: Option<String>,
 }
+
+/// recents.ts keeps this many.
+const RECENTS: usize = 6;
 
 fn store() -> Option<PathBuf> {
     Some(crate::fleet::data_dir()?.join("prefs.json"))
@@ -78,6 +101,18 @@ fn store() -> Option<PathBuf> {
 impl Prefs {
     pub fn load() -> Self {
         store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    /// Make `dir` the current project and the newest recent one.
+    pub fn open_project(&mut self, dir: &str) {
+        if dir.is_empty() {
+            return;
+        }
+        self.recents.retain(|d| !same_folder(d, dir));
+        self.recents.insert(0, dir.to_string());
+        self.recents.truncate(RECENTS);
+        self.project = Some(dir.to_string());
+        self.save();
     }
 
     pub fn save(&self) {

@@ -1,29 +1,25 @@
 //! New agent, as today's inboxnew.ts builds it.
 
 use super::*;
+use gpui_kit::component::Sizable as _;
 
 impl Inbox {
-    /// The folder New agent starts in: the stage's project, else the last one.
-    pub(super) fn project_dir(&self) -> String {
-        self.fleet.focused_seat().or(self.fleet.seats.last()).map(|s| s.spec.cwd.clone()).or_else(|| std::env::current_dir().ok().map(|d| d.display().to_string())).unwrap_or_default()
-    }
-
     pub(super) fn open_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // No project yet: Home is where one is opened, as today's app says.
+        let Some(dir) = self.project_dir() else {
+            self.open_home(window, cx);
+            return;
+        };
         let missing: HashSet<&'static str> = PRESETS.iter().filter(|p| !presets::installed(p.program)).map(|p| p.id).collect();
         // The CLI it starts on is the last one used, if still installed.
-        let last = self.prefs.last_cli.clone().unwrap_or_else(|| "claude".to_string());
-        let choice = if last.starts_with("custom:") {
-            Choice::Custom
-        } else {
-            PRESETS.iter().find(|p| p.id == last && !missing.contains(p.id)).or_else(|| PRESETS.iter().find(|p| !missing.contains(p.id))).map(|p| Choice::Preset(p.id)).unwrap_or(Choice::Custom)
-        };
+        let choice = compose::last_choice(&self.prefs, &missing);
         let task = cx.new(|cx| TextareaState::new(window, cx).placeholder("Fix the flaky upload test and add a regression test. Leave empty to give it a job later.").auto_grow(4, 10));
         let custom_value = self.prefs.last_custom.clone();
         let custom = cx.new(|cx| InputState::new(window, cx).placeholder("Command, e.g. ollama run llama3.1").default_value(custom_value));
         task.update(cx, |input, cx| input.focus(window, cx));
         crate::keys::set_active(false);
         let skip_perms = self.prefs.skip_perms;
-        self.sheet = Some(Sheet { task, choice, custom, count: 1, skip_perms, dir: self.project_dir(), missing, saved: false, error: None });
+        self.sheet = Some(Sheet { task, choice, custom, count: 1, skip_perms, dir, missing, saved: false, error: None });
         cx.notify();
     }
 
@@ -38,16 +34,10 @@ impl Inbox {
     /// What the sheet would start: program, args, and how it is remembered.
     pub(super) fn sheet_command(&self, sheet: &Sheet, cx: &App) -> Option<(String, Vec<String>, String)> {
         match sheet.choice {
-            Choice::Preset(id) => {
-                let p = presets::preset(id)?;
-                let args = if sheet.skip_perms { p.skip_args.iter().map(|a| a.to_string()).collect() } else { Vec::new() };
-                Some((p.program.to_string(), args, id.to_string()))
-            }
+            Choice::Preset(id) => Self::preset_command(id, sheet.skip_perms).map(|(p, a)| (p, a, id.to_string())),
             Choice::Custom => {
                 let typed = sheet.custom.read(cx).value().trim().to_string();
-                let mut words = typed.split_whitespace().map(str::to_string);
-                let program = words.next()?;
-                Some((program, words.collect(), format!("custom:{typed}")))
+                Self::custom_command(&typed).map(|(p, a)| (p, a, format!("custom:{typed}")))
             }
         }
     }
@@ -62,39 +52,15 @@ impl Inbox {
             return;
         };
         let job = sheet.task.read(cx).value().trim().to_string();
-        let (count, dir, skip) = (sheet.count, sheet.dir.clone(), sheet.skip_perms);
-        if let Choice::Custom = sheet.choice {
-            self.prefs.last_custom = remembered.trim_start_matches("custom:").to_string();
-        }
-        self.prefs.last_cli = Some(remembered);
-        self.prefs.skip_perms = skip;
-        self.prefs.save();
-        let title = presets::task_title(&job);
-        let race_id = (count > 1).then(|| format!("race-{}", now_ms()));
-        let mut first = None;
-        for n in 1..=count {
-            let race = race_id.clone().map(|id| Race { id, n, of: count });
-            match self.fleet.add(&program, args.clone(), &dir, title.clone(), race, cx) {
-                Ok(index) => {
-                    first.get_or_insert(index);
-                    if !job.is_empty() {
-                        let id = self.fleet.seats[index].spec.id.clone();
-                        self.queue_job(id, job.clone(), cx);
-                    }
-                }
-                Err(e) => {
-                    if let Some(sheet) = &mut self.sheet {
-                        sheet.error = Some(format!("Could not start {program}: {e}"));
-                    }
-                    cx.notify();
-                    return;
+        let (count, dir) = (sheet.count, sheet.dir.clone());
+        self.prefs.skip_perms = sheet.skip_perms;
+        match self.launch(Launch { program, args, dir, count, job, remembered }, window, cx) {
+            Ok(()) => self.sheet = None,
+            Err(e) => {
+                if let Some(sheet) = &mut self.sheet {
+                    sheet.error = Some(e);
                 }
             }
-        }
-        self.sheet = None;
-        // The agent just started is the one on screen.
-        if let Some(index) = first {
-            self.fleet.focus(index, window, cx);
         }
         cx.notify();
     }
@@ -116,25 +82,6 @@ impl Inbox {
             sheet.saved = true;
         }
         cx.notify();
-    }
-
-    /// The project folder, until projects are opened from Home.
-    pub(super) fn browse(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let picked = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some("Choose the project folder".into()) });
-        cx.spawn_in(window, async move |this, cx| {
-            if let Ok(Ok(Some(paths))) = picked.await {
-                if let Some(path) = paths.first() {
-                    let path = path.display().to_string();
-                    let _ = this.update(cx, |this, cx| {
-                        if let Some(sheet) = &mut this.sheet {
-                            sheet.dir = path;
-                        }
-                        cx.notify();
-                    });
-                }
-            }
-        })
-        .detach();
     }
 
     /// inboxnew.ts and the .inbox-modal rules in inbox.css.
@@ -282,9 +229,6 @@ impl Inbox {
                                             .min_w_0()
                                             .text_size(px(12.5))
                                             .text_color(color(INK_3))
-                                            .hover(|w| w.text_color(color(INK_2)))
-                                            .tooltip(|window, cx| Tooltip::new("Choose another project folder").build(window, cx))
-                                            .on_click(cx.listener(|this, _, window, cx| this.browse(window, cx)))
                                             .child(format!("In {project} ·"))
                                             .child(mono().min_w_0().truncate().child(sheet.dir.clone())),
                                     ),
@@ -317,7 +261,7 @@ impl Inbox {
                             .flex_col()
                             .child(label("Agent"))
                             .child(div().flex().flex_wrap().gap(px(6.0)).children(chips))
-                            .when(sheet.choice == Choice::Custom, |f| f.child(field(div().mt(px(8.0)).h(px(36.0)).px(px(12.0)).flex().items_center().rounded(px(10.0)).font_family("Geist Mono").text_size(px(13.5))).child(Input::new(&sheet.custom).appearance(false)))),
+                            .when(sheet.choice == Choice::Custom, |f| f.child(field(div().mt(px(8.0)).h(px(36.0)).px(px(12.0)).flex().items_center().rounded(px(10.0)).font_family("Geist Mono").text_size(px(13.5))).child(Input::new(&sheet.custom).appearance(false).with_size(px(13.5 / 0.875))))),
                     )
                     .child(
                         div()
