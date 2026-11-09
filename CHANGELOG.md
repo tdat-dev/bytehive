@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-09
+
+### Added
+
+- **Getting ready for the native ByteHive.** This version writes your agents,
+  your settings and your recent folders to `~/.bytehive/export/web-state.json`
+  when it starts, whenever they change, and when it closes. The native app,
+  coming next, reads that file once on its first start, so your agents show
+  up there stopped and resume their own conversations. Nothing changes in how
+  this app works.
+
+### Changed
+
+- **Updates come from `tdat-dev/bytehive-releases`.** The public releases
+  repository was renamed from `maestro-releases`; the updater now asks the new
+  name directly.
+
 ## [0.14.1] - 2026-11-06
 
 ### Changed
