@@ -8,7 +8,7 @@ use std::path::Path;
 use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM};
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow,
+    EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SW_SHOW, SetForegroundWindow, ShowWindow,
 };
 
 const PID_FILE: &str = "instance.pid";
@@ -34,24 +34,34 @@ pub fn claim() -> bool {
         return true;
     }
     if let Some(pid) = std::fs::read_to_string(dir.join(PID_FILE)).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
-        bring_forward(pid);
+        raise(pid);
     }
     false
 }
 
-/// Show and raise the visible top-level windows of a process. A process the
-/// person just launched may hand the foreground on, so this works.
-fn bring_forward(pid: u32) {
+/// Show and raise a process's ByteHive window, hidden in the tray or not.
+/// A process the person just launched may hand the foreground on, so this
+/// works from a second launch; the tray's own click works too.
+pub fn raise(pid: u32) {
     unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> i32 {
         let mut owner = 0u32;
+        let mut title = [0u16; 16];
         unsafe {
             GetWindowThreadProcessId(hwnd, &mut owner);
-            if owner == lparam as u32 && IsWindowVisible(hwnd) != 0 {
-                if IsIconic(hwnd) != 0 {
-                    ShowWindow(hwnd, SW_RESTORE);
-                }
-                SetForegroundWindow(hwnd);
+            if owner != lparam as u32 {
+                return 1;
             }
+            let n = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
+            if String::from_utf16_lossy(&title[..n.max(0) as usize]) != "ByteHive" {
+                return 1;
+            }
+            if IsWindowVisible(hwnd) == 0 {
+                ShowWindow(hwnd, SW_SHOW);
+            }
+            if IsIconic(hwnd) != 0 {
+                ShowWindow(hwnd, SW_RESTORE);
+            }
+            SetForegroundWindow(hwnd);
         }
         1
     }

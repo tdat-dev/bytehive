@@ -129,6 +129,7 @@ pub struct Inbox {
     /// Earlier conversations, read back, while open.
     sessions: Option<Sessions>,
     toast: Option<Toast>,
+    tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
     jobs: Vec<Job>,
@@ -201,13 +202,14 @@ impl Inbox {
         crate::terminal::set_font_size(prefs.font_size);
         // Settings → Reopen my projects on start.
         let fleet = if prefs.restore { Fleet::load() } else { Fleet::default() };
-        Self {
+        let inbox = Self {
             home: fleet.seats.is_empty(),
             compose: None,
             popup: None,
             settings: None,
             sessions: None,
             toast: None,
+            tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
             _plans: plans,
@@ -224,11 +226,24 @@ impl Inbox {
             worked: HashSet::new(),
             _ticker: ticker,
             _follow: follow,
-        }
+        };
+        inbox.show_tray();
+        inbox
     }
 
     /// Reread every agent; redraw when a state moved or a minute rolled on.
     fn tick(&mut self, cx: &mut Context<Self>) {
+        if crate::tray::quit_asked() {
+            cx.quit();
+            return;
+        }
+        if self.prefs.hide_to_tray {
+            crate::tray::tuck_away_if_minimised();
+        }
+        let running = self.fleet.seats.iter().filter(|s| s.terminal.as_ref().is_some_and(|t| t.read(cx).exit_code().is_none())).count();
+        if let Some(tray) = &mut self.tray {
+            tray.set_running(running);
+        }
         self.refresh_usage(cx);
         let mut changed = self.fleet.absorb();
         let now = now_ms();
@@ -246,6 +261,13 @@ impl Inbox {
         // The times on the rows count in seconds under a minute.
         if changed || self.fleet.seats.iter().any(|s| self.since.get(&s.spec.id).is_some_and(|(_, at)| now - at < 60_000)) {
             cx.notify();
+        }
+    }
+
+    /// The tray icon shows while Hide to tray is on.
+    fn show_tray(&self) {
+        if let Some(tray) = &self.tray {
+            tray.set_visible(self.prefs.hide_to_tray);
         }
     }
 

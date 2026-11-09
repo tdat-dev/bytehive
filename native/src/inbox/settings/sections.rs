@@ -66,7 +66,15 @@ impl Inbox {
                     cx.notify();
                 })),
             )
-            .child(row("Reset settings", "Agents, text size and startup go back to how ByteHive ships. Projects and agents are not touched.").child(button("pref-reset", "Reset").on_click(cx.listener(|this, _, _, cx| {
+            .child(
+                toggle("pref-tray", p.hide_to_tray, "Hide to tray", "Minimizing tucks ByteHive into the system tray; agents keep running.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.hide_to_tray = !this.prefs.hide_to_tray;
+                    this.prefs.save();
+                    this.show_tray();
+                    cx.notify();
+                })),
+            )
+            .child(row("Reset settings", "Agents, text size, startup and the tray go back to how ByteHive ships. Projects and agents are not touched.").child(button("pref-reset", "Reset").on_click(cx.listener(|this, _, _, cx| {
                 if let Some(s) = &mut this.settings {
                     s.resetting = true;
                 }

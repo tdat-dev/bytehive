@@ -49,6 +49,7 @@ impl Inbox {
 
     fn reset_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.prefs.reset_settings();
+        self.show_tray();
         crate::terminal::set_font_size(self.prefs.font_size);
         window.refresh();
         if let Some(s) = &mut self.settings {
@@ -171,7 +172,7 @@ impl Inbox {
                 .bg(color(PANEL))
                 .shadow(vec![BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.75), offset: point(px(0.0), px(40.0)), blur_radius: px(100.0), spread_radius: px(0.0), inset: false }, ring(white(0.09))])
                 .child(div().text_size(px(20.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child("Reset settings?"))
-                .child(div().text_size(px(14.0)).line_height(relative(1.5)).text_color(color(INK_2)).child("Agents, text size and startup go back to how ByteHive ships. Projects and agents are not touched."))
+                .child(div().text_size(px(14.0)).line_height(relative(1.5)).text_color(color(INK_2)).child("Agents, text size, startup and the tray go back to how ByteHive ships. Projects and agents are not touched."))
                 .child(
                     div()
                         .flex()

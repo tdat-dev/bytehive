@@ -13,6 +13,7 @@ mod presets;
 mod single;
 mod terminal;
 mod transcript;
+mod tray;
 mod usage;
 mod worktree;
 

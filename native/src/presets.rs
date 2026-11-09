@@ -108,6 +108,9 @@ pub struct Prefs {
     /// Every new agent in a git repo gets its own worktree and branch.
     #[serde(default)]
     pub worktree: bool,
+    /// Minimising tucks the window into the tray; agents keep running.
+    #[serde(default)]
+    pub hide_to_tray: bool,
 }
 
 fn last_used() -> String {
@@ -173,6 +176,7 @@ impl Prefs {
         self.font_size = fresh.font_size;
         self.restore = fresh.restore;
         self.worktree = fresh.worktree;
+        self.hide_to_tray = fresh.hide_to_tray;
         self.skip_perms = false;
         self.save();
     }
