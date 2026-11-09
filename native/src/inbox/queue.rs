@@ -52,10 +52,7 @@ impl Inbox {
             })
             .when(current && !waits(state), |row| row.bg(color(RAISE)).shadow(vec![ring(white(0.1))]))
             .when(!current && !waits(state), |row| row.hover(|row| row.bg(white(0.03))))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.fleet.focus(index, window, cx);
-                cx.notify();
-            }))
+            .on_click(cx.listener(move |this, _, window, cx| this.open_agent(index, window, cx)))
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, event: &MouseDownEvent, _, cx| {
@@ -86,7 +83,16 @@ impl Inbox {
                                     // The job is the row's headline when there is one.
                                     .child(seat.spec.title.clone().unwrap_or_else(|| seat.spec.name.clone())),
                             )
-                            .child(mono().flex_none().text_size(px(12.0)).text_color(color(INK_3)).group_hover(group.clone(), |time| time.opacity(0.0)).child(ago(now_ms().saturating_sub(since)))),
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_none()
+                                    .gap(px(4.0))
+                                    .group_hover(group.clone(), |time| time.opacity(0.0))
+                                    // .iq-pin while it sits in the Grid on screen.
+                                    .when(self.grid.on && self.in_grid(index), |time| time.child(div().id(("in-grid", index)).tooltip(tip("In the Grid")).text_size(px(12.0)).text_color(color(INK_2)).child("\u{25eb}")))
+                                    .child(mono().text_size(px(12.0)).text_color(color(INK_3)).child(ago(now_ms().saturating_sub(since)))),
+                            ),
                     )
                     .child(
                         div()

@@ -166,6 +166,8 @@ pub struct Terminal {
     selecting: bool,
     /// Wheel travel not yet a whole line (touchpads scroll in pixels).
     wheel: f32,
+    /// Its own text size, while the Grid grows it; else the setting's.
+    font: Option<f32>,
 }
 
 impl Terminal {
@@ -247,6 +249,7 @@ impl Terminal {
                 preedit: String::new(),
                 selecting: false,
                 wheel: 0.0,
+                font: None,
             }
         }))
     }
@@ -317,6 +320,19 @@ impl Terminal {
         self.focus.clone()
     }
 
+    /// Draw at `size` px instead of the setting's size; None goes back to it.
+    pub fn set_font(&mut self, size: Option<f32>, cx: &mut Context<Self>) {
+        if self.font != size {
+            self.font = size;
+            cx.notify();
+        }
+    }
+
+    /// The size its text draws at now.
+    pub(super) fn text_px(&self) -> f32 {
+        self.font.unwrap_or_else(font_size)
+    }
+
     fn on_output(&mut self, cx: &mut Context<Self>) {
         for text in self.copies.lock().unwrap().drain(..) {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
@@ -356,6 +372,7 @@ impl Render for Terminal {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let this = cx.entity();
         let focus = self.focus.clone();
+        let size = self.text_px();
         let mut font_base = font(FONT_FAMILY);
         // Symbols before emoji: Claude Code's bullet must stay a plain glyph.
         font_base.fallbacks = Some(FontFallbacks::from_fonts(vec!["Segoe UI Symbol".to_string(), "Cascadia Mono".to_string(), "Consolas".to_string()]));
@@ -366,8 +383,8 @@ impl Render for Terminal {
                 move |bounds, window, cx| {
                     let text = window.text_system();
                     let id = text.resolve_font(&font_base);
-                    let cell_w = text.advance(id, px(font_size()), 'm').map(|s| s.width).unwrap_or(px(8.0));
-                    let cell_h = px((font_size() * LINE_HEIGHT).round());
+                    let cell_w = text.advance(id, px(size), 'm').map(|s| s.width).unwrap_or(px(8.0));
+                    let cell_h = px((size * LINE_HEIGHT).round());
                     this.update(cx, |this, _| this.fit(bounds, cell_w, cell_h));
                 }
             },

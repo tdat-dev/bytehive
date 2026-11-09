@@ -24,7 +24,9 @@ pub enum Item {
     /// The agent's words, markdown.
     Text { id: String, text: String },
     /// One tool call: "Read" + "main.rs", "Ran" + "npm test", ... as chatmodel.ts words it.
-    Step { id: String, verb: String, target: String, error: bool },
+    /// `done` once its result is in; `code` unless a command's target is its
+    /// description rather than the command itself.
+    Step { id: String, verb: String, target: String, error: bool, done: bool, code: bool },
 }
 
 static MODEL_SET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<local-command-stdout>Set model to `([^`]+)`").unwrap());
@@ -97,8 +99,9 @@ impl Chat {
                     match s(part, "type") {
                         "tool_result" => {
                             let Some(&at) = self.steps.get(s(part, "tool_use_id")) else { continue };
-                            if let Some(Item::Step { error, .. }) = self.items.get_mut(at) {
+                            if let Some(Item::Step { error, done, .. }) = self.items.get_mut(at) {
                                 *error = part.get("is_error") == Some(&Value::Bool(true));
+                                *done = true;
                             }
                         }
                         "text" => push_line(&mut text, s(part, "text")),
@@ -136,7 +139,7 @@ impl Chat {
         if out.is_some() || err.is_some() {
             let id = self.next_id();
             let error = err.as_deref().is_some_and(|e| !e.is_empty());
-            self.items.push(Item::Step { id, verb: "Ran".into(), target: self.last_bang.clone(), error });
+            self.items.push(Item::Step { id, verb: "Ran".into(), target: self.last_bang.clone(), error, done: true, code: true });
             return;
         }
         // slash commands, their output, "[Request interrupted by user]": notes in the TS
@@ -210,10 +213,12 @@ impl Chat {
                     if self.steps.contains_key(tid) {
                         continue;
                     }
-                    let (verb, target) = steps::describe(s(part, "name"), part.get("input").unwrap_or(&Value::Null));
+                    let (name, input) = (s(part, "name"), part.get("input").unwrap_or(&Value::Null));
+                    let (verb, target) = steps::describe(name, input);
+                    let code = !(matches!(name, "Bash" | "PowerShell") && !s(input, "description").is_empty());
                     let id = self.next_id();
                     self.steps.insert(tid.to_string(), self.items.len());
-                    self.items.push(Item::Step { id, verb, target, error: false });
+                    self.items.push(Item::Step { id, verb, target, error: false, done: false, code });
                 }
                 // thinking, images, anything new: not shown
                 _ => {}
@@ -281,7 +286,7 @@ mod tests {
     const RESULTS: &str = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"fn main() {}"},{"type":"tool_result","tool_use_id":"t2","content":"failed","is_error":true}]}}"#;
 
     fn step(id: &str, verb: &str, target: &str, error: bool) -> Item {
-        Item::Step { id: id.into(), verb: verb.into(), target: target.into(), error }
+        Item::Step { id: id.into(), verb: verb.into(), target: target.into(), error, done: true, code: true }
     }
 
     #[test]

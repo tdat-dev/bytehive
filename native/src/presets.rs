@@ -133,6 +133,9 @@ pub struct Prefs {
     /// Changes opens when the agent on the stage finishes with changes.
     #[serde(default)]
     pub review_on_done: bool,
+    /// Most agents the Grid shows: one terminal, the rest as cards.
+    #[serde(default = "nine")]
+    pub split_max: usize,
     /// A Windows notification when a plan passes 90% of a limit, and when an
     /// agent runs out.
     #[serde(default = "yes")]
@@ -166,6 +169,12 @@ fn fifteen() -> u32 {
 fn yes() -> bool {
     true
 }
+fn nine() -> usize {
+    9
+}
+
+/// How many agents the Grid may hold (prefs.ts SPLIT_SIZES).
+pub const SPLIT_SIZES: [usize; 5] = [2, 3, 4, 6, 9];
 
 /// The terminal text size range and default (settings.ts).
 pub const FONT_MIN: u32 = 10;
@@ -204,6 +213,9 @@ impl Prefs {
         self.job_delay = self.job_delay.clamp(DELAY_MIN, DELAY_MAX);
         self.font_size = self.font_size.clamp(FONT_MIN, FONT_MAX);
         self.remote_port = self.remote_port.clamp(1024, 65534);
+        if !SPLIT_SIZES.contains(&self.split_max) {
+            self.split_max = nine();
+        }
     }
 
     /// Settings back to how ByteHive ships; projects and presets stay.
@@ -223,6 +235,7 @@ impl Prefs {
         self.notify_done = fresh.notify_done;
         self.jump_to_needs = fresh.jump_to_needs;
         self.review_on_done = fresh.review_on_done;
+        self.split_max = fresh.split_max;
         self.limit_notify = fresh.limit_notify;
         self.skip_perms = false;
         self.save();

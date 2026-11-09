@@ -1,6 +1,7 @@
 //! The app's own keys, taken before a terminal sees them only where keys.rs
 //! lets them through (Ctrl+K, Ctrl+Shift+T); the rest work when no terminal
-//! has the keyboard. Esc puts away the topmost thing open.
+//! has the keyboard (Alt+S and Alt+P for the Grid among them). Esc puts away
+//! the topmost thing open.
 
 use super::*;
 
@@ -21,6 +22,10 @@ impl Inbox {
             self.open_settings(window, cx);
         } else if m.alt && !m.control && !m.shift && k.key == "o" {
             self.open_sessions(window, cx);
+        } else if m.alt && !m.control && !m.shift && k.key == "s" && !self.dialog_up() {
+            self.set_grid(!self.grid.on, window, cx);
+        } else if m.alt && !m.control && !m.shift && k.key == "p" && !self.dialog_up() {
+            self.pin_current(window, cx);
         } else if k.key == "escape" && self.dialog_open() {
             self.dialog_escape(window, cx);
         } else if k.key == "escape" && self.settings.is_some() {

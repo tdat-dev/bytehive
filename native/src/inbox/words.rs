@@ -45,15 +45,16 @@ pub(super) fn ended(state: State) -> bool {
     matches!(state, State::Stopped | State::Merged)
 }
 
-/// rowLine in inbox.ts: the second line of a queue row, from the agent's side.
-pub(super) fn row_line(status: &TaskStatus, worked: bool) -> String {
+/// rowLine in inbox.ts: what the agent is at, in its own words; a Grid card
+/// says it beside its state pill.
+pub(super) fn said_line(status: &TaskStatus, worked: bool) -> String {
     if let Some(limit) = &status.limit {
         return match limit.resets_at {
             Some(at) => format!("Out of usage · back {}", supervise::task_state::clock_of(at, now_ms())),
             None => "Out of usage".to_string(),
         };
     }
-    let said = match status.state {
+    match status.state {
         State::Needs | State::Blocked => match &status.ask {
             None => match &status.blocked {
                 Some(b) => b.what.clone(),
@@ -72,9 +73,15 @@ pub(super) fn row_line(status: &TaskStatus, worked: bool) -> String {
         State::Stopped => "Stopped".to_string(),
         State::Merged => "Merged into the base branch".to_string(),
         State::Idle => if worked { "Done" } else { "Waiting for a task" }.to_string(),
-    };
+    }
+}
+
+/// The second line of a queue row: the state in words, unless the line
+/// already is the state ("Needs you", "Stopped").
+pub(super) fn row_line(status: &TaskStatus, worked: bool) -> String {
+    let said = said_line(status, worked);
     let state = label_of(status.state);
-    if said == state || status.state == State::Merged { said } else { format!("{state} · {said}") }
+    if said == state || status.limit.is_some() || status.state == State::Merged { said } else { format!("{state} · {said}") }
 }
 
 /// The top bar's sentence, worded as today's app words it (inbox.ts headline).

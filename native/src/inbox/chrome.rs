@@ -128,7 +128,7 @@ impl Inbox {
             .justify_center()
             .items_center()
             .gap(px(10.0))
-            .child(div().flex().gap(px(2.0)).p(px(4.0)).rounded_full().bg(color(RAISE)).shadow(float()).child(seg("dock-focus", "focus", "Focus", true, "Focus: one agent at a time, full size (Alt+S switches)")).child(seg("dock-grid", "grid", "Grid", false, "Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)")))
+            .child(div().flex().gap(px(2.0)).p(px(4.0)).rounded_full().bg(color(RAISE)).shadow(float()).child(seg("dock-focus", "focus", "Focus", !self.grid.on, "Focus: one agent at a time, full size (Alt+S switches)").on_click(cx.listener(|this, _, window, cx| this.set_grid(false, window, cx)))).child(seg("dock-grid", "grid", "Grid", self.grid.on, "Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)").on_click(cx.listener(|this, _, window, cx| this.set_grid(!this.grid.on, window, cx)))))
             .child(
                 div()
                     .id("dock-search")

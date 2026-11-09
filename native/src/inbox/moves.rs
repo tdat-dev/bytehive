@@ -3,7 +3,8 @@
 //! one there is not busy (Show the agent that needs me), and open Changes when
 //! the agent on the stage finishes with changes (Open Changes when an agent
 //! finishes). The tick notes what moved; the next render, which has the
-//! window, acts, never while you are typing.
+//! window, acts, never while you are typing, and never while the Grid is on:
+//! it already shows every agent.
 
 use super::*;
 
@@ -22,18 +23,18 @@ impl Inbox {
         let stage_busy = stage.and_then(|i| statuses.get(i)).is_some_and(|s| matches!(s.state, State::Needs | State::Working));
         for &(index, before, now) in moved {
             let id = &self.fleet.seats[index].spec.id;
-            if now == State::Needs && self.prefs.jump_to_needs && Some(index) != stage && !stage_busy {
+            if now == State::Needs && self.prefs.jump_to_needs && !self.grid.on && Some(index) != stage && !stage_busy {
                 self.moves.jump = Some(id.clone());
                 return;
             }
-            if now == State::Review && before == State::Working && Some(index) == stage && self.prefs.review_on_done && self.changes.is_none() {
+            if now == State::Review && before == State::Working && Some(index) == stage && self.prefs.review_on_done && self.changes.is_none() && !self.grid.on {
                 self.moves.review = Some(id.clone());
             }
         }
     }
 
     /// You are typing somewhere or looking at a panel: leave the stage be.
-    fn busy_elsewhere(&self, window: &Window, cx: &App) -> bool {
+    pub(super) fn busy_elsewhere(&self, window: &Window, cx: &App) -> bool {
         let open = self.sheet.is_some()
             || self.palette.is_some()
             || self.settings.is_some()

@@ -38,6 +38,7 @@ mod schedules;
 mod board;
 mod browser;
 mod remote;
+mod grid;
 #[cfg(test)]
 mod tests;
 
@@ -170,6 +171,8 @@ pub struct Inbox {
     updates: updates::Updates,
     notices: notices::Notices,
     moves: moves::Moves,
+    /// Grid: one terminal and the others as cards beside it.
+    grid: grid::Grid,
     /// The browser hub, its live view, held clicks and Settings > Browser.
     browser: browser::BrowserWatch,
     /// The phone dashboard and Settings > Remote.
@@ -276,6 +279,7 @@ impl Inbox {
             updates: updates::Updates::default(),
             notices: notices::Notices::default(),
             moves: moves::Moves::default(),
+            grid: grid::Grid::default(),
             browser: browser::BrowserWatch::default(),
             remote: remote::Remote::new(),
             tray: crate::tray::Tray::new(),
@@ -379,6 +383,7 @@ impl Render for Inbox {
         self.start_updates(cx);
         self.open_noticed(window, cx);
         self.act_on_moves(window, cx);
+        self.grid_layout(window, cx);
         if self.home {
             self.ensure_compose(window, cx);
         }
@@ -442,7 +447,7 @@ impl Inbox {
             // since GPUI draws no radial gradients.
             .child(div().absolute().left(relative(0.62)).ml(px(-1100.0)).top(relative(-0.12)).mt(px(-460.0)).w(px(2200.0)).h(px(920.0)).child(img(haze()).size_full().object_fit(ObjectFit::Fill)))
             .child(self.top_bar(view, cx))
-            .child(div().flex().flex_1().min_h_0().child(self.queue(view, cx)).child(self.stage(view, cx)).children(self.files_view(cx)))
+            .child(div().flex().flex_1().min_h_0().children(self.queue_unless_wide(view, cx)).child(self.stage_or_grid(view, cx)).children(self.files_view(cx)))
             .child(self.dock(cx))
     }
 }
@@ -463,6 +468,9 @@ enum PalRun {
     Changes,
     History,
     Merge,
+    /// Alt+S and Alt+P.
+    Grid,
+    Pin,
     /// The project of the agent at this index.
     Project(usize),
 }

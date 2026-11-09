@@ -44,6 +44,12 @@ impl Inbox {
             items.push(PalItem { group: "Actions".into(), label: "Resume all".into(), sub: Some("Resume every stopped agent".into()), keys: None, agent: None, run: PalRun::ResumeAll });
         }
         let act = |label: &str, keys: &'static str, sub: Option<&str>, run: PalRun| PalItem { group: "Actions".into(), label: label.into(), sub: sub.map(str::to_string), keys: Some(keys), agent: None, run };
+        items.push(if self.grid.on {
+            act("Back to Focus: one agent, full size", "Alt+S", None, PalRun::Grid)
+        } else {
+            act("Grid: one agent and the others beside it", "Alt+S", Some("The one you work with as a terminal, every other one on a card that answers in place"), PalRun::Grid)
+        });
+        items.push(act("Add the current agent to the Grid, or take it out", "Alt+P", None, PalRun::Pin));
         if let Some(seat) = self.fleet.focused_seat() {
             items.push(act("Changes of the current agent", "Alt+R", Some("Merge them, or send it back with a note"), PalRun::Changes));
             if seat.spec.worktree.is_some() && view.statuses.get(self.fleet.focused.unwrap_or(0)).is_some_and(|s| s.state != State::Working) {
@@ -103,9 +109,9 @@ impl Inbox {
     pub(super) fn run_palette(&mut self, run: PalRun, window: &mut Window, cx: &mut Context<Self>) {
         self.palette = None;
         match run {
-            PalRun::Agent(index) => {
-                self.fleet.focus(index, window, cx);
-            }
+            PalRun::Agent(index) => self.open_agent(index, window, cx),
+            PalRun::Grid => self.set_grid(!self.grid.on, window, cx),
+            PalRun::Pin => self.pin_current(window, cx),
             PalRun::NewAgent => self.open_sheet(window, cx),
             PalRun::Sessions => self.open_sessions(window, cx),
             PalRun::Settings => self.open_settings(window, cx),

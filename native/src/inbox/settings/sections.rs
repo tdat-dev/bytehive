@@ -108,7 +108,14 @@ impl Inbox {
                     this.prefs.save();
                     cx.notify();
                 })),
-            );
+            )
+            .child(row("Agents in the Grid", "Most agents the Grid shows: the one you work with as a terminal, the others as cards beside it, taken from the top of the list.").child(seg().children(presets::SPLIT_SIZES.into_iter().map(|n| {
+                seg_button(("pref-split", n), n.to_string(), p.split_max == n).on_click(cx.listener(move |this, _, _, cx| {
+                    this.prefs.split_max = n;
+                    this.prefs.save();
+                    cx.notify();
+                }))
+            }))));
 
         let terminal = section("Terminal").child(row("Font size", "Applies live to every agent's terminal.").child(stepper(
             p.font_size.to_string(),

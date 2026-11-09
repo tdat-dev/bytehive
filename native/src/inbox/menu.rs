@@ -7,6 +7,8 @@ impl Inbox {
     pub(super) fn menu_view(&self, menu: &Menu, view: &View, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let index = menu.index;
         let running = view.statuses.get(index).is_some_and(|s| !ended(s.state));
+        let pinned = self.in_grid(index);
+        let here = self.fleet.focused == Some(index);
         let item = |id: &'static str, label: &'static str, danger: bool, disabled: bool| {
             div()
                 .id(id)
@@ -43,9 +45,18 @@ impl Inbox {
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(item("menu-open", "Open", false, false).on_click(cx.listener(move |this, _, window, cx| {
                             this.menu = None;
-                            this.fleet.focus(index, window, cx);
-                            cx.notify();
+                            this.open_agent(index, window, cx);
                         })))
+                        // Alt+P acts on the agent on the stage, so only its menu says so.
+                        .child(
+                            item("menu-grid", if pinned { "Take out of Grid" } else { "Add to Grid" }, false, false)
+                                .justify_between()
+                                .when(here, |i| i.child(div().flex_none().ml(px(12.0)).text_size(px(11.5)).text_color(color(INK_3)).child("Alt+P")))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.menu = None;
+                                    this.toggle_in_grid(index, cx);
+                                })),
+                        )
                         .when(!running, |m| {
                             m.child(item("menu-resume", "Resume", false, false).on_click(cx.listener(move |this, _, window, cx| {
                                 this.menu = None;

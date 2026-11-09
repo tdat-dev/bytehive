@@ -78,6 +78,6 @@ impl Inbox {
         let Some(id) = self.notices.open.take() else { return };
         let Some(index) = self.fleet.seats.iter().position(|s| s.spec.id == id) else { return };
         self.home = false;
-        self.fleet.focus(index, window, cx);
+        self.open_agent(index, window, cx);
     }
 }

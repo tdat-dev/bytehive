@@ -73,6 +73,7 @@ pub struct Found {
     pub limit_notify: Option<bool>,
     pub jump_to_needs: Option<bool>,
     pub review_on_done: Option<bool>,
+    pub split_max: Option<usize>,
     pub director_first: Option<bool>,
     pub font_size: Option<u32>,
     pub hide_to_tray: bool,
@@ -135,6 +136,7 @@ pub fn read(json: &str) -> Result<Found, String> {
         found.limit_notify = p.get("limitNotify").and_then(Value::as_bool);
         found.jump_to_needs = p.get("jumpToNeeds").and_then(Value::as_bool);
         found.review_on_done = p.get("reviewOnDone").and_then(Value::as_bool);
+        found.split_max = p.get("splitMax").and_then(Value::as_u64).map(|n| n as usize);
         found.director_first = p.get("directorFirst").and_then(Value::as_bool);
     }
     found.font_size = raw("maestro.termFontSize").and_then(|s| s.trim().parse::<f64>().ok()).map(|n| n.round() as u32);
@@ -185,6 +187,9 @@ impl Found {
         if let Some(v) = self.font_size {
             prefs.font_size = v;
         }
+        if let Some(v) = self.split_max {
+            prefs.split_max = v;
+        }
         prefs.hide_to_tray = self.hide_to_tray;
         prefs.clamp();
     }
@@ -234,7 +239,7 @@ mod tests {
             {"program":"claude","args":[],"cwd":"D:\\bytehive","name":"Founder","badge":"claude","color":"#fff","mono":"F","personId":"founder"}]}]"##;
         let storage = serde_json::json!({
             "maestro.session": session,
-            "maestro.prefs": r#"{"defaultCli":"codex","defaultCount":2,"jobDelay":6,"worktree":true,"restore":true}"#,
+            "maestro.prefs": r#"{"defaultCli":"codex","defaultCount":2,"jobDelay":6,"worktree":true,"restore":true,"splitMax":4}"#,
             "maestro.recent": r#"["D:\\bytehive","D:\\app"]"#,
             "maestro.inbox.lastCli": "custom:aider --yes",
             "maestro.crew": r#"{"skipPerms":true}"#,
@@ -254,6 +259,7 @@ mod tests {
         assert_eq!((p.default_cli.as_str(), p.default_count, p.job_delay, p.worktree, p.font_size, p.hide_to_tray, p.skip_perms), ("codex", 2, 6, true, 17, true, true));
         assert_eq!(p.recents, vec![r"D:\bytehive".to_string(), r"D:\app".to_string(), r"D:\other".to_string()]);
         assert_eq!(p.last_cli.as_deref(), Some("custom:aider --yes"));
+        assert_eq!(p.split_max, 4);
     }
 
     #[test]
