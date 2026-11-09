@@ -118,7 +118,7 @@ pub fn clock_of(at: u64, now: u64) -> String {
         (Some(d), Some(n)) => (d, n),
         _ => return String::new(),
     };
-    let time = format!("{}:{:02} {}", d.hour12().1, d.minute(), if d.hour12().0 { "AM" } else { "PM" });
+    let time = format!("{}:{:02} {}", d.hour12().1, d.minute(), if d.hour12().0 { "PM" } else { "AM" });
     if d.date_naive() == n.date_naive() {
         time
     } else {
