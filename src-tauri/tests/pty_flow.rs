@@ -172,19 +172,23 @@ fn an_agents_last_output_reaches_the_window_before_its_exit() {
         let _ = out.send(Ev::Bytes(b));
     });
     let sink = move |b: &[u8]| if b.is_empty() { joined.flush() } else { joined.push(b) };
-    let spec = CommandSpec::new("cmd.exe").arg("/C").arg("echo FINAL-MARK");
+    // Filler first and a pause, so the mark comes after the leading-edge message
+    // and the coalescer holds it for the interval.
+    let spec = CommandSpec::new("cmd.exe").arg("/C").arg("echo filler& ping -n 2 127.0.0.1 >nul& echo FINAL-MARK");
     let mut reg = Registry::new();
     reg.spawn("a".into(), &spec, size(), sink, move |_| {
         let _ = tx.send(Ev::Exit);
     })
     .expect("spawn");
     reg.write_input("a", b"\x1b[1;1R").expect("answer the startup query");
-    let mut seen = Vec::new();
+    let mut chunks: Vec<Vec<u8>> = Vec::new();
     loop {
         match rx.recv_timeout(Duration::from_secs(25)).expect("the exit is reported well before the 30 s interval") {
-            Ev::Bytes(b) => seen.extend(b),
+            Ev::Bytes(b) => chunks.push(b),
             Ev::Exit => break,
         }
     }
-    assert!(String::from_utf8_lossy(&seen).contains("FINAL-MARK"), "the last output came before the exit: {:?}", String::from_utf8_lossy(&seen));
+    let text = |c: &[Vec<u8>]| String::from_utf8_lossy(&c.concat()).into_owned();
+    assert!(!text(&chunks[..1]).contains("FINAL-MARK"), "the mark must not ride in the leading-edge message: {:?}", text(&chunks[..1]));
+    assert!(text(&chunks).contains("FINAL-MARK"), "the last output came before the exit: {:?}", text(&chunks));
 }
