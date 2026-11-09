@@ -32,7 +32,20 @@ use crate::{boxdraw, keys};
 use colors::{dimmed, hsla, indexed, resolve};
 
 const FONT_FAMILY: &str = "Geist Mono";
-const FONT_SIZE: f32 = 19.0;
+/// Text size in today's app's numbers (Settings, 10 to 20, 15 by default) is
+/// drawn this much larger: the 15 there looks like 19 here.
+const FONT_SCALE: f32 = 19.0 / 15.0;
+static FONT_SIZE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(19.0f32.to_bits());
+
+/// The size every terminal draws its text at.
+pub fn font_size() -> f32 {
+    f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// Settings → Terminal → Font size: every terminal picks it up on its next frame.
+pub fn set_font_size(setting: u32) {
+    FONT_SIZE.store((setting as f32 * FONT_SCALE).round().to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
 const LINE_HEIGHT: f32 = 1.6;
 /// History kept in view, and once out of sight: today's app keeps the same
 /// (src/terminal.ts SCROLLBACK_SHOWN, SCROLLBACK_HIDDEN).
@@ -350,8 +363,8 @@ impl Render for Terminal {
                 move |bounds, window, cx| {
                     let text = window.text_system();
                     let id = text.resolve_font(&font_base);
-                    let cell_w = text.advance(id, px(FONT_SIZE), 'm').map(|s| s.width).unwrap_or(px(8.0));
-                    let cell_h = px((FONT_SIZE * LINE_HEIGHT).round());
+                    let cell_w = text.advance(id, px(font_size()), 'm').map(|s| s.width).unwrap_or(px(8.0));
+                    let cell_h = px((font_size() * LINE_HEIGHT).round());
                     this.update(cx, |this, _| this.fit(bounds, cell_w, cell_h));
                 }
             },

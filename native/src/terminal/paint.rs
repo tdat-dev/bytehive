@@ -125,7 +125,7 @@ impl Terminal {
             let color = hsla(color);
             let underline = span.underline.then_some(UnderlineStyle { thickness: px(1.0), color: Some(color), wavy: false });
             let run = TextRun { len: span.text.len(), font, color, background_color: None, underline, strikethrough: None };
-            let line = window.text_system().shape_line(span.text.into(), px(FONT_SIZE), &[run], None);
+            let line = window.text_system().shape_line(span.text.into(), px(font_size()), &[run], None);
             let _ = line.paint(at(span.row, span.col), cell_h, TextAlign::Left, None, window, cx);
         }
 
@@ -133,7 +133,7 @@ impl Terminal {
             let color = hsla(FOREGROUND);
             let underline = Some(UnderlineStyle { thickness: px(1.0), color: Some(color), wavy: false });
             let run = TextRun { len: self.preedit.len(), font: font_base.clone(), color, background_color: Some(hsla(BACKGROUND)), underline, strikethrough: None };
-            let line = window.text_system().shape_line(self.preedit.clone().into(), px(FONT_SIZE), &[run], None);
+            let line = window.text_system().shape_line(self.preedit.clone().into(), px(font_size()), &[run], None);
             let _ = line.paint(at(row, col), cell_h, TextAlign::Left, None, window, cx);
         }
     }

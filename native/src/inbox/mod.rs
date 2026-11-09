@@ -18,6 +18,7 @@ mod home;
 mod compose;
 mod dropdown;
 mod logo;
+mod settings;
 #[cfg(test)]
 mod tests;
 
@@ -45,6 +46,7 @@ use chrome::window_buttons;
 use compose::Compose;
 use dropdown::Popup;
 use launch::Launch;
+use settings::Settings;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -63,9 +65,6 @@ const DOCK_H: f32 = 84.0;
 /// How often the queue rereads who is working.
 const TICK: Duration = Duration::from_millis(700);
 
-/// A job waits this long after its agent starts before it is typed in
-/// (Settings jobDelay in today's app), then for the CLI to go quiet.
-const JOB_DELAY_MS: u64 = 4000;
 /// Past this, the job is typed anyway: a screen never read as ready is one
 /// this cannot read, and typing beats losing the job.
 const PROMPT_WAIT_MS: u64 = 2 * 60_000;
@@ -122,6 +121,7 @@ pub struct Inbox {
     compose: Option<Compose>,
     /// A Home chip's drop-down, while open.
     popup: Option<Popup>,
+    settings: Option<Settings>,
     prefs: Prefs,
     sheet: Option<Sheet>,
     jobs: Vec<Job>,
@@ -175,16 +175,20 @@ impl Inbox {
                 cx.background_executor().timer(Duration::from_millis(plan::EVERY_MS)).await;
             }
         });
-        let fleet = Fleet::load();
+        let prefs = Prefs::load();
+        crate::terminal::set_font_size(prefs.font_size);
+        // Settings → Reopen my projects on start.
+        let fleet = if prefs.restore { Fleet::load() } else { Fleet::default() };
         Self {
             home: fleet.seats.is_empty(),
             compose: None,
             popup: None,
+            settings: None,
             plans: Default::default(),
             uses: HashMap::new(),
             _plans: plans,
             fleet,
-            prefs: Prefs::load(),
+            prefs,
             sheet: None,
             jobs: Vec::new(),
             typing: false,
@@ -240,7 +244,8 @@ impl Render for Inbox {
         let menu = self.menu.as_ref().filter(|m| m.index < self.fleet.seats.len()).map(|m| self.menu_view(m, &view, cx));
         let confirm = self.removing.filter(|i| *i < self.fleet.seats.len()).map(|i| self.confirm_view(i, cx));
         let palette = self.palette.as_ref().map(|p| self.palette_view(p, &view, cx));
-        let popup = self.popup.as_ref().filter(|_| self.home).map(|p| self.popup_view(p, cx));
+        let settings = self.settings.as_ref().map(|s| self.settings_view(s, cx));
+        let popup = self.popup.as_ref().map(|p| self.popup_view(p, cx));
         div()
             .relative()
             .size_full()
@@ -255,13 +260,21 @@ impl Render for Inbox {
                 } else if m.control && m.shift && !m.alt && k.key == "t" {
                     this.palette = None;
                     this.open_sheet(window, cx);
+                } else if m.control && !m.alt && !m.shift && k.key == "," {
+                    this.open_settings(window, cx);
+                } else if k.key == "escape" && this.settings.is_some() {
+                    if this.popup.take().is_none() {
+                        this.close_settings(window, cx);
+                    }
+                    cx.notify();
                 }
             }))
             .font_family("Geist")
             .line_height(relative(1.2))
             .child(body)
-            .children(popup)
             .children(sheet)
+            .children(settings)
+            .children(popup)
             .children(menu)
             .children(confirm)
             .children(palette)

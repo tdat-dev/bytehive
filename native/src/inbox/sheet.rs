@@ -19,7 +19,7 @@ impl Inbox {
         task.update(cx, |input, cx| input.focus(window, cx));
         crate::keys::set_active(false);
         let skip_perms = self.prefs.skip_perms;
-        self.sheet = Some(Sheet { task, choice, custom, count: 1, skip_perms, dir, missing, saved: false, error: None });
+        self.sheet = Some(Sheet { task, choice, custom, count: self.prefs.default_count, skip_perms, dir, missing, saved: false, error: None });
         cx.notify();
     }
 

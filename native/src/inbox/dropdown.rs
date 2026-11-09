@@ -9,6 +9,8 @@ pub(super) enum Pick {
     Dir,
     Cli,
     Count,
+    /// Settings → New agents start as.
+    DefaultCli,
 }
 
 pub(super) struct Popup {
@@ -23,6 +25,7 @@ enum Val {
     Dir(Option<String>),
     Cli(Choice),
     Count(usize),
+    DefaultCli(String),
 }
 
 /// One line: .sm-opt with its tick, label, mono sub and note.
@@ -38,8 +41,14 @@ struct Opt {
 
 impl Inbox {
     fn options(&self, pick: Pick) -> Vec<Opt> {
-        let Some(c) = &self.compose else { return Vec::new() };
         let opt = |label: String, on: bool, val: Val| Opt { label, sub: None, note: None, sep: false, on, disabled: false, val };
+        if pick == Pick::DefaultCli {
+            let now = &self.prefs.default_cli;
+            return std::iter::once(opt("Last used".to_string(), now == "last", Val::DefaultCli("last".to_string())))
+                .chain(PRESETS.iter().map(|p| opt(p.label.to_string(), now == p.id, Val::DefaultCli(p.id.to_string()))))
+                .collect();
+        }
+        let Some(c) = &self.compose else { return Vec::new() };
         match pick {
             // dirOptions: recent projects with their path, then a way to pick another.
             Pick::Dir => {
@@ -64,13 +73,21 @@ impl Inbox {
                 out
             }
             Pick::Count => (1..=3).map(|n| opt(count_label(n), c.count == n, Val::Count(n))).collect(),
+            Pick::DefaultCli => Vec::new(),
         }
     }
 
     fn choose(&mut self, val: Val, window: &mut Window, cx: &mut Context<Self>) {
         self.popup = None;
+        if let Val::DefaultCli(id) = val {
+            self.prefs.default_cli = id;
+            self.prefs.save();
+            cx.notify();
+            return;
+        }
         let Some(c) = &mut self.compose else { return };
         match val {
+            Val::DefaultCli(_) => {}
             Val::Dir(dir) => c.dir = dir,
             Val::Cli(choice) => {
                 c.cli = choice;
@@ -140,6 +157,24 @@ impl Inbox {
             .with_priority(1),
         )
     }
+}
+
+impl Inbox {
+    /// selectmenu.ts: a list opens under its button, 6px below, left edges
+    /// lined up; the same button again closes it.
+    pub(super) fn open_popup(&mut self, pick: Pick, under: Bounds<Pixels>, cx: &mut Context<Self>) {
+        self.popup = if self.popup.as_ref().is_some_and(|p| p.pick == pick) { None } else { Some(Popup { pick, at: point(under.left(), under.bottom() + px(6.0)) }) };
+        cx.notify();
+    }
+}
+
+/// Where a list button was last drawn, so its list opens under it.
+pub(super) type Spot = std::rc::Rc<std::cell::Cell<Bounds<Pixels>>>;
+
+/// An invisible layer over a button that keeps its Spot current.
+pub(super) fn track(spot: &Spot) -> impl IntoElement + use<> {
+    let spot = spot.clone();
+    canvas(move |bounds, _, _| spot.set(bounds), |_, _, _, _| {}).absolute().size_full()
 }
 
 /// The last path segment, for a project's name (folderName).

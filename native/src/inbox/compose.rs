@@ -2,7 +2,7 @@
 //! inbox.css): say what an agent should do, pick the folder, the CLI and how
 //! many, and Start. Enter starts, Shift+Enter is a new line.
 
-use super::dropdown::{Pick, Popup, count_label, folder_name};
+use super::dropdown::{Pick, Spot, count_label, folder_name, track};
 use super::*;
 use gpui_kit::component::Sizable as _;
 
@@ -16,7 +16,7 @@ pub(super) struct Compose {
     pub missing: HashSet<&'static str>,
     pub error: Option<String>,
     /// Where each chip was last drawn, so its list opens under it (by Pick).
-    pub spots: std::rc::Rc<std::cell::Cell<[Bounds<Pixels>; 3]>>,
+    pub spots: [Spot; 3],
     _enter: Subscription,
 }
 
@@ -25,7 +25,8 @@ const FOLDER: &str = "folder";
 
 /// The CLI to offer first: the last one used, if it is still installed.
 pub(super) fn last_choice(prefs: &Prefs, missing: &HashSet<&'static str>) -> Choice {
-    let last = prefs.last_cli.clone().unwrap_or_else(|| "claude".to_string());
+    // Settings → New agents start as: a CLI, or the last one used.
+    let last = if prefs.default_cli == "last" { prefs.last_cli.clone().unwrap_or_else(|| "claude".to_string()) } else { prefs.default_cli.clone() };
     if last.starts_with("custom:") {
         return Choice::Custom;
     }
@@ -61,7 +62,7 @@ impl Inbox {
         let custom = cx.new(|cx| InputState::new(window, cx).placeholder("Command, e.g. ollama run llama3.1").default_value(custom_value));
         job.update(cx, |input, cx| input.focus(window, cx));
         crate::keys::set_active(false);
-        self.compose = Some(Compose { job, custom, dir: recent, cli, count: 1, missing, error: None, spots: Default::default(), _enter: enter });
+        self.compose = Some(Compose { job, custom, dir: recent, cli, count: self.prefs.default_count, missing, error: None, spots: Default::default(), _enter: enter });
     }
 
     pub(super) fn compose_start(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -117,18 +118,9 @@ impl Inbox {
         cx.notify();
     }
 
-    /// selectmenu.ts: the list opens under its chip, 6px below, left edges lined up.
-    fn open_popup(&mut self, pick: Pick, cx: &mut Context<Self>) {
-        let Some(c) = &self.compose else { return };
-        let chip = c.spots.get()[pick as usize];
-        self.popup = if self.popup.as_ref().is_some_and(|p| p.pick == pick) { None } else { Some(Popup { pick, at: point(chip.left(), chip.bottom() + px(6.0)) }) };
-        cx.notify();
-    }
-
     pub(super) fn compose_view(&self, c: &Compose, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let focused = c.job.focus_handle(cx).contains_focused(window, cx);
         let open = self.popup.as_ref().map(|p| p.pick);
-        let spots = c.spots.clone();
         let chip = |id: &'static str, pick: Pick, glyph: Option<&'static str>, label: String, tooltip: Option<&'static str>| {
             let lit = open == Some(pick);
             div()
@@ -145,20 +137,11 @@ impl Inbox {
                 .text_color(color(if lit { INK } else { INK_2 }))
                 .hover(|chip| chip.bg(white(0.1)).text_color(color(INK)))
                 .when_some(tooltip.filter(|_| !lit), |chip, t| chip.tooltip(tip(t)))
-                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _: &MouseDownEvent, _, cx| this.open_popup(pick, cx)))
-                .child({
-                    let spots = spots.clone();
-                    canvas(
-                        move |bounds, _, _| {
-                            let mut all = spots.get();
-                            all[pick as usize] = bounds;
-                            spots.set(all);
-                        },
-                        |_, _, _, _| {},
-                    )
-                    .absolute()
-                    .size_full()
+                .on_mouse_down(MouseButton::Left, {
+                    let spot = c.spots[pick as usize].clone();
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| this.open_popup(pick, spot.get(), cx))
                 })
+                .child(track(&c.spots[pick as usize]))
                 .when_some(glyph, |chip, g| chip.child(icon(g, 15.0, color(if lit { INK } else { INK_2 }))))
                 .child(div().min_w_0().truncate().child(label))
                 .child(icon("chev-down", 10.0, color(INK_2)).opacity(0.7))

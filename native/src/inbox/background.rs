@@ -7,6 +7,8 @@ impl Inbox {
     /// after the start delay, not while it asks something, once it is quiet.
     pub(super) fn deliver(&mut self, cx: &mut Context<Self>) {
         let now = now_ms();
+        // Settings → Wait before giving the job.
+        let delay = self.prefs.job_delay * 1000;
         let mut done: Vec<String> = Vec::new();
         for job in &mut self.jobs {
             let Some(seat) = self.fleet.seats.iter().find(|s| s.spec.id == job.id) else {
@@ -25,7 +27,7 @@ impl Inbox {
             let screen = t.screen_text();
             if job.typer.is_none() {
                 let waited = now.saturating_sub(job.started);
-                let ready = waited >= JOB_DELAY_MS && t.quiet_for_ms() >= 1500 && parse_ask(&screen).is_none();
+                let ready = waited >= delay && t.quiet_for_ms() >= 1500 && parse_ask(&screen).is_none();
                 if !ready && waited < PROMPT_WAIT_MS {
                     continue;
                 }

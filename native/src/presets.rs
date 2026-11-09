@@ -72,7 +72,7 @@ pub struct Template {
     pub skip_perms: bool,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Prefs {
     /// A preset id, or "custom:<command>".
     #[serde(default)]
@@ -89,7 +89,47 @@ pub struct Prefs {
     /// The project New agent starts in.
     #[serde(default)]
     pub project: Option<String>,
+    /// Settings, as prefs.ts keeps them (defaults from DEFAULTS there).
+    /// The CLI New agent picks: a preset id, or "last" for the last one used.
+    #[serde(default = "last_used")]
+    pub default_cli: String,
+    /// How many agents New agent offers to start on one job.
+    #[serde(default = "one")]
+    pub default_count: usize,
+    /// Seconds a new CLI gets to reach its prompt before its job is typed.
+    #[serde(default = "four")]
+    pub job_delay: u64,
+    /// Terminal text size, in today's app's numbers (10 to 20).
+    #[serde(default = "fifteen")]
+    pub font_size: u32,
+    /// Bring back last session's agents, stopped, at start.
+    #[serde(default = "yes")]
+    pub restore: bool,
 }
+
+fn last_used() -> String {
+    "last".to_string()
+}
+fn one() -> usize {
+    1
+}
+fn four() -> u64 {
+    4
+}
+fn fifteen() -> u32 {
+    FONT_DEFAULT
+}
+fn yes() -> bool {
+    true
+}
+
+/// The terminal text size range and default (settings.ts).
+pub const FONT_MIN: u32 = 10;
+pub const FONT_MAX: u32 = 20;
+pub const FONT_DEFAULT: u32 = 15;
+/// The job delay range in seconds (prefs.ts clamp).
+pub const DELAY_MIN: u64 = 1;
+pub const DELAY_MAX: u64 = 20;
 
 /// recents.ts keeps this many.
 const RECENTS: usize = 6;
@@ -98,9 +138,39 @@ fn store() -> Option<PathBuf> {
     Some(crate::fleet::data_dir()?.join("prefs.json"))
 }
 
+impl Default for Prefs {
+    fn default() -> Self {
+        // An empty object takes every serde default above.
+        serde_json::from_str("{}").expect("prefs defaults")
+    }
+}
+
 impl Prefs {
     pub fn load() -> Self {
-        store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        let mut prefs: Self = store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        prefs.clamp();
+        prefs
+    }
+
+    /// Keep hand-edited values in range, as prefs.ts clamp() does.
+    pub fn clamp(&mut self) {
+        if !(1..=3).contains(&self.default_count) {
+            self.default_count = 1;
+        }
+        self.job_delay = self.job_delay.clamp(DELAY_MIN, DELAY_MAX);
+        self.font_size = self.font_size.clamp(FONT_MIN, FONT_MAX);
+    }
+
+    /// Settings back to how ByteHive ships; projects and presets stay.
+    pub fn reset_settings(&mut self) {
+        let fresh = Self::default();
+        self.default_cli = fresh.default_cli;
+        self.default_count = fresh.default_count;
+        self.job_delay = fresh.job_delay;
+        self.font_size = fresh.font_size;
+        self.restore = fresh.restore;
+        self.skip_perms = false;
+        self.save();
     }
 
     /// Make `dir` the current project and the newest recent one.
