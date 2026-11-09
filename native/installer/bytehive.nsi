@@ -99,13 +99,16 @@ Section "ByteHive"
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\bytehive.exe" "" "$INSTDIR\icon.ico"
 SectionEnd
 
-; Run by an updater (/S, or the Tauri updater's /UPDATE): open the app again.
+; Run by an updater (ours passes /UPDATE, Tauri's /R): open the app again. A
+; plain silent install (/S) leaves it closed.
 Function .onInstSuccess
   ${GetParameters} $0
   ClearErrors
   ${GetOptions} $0 "/UPDATE" $1
   IfErrors 0 relaunch
-  IfSilent relaunch done
+  ClearErrors
+  ${GetOptions} $0 "/R" $1
+  IfErrors done relaunch
   relaunch:
     Exec '"$INSTDIR\bytehive.exe"'
   done:

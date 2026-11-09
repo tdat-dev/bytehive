@@ -64,11 +64,16 @@ jobs:
           "SETUP=$setup" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       # The runner is a clean machine: install, look, start it, uninstall.
+      # Waits on the one process, not -Wait: pwsh's -Wait also waits for
+      # every child, and an app the installer opens never ends.
       - name: Install on a clean machine
         shell: pwsh
+        timeout-minutes: 10
         run: |
-          $p = Start-Process -FilePath $env:SETUP -ArgumentList "/S" -Wait -PassThru
+          $p = Start-Process -FilePath $env:SETUP -ArgumentList "/S" -PassThru
+          if (-not $p.WaitForExit(180000)) { throw "the installer did not finish in 3 minutes" }
           if ($p.ExitCode -ne 0) { throw "installer exit $($p.ExitCode)" }
+          if (Get-Process bytehive -ErrorAction SilentlyContinue) { throw "a plain /S install opened the app" }
           $dir = Join-Path $env:LOCALAPPDATA "ByteHive"
           foreach ($f in @("bytehive.exe", "icon.ico", "uninstall.exe", "browser-extension\manifest.json")) {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "missing $f after install" }
@@ -80,8 +85,10 @@ jobs:
           Start-Sleep -Seconds 8
           if ($app.HasExited) { throw "the app ended at start (code $($app.ExitCode))" }
           Stop-Process -Id $app.Id -Force
-          $u = Start-Process -FilePath (Join-Path $dir "uninstall.exe") -ArgumentList "/S" -Wait -PassThru
-          Start-Sleep -Seconds 6
+          # The uninstaller hands over to a copy of itself in %TEMP% and ends.
+          Start-Process -FilePath (Join-Path $dir "uninstall.exe") -ArgumentList "/S" | Out-Null
+          foreach ($i in 1..30) { if (-not (Test-Path (Join-Path $dir "bytehive.exe"))) { break }; Start-Sleep -Seconds 1 }
+          Start-Sleep -Seconds 2
           if (Test-Path (Join-Path $dir "bytehive.exe")) { throw "uninstall left bytehive.exe" }
           if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\bytehive") { throw "uninstall left the key" }
 
