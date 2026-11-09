@@ -37,6 +37,9 @@ enum Session {
 }
 
 /// Where PTY output goes (e.g. a window's IPC channel). Swappable via `attach`.
+/// Called with an empty slice once the child has exited: send anything held
+/// now (the window's joiner, commands.rs), so the exit cannot overtake it. A
+/// sink that holds nothing ignores it.
 pub type Sink = Box<dyn FnMut(&[u8]) + Send>;
 
 /// Recent output kept for replay when a new window attaches (tab detach).
@@ -71,6 +74,9 @@ struct Output {
     // A pipe agent's output is JSON lines: its window reads them as they are,
     // a remote terminal or a recording gets them as readable text.
     pipe: bool,
+    /// When the reader last handed output over, so the exit can wait for the
+    /// console's final bytes (see `spawn_waiter`).
+    last_read: Option<Instant>,
 }
 
 /// Standard base64 (no line breaks). Small dependency-free encoder, matching the
@@ -141,10 +147,11 @@ impl Agent {
             taps: Vec::new(),
             rec: None,
             pipe: false,
+            last_read: None,
         }));
         let flow = Arc::new(Flow::new(FlowConfig::default()));
         let reader_thread = spawn_reader(reader, output.clone(), flow.clone());
-        let wait_thread = spawn_waiter(child, on_exit);
+        let wait_thread = spawn_waiter(child, output.clone(), flow.clone(), on_exit);
 
         Ok(Agent {
             #[cfg(windows)]
@@ -179,6 +186,7 @@ impl Agent {
             taps: Vec::new(),
             rec: None,
             pipe: true,
+            last_read: None,
         }));
         // Pipe agents talk in small JSON lines and are never held back: their flow
         // is never switched on.
@@ -323,6 +331,7 @@ impl Agent {
 /// the scrollback a newly attached window replays.
 fn emit(output: &Arc<Mutex<Output>>, flow: &Flow, bytes: &[u8]) {
     let mut o = output.lock().unwrap_or_else(|p| p.into_inner());
+    o.last_read = Some(Instant::now());
     o.buf.extend(bytes);
     let over = o.buf.len().saturating_sub(SCROLLBACK_CAP);
     if over > 0 {
@@ -483,13 +492,34 @@ impl Drop for Agent {
     }
 }
 
+/// After the child exits the console can still be sending its last bytes:
+/// the exit waits until the reader has been quiet this long...
+const EXIT_QUIET: Duration = Duration::from_millis(30);
+/// ...but never longer than this.
+const EXIT_WAIT: Duration = Duration::from_millis(300);
+
 fn spawn_waiter(
     child: Box<dyn portable_pty::Child + Send + Sync>,
+    output: Arc<Mutex<Output>>,
+    flow: Arc<Flow>,
     on_exit: impl FnOnce(u32) + Send + 'static,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut child = child;
         let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
+        // Final output first, then the exit: let a held reader drain what is
+        // left (nobody runs to protect any more), give the console a moment,
+        // and have the sink send what it holds.
+        flow.off();
+        let t = Instant::now();
+        while t.elapsed() < EXIT_WAIT {
+            let last = output.lock().unwrap_or_else(|p| p.into_inner()).last_read;
+            if last.is_none_or(|r| r.elapsed() >= EXIT_QUIET) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        (output.lock().unwrap_or_else(|p| p.into_inner()).sink)(&[]);
         on_exit(code);
     })
 }
@@ -565,6 +595,7 @@ mod flow_tests {
             taps: Vec::new(),
             rec: None,
             pipe: false,
+            last_read: None,
         }));
         let flow = Arc::new(Flow::new(FlowConfig { high: HIGH as u64, low: HIGH as u64 / 4, stall: Duration::from_secs(60), trickle: 4096 }));
         flow.enable(1);

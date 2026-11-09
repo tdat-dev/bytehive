@@ -64,6 +64,9 @@ fn window_sink(
 ) -> Box<dyn FnMut(&[u8]) + Send> {
     if pipe {
         return Box::new(move |bytes| {
+            if bytes.is_empty() {
+                return; // nothing is held here
+            }
             let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
         });
     }
@@ -76,7 +79,8 @@ fn window_sink(
             }
         }
     });
-    Box::new(move |bytes| joined.push(bytes))
+    // An empty slice: the agent exited, send what is held (agent.rs Sink).
+    Box::new(move |bytes| if bytes.is_empty() { joined.flush() } else { joined.push(bytes) })
 }
 
 #[tauri::command]
@@ -1493,5 +1497,20 @@ mod window_sink_tests {
         assert!(flow.is_on(), "window 8's flow control must survive window 7's sink");
         flow.sent(10);
         assert!(flow.is_held());
+    }
+
+    #[test]
+    fn an_empty_slice_sends_what_the_joiner_holds_at_once() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ch = Channel::new(move |_| {
+            let _ = tx.send(());
+            Ok(())
+        });
+        let mut sink = window_sink(ch, false, 1, Arc::new(OnceLock::new()));
+        sink(b"first");
+        rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        sink(b"last words"); // held for MESSAGE_EVERY
+        sink(&[]); // the agent exited
+        rx.try_recv().expect("out before the exit is emitted");
     }
 }

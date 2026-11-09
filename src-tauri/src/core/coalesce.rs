@@ -8,7 +8,9 @@
 //! quiet (a keystroke's echo is not delayed), and while it is busy at most one
 //! goes out per `interval`, carrying everything read since. While someone is
 //! typing into it (`fast` says so) the interval is the short one, so an echo
-//! amid a stream is not held for a whole interval.
+//! amid a stream is not held for a whole interval. `flush` sends what is held
+//! at once and returns once it is out: an agent's last words must reach the
+//! window before its exit does.
 
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -18,12 +20,23 @@ struct Buf {
     data: Vec<u8>,
     closed: bool,
     last_sent: Option<Instant>,
+    /// Send what is held now, without waiting out the interval.
+    flush: bool,
+    /// Bytes taken in and bytes delivered, in all, so a flush knows when its part is out.
+    pushed: u64,
+    delivered: u64,
 }
 
 struct Shared {
     buf: Mutex<Buf>,
     cv: Condvar,
+    /// Signalled after each delivery.
+    out: Condvar,
 }
+
+/// The longest a flush waits for its bytes to be delivered (a window that has
+/// stopped taking messages must not hold an agent's exit for long).
+const FLUSH_WAIT: Duration = Duration::from_secs(2);
 
 pub struct Coalescer {
     shared: Arc<Shared>,
@@ -39,7 +52,8 @@ impl Coalescer {
         fast: impl Fn() -> bool + Send + 'static,
         deliver: impl FnMut(Vec<u8>) + Send + 'static,
     ) -> Self {
-        let shared = Arc::new(Shared { buf: Mutex::new(Buf { data: Vec::new(), closed: false, last_sent: None }), cv: Condvar::new() });
+        let buf = Buf { data: Vec::new(), closed: false, last_sent: None, flush: false, pushed: 0, delivered: 0 };
+        let shared = Arc::new(Shared { buf: Mutex::new(buf), cv: Condvar::new(), out: Condvar::new() });
         let s = shared.clone();
         thread::spawn(move || run(s, interval, typing_interval, big, fast, deliver));
         Coalescer { shared }
@@ -51,7 +65,25 @@ impl Coalescer {
         }
         let mut b = self.shared.buf.lock().unwrap_or_else(|p| p.into_inner());
         b.data.extend_from_slice(bytes);
+        b.pushed += bytes.len() as u64;
         self.shared.cv.notify_one();
+    }
+
+    /// Sends what is held at once, and returns once all that was pushed before
+    /// is delivered (or after FLUSH_WAIT).
+    pub fn flush(&self) {
+        let mut b = self.shared.buf.lock().unwrap_or_else(|p| p.into_inner());
+        let want = b.pushed;
+        if b.delivered >= want {
+            return;
+        }
+        b.flush = true;
+        self.shared.cv.notify_one();
+        let until = Instant::now() + FLUSH_WAIT;
+        while b.delivered < want {
+            let Some(left) = until.checked_duration_since(Instant::now()) else { return };
+            b = self.shared.out.wait_timeout(b, left).unwrap_or_else(|p| p.into_inner()).0;
+        }
     }
 }
 
@@ -75,15 +107,20 @@ fn run(shared: Arc<Shared>, interval: Duration, typing_interval: Duration, big: 
                 return; // closed and nothing left
             }
             // Busy: wait out the rest of the interval, taking more in meanwhile.
-            while !b.closed && b.data.len() < big {
+            while !b.closed && !b.flush && b.data.len() < big {
                 let due = b.last_sent.map(|t| t + if fast() { typing_interval } else { interval });
                 let Some(left) = due.and_then(|d| d.checked_duration_since(Instant::now())) else { break };
                 b = shared.cv.wait_timeout(b, left).unwrap_or_else(|p| p.into_inner()).0;
             }
             b.last_sent = Some(Instant::now());
+            b.flush = false;
             std::mem::take(&mut b.data)
         };
+        let n = batch.len() as u64;
         deliver(batch);
+        let mut b = shared.buf.lock().unwrap_or_else(|p| p.into_inner());
+        b.delivered += n;
+        shared.out.notify_all();
     }
 }
 
@@ -151,6 +188,23 @@ mod tests {
         rx.recv_timeout(Duration::from_secs(5)).unwrap(); // leading edge
         c.push(&[7u8; 1500]);
         assert_eq!(rx.recv_timeout(Duration::from_secs(10)).unwrap().len(), 1500, "well before the 30 s interval");
+    }
+
+    #[test]
+    fn flush_returns_once_everything_pushed_is_out() {
+        let (c, rx) = collect(30_000, 1 << 20);
+        c.push(b"first");
+        rx.recv_timeout(Duration::from_secs(5)).unwrap(); // leading edge
+        c.push(b"last words");
+        let t = Instant::now();
+        c.flush(); // the agent exited: what it said must be out before its exit is
+        assert_eq!(rx.try_recv().expect("delivered before flush returned"), b"last words");
+        assert!(t.elapsed() < Duration::from_secs(10), "well before the 30 s interval");
+        c.flush(); // nothing held: returns at once
+        c.push(b"more"); // within the interval again: held as usual...
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err(), "a flush does not change the interval");
+        c.flush(); // ...until the next flush
+        assert_eq!(rx.try_recv().expect("the next flush sends it"), b"more");
     }
 
     #[test]

@@ -154,3 +154,37 @@ fn interrupting_a_held_program_gets_its_answer_through() {
     // ...and a window that never acks does not keep the answer from coming.
     interrupt_gets_through(true, Duration::from_secs(20)).expect("with the reader held back");
 }
+
+/// The window's coalescer can hold an agent's last output for its whole
+/// interval. That must not let the exit event overtake it: whatever the child
+/// printed is in the sink before on_exit runs.
+#[test]
+fn an_agents_last_output_reaches_the_window_before_its_exit() {
+    use bytehive_lib::core::coalesce::Coalescer;
+    enum Ev {
+        Bytes(Vec<u8>),
+        Exit,
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let out = tx.clone();
+    // 30 s: without a flush on exit the last words would wait that long.
+    let joined = Coalescer::new(Duration::from_secs(30), Duration::from_secs(30), 1 << 20, || false, move |b| {
+        let _ = out.send(Ev::Bytes(b));
+    });
+    let sink = move |b: &[u8]| if b.is_empty() { joined.flush() } else { joined.push(b) };
+    let spec = CommandSpec::new("cmd.exe").arg("/C").arg("echo FINAL-MARK");
+    let mut reg = Registry::new();
+    reg.spawn("a".into(), &spec, size(), sink, move |_| {
+        let _ = tx.send(Ev::Exit);
+    })
+    .expect("spawn");
+    reg.write_input("a", b"\x1b[1;1R").expect("answer the startup query");
+    let mut seen = Vec::new();
+    loop {
+        match rx.recv_timeout(Duration::from_secs(25)).expect("the exit is reported well before the 30 s interval") {
+            Ev::Bytes(b) => seen.extend(b),
+            Ev::Exit => break,
+        }
+    }
+    assert!(String::from_utf8_lossy(&seen).contains("FINAL-MARK"), "the last output came before the exit: {:?}", String::from_utf8_lossy(&seen));
+}
