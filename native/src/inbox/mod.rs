@@ -25,6 +25,7 @@ mod changes;
 mod history;
 mod files;
 mod bridge;
+mod memory;
 #[cfg(test)]
 mod tests;
 
@@ -58,6 +59,7 @@ use toast::Toast;
 use changes::{Changes, Kept};
 use history::Histories;
 use files::Files;
+use memory::MemoryView;
 
 const GROUND: u32 = 0x050506;
 const PANEL: u32 = 0x0e0f11;
@@ -143,6 +145,7 @@ pub struct Inbox {
     files: Option<Files>,
     /// The bytehive-mcp file bridge, started on the first render.
     bridge: Option<Task<()>>,
+    memory: Option<MemoryView>,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -235,6 +238,7 @@ impl Inbox {
             history: Histories::default(),
             files: None,
             bridge: None,
+            memory: None,
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -328,6 +332,7 @@ impl Render for Inbox {
         let settings = self.settings.as_ref().map(|s| self.settings_view(s, cx));
         let sessions = self.sessions.as_ref().map(|s| self.sessions_view(s, window, cx));
         let popup = self.popup.as_ref().map(|p| self.popup_view(p, cx));
+        let memory = self.memory.as_ref().map(|m| self.memory_view(m, cx));
         let toast = self.toast_view();
         let changes = self.changes.as_ref().and_then(|c| self.changes_view(c, cx));
         div()
@@ -367,6 +372,8 @@ impl Render for Inbox {
                     this.cancel_comment(window, cx);
                 } else if k.key == "escape" && this.changes.is_some() {
                     this.close_changes(window, cx);
+                } else if k.key == "escape" && this.memory.is_some() {
+                    this.memory_escape(window, cx);
                 } else if k.key == "escape" && this.history.open.is_some() {
                     this.close_history(window, cx);
                 } else if m.alt && !m.control && !m.shift && k.key == "h" {
@@ -387,6 +394,7 @@ impl Render for Inbox {
             .children(sheet)
             .children(settings)
             .children(sessions)
+            .children(memory)
             .children(popup)
             .children(menu)
             .children(confirm)
@@ -422,6 +430,7 @@ enum PalRun {
     Sessions,
     Settings,
     Files,
+    Memory,
     Changes,
     History,
     Merge,

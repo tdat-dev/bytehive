@@ -52,6 +52,10 @@ impl Inbox {
             items.push(act("History of the current agent", "Alt+H", Some("What it did and what you answered"), PalRun::History));
         }
         items.push(act("Sessions", "Alt+O", Some("Read back earlier Claude conversations"), PalRun::Sessions));
+        if let Some(dir) = self.project_dir() {
+            let name = crate::fleet::project_of(&dir);
+            items.push(PalItem { group: "Actions".into(), label: "Project memory".into(), sub: Some(format!("What every agent in {name} knows: read, edit, or ask an agent to fix it")), keys: None, agent: None, run: PalRun::Memory });
+        }
         items.push(act("Files", "Ctrl+Shift+E", Some("Folder tree; files open in VS Code"), PalRun::Files));
         items.push(act("Settings", "Ctrl+,", None, PalRun::Settings));
         // Every other project with agents, by its first agent.
@@ -103,6 +107,11 @@ impl Inbox {
             PalRun::Sessions => self.open_sessions(window, cx),
             PalRun::Settings => self.open_settings(window, cx),
             PalRun::Files => self.toggle_files(window, cx),
+            PalRun::Memory => {
+                if let Some(dir) = self.project_dir() {
+                    self.open_memory(dir, window, cx);
+                }
+            }
             PalRun::Changes | PalRun::Merge => {
                 if let Some(index) = self.fleet.focused {
                     self.open_changes(index, window, cx);

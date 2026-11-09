@@ -10,6 +10,7 @@ mod icons;
 mod import;
 mod inbox;
 mod keys;
+mod memory;
 mod plan;
 mod presets;
 mod review;

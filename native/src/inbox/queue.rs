@@ -165,6 +165,7 @@ impl Inbox {
     pub(super) fn project_head(&self, name: &str, count: usize, needs: usize, cx: &mut Context<Self>) -> AnyElement {
         let folded = self.folded.contains(name);
         let key = name.to_string();
+        let project = name.to_string();
         div()
             .flex()
             .items_center()
@@ -230,6 +231,11 @@ impl Inbox {
                     .justify_center()
                     .opacity(0.7)
                     .hover(|mem| mem.opacity(1.0).bg(white(0.06)))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if let Some(dir) = this.fleet.seats.iter().find(|s| s.project() == project).map(|s| s.spec.cwd.clone()) {
+                            this.open_memory(dir, window, cx);
+                        }
+                    }))
                     .child(icon("memory", 15.0, color(INK_3))),
             )
             .into_any_element()
