@@ -109,6 +109,17 @@ impl Inbox {
             step_button("font-more", "+", p.font_size < presets::FONT_MAX).on_click(cx.listener(|this, _, window, cx| this.set_font(1, window, cx))),
         )));
 
+        // Session replays are not here: this app records none yet.
+        let sessions = section("Sessions")
+            .child(row("Scheduled agents", "Start a saved preset at a set time. Save one from New agent → Save as preset.").child(button("set-open-sched", "Manage").on_click(cx.listener(|this, _, window, cx| {
+                this.close_settings(window, cx);
+                this.open_schedules(window, cx);
+            }))))
+            .child(row("Token usage & cost", "Claude tokens used in this project, with an estimated cost.").child(button("set-open-usage", "View").on_click(cx.listener(|this, _, window, cx| {
+                this.close_settings(window, cx);
+                this.open_usage(window, cx);
+            }))));
+
         let system = section("System")
             .child(
                 toggle("pref-restore", p.restore, "Reopen my projects on start", "ByteHive brings back last session's projects and agents, stopped, so nothing heavy launches by itself. Resume the ones you need.").on_click(cx.listener(|this, _, _, cx| {
@@ -135,7 +146,7 @@ impl Inbox {
 
         let browser = self.browser_section(cx);
         let remote = self.remote_section(cx);
-        vec![agents.into_any_element(), inbox.into_any_element(), terminal.into_any_element(), browser.into_any_element(), remote.into_any_element(), system.into_any_element()]
+        vec![agents.into_any_element(), inbox.into_any_element(), terminal.into_any_element(), browser.into_any_element(), remote.into_any_element(), sessions.into_any_element(), system.into_any_element()]
     }
 
     fn set_delay(&mut self, by: i64, cx: &mut Context<Self>) {

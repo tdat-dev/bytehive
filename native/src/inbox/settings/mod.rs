@@ -11,7 +11,7 @@ use super::dropdown::{Pick, Spot, track};
 use super::*;
 
 /// The sections, as the left column lists them.
-const SECTIONS: [&str; 6] = ["Agents", "Inbox", "Terminal", "Browser", "Remote", "System"];
+const SECTIONS: [&str; 7] = ["Agents", "Inbox", "Terminal", "Browser", "Remote", "Sessions", "System"];
 
 pub(super) struct Settings {
     scroll: ScrollHandle,
