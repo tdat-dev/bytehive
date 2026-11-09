@@ -7,9 +7,13 @@
 mod act;
 mod diff;
 mod foot;
+mod keys;
 mod view;
 
 pub(super) use view::close_button;
+
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::review::diff::DiffFile;
 use crate::review::land::{self, LandResult};
@@ -63,6 +67,11 @@ pub(super) struct Changes {
     pub(in crate::inbox) editing: Option<Editing>,
     /// Where a Shift-click run of lines starts.
     anchor: Option<(Side, u32)>,
+    /// The line the keyboard is on, by its place among the drawn lines.
+    line: Option<usize>,
+    /// What the next paint scrolls into view.
+    reveal: Rc<Cell<keys::Reveal>>,
+    scroll: ScrollHandle,
     /// "Discard branch?" waiting for an answer.
     pub(in crate::inbox) discarding: bool,
     note: Entity<TextareaState>,
@@ -124,6 +133,9 @@ impl Inbox {
             msg: None,
             editing: None,
             anchor: None,
+            line: None,
+            reveal: Rc::default(),
+            scroll: ScrollHandle::new(),
             discarding: false,
             note,
             comment,

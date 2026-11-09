@@ -78,7 +78,12 @@ impl Inbox {
                 // M merges, as the button says; not while you type.
                 let k = &event.keystroke;
                 let on_drawer = this.changes.as_ref().is_some_and(|c| c.focus.is_focused(window));
-                if on_drawer && k.key == "m" && !k.modifiers.control && !k.modifiers.alt {
+                if !on_drawer {
+                    return;
+                }
+                if this.diff_key(event, window, cx) {
+                    cx.stop_propagation();
+                } else if k.key == "m" && !k.modifiers.control && !k.modifiers.alt {
                     this.merge_changes(window, cx);
                 }
             }))
@@ -239,6 +244,7 @@ impl Inbox {
                                     c.show_all = false;
                                     c.editing = None;
                                     c.anchor = None;
+                                    c.line = None;
                                 }
                                 cx.notify();
                             }))

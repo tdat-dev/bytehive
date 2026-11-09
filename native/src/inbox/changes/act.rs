@@ -194,12 +194,14 @@ impl Inbox {
 
     /// Open the box under a line; with Shift, for the run from the last line picked.
     pub(super) fn start_comment(&mut self, side: Side, num: u32, extend: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.line_to(side, num);
         let Some(c) = &mut self.changes else { return };
         let from = match c.anchor {
             Some((s, n)) if extend && s == side => n,
             _ => num,
         };
         c.editing = Some(Editing { id: None, side, start: from.min(num), end: from.max(num) });
+        c.reveal.set(super::keys::Reveal::Box);
         if !extend {
             c.anchor = Some((side, num));
         }
@@ -214,6 +216,7 @@ impl Inbox {
         let Some(c) = &mut self.changes else { return };
         let Some(found) = self.kept.get(&c.id).and_then(|k| k.comments.iter().find(|x| x.id == cid)) else { return };
         c.editing = Some(Editing { id: Some(found.id.clone()), side: found.side, start: found.start, end: found.end });
+        c.reveal.set(super::keys::Reveal::Box);
         let text = found.text.clone();
         c.comment.update(cx, |box_, cx| {
             box_.set_value(text, window, cx);
@@ -249,6 +252,7 @@ impl Inbox {
             .collect();
         let text = c.comment.read(cx).value().trim().to_string();
         c.focus.focus(window, cx);
+        let (side, end) = (e.side, e.end);
         let kept = self.kept.entry(c.id.clone()).or_default();
         match (text.is_empty(), e.id) {
             (true, Some(id)) => kept.comments.retain(|x| x.id != id),
@@ -260,13 +264,18 @@ impl Inbox {
             }
             (false, None) => kept.comments.push(LineComment { id: uuid::Uuid::new_v4().to_string(), path, side: e.side, start: e.start, end: e.end, code, text }),
         }
+        self.line_to(side, end);
         cx.notify();
     }
 
     pub(in crate::inbox) fn cancel_comment(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut back = None;
         if let Some(c) = &mut self.changes {
-            c.editing = None;
+            back = c.editing.take().map(|e| (e.side, e.end));
             c.focus.focus(window, cx);
+        }
+        if let Some((side, end)) = back {
+            self.line_to(side, end);
         }
         cx.notify();
     }

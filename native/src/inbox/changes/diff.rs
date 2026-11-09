@@ -14,6 +14,10 @@ impl Inbox {
             out.push(div().py(px(10.0)).px(px(18.0)).text_color(color(INK_3)).child("Binary file, not shown.").into_any_element());
         }
         let mut drawn = 0usize;
+        // Where each line sits among the children, for its painted bounds.
+        let mut row_at = Vec::new();
+        let mut box_at = None;
+        let cursor = if c.editing.is_none() { c.line } else { None };
         'hunks: for h in &f.hunks {
             if !c.show_all && drawn >= MAX_LINES {
                 break;
@@ -28,12 +32,17 @@ impl Inbox {
                 let side = if l.kind == Kind::Del { Side::Old } else { Side::New };
                 let num = if side == Side::Old { l.old } else { l.new }.unwrap_or(0);
                 let on = mine.iter().any(|x| x.side == side && num >= x.start && num <= x.end);
-                out.push(diff_line(l.kind, l.new, &l.text, on, cx.listener(move |this, e: &MouseDownEvent, window, cx| this.start_comment(side, num, e.modifiers.shift, window, cx))));
+                row_at.push(out.len());
+                out.push(diff_line(l.kind, l.new, &l.text, on, cursor == Some(drawn - 1), cx.listener(move |this, e: &MouseDownEvent, window, cx| this.start_comment(side, num, e.modifiers.shift, window, cx))));
                 for x in mine.iter().filter(|x| x.side == side && x.end == num) {
                     let editing_this = c.editing.as_ref().is_some_and(|e| e.id.as_deref() == Some(x.id.as_str()));
+                    if editing_this {
+                        box_at = Some(out.len());
+                    }
                     out.push(if editing_this { self.comment_box(c, &f.path, cx) } else { comment_note(x, cx) });
                 }
                 if c.editing.as_ref().is_some_and(|e| e.id.is_none() && e.side == side && e.end == num) {
+                    box_at = Some(out.len());
                     out.push(self.comment_box(c, &f.path, cx));
                 }
             }
@@ -54,8 +63,10 @@ impl Inbox {
                     .into_any_element(),
             );
         }
+        let (want, scroll) = (c.reveal.clone(), c.scroll.clone());
         div()
             .id("ir-diff")
+            .track_scroll(&c.scroll)
             .flex_1()
             .min_h(px(96.0))
             .overflow_scroll()
@@ -65,12 +76,19 @@ impl Inbox {
             .font_family("Geist Mono")
             .text_size(px(12.5))
             .line_height(relative(1.65))
-            .child(div().flex().flex_col().items_start().min_w_full().children(out))
+            .child(div().flex().flex_col().items_start().min_w_full().on_children_prepainted(move |bounds, window, _| {
+                let at = match want.take() {
+                    super::keys::Reveal::Line(k) => row_at.get(k).copied(),
+                    super::keys::Reveal::Box => box_at,
+                    super::keys::Reveal::Nothing => None,
+                };
+                super::keys::reveal(&scroll, at.and_then(|i| bounds.get(i).copied()), window);
+            }).children(out))
     }
 }
 
 /// One diff line: its number takes a comment (a + shows on hover), then the code.
-fn diff_line(kind: Kind, new: Option<u32>, text: &str, commented: bool, on_pick: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static) -> AnyElement {
+fn diff_line(kind: Kind, new: Option<u32>, text: &str, commented: bool, cursor: bool, on_pick: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static) -> AnyElement {
     let (bg, ink, sign) = match kind {
         Kind::Add => (Some(tint(WORK, 0.1)), color(0xc5ecd3), "+"),
         Kind::Del => (Some(tint(DANGER, 0.1)), color(0xf6d0ca), "-"),
@@ -93,9 +111,11 @@ fn diff_line(kind: Kind, new: Option<u32>, text: &str, commented: bool, on_pick:
                 .cursor_pointer()
                 .text_color(color(if commented { REVIEW } else { INK_3 }))
                 .when(commented, |n| n.bg(tint(REVIEW, 0.14)))
+                // .ln:focus-visible: a white outline inside the number.
+                .when(cursor, |n| n.text_color(color(INK)).shadow(vec![BoxShadow { color: color(0xffffff).into(), offset: point(px(0.0), px(0.0)), blur_radius: px(0.0), spread_radius: px(2.0), inset: true }]))
                 .group_hover("dl", |n| n.text_color(color(INK)))
                 .on_mouse_down(MouseButton::Left, on_pick)
-                .child(div().absolute().left(px(7.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(REVIEW)).invisible().group_hover("dl", |p| p.visible()).child("+"))
+                .child(div().absolute().left(px(7.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(REVIEW)).when(!cursor, |p| p.invisible()).group_hover("dl", |p| p.visible()).child("+"))
                 .child(new.map(|n| n.to_string()).unwrap_or_default()),
         )
         .child(div().flex_none().whitespace_nowrap().text_color(ink).child(format!("{sign}{}", text.replace('\t', "    "))))
