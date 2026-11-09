@@ -32,16 +32,24 @@ impl Inbox {
         let race_id = (l.count > 1).then(|| format!("race-{}", now_ms()));
         let mut first = None;
         let mut waiting = Vec::new();
+        // Settings → Agents: the first agent of an empty project can be its Director.
+        let director = !l.quiet && self.prefs.director_first && l.count <= 1 && !self.fleet.seats.iter().any(|s| presets::same_folder(&s.spec.cwd, &l.dir));
         for n in 1..=l.count.max(1) {
             let race = race_id.clone().map(|id| Race { id, n, of: l.count });
-            let index = if self.prefs.worktree {
+            let index = self.fleet.reserve(&l.program, l.args.clone(), &l.dir, title.clone(), race);
+            if director {
+                let spec = &mut self.fleet.seats[index].spec;
+                spec.name = "Director".to_string();
+                spec.role = Some("conductor".to_string());
+                self.fleet.save();
+            }
+            if self.prefs.worktree {
                 // Settings → Own branch for every agent: it starts once its worktree is made.
-                let index = self.fleet.reserve(&l.program, l.args.clone(), &l.dir, title.clone(), race);
                 waiting.push(self.fleet.seats[index].spec.id.clone());
-                index
             } else {
-                self.fleet.add(&l.program, l.args.clone(), &l.dir, title.clone(), race, cx).map_err(|e| format!("Could not start {}: {e}", l.program))?
-            };
+                self.fleet.seats[index].preparing = false;
+                self.fleet.start(index, cx).map_err(|e| format!("Could not start {}: {e}", l.program))?;
+            }
             first.get_or_insert(index);
             if !l.job.is_empty() {
                 let id = self.fleet.seats[index].spec.id.clone();

@@ -46,6 +46,13 @@ impl Inbox {
                     cx.notify();
                 })),
             )
+            .child(
+                toggle("pref-director", p.director_first, "First agent in a new project is the Director", "It gets ByteHive's Director rules and hands work to the others through the board and fleet_send.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.director_first = !this.prefs.director_first;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
             .child(row("Wait before giving the job", "Time a new CLI gets to reach its prompt before ByteHive types the job in. Raise it if jobs get lost on a slow machine.").child(stepper(
                 format!("{} s", p.job_delay),
                 step_button("delay-less", "−", p.job_delay > presets::DELAY_MIN).on_click(cx.listener(|this, _, _, cx| this.set_delay(-1, cx))),

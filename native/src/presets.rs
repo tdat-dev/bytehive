@@ -108,6 +108,9 @@ pub struct Prefs {
     /// Every new agent in a git repo gets its own worktree and branch.
     #[serde(default)]
     pub worktree: bool,
+    /// The first agent of a project with none is its Director.
+    #[serde(default)]
+    pub director_first: bool,
     /// Minimising tucks the window into the tray; agents keep running.
     #[serde(default)]
     pub hide_to_tray: bool,
@@ -212,6 +215,7 @@ impl Prefs {
         self.font_size = fresh.font_size;
         self.restore = fresh.restore;
         self.worktree = fresh.worktree;
+        self.director_first = fresh.director_first;
         self.hide_to_tray = fresh.hide_to_tray;
         self.auto_handover = fresh.auto_handover;
         self.auto_resume = fresh.auto_resume;

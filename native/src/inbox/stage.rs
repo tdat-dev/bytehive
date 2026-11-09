@@ -90,6 +90,8 @@ impl Inbox {
                             // With a job, the agent's name moves up beside its CLI.
                             .when(seat.spec.title.is_some(), |meta| meta.child(div().text_size(px(13.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(seat.spec.name.clone())))
                             .child(div().text_color(color(INK_2)).child(if seat.spec.title.is_some() { format!("· {cli_label}") } else { cli_label }))
+                            // .pb-role, hidden once the header has a title.
+                            .when(seat.spec.role.as_deref() == Some("conductor") && seat.spec.title.is_none(), |meta| meta.child(div().text_color(color(INK_3)).child("Director")))
                             .children(seat.branch.clone().map(|b| mono().min_w_0().truncate().text_color(color(INK_3)).child(b))),
                     )
                     .child(
