@@ -60,10 +60,20 @@ fn attach_replays_scrollback_and_reroutes_output() {
 
     // Attach a new sink (the "detached window"). Replay must deliver the
     // marker that was emitted BEFORE the attach.
+    // Like the window, it acks what it took, so a big replay never holds the agent.
     let second: Arc<Mutex<Vec<u8>>> = Arc::default();
     let s = second.clone();
-    reg.attach("a", Box::new(move |b| s.lock().unwrap().extend_from_slice(b)))
-        .expect("attach");
+    let flow = reg.flow_of("a").expect("flow");
+    reg.attach(
+        "a",
+        Box::new(move |b| {
+            let mut got = s.lock().unwrap();
+            got.extend_from_slice(b);
+            flow.ack(2, got.len() as u64);
+        }),
+        2,
+    )
+    .expect("attach");
     assert!(
         contains(&second.lock().unwrap(), b"detach-marker"),
         "attach must replay buffered scrollback synchronously"
@@ -83,7 +93,7 @@ fn attach_replays_scrollback_and_reroutes_output() {
     );
 
     // Attaching to an unknown agent errors cleanly.
-    assert!(reg.attach("ghost", Box::new(|_| {})).is_err());
+    assert!(reg.attach("ghost", Box::new(|_| {}), 3).is_err());
 
     reg.kill("a");
 }

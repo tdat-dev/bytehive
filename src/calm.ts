@@ -37,8 +37,9 @@ export function initCalm(): void {
 }
 
 /** Holds a terminal's output while calm and hands it over every CALM_MS; out
- *  of calm it passes each chunk straight through. The order of chunks is kept. */
-export function createPacer<T>(write: (chunk: T) => void, ms: number = CALM_MS): { push(chunk: T): void; flush(): void; dispose(): void } {
+ *  of calm it passes each chunk straight through. The order of chunks is kept.
+ *  `dispose` hands back the chunks it was still holding. */
+export function createPacer<T>(write: (chunk: T) => void, ms: number = CALM_MS): { push(chunk: T): void; flush(): void; dispose(): T[] } {
   let held: T[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   const flush = () => {
@@ -55,7 +56,14 @@ export function createPacer<T>(write: (chunk: T) => void, ms: number = CALM_MS):
       if (timer === null) timer = setTimeout(flush, ms);
     },
     flush,
-    dispose() { if (timer !== null) clearTimeout(timer); timer = null; held = []; off(); },
+    dispose() {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      off();
+      const left = held;
+      held = [];
+      return left;
+    },
   };
 }
 

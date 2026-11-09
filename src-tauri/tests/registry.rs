@@ -127,7 +127,7 @@ fn an_agent_whose_process_exits_leaves_the_registry() {
         wait_for(|| !registry::lock(&shared).has("a"), Duration::from_secs(10)),
         "a dead agent must not keep its ConPTY, job and scrollback"
     );
-    assert!(registry::lock(&shared).attach("a", Box::new(|_| {})).is_err());
+    assert!(registry::lock(&shared).attach("a", Box::new(|_| {}), 1).is_err());
 }
 
 #[test]

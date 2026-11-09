@@ -3,6 +3,7 @@ use std::path::Path;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::core::coalesce::Coalescer;
 use crate::core::command_spec::CommandSpec;
 use crate::core::registry::{self, Registry};
 use crate::error::{run_blocking, CommandError};
@@ -25,6 +26,69 @@ struct ExitPayload {
 /// tells its old process's late exit apart from the new one.
 static NEXT_RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+/// While a terminal streams, at most one message to its window per this long.
+/// Measured with 12 shells printing: every webview call (a message out, an ack
+/// back) goes through one channel that also carries typing and every other
+/// command, and at 33 ms a message the round trip of a no-op command reached
+/// 4.6 s; at 125 ms it stayed at 16 ms (95th percentile) like an idle app.
+const MESSAGE_EVERY: std::time::Duration = std::time::Duration::from_millis(125);
+/// ...but while someone types into the agent, the short one, so the echo of a
+/// key amid a stream is not held for a whole MESSAGE_EVERY.
+const MESSAGE_EVERY_TYPING: std::time::Duration = std::time::Duration::from_millis(16);
+/// "While someone types" is this long after the last input.
+const TYPING_FOR: std::time::Duration = std::time::Duration::from_millis(1500);
+/// A pile this big goes out at once.
+const MESSAGE_BIG: usize = 64 * 1024;
+
+/// BYTEHIVE_PTY_FLOW=off starts ByteHive with every terminal outside flow
+/// control (acks are then ignored): for measuring what the gate costs or saves.
+fn flow_control_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        let on = std::env::var("BYTEHIVE_PTY_FLOW").map_or(true, |v| v != "off");
+        if !on {
+            eprintln!("BYTEHIVE_PTY_FLOW=off: terminal output flow control is off for this run");
+        }
+        on
+    })
+}
+
+/// Where an agent's output goes in the window. A terminal's reads are tiny and
+/// many; each one sent alone is a script the webview compiles and runs, so they
+/// are joined (core/coalesce.rs). A pipe agent's output is whole JSON lines and
+/// stays as it is. `flow` is filled in once the agent exists, so the joiner can
+/// tell when someone is typing into it. A message the window of `epoch` cannot
+/// take turns the flow off: nobody is left to ack, and the reader must not wait
+/// on them. Only for that window: an old sink drops after a new window took
+/// over, and its last send failing must not turn the new one's flow off.
+/// Attaching a window turns it on again.
+fn window_sink(
+    on_bytes: Channel<InvokeResponseBody>,
+    pipe: bool,
+    epoch: u64,
+    flow: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<crate::core::flow::Flow>>>,
+) -> Box<dyn FnMut(&[u8]) + Send> {
+    if pipe {
+        return Box::new(move |bytes| {
+            if bytes.is_empty() {
+                return; // nothing is held here
+            }
+            let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
+        });
+    }
+    let gone = flow.clone();
+    let typing = move || flow.get().is_some_and(|f| f.typed_within(TYPING_FOR));
+    let joined = Coalescer::new(MESSAGE_EVERY, MESSAGE_EVERY_TYPING, MESSAGE_BIG, typing, move |batch| {
+        if on_bytes.send(InvokeResponseBody::Raw(batch)).is_err() {
+            if let Some(f) = gone.get() {
+                f.off_if(epoch);
+            }
+        }
+    });
+    // An empty slice: the agent exited, send what is held (agent.rs Sink).
+    Box::new(move |bytes| if bytes.is_empty() { joined.flush() } else { joined.push(bytes) })
+}
+
 #[tauri::command]
 pub async fn pty_spawn(
     app: AppHandle,
@@ -39,6 +103,9 @@ pub async fn pty_spawn(
     // On plain pipes instead of a terminal: for an agent that talks in JSON
     // lines (Claude Code's stream-json). Its output arrives as whole lines.
     pipe: Option<bool>,
+    // The window's name for this channel in its acks (core/flow.rs). Without
+    // one the output is never held back.
+    epoch: Option<u64>,
     // Raw-bytes channel: PTY output is streamed as binary (ArrayBuffer on the JS
     // side). Sending `Vec<u8>` directly would serialize every byte as a JSON
     // number — pathologically slow under a chatty agent's output and the cause
@@ -67,10 +134,14 @@ pub async fn pty_spawn(
 
     let app2 = app.clone();
     let exit_id = agent_id.clone();
+    let flow_id = agent_id.clone();
     let registry = state.registry.clone();
+    let flows = state.flows.clone();
     let run = NEXT_RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pipe = pipe.unwrap_or(false);
 
     run_blocking(move || {
+        let flow = std::sync::Arc::new(std::sync::OnceLock::new());
         // Not under the registry lock: ConPTY creation is slow, and every other
         // agent's keystrokes and resizes take that same lock.
         Registry::spawn_shared(
@@ -79,15 +150,23 @@ pub async fn pty_spawn(
             run,
             &spec,
             size,
-            pipe.unwrap_or(false),
-            move |bytes| {
-                let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
-            },
+            pipe,
+            window_sink(on_bytes, pipe, epoch.unwrap_or(0), flow.clone()),
             move |code| {
                 let _ = app2.emit("pty-exit", ExitPayload { id: exit_id, code, run });
             },
         )
         .map_err(CommandError::from)?;
+        let Some(f) = registry::lock(&registry).flow_of(&flow_id) else {
+            return Ok(run); // already ended
+        };
+        flows.put(&flow_id, &f);
+        // The window acks what it parses (pty_ack); a terminal is held back when
+        // it falls behind. A pipe agent is never held.
+        if let (false, Some(epoch), true) = (pipe, epoch, flow_control_on()) {
+            f.enable(epoch);
+        }
+        let _ = flow.set(f);
         Ok(run)
     })
     .await
@@ -100,20 +179,42 @@ pub async fn pty_spawn(
 pub async fn pty_attach(
     state: State<'_, AppState>,
     agent_id: String,
+    epoch: Option<u64>,
     on_bytes: Channel<InvokeResponseBody>,
 ) -> Result<(), CommandError> {
     let registry = state.registry.clone();
+    let flows = state.flows.clone();
     run_blocking(move || {
         let reg = registry::lock(&registry);
-        reg.attach(
-            &agent_id,
-            Box::new(move |bytes| {
-                let _ = on_bytes.send(InvokeResponseBody::Raw(bytes.to_vec()));
-            }),
-        )
-        .map_err(CommandError::from)
+        let pipe = reg.is_pipe(&agent_id);
+        let flow = std::sync::Arc::new(std::sync::OnceLock::new());
+        if let Some(f) = reg.flow_of(&agent_id) {
+            flows.put(&agent_id, &f);
+            let _ = flow.set(f);
+        }
+        let epoch_or_none = epoch.unwrap_or(0);
+        reg.attach(&agent_id, window_sink(on_bytes, pipe, epoch_or_none, flow.clone()), epoch_or_none)
+            .map_err(CommandError::from)?;
+        if epoch.is_none() || !flow_control_on() {
+            if let Some(f) = flow.get() {
+                f.off_if(epoch_or_none); // a window that will not ack is never waited on
+            }
+        }
+        Ok(())
     })
     .await
+}
+
+/// The window of `epoch` has parsed `parsed` bytes of an agent's output in all.
+/// The reader of that agent is held back while the window is too far behind;
+/// this is what lets it go on. Never takes the registry lock, and async so it
+/// stays off the main thread.
+#[tauri::command]
+pub async fn pty_ack(state: State<'_, AppState>, agent_id: String, epoch: u64, parsed: u64) -> Result<(), CommandError> {
+    if let Some(f) = state.flows.get(&agent_id) {
+        f.ack(epoch, parsed);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -916,6 +1017,7 @@ fn capture(program: &str, args: &[String], cwd: Option<&str>, timeout_ms: u64) -
     use std::process::{Command, Stdio};
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    crate::core::pty_session::restore_webview_args(&mut cmd);
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         if !Path::new(dir).is_dir() {
             return Err(CommandError::Failed(format!("The folder {dir} doesn't exist anymore.")));
@@ -1345,5 +1447,76 @@ mod session_tests {
         assert!(path_under("D:/app/.claude/worktrees/x", r"D:\app"));
         assert!(!path_under(r"D:\app-two", r"D:\app"));
         assert!(!path_under(r"D:\app", ""));
+    }
+}
+
+#[cfg(test)]
+mod window_sink_tests {
+    use super::window_sink;
+    use crate::core::flow::{Flow, FlowConfig};
+    use std::sync::{Arc, OnceLock};
+    use std::time::{Duration, Instant};
+    use tauri::ipc::Channel;
+
+    #[test]
+    fn a_window_that_cannot_take_output_turns_the_flow_off_and_frees_the_reader() {
+        let flow = Arc::new(Flow::new(FlowConfig { high: 10, low: 5, stall: Duration::from_secs(60), trickle: 1 }));
+        flow.enable(7);
+        flow.sent(10);
+        assert!(flow.is_held());
+        let waiting = flow.clone();
+        let reader = std::thread::spawn(move || waiting.wait_ready());
+        let slot = Arc::new(OnceLock::new());
+        let _ = slot.set(flow.clone());
+        let gone = Channel::new(|_| Err(std::io::Error::other("the window is gone").into()));
+        let mut sink = window_sink(gone, false, 7, slot);
+        sink(b"one more line");
+        let t = Instant::now();
+        while !reader.is_finished() {
+            assert!(t.elapsed() < Duration::from_secs(10), "the held reader must be let go");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!flow.is_on(), "nobody is left to ack");
+        flow.begin(8); // a window attaches
+        assert!(flow.is_on());
+    }
+
+    #[test]
+    fn the_old_windows_sink_dying_after_an_attach_leaves_the_new_window_in_control() {
+        let flow = Arc::new(Flow::new(FlowConfig { high: 10, low: 5, stall: Duration::from_secs(60), trickle: 1 }));
+        flow.enable(7);
+        let slot = Arc::new(OnceLock::new());
+        let _ = slot.set(flow.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let dead = Channel::new(move |_| {
+            let _ = tx.send(());
+            Err(std::io::Error::other("the old window is gone").into())
+        });
+        let mut old = window_sink(dead, false, 7, slot);
+        old(b"first"); // goes out at once
+        rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        old(b"held by the coalescer");
+        flow.begin(8); // pty_attach: the new window takes over...
+        drop(old); // ...and the old sink drops, flushing to the dead channel
+        rx.recv_timeout(Duration::from_secs(10)).expect("the old sink's last send fails");
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(flow.is_on(), "window 8's flow control must survive window 7's sink");
+        flow.sent(10);
+        assert!(flow.is_held());
+    }
+
+    #[test]
+    fn an_empty_slice_sends_what_the_joiner_holds_at_once() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ch = Channel::new(move |_| {
+            let _ = tx.send(());
+            Ok(())
+        });
+        let mut sink = window_sink(ch, false, 1, Arc::new(OnceLock::new()));
+        sink(b"first");
+        rx.recv_timeout(Duration::from_secs(10)).unwrap();
+        sink(b"last words"); // held for MESSAGE_EVERY
+        sink(&[]); // the agent exited
+        rx.try_recv().expect("out before the exit is emitted");
     }
 }

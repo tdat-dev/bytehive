@@ -7,11 +7,75 @@ import { open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { typeInto, serialize } from "./typing";
+import { createAcker } from "./flowack";
 
 /** Open an http(s) link in the user's default browser. */
 export async function openExternal(url: string): Promise<void> {
   if (!/^https?:\/\//i.test(url)) return; // scheme allowlist matches the capability
   await openUrl(url);
+}
+
+/** Takes a terminal's output. With `{ acks: true }` call `parsed` once the
+ *  terminal has finished with the bytes (xterm's write callback): the backend
+ *  holds the program back while too much is unparsed, and this is what lets it
+ *  go on. Without it `parsed` does nothing and the program is never held. */
+export type PtyHandler = (bytes: Uint8Array, parsed: () => void) => void;
+
+/** `acks`: this window acks what it parses, so the backend may hold the
+ *  program back while it is behind. Off unless asked for. */
+export interface PtyFlow {
+  acks?: boolean;
+}
+
+/** A stream quiet this long, with only its last chunk unparsed, has that chunk
+ *  acked anyway: a callback that never came must not leave a tail counted
+ *  against the window. More than the last chunk owed is a window still behind. */
+export const IDLE_ACK_MS = 1000;
+
+/** A name for one channel in its acks, so the backend can tell them from those
+ *  of a window that no longer owns the output (tab detach, restart). */
+export function newEpoch(): number {
+  const [hi, lo] = crypto.getRandomValues(new Uint32Array(2));
+  return (hi & 0xfffff) * 0x1_0000_0000 + lo + 1; // 1 to 2^52: exact as a JS number and a u64
+}
+
+/** Turns a channel message into `onBytes(bytes, parsed)` and sends the acks.
+ *  Each chunk's `parsed` says "parsed up to the end of this chunk": xterm parses
+ *  in order, so a chunk whose callback never comes is covered by the next. */
+function withAcks(agentId: string, epoch: number, onBytes: PtyHandler): (buf: ArrayBuffer) => void {
+  const acker = createAcker((parsed) => void invoke("pty_ack", { agentId, epoch, parsed }).catch(() => {}));
+  let received = 0;
+  let lastStart = 0; // where the newest chunk begins
+  let best = 0; // parsed so far
+  let idle: ReturnType<typeof setTimeout> | null = null;
+  const arm = () => {
+    if (idle !== null) clearTimeout(idle);
+    idle = setTimeout(() => {
+      idle = null;
+      if (best >= lastStart && best < received) {
+        acker.parsedTo(received);
+        acker.flush();
+      }
+    }, IDLE_ACK_MS);
+  };
+  return (buf) => {
+    const bytes = new Uint8Array(buf);
+    lastStart = received;
+    received += bytes.length;
+    const end = received;
+    arm();
+    onBytes(bytes, () => {
+      if (end > best) best = end;
+      acker.parsedTo(end);
+      arm();
+    });
+  };
+}
+
+/** The channel's handler: acked as `epoch` with `acks`, plain otherwise. */
+function handlerOf(agentId: string, epoch: number | undefined, onBytes: PtyHandler): (buf: ArrayBuffer) => void {
+  if (epoch === undefined) return (buf) => onBytes(new Uint8Array(buf), () => {});
+  return withAcks(agentId, epoch, onBytes);
 }
 
 /**
@@ -26,15 +90,17 @@ export async function spawnPty(
   cols: number,
   rows: number,
   env: Array<[string, string]>,
-  onBytes: (bytes: Uint8Array) => void,
+  onBytes: PtyHandler,
+  flow: PtyFlow = {},
 ): Promise<number> {
   // PTY output streams as raw binary (ArrayBuffer), NOT a JSON number[]. The
   // number[] path serialized every byte as a JSON number on both sides and
   // choked the whole app under a chatty fleet; a raw buffer is ~100x cheaper.
   const ch = new Channel<ArrayBuffer>();
-  ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
+  const epoch = flow.acks ? newEpoch() : undefined; // no epoch: never held
+  ch.onmessage = handlerOf(agentId, epoch, onBytes);
   // The run number of this start; its exit event carries the same number.
-  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe: false, onBytes: ch });
+  return invoke<number>("pty_spawn", { agentId, program, args, cwd, cols, rows, env, pipe: false, epoch, onBytes: ch });
 }
 
 /** Re-attach a RUNNING agent's output to this window (tab detach hand-off).
@@ -42,11 +108,13 @@ export async function spawnPty(
  *  streams live output. Rejects if the agent no longer exists. */
 export async function attachPty(
   agentId: string,
-  onBytes: (bytes: Uint8Array) => void,
+  onBytes: PtyHandler,
+  flow: PtyFlow = {},
 ): Promise<void> {
   const ch = new Channel<ArrayBuffer>();
-  ch.onmessage = (buf) => onBytes(new Uint8Array(buf));
-  await invoke("pty_attach", { agentId, onBytes: ch });
+  const epoch = flow.acks ? newEpoch() : undefined;
+  ch.onmessage = handlerOf(agentId, epoch, onBytes);
+  await invoke("pty_attach", { agentId, epoch, onBytes: ch });
 }
 
 export async function sendInput(agentId: string, data: string): Promise<void> {

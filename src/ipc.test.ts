@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Hoisted so the mock factory can safely reference it.
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -16,7 +16,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn().mockResolvedValue("D:\\projects\\demo"),
 }));
 
-import { spawnPty, sendInput, resizePty, killPty } from "./ipc";
+import { spawnPty, attachPty, sendInput, resizePty, killPty, IDLE_ACK_MS } from "./ipc";
 
 beforeEach(() => {
   invoke.mockReset();
@@ -51,5 +51,113 @@ describe("ipc", () => {
 
     await killPty("agent-2");
     expect(invoke).toHaveBeenCalledWith("pty_kill", { agentId: "agent-2" });
+  });
+});
+
+describe("output flow control", () => {
+  /** The channel a spawn handed the backend and the epoch it named, so a test can play the backend's part. */
+  async function channelOf(handler: Parameters<typeof spawnPty>[7]) {
+    await spawnPty("agent-9", "powershell.exe", [], null, 80, 24, [], handler, { acks: true });
+    const args = invoke.mock.calls[0][1];
+    return { ch: args.onBytes as { onmessage: (m: ArrayBuffer) => void }, epoch: args.epoch as number };
+  }
+  const acks = () => invoke.mock.calls.filter((c) => c[0] === "pty_ack").map((c) => c[1]);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(5_000_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("names the channel with an epoch and acks the running total once the terminal has parsed it", async () => {
+    let parsed: () => void = () => {};
+    const { ch, epoch } = await channelOf((_bytes, done) => { parsed = done; });
+    expect(Number.isSafeInteger(epoch) && epoch > 0).toBe(true);
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(300));
+    expect(acks()).toEqual([]); // not parsed yet
+    parsed();
+    parsed(); // a second call says nothing new
+    expect(acks()).toEqual([{ agentId: "agent-9", epoch, parsed: 300 }]);
+  });
+
+  it("a chunk whose callback never comes is covered by the next one", async () => {
+    const done: Array<() => void> = [];
+    const { ch, epoch } = await channelOf((_bytes, d) => { done.push(d); });
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(300)); // xterm dropped this one's callback
+    ch.onmessage(new ArrayBuffer(200));
+    done[1]();
+    expect(acks()).toEqual([{ agentId: "agent-9", epoch, parsed: 500 }]);
+  });
+
+  it("an ack that failed on the way is made good by the next", async () => {
+    const done: Array<() => void> = [];
+    const { ch, epoch } = await channelOf((_bytes, d) => { done.push(d); });
+    invoke.mockClear();
+    invoke.mockRejectedValueOnce(new Error("ipc hiccup"));
+    ch.onmessage(new ArrayBuffer(100));
+    done[0](); // lost
+    vi.advanceTimersByTime(1000);
+    ch.onmessage(new ArrayBuffer(50));
+    done[1]();
+    const all = acks();
+    expect(all[all.length - 1]).toEqual({ agentId: "agent-9", epoch, parsed: 150 });
+  });
+
+  it("a window that does not opt in names no epoch and never acks, so it is never waited on", async () => {
+    let got = 0;
+    await spawnPty("a", "x", [], null, 80, 24, [], (bytes, parsed) => { got += bytes.length; parsed(); });
+    await attachPty("a", (bytes) => { got += bytes.length; }); // takes the callback, never calls it
+    const [spawn, attach] = invoke.mock.calls.map((c) => c[1]);
+    expect(spawn.epoch).toBeUndefined();
+    expect(attach.epoch).toBeUndefined();
+    spawn.onBytes.onmessage(new ArrayBuffer(50));
+    attach.onBytes.onmessage(new ArrayBuffer(70));
+    vi.advanceTimersByTime(10 * IDLE_ACK_MS);
+    expect(got).toBe(120);
+    expect(acks()).toEqual([]);
+  });
+
+  it("a handler that opts in is not acked for a chunk it has not parsed", async () => {
+    const { ch } = await channelOf(() => {}); // two parameters or not, it said it acks
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(50));
+    expect(acks()).toEqual([]);
+  });
+
+  it("a last chunk whose callback never comes is acked once the stream goes quiet", async () => {
+    const done: Array<() => void> = [];
+    const { ch, epoch } = await channelOf((_bytes, d) => { done.push(d); });
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(300));
+    done[0]();
+    vi.advanceTimersByTime(1000);
+    ch.onmessage(new ArrayBuffer(200)); // its callback is lost
+    vi.advanceTimersByTime(IDLE_ACK_MS - 1);
+    expect(acks().map((a) => a.parsed)).toEqual([300]);
+    vi.advanceTimersByTime(1);
+    expect(acks()[acks().length - 1]).toEqual({ agentId: "agent-9", epoch, parsed: 500 });
+  });
+
+  it("a quiet stream with more than its last chunk unparsed is still a window behind: no idle ack", async () => {
+    const done: Array<() => void> = [];
+    const { ch } = await channelOf((_bytes, d) => { done.push(d); });
+    invoke.mockClear();
+    ch.onmessage(new ArrayBuffer(300)); // xterm still busy with this one
+    ch.onmessage(new ArrayBuffer(200));
+    vi.advanceTimersByTime(10 * IDLE_ACK_MS);
+    expect(acks()).toEqual([]);
+    done[0]();
+    vi.advanceTimersByTime(IDLE_ACK_MS);
+    expect(acks().map((a) => a.parsed)).toEqual([300, 500]); // now only the last one is owed
+  });
+
+  it("every spawn and attach gets an epoch of its own", async () => {
+    await spawnPty("a", "x", [], null, 80, 24, [], () => {}, { acks: true });
+    await attachPty("a", () => {}, { acks: true });
+    const [spawn, attach] = invoke.mock.calls.map((c) => c[1].epoch);
+    expect(spawn).not.toEqual(attach);
+    expect(invoke).toHaveBeenLastCalledWith("pty_attach", expect.objectContaining({ agentId: "a", epoch: attach }));
   });
 });

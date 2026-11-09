@@ -136,9 +136,10 @@ impl Registry {
     }
 
     /// Re-point a running agent's output at a new sink (window detach).
-    /// Replays the buffered scrollback through the new sink first.
-    pub fn attach(&self, id: &str, sink: Sink) -> Result<()> {
-        self.get(id)?.attach(sink);
+    /// Replays the buffered scrollback through the new sink first. The new
+    /// window acks as `epoch` (core/flow.rs).
+    pub fn attach(&self, id: &str, sink: Sink, epoch: u64) -> Result<()> {
+        self.get(id)?.attach(sink, epoch);
         Ok(())
     }
 
@@ -180,6 +181,30 @@ impl Registry {
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<()> {
         self.get(id)?.resize(cols, rows)
+    }
+
+    /// The flow state of `id`, to be read without the registry lock.
+    pub fn flow_of(&self, id: &str) -> Option<std::sync::Arc<crate::core::flow::Flow>> {
+        self.get(id).ok().map(|a| a.flow().clone())
+    }
+
+    /// Whether `id` talks in JSON lines on pipes. False for an unknown id.
+    pub fn is_pipe(&self, id: &str) -> bool {
+        self.get(id).is_ok_and(|a| a.is_pipe())
+    }
+
+    /// The window shows this agent and will ack, as `epoch`, what it parsed.
+    pub fn enable_flow(&self, id: &str, epoch: u64) -> Result<()> {
+        self.get(id)?.enable_flow(epoch);
+        Ok(())
+    }
+
+    /// The window of `epoch` has parsed `total` bytes of the output of `id` in
+    /// all. A late ack for an agent that is gone is not an error.
+    pub fn ack(&self, id: &str, epoch: u64, total: u64) {
+        if let Ok(a) = self.get(id) {
+            a.ack(epoch, total);
+        }
     }
 
     /// Kill (remove) one agent. No-op if absent. Drop tears the agent down.

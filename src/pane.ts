@@ -368,13 +368,16 @@ export function createAgent(
       // Identity for the child process: bytehive-mcp uses BYTEHIVE_AGENT to
       // stamp who moved/finished a board card (see mcp/src/server.ts).
       const envPairs = agentEnv(spec, cwd);
-      pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes) => {
+      pane.run = await spawnPty(id, launch.program, launch.args, cwd, cols, rows, envPairs, (bytes, parsed) => {
         pane.lastOutputAt = Date.now();
         if (pane.attention) clearAttention(pane); // agent is producing output again
         // After a tab detach this xterm is disposed but the PTY lives on (the
-        // new window owns it) — never write into a dropped pane.
-        if (ws.panes.has(id)) term.write(bytes);
-      });
+        // new window owns it) — never write into a dropped pane. `parsed` tells
+        // the backend this much is done with, so it can send (and let the
+        // program write) more; a dropped pane has nothing left to wait for.
+        if (ws.panes.has(id)) term.write(bytes, parsed);
+        else parsed();
+      }, { acks: true });
       pane.spawning = false;
       pane.running = true;
       pane.error = undefined;
@@ -444,11 +447,12 @@ export function createAgent(
       // has left the replayed scrollback, and it asks every time, so it holds.
       term.useWin32Keys();
       try {
-        await attachPty(id, (bytes) => {
+        await attachPty(id, (bytes, parsed) => {
           pane.lastOutputAt = Date.now();
           if (pane.attention) clearAttention(pane); // agent is producing output again
-          if (ws.panes.has(id)) term.write(bytes);
-        });
+          if (ws.panes.has(id)) term.write(bytes, parsed);
+          else parsed();
+        }, { acks: true });
         pane.running = true;
         pane.spawnedAt = attach.spawnedAt ?? Date.now();
         pane.lastOutputAt = Date.now();

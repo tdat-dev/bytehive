@@ -10,6 +10,7 @@ import { openMenu } from "./ctxmenu";
 import { createPacer } from "./calm";
 import { localTermKey } from "./termkeys";
 import { win32Key } from "./win32keys";
+import { skipIdleSelectionRedraw } from "./xtermpause";
 
 /** How a pane paints: which palette, and whether the CLI's own background
  *  plate is stripped out of the byte stream on the way in. */
@@ -20,7 +21,9 @@ export interface PaneLook {
 }
 
 export interface TerminalHandle {
-  write(data: Uint8Array): void;
+  /** `parsed` is called once the emulator has taken the bytes in: that is what
+   *  the backend waits for before it lets the program write more (ipc.ts). */
+  write(data: Uint8Array, parsed?: () => void): void;
   fit(): { cols: number; rows: number };
   reset(): void;
   /** Win32 key events from now on: an agent attached here asked for them before this terminal existed. */
@@ -206,6 +209,7 @@ export function mountTerminal(
     );
   }
   term.open(container);
+  skipIdleSelectionRedraw(term); // a pane out of sight must not rebuild its rows on every scroll (xtermpause.ts)
   fit.fit();
 
   // GPU renderer, but only while under the context budget — past it we keep the
@@ -373,7 +377,14 @@ export function mountTerminal(
   const bgFilter = createBgFilter(() => look.stripPlate);
   // In the background (calm.ts) output is drawn a few times a second, not on
   // every byte: an agent's spinner otherwise repaints its terminal nonstop.
-  const pacer = createPacer<Uint8Array>((chunk) => term.write(chunk));
+  let disposed = false;
+  const pacer = createPacer<{ data: Uint8Array; parsed?: () => void }>((c) => {
+    try {
+      term.write(c.data, c.parsed);
+    } catch {
+      c.parsed?.(); // refused (disposed, or far too much queued): do not leave the backend waiting
+    }
+  });
 
   const snapshot = (lines = 40): string => {
     try {
@@ -393,7 +404,16 @@ export function mountTerminal(
   };
 
   return {
-    write: (data) => pacer.push(bgFilter(data)),
+    write: (data, parsed) => {
+      if (disposed) { parsed?.(); return; } // a chunk that was already in flight when the pane went
+      let shown = data;
+      try {
+        shown = bgFilter(data);
+      } catch {
+        // the bytes as they came, rather than none at all (and no ack)
+      }
+      pacer.push({ data: shown, parsed });
+    },
     fit: () => {
       fitToBox();
       return { cols: term.cols, rows: term.rows };
@@ -401,7 +421,8 @@ export function mountTerminal(
     reset: () => { pacer.flush(); term.reset(); },
     useWin32Keys: () => { win32Keys = true; },
     dispose: () => {
-      pacer.dispose();
+      disposed = true;
+      for (const c of pacer.dispose()) c.parsed?.(); // held for the next draw, never to be parsed now
       ro.disconnect();
       term.dispose();
       if (usedWebgl) liveWebgl--;

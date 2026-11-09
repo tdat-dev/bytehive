@@ -1,5 +1,7 @@
 pub mod agent;
+pub mod coalesce;
 pub mod command_spec;
+pub mod flow;
 pub mod fs;
 pub mod screenshot;
 #[cfg(windows)]
