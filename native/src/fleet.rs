@@ -45,6 +45,9 @@ pub struct Spec {
     /// Its branch went into this one from Changes: its job is done.
     #[serde(default)]
     pub merged_into: Option<String>,
+    /// "conductor" for the Director, which gets the dispatch laws.
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
 impl Spec {
@@ -193,6 +196,7 @@ impl Fleet {
             worktree: None,
             branch: None,
             merged_into: None,
+            role: None,
         };
         self.seats.push(Seat { spec, terminal: None, branch: None, pid: None, preparing: true, changes: ChangeCount::default() });
         self.save();
@@ -228,6 +232,12 @@ impl Fleet {
         };
         let mut args = base;
         args.extend(extra);
+        // ByteHive's protocol at the system-prompt level, so a Claude agent
+        // must follow it; only claude has the flag (pane.ts). Added to this
+        // run only, never to the saved args.
+        if program == "claude" {
+            args.extend(["--append-system-prompt".to_string(), crate::laws::for_role(seat.spec.role.as_deref()).to_string()]);
+        }
         let mut spec = launch::launch_spec(&seat.spec.cli, &args);
         spec.cwd = Some(cwd.clone());
         // Who it is, for bytehive-mcp's fleet_send and agent_spawn (agentEnv).

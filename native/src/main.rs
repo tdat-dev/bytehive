@@ -13,6 +13,7 @@ mod icons;
 mod import;
 mod inbox;
 mod keys;
+mod laws;
 mod limits;
 mod memory;
 mod notify;

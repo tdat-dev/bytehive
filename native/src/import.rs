@@ -111,6 +111,7 @@ pub fn read(json: &str) -> Result<Found, String> {
                 worktree: a.worktree.or(a.resume_in),
                 branch: a.branch,
                 merged_into: None,
+                role: None,
             });
         }
     }
