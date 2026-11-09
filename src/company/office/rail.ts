@@ -424,8 +424,9 @@ export function createRail(source: OfficeSource, go: (l: Level) => void, where: 
             short.delete(job);
             void act(`reject:${job}`, () => source.reject(job, words)).then((ok) => {
               // A redraw replaced the box, so read it again, and keep words typed since.
+              // No box means the plan left the rail: the next one comes in closed.
               const box = noteOf(job);
-              if (!ok || (box?.value ?? "") !== words) return;
+              if (!ok || (box && box.value !== words)) return;
               if (box) box.value = "";
               notes.delete(job);
               asking.delete(job);

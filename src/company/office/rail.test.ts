@@ -137,6 +137,24 @@ describe("Needs you rail", () => {
     await tick();
     expect(note().value).toBe("Fewer people, and no QA");
   });
+  it("shows the next plan closed when the old row went while it was sent back", async () => {
+    let done = () => {};
+    const s = fake();
+    s.reject.mockImplementation(() => new Promise<void>((r) => { done = r; }));
+    const { el } = mountRail(s);
+    click(el, '[data-act="reject"]');
+    el.querySelector<HTMLTextAreaElement>('[data-note="J-1"]')!.value = "Fewer people";
+    click(el, '[data-act="reject"]');
+    expect(s.reject).toHaveBeenCalledWith("J-1", "Fewer people");
+    s.snap = { ...s.snap, model: model([]) };
+    s.fire();
+    done();
+    await tick();
+    s.snap = { ...s.snap, model: model() };
+    s.fire();
+    expect(el.querySelector<HTMLElement>(".co-field")?.hidden).toBe(true);
+    expect([...el.querySelectorAll<HTMLElement>(".btn.primary")].map((b) => b.dataset.act)).toEqual(["approve"]);
+  });
   it("keeps the note when sending it back failed", async () => {
     const s = fake();
     s.reject.mockRejectedValue(new Error("offline"));
