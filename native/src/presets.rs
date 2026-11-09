@@ -111,6 +111,12 @@ pub struct Prefs {
     /// Minimising tucks the window into the tray; agents keep running.
     #[serde(default)]
     pub hide_to_tray: bool,
+    /// An agent out of usage hands its task to another CLI at once.
+    #[serde(default = "yes")]
+    pub auto_handover: bool,
+    /// An agent that stopped at its limit is told to carry on when it resets.
+    #[serde(default = "yes")]
+    pub auto_resume: bool,
 }
 
 fn last_used() -> String {
@@ -177,6 +183,8 @@ impl Prefs {
         self.restore = fresh.restore;
         self.worktree = fresh.worktree;
         self.hide_to_tray = fresh.hide_to_tray;
+        self.auto_handover = fresh.auto_handover;
+        self.auto_resume = fresh.auto_resume;
         self.skip_perms = false;
         self.save();
     }

@@ -26,6 +26,7 @@ mod history;
 mod files;
 mod bridge;
 mod memory;
+mod limits;
 #[cfg(test)]
 mod tests;
 
@@ -146,6 +147,7 @@ pub struct Inbox {
     /// The bytehive-mcp file bridge, started on the first render.
     bridge: Option<Task<()>>,
     memory: Option<MemoryView>,
+    limits: limits::LimitGuard,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -239,6 +241,7 @@ impl Inbox {
             files: None,
             bridge: None,
             memory: None,
+            limits: limits::LimitGuard::default(),
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -281,8 +284,12 @@ impl Inbox {
         self.refresh_usage(cx);
         let mut changed = self.fleet.absorb();
         let now = now_ms();
-        for seat in &self.fleet.seats {
+        let mut hits = Vec::new();
+        for (i, seat) in self.fleet.seats.iter().enumerate() {
             let status = seat.status(cx);
+            if let Some(hit) = &status.limit {
+                hits.push((i, hit.clone()));
+            }
             self.history.observe(&seat.spec.id, &status, now);
             let state = status.state;
             if state == State::Working {
@@ -294,6 +301,7 @@ impl Inbox {
                 changed = true;
             }
         }
+        self.check_limits(hits, cx);
         // The times on the rows count in seconds under a minute.
         if changed || self.fleet.seats.iter().any(|s| self.since.get(&s.spec.id).is_some_and(|(_, at)| now - at < 60_000)) {
             cx.notify();

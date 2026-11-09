@@ -69,3 +69,12 @@ fn history_says_what_happened_once() {
     h.log("a", Event { at: 5, state: State::Merged, text: "Merged x into main".into() });
     assert_eq!(h.of("a").len(), 3);
 }
+
+#[test]
+fn evening_reads_pm() {
+    use chrono::{Local, TimeZone as _};
+    let at = Local.with_ymd_and_hms(2026, 11, 9, 23, 0, 0).unwrap().timestamp_millis() as u64;
+    assert_eq!(supervise::task_state::clock_of(at, at), "11:00 PM");
+    let morning = Local.with_ymd_and_hms(2026, 11, 9, 9, 5, 0).unwrap().timestamp_millis() as u64;
+    assert_eq!(supervise::task_state::clock_of(morning, morning), "9:05 AM");
+}

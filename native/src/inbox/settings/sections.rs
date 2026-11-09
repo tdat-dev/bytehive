@@ -52,6 +52,22 @@ impl Inbox {
                 step_button("delay-more", "+", p.job_delay < presets::DELAY_MAX).on_click(cx.listener(|this, _, _, cx| this.set_delay(1, cx))),
             )));
 
+        let inbox = section("Inbox")
+            .child(
+                toggle("pref-handover", p.auto_handover, "Hand over when an agent runs out of usage", "Another CLI whose plan has room takes the task over at once: an agent already open in the same folder first, else a new one. Off, the agent waits for its limit to reset.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.auto_handover = !this.prefs.auto_handover;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
+            .child(
+                toggle("pref-resume", p.auto_resume, "Carry on when a usage limit resets", "An agent that stopped at its plan's 5-hour or weekly limit is told to carry on once the limit resets, so a task doesn't sit waiting for you to notice.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.auto_resume = !this.prefs.auto_resume;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            );
+
         let terminal = section("Terminal").child(row("Font size", "Applies live to every agent's terminal.").child(stepper(
             p.font_size.to_string(),
             step_button("font-less", "−", p.font_size > presets::FONT_MIN).on_click(cx.listener(|this, _, window, cx| this.set_font(-1, window, cx))),
@@ -81,7 +97,7 @@ impl Inbox {
                 cx.notify();
             }))));
 
-        vec![agents.into_any_element(), terminal.into_any_element(), system.into_any_element()]
+        vec![agents.into_any_element(), inbox.into_any_element(), terminal.into_any_element(), system.into_any_element()]
     }
 
     fn set_delay(&mut self, by: i64, cx: &mut Context<Self>) {
