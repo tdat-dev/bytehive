@@ -219,6 +219,12 @@ impl Fleet {
         args.extend(extra);
         let mut spec = launch::launch_spec(&seat.spec.cli, &args);
         spec.cwd = Some(cwd.clone());
+        // Who it is, for bytehive-mcp's fleet_send and agent_spawn (agentEnv).
+        spec.env = vec![
+            ("BYTEHIVE_AGENT".to_string(), seat.spec.name.clone()),
+            ("BYTEHIVE_WORKSPACE".to_string(), seat.spec.cwd.clone()),
+            ("BYTEHIVE_RUN_DIR".to_string(), cwd.clone()),
+        ];
         let terminal = Terminal::spawn(spec, cx)?;
         seat.terminal = Some(terminal);
         seat.pid = None;

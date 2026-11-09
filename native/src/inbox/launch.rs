@@ -14,15 +14,20 @@ pub(super) struct Launch {
     pub job: String,
     /// How New agent and Home remember the CLI: a preset id or "custom:<command>".
     pub remembered: String,
+    /// Asked for by an agent (agent_spawn): the person's choices and the
+    /// stage stay as they are.
+    pub quiet: bool,
 }
 
 impl Inbox {
     pub(super) fn launch(&mut self, l: Launch, window: &mut Window, cx: &mut Context<Self>) -> Result<(), String> {
-        if let Some(custom) = l.remembered.strip_prefix("custom:") {
-            self.prefs.last_custom = custom.to_string();
+        if !l.quiet {
+            if let Some(custom) = l.remembered.strip_prefix("custom:") {
+                self.prefs.last_custom = custom.to_string();
+            }
+            self.prefs.last_cli = Some(l.remembered.clone());
+            self.prefs.open_project(&l.dir);
         }
-        self.prefs.last_cli = Some(l.remembered.clone());
-        self.prefs.open_project(&l.dir);
         let title = presets::task_title(&l.job);
         let race_id = (l.count > 1).then(|| format!("race-{}", now_ms()));
         let mut first = None;
@@ -45,6 +50,10 @@ impl Inbox {
         }
         if !waiting.is_empty() {
             self.isolate(l.dir.clone(), waiting, window, cx);
+        }
+        if l.quiet {
+            cx.notify();
+            return Ok(());
         }
         self.home = false;
         if let Some(index) = first {

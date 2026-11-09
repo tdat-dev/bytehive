@@ -24,6 +24,7 @@ mod toast;
 mod changes;
 mod history;
 mod files;
+mod bridge;
 #[cfg(test)]
 mod tests;
 
@@ -140,6 +141,8 @@ pub struct Inbox {
     kept: HashMap<String, Kept>,
     history: Histories,
     files: Option<Files>,
+    /// The bytehive-mcp file bridge, started on the first render.
+    bridge: Option<Task<()>>,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -231,6 +234,7 @@ impl Inbox {
             kept: HashMap::new(),
             history: Histories::default(),
             files: None,
+            bridge: None,
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -310,6 +314,7 @@ impl Inbox {
 
 impl Render for Inbox {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.start_bridge(window, cx);
         if self.home {
             self.ensure_compose(window, cx);
         }

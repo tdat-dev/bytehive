@@ -54,7 +54,7 @@ impl Inbox {
         let job = sheet.task.read(cx).value().trim().to_string();
         let (count, dir) = (sheet.count, sheet.dir.clone());
         self.prefs.skip_perms = sheet.skip_perms;
-        match self.launch(Launch { program, args, dir, count, job, remembered }, window, cx) {
+        match self.launch(Launch { program, args, dir, count, job, remembered, quiet: false }, window, cx) {
             Ok(()) => self.sheet = None,
             Err(e) => {
                 if let Some(sheet) = &mut self.sheet {

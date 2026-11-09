@@ -50,7 +50,18 @@ impl Inbox {
     }
 
     pub(super) fn queue_job(&mut self, id: String, text: String, cx: &mut Context<Self>) {
-        self.jobs.push(Job { id, text, started: now_ms(), typer: None });
+        self.queue_typing(Job { id, text, started: now_ms(), typer: None }, cx);
+    }
+
+    /// A message for a running agent: no start delay, only the wait until
+    /// it is quiet and not asking anything.
+    pub(super) fn queue_message(&mut self, id: String, text: String, cx: &mut Context<Self>) {
+        let started = now_ms().saturating_sub(self.prefs.job_delay * 1000);
+        self.queue_typing(Job { id, text, started, typer: None }, cx);
+    }
+
+    fn queue_typing(&mut self, job: Job, cx: &mut Context<Self>) {
+        self.jobs.push(job);
         if self.typing {
             return;
         }

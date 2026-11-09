@@ -92,14 +92,14 @@ impl Inbox {
                 if let Ok(Ok(Some(paths))) = picked.await {
                     if let Some(path) = paths.first() {
                         let dir = path.display().to_string();
-                        let _ = this.update_in(cx, |this, window, cx| this.compose_launch(Launch { program, args, dir, count, job, remembered }, window, cx));
+                        let _ = this.update_in(cx, |this, window, cx| this.compose_launch(Launch { program, args, dir, count, job, remembered, quiet: false }, window, cx));
                     }
                 }
             })
             .detach();
             return;
         };
-        self.compose_launch(Launch { program, args, dir, count, job, remembered }, window, cx);
+        self.compose_launch(Launch { program, args, dir, count, job, remembered, quiet: false }, window, cx);
     }
 
     fn compose_launch(&mut self, l: Launch, window: &mut Window, cx: &mut Context<Self>) {

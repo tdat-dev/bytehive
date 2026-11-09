@@ -3,6 +3,7 @@
 
 mod boxdraw;
 mod brand;
+mod bridge;
 mod fleet;
 mod follow;
 mod icons;
