@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use supervise::task_state::{TaskFacts, TaskState, TaskStatus, derive_task_state};
 
+use crate::follow;
 use crate::terminal::{SCROLLBACK, SCROLLBACK_HIDDEN, Terminal};
 
 const NAMES: [&str; 12] = ["Ana", "Bob", "Cid", "Dee", "Eve", "Fay", "Gus", "Hal", "Ivy", "Jon", "Kai", "Lou"];
@@ -50,6 +51,8 @@ pub struct Seat {
     pub terminal: Option<Entity<Terminal>>,
     /// The git branch of its folder, read when it starts; none outside a repo.
     pub branch: Option<String>,
+    /// The Claude process this run is, once found (follow.rs).
+    pub pid: Option<u32>,
 }
 
 impl Seat {
@@ -115,7 +118,7 @@ impl Fleet {
     /// The saved fleet, every agent stopped.
     pub fn load() -> Self {
         let specs: Vec<Spec> = store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(&spec.cwd)), spec, terminal: None }).collect();
+        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(&spec.cwd)), spec, terminal: None, pid: None }).collect();
         let focused = if seats.is_empty() { None } else { Some(0) };
         Self { seats, focused, learned: Arc::default() }
     }
@@ -151,7 +154,7 @@ impl Fleet {
             title,
             race,
         };
-        self.seats.push(Seat { spec, terminal: None, branch: None });
+        self.seats.push(Seat { spec, terminal: None, branch: None, pid: None });
         let index = self.seats.len() - 1;
         self.start(index, cx)?;
         Ok(index)
@@ -183,6 +186,7 @@ impl Fleet {
         spec.cwd = Some(cwd.clone());
         let terminal = Terminal::spawn(spec, cx)?;
         seat.terminal = Some(terminal);
+        seat.pid = None;
         seat.branch = agent_core::git::current_branch(std::path::Path::new(&cwd));
         seat.spec.session_id = session.or(seat.spec.session_id.take());
         let started = now_ms();
@@ -223,6 +227,40 @@ impl Fleet {
             self.save();
         }
         !found.is_empty()
+    }
+
+    /// The running Claude agents, by index, ready for follow.rs.
+    pub fn claude_runs(&self, cx: &App) -> Vec<usize> {
+        let running = |s: &Seat| s.terminal.as_ref().is_some_and(|t| t.read(cx).exit_code().is_none());
+        (0..self.seats.len()).filter(|&i| self.seats[i].spec.cli.eq_ignore_ascii_case("claude") && running(&self.seats[i])).collect()
+    }
+
+    /// Move each running Claude agent's session id to the one its process is
+    /// in now, and save. True if any moved.
+    pub fn follow(&mut self, live: &[claude::LiveSession], cx: &App) -> bool {
+        let at = self.claude_runs(cx);
+        let runs: Vec<follow::Run> = at
+            .iter()
+            .map(|&i| {
+                let s = &self.seats[i];
+                follow::Run { session: s.spec.session_id.as_deref(), cwd: &s.spec.cwd, started_ms: s.spec.started_ms, pid: s.pid }
+            })
+            .collect();
+        let found = follow::follow(&runs, live);
+        let mut moved = false;
+        for (i, hit) in at.into_iter().zip(found) {
+            let Some((pid, session)) = hit else { continue };
+            let seat = &mut self.seats[i];
+            seat.pid = Some(pid);
+            if seat.spec.session_id.as_deref() != Some(session.as_str()) {
+                seat.spec.session_id = Some(session);
+                moved = true;
+            }
+        }
+        if moved {
+            self.save();
+        }
+        moved
     }
 
     /// Take the agent off the list: it stops, its spec is forgotten. Its

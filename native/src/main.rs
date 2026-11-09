@@ -4,6 +4,7 @@
 mod boxdraw;
 mod brand;
 mod fleet;
+mod follow;
 mod icons;
 mod inbox;
 mod keys;

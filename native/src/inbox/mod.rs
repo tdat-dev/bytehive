@@ -147,6 +147,7 @@ pub struct Inbox {
     /// Per agent id: what it has used, as last read.
     uses: HashMap<String, Use>,
     _ticker: Task<()>,
+    _follow: Task<()>,
     _plans: Task<()>,
 }
 
@@ -179,6 +180,20 @@ impl Inbox {
                 cx.background_executor().timer(Duration::from_millis(plan::EVERY_MS)).await;
             }
         });
+        // Every few seconds while a Claude agent runs: the session it is in now.
+        let follow = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_millis(crate::follow::CHECK_MS)).await;
+                let Ok(any) = this.update(cx, |this, cx| !this.fleet.claude_runs(cx).is_empty()) else { break };
+                if !any {
+                    continue;
+                }
+                let live = cx.background_executor().spawn(async { agent_core::claude::live_sessions() }).await;
+                if this.update(cx, |this, cx| this.fleet.follow(&live, cx)).is_err() {
+                    break;
+                }
+            }
+        });
         let prefs = Prefs::load();
         crate::terminal::set_font_size(prefs.font_size);
         // Settings → Reopen my projects on start.
@@ -204,6 +219,7 @@ impl Inbox {
             since: HashMap::new(),
             worked: HashSet::new(),
             _ticker: ticker,
+            _follow: follow,
         }
     }
 
