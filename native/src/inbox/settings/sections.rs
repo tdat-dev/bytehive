@@ -68,6 +68,20 @@ impl Inbox {
                 })),
             )
             .child(
+                toggle("pref-jump", p.jump_to_needs, "Show the agent that needs me", "When an agent starts waiting on you and the one on screen isn't busy, ByteHive brings it up. Never while you are typing.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.jump_to_needs = !this.prefs.jump_to_needs;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
+            .child(
+                toggle("pref-review-done", p.review_on_done, "Open Changes when an agent finishes", "When the agent on screen stops with changes on its branch, its diff opens on its own.").on_click(cx.listener(|this, _, _, cx| {
+                    this.prefs.review_on_done = !this.prefs.review_on_done;
+                    this.prefs.save();
+                    cx.notify();
+                })),
+            )
+            .child(
                 toggle("pref-handover", p.auto_handover, "Hand over when an agent runs out of usage", "Another CLI whose plan has room takes the task over at once: an agent already open in the same folder first, else a new one. Off, the agent waits for its limit to reset.").on_click(cx.listener(|this, _, _, cx| {
                     this.prefs.auto_handover = !this.prefs.auto_handover;
                     this.prefs.save();

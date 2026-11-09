@@ -31,6 +31,7 @@ mod diffs;
 mod app_keys;
 mod updates;
 mod notices;
+mod moves;
 mod dialog;
 mod usage_view;
 mod schedules;
@@ -166,6 +167,7 @@ pub struct Inbox {
     limits: limits::LimitGuard,
     updates: updates::Updates,
     notices: notices::Notices,
+    moves: moves::Moves,
     /// The browser hub, its live view, held clicks and Settings > Browser.
     browser: browser::BrowserWatch,
     /// The phone dashboard and Settings > Remote.
@@ -270,6 +272,7 @@ impl Inbox {
             limits: limits::LimitGuard::default(),
             updates: updates::Updates::default(),
             notices: notices::Notices::default(),
+            moves: moves::Moves::default(),
             browser: browser::BrowserWatch::default(),
             remote: remote::Remote::new(),
             tray: crate::tray::Tray::new(),
@@ -318,6 +321,7 @@ impl Inbox {
         let now = now_ms();
         let mut hits = Vec::new();
         let mut statuses = Vec::with_capacity(self.fleet.seats.len());
+        let mut moved = Vec::new();
         for (i, seat) in self.fleet.seats.iter().enumerate() {
             let status = seat.status(cx);
             if let Some(hit) = &status.limit {
@@ -330,12 +334,17 @@ impl Inbox {
             }
             let entry = self.since.entry(seat.spec.id.clone()).or_insert((state, now));
             if entry.0 != state {
+                moved.push((i, entry.0, state));
                 *entry = (state, now);
                 changed = true;
             }
             statuses.push(status);
         }
         self.notices_tick(&statuses, now, cx);
+        self.note_moves(&moved, &statuses);
+        if !moved.is_empty() {
+            changed = true;
+        }
         self.check_limits(hits, cx);
         self.poll_changes(cx);
         // The times on the rows count in seconds under a minute.
@@ -365,6 +374,7 @@ impl Render for Inbox {
         self.start_bridge(window, cx);
         self.start_updates(cx);
         self.open_noticed(window, cx);
+        self.act_on_moves(window, cx);
         if self.home {
             self.ensure_compose(window, cx);
         }

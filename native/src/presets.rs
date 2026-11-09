@@ -123,6 +123,13 @@ pub struct Prefs {
     /// A Windows notification when an agent finishes.
     #[serde(default = "yes")]
     pub notify_done: bool,
+    /// An agent that starts waiting on you comes onto the stage when the one
+    /// there is not busy.
+    #[serde(default)]
+    pub jump_to_needs: bool,
+    /// Changes opens when the agent on the stage finishes with changes.
+    #[serde(default)]
+    pub review_on_done: bool,
     /// A Windows notification when a plan passes 90% of a limit, and when an
     /// agent runs out.
     #[serde(default = "yes")]
@@ -210,6 +217,8 @@ impl Prefs {
         self.auto_resume = fresh.auto_resume;
         self.notify_needs = fresh.notify_needs;
         self.notify_done = fresh.notify_done;
+        self.jump_to_needs = fresh.jump_to_needs;
+        self.review_on_done = fresh.review_on_done;
         self.limit_notify = fresh.limit_notify;
         self.skip_perms = false;
         self.save();
