@@ -70,6 +70,17 @@ pub struct Seat {
     pub pid: Option<u32>,
     /// Its worktree is being made; it starts once that is done.
     pub preparing: bool,
+    /// Files changed in its worktree (inbox/diffs.rs).
+    pub changes: ChangeCount,
+}
+
+/// What an agent's worktree was last seen to hold.
+#[derive(Default)]
+pub struct ChangeCount {
+    pub count: Option<u32>,
+    pub at: u64,
+    pub pending: bool,
+    pub was_running: bool,
 }
 
 impl Seat {
@@ -80,9 +91,9 @@ impl Seat {
             None if self.preparing => TaskFacts { running: true, last_output_at: now_ms(), ..TaskFacts::default() },
             Some(t) if t.read(cx).exit_code().is_none() => {
                 let t = t.read(cx);
-                TaskFacts { running: true, last_output_at: t.last_output_ms(), screen: t.screen_text(), ..TaskFacts::default() }
+                TaskFacts { running: true, last_output_at: t.last_output_ms(), screen: t.screen_text(), changed_files: self.changes.count, ..TaskFacts::default() }
             }
-            _ => TaskFacts { merged: self.spec.merged_into.is_some(), ..TaskFacts::default() },
+            _ => TaskFacts { merged: self.spec.merged_into.is_some(), changed_files: self.changes.count, ..TaskFacts::default() },
         };
         derive_task_state(&facts, now_ms())
     }
@@ -136,7 +147,7 @@ impl Fleet {
     /// The saved fleet, every agent stopped.
     pub fn load() -> Self {
         let specs: Vec<Spec> = store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(spec.run_dir())), spec, terminal: None, pid: None, preparing: false }).collect();
+        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(spec.run_dir())), spec, terminal: None, pid: None, preparing: false, changes: ChangeCount::default() }).collect();
         let focused = if seats.is_empty() { None } else { Some(0) };
         Self { seats, focused, learned: Arc::default() }
     }
@@ -183,7 +194,7 @@ impl Fleet {
             branch: None,
             merged_into: None,
         };
-        self.seats.push(Seat { spec, terminal: None, branch: None, pid: None, preparing: true });
+        self.seats.push(Seat { spec, terminal: None, branch: None, pid: None, preparing: true, changes: ChangeCount::default() });
         self.save();
         self.seats.len() - 1
     }
@@ -314,7 +325,7 @@ impl Fleet {
                 continue;
             }
             let branch = agent_core::git::current_branch(std::path::Path::new(spec.run_dir()));
-            self.seats.push(Seat { spec, terminal: None, branch, pid: None, preparing: false });
+            self.seats.push(Seat { spec, terminal: None, branch, pid: None, preparing: false, changes: ChangeCount::default() });
             added += 1;
         }
         if added > 0 {

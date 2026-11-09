@@ -27,6 +27,7 @@ mod files;
 mod bridge;
 mod memory;
 mod limits;
+mod diffs;
 #[cfg(test)]
 mod tests;
 
@@ -290,7 +291,7 @@ impl Inbox {
             if let Some(hit) = &status.limit {
                 hits.push((i, hit.clone()));
             }
-            self.history.observe(&seat.spec.id, &status, now);
+            self.history.observe(&seat.spec.id, &status, seat.changes.count, now);
             let state = status.state;
             if state == State::Working {
                 self.worked.insert(seat.spec.id.clone());
@@ -302,6 +303,7 @@ impl Inbox {
             }
         }
         self.check_limits(hits, cx);
+        self.poll_changes(cx);
         // The times on the rows count in seconds under a minute.
         if changed || self.fleet.seats.iter().any(|s| self.since.get(&s.spec.id).is_some_and(|(_, at)| now - at < 60_000)) {
             cx.notify();

@@ -34,7 +34,7 @@ pub(super) struct Histories {
 
 /// The History line for a task entering its state, or none for states not
 /// worth a line of their own.
-pub(super) fn describe(s: &TaskStatus) -> Option<String> {
+pub(super) fn describe(s: &TaskStatus, changed: Option<u32>) -> Option<String> {
     match s.state {
         State::Needs => Some(match &s.ask {
             Some(a) if a.kind == AskKind::Run => a.detail.as_ref().map_or("Asked to run a command".to_string(), |d| format!("Asked to run {d}")),
@@ -43,6 +43,10 @@ pub(super) fn describe(s: &TaskStatus) -> Option<String> {
             None => "Waited for you".to_string(),
         }),
         State::Idle => s.limit.as_ref().map(|_| "Hit its usage limit".to_string()),
+        State::Review => {
+            let n = changed.unwrap_or(0);
+            Some(format!("Finished with {n} file{} changed", if n == 1 { "" } else { "s" }))
+        }
         State::Working => Some("Started working".to_string()),
         State::Stopped => Some("Stopped".to_string()),
         _ => None,
@@ -66,13 +70,13 @@ impl Histories {
     }
 
     /// Note an agent's status on a tick; a line when it moved.
-    pub fn observe(&mut self, id: &str, s: &TaskStatus, now: u64) {
+    pub fn observe(&mut self, id: &str, s: &TaskStatus, changed: Option<u32>, now: u64) {
         let seen: Seen = (s.state, s.ask.as_ref().map(|a| a.prompt.clone()), s.ask.as_ref().and_then(|a| a.detail.clone()), s.limit.is_some());
         if self.seen.get(id) == Some(&seen) {
             return;
         }
         self.seen.insert(id.to_string(), seen);
-        if let Some(text) = describe(s) {
+        if let Some(text) = describe(s, changed) {
             self.log(id, Event { at: now, state: s.state, text });
         }
     }

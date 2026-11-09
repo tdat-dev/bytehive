@@ -57,12 +57,13 @@ fn history_says_what_happened_once() {
     use super::history::{Event, Histories, describe};
     use supervise::task_state::TaskStatus;
     let status = |state| TaskStatus { state, ask: None, limit: None, blocked: None, spent: false, stuck: None, clash: None };
-    assert_eq!(describe(&status(State::Working)).as_deref(), Some("Started working"));
-    assert_eq!(describe(&status(State::Needs)).as_deref(), Some("Waited for you"));
-    assert_eq!(describe(&status(State::Idle)), None);
+    assert_eq!(describe(&status(State::Working), None).as_deref(), Some("Started working"));
+    assert_eq!(describe(&status(State::Needs), None).as_deref(), Some("Waited for you"));
+    assert_eq!(describe(&status(State::Idle), None), None);
+    assert_eq!(describe(&status(State::Review), Some(1)).as_deref(), Some("Finished with 1 file changed"));
     let mut h = Histories::default();
     for (at, state) in [(1, State::Working), (2, State::Idle), (3, State::Working), (4, State::Stopped)] {
-        h.observe("a", &status(state), at);
+        h.observe("a", &status(state), None, at);
     }
     let texts: Vec<&str> = h.of("a").iter().map(|e| e.text.as_str()).collect();
     assert_eq!(texts, vec!["Started working", "Stopped"], "one line per stretch of work");
