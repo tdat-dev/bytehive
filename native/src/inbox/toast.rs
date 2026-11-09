@@ -1,5 +1,7 @@
 //! A short note in the bottom right that goes by itself (paneToast, .kb-toast
-//! in dock.css): what happened that nobody was looking at.
+//! in dock.css): what happened that nobody was looking at. It shows without
+//! the slide in: an animation only moves while GPUI draws frames, and a
+//! window in the background draws none, so the note stayed invisible.
 
 use super::*;
 
@@ -50,8 +52,7 @@ impl Inbox {
                 .text_color(color(INK))
                 .shadow(vec![BoxShadow { color: hsla(0.0, 0.0, 0.0, 0.65), offset: point(px(0.0), px(24.0)), blur_radius: px(60.0), spread_radius: px(0.0), inset: false }, ring(white(0.1))])
                 .child(t.text.clone())
-                .with_animation(("toast", t.no as usize), Animation::new(Duration::from_millis(250)).with_easing(ease_out_quint()), |el, d| el.opacity(d).bottom(px(92.0 + 8.0 * d)))
-                .into_any_element(),
+                                .into_any_element(),
         )
     }
 }

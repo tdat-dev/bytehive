@@ -22,6 +22,7 @@ mod single;
 mod terminal;
 mod transcript;
 mod tray;
+mod updater;
 mod usage;
 mod worktree;
 

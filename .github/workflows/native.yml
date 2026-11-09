@@ -1,0 +1,126 @@
+name: Native
+
+# The native app (native/, Rust + GPUI). A push to the branch tests it and
+# packs the installer as an artifact, so every change proves it still builds
+# and packs on a clean machine. A native-v* tag also signs it with the updater
+# key both apps trust and publishes it to the public tdat-dev/bytehive-releases
+# with a latest.json, which is what moves the Tauri app's users onto it: tag
+# only once the native app has caught up with the Tauri one.
+
+on:
+  push:
+    branches: [feat/native-gpui]
+    tags: ["native-v*"]
+    paths-ignore: ["docs/**", "*.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Test, pack, publish
+    runs-on: windows-latest
+    env:
+      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/native-v') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+
+      - name: Test
+        working-directory: native
+        run: cargo test
+
+      - name: NSIS
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+
+      # A tag names the version; the crate must say the same.
+      - name: Version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path native/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ($env:IS_TAG -eq 'true' -and "native-v$v" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} but native/ is $v" }
+          "VERSION=$v" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $setup = powershell -ExecutionPolicy Bypass -File tools/build_native_installer.ps1 | Select-Object -Last 1
+          "SETUP=$setup" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      # The runner is a clean machine: install, look, start it, uninstall.
+      - name: Install on a clean machine
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath $env:SETUP -ArgumentList "/S" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exit $($p.ExitCode)" }
+          $dir = Join-Path $env:LOCALAPPDATA "ByteHive"
+          foreach ($f in @("bytehive.exe", "icon.ico", "uninstall.exe", "browser-extension\manifest.json")) {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "missing $f after install" }
+          }
+          $key = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\bytehive"
+          if ($key.DisplayVersion -ne $env:VERSION) { throw "uninstall key says $($key.DisplayVersion)" }
+          # It starts and stays up (a missing DLL or a panic at start ends it at once).
+          $app = Start-Process -FilePath (Join-Path $dir "bytehive.exe") -PassThru
+          Start-Sleep -Seconds 8
+          if ($app.HasExited) { throw "the app ended at start (code $($app.ExitCode))" }
+          Stop-Process -Id $app.Id -Force
+          $u = Start-Process -FilePath (Join-Path $dir "uninstall.exe") -ArgumentList "/S" -Wait -PassThru
+          Start-Sleep -Seconds 6
+          if (Test-Path (Join-Path $dir "bytehive.exe")) { throw "uninstall left bytehive.exe" }
+          if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\bytehive") { throw "uninstall left the key" }
+
+      - name: Keep the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ByteHive-native-${{ env.VERSION }}
+          path: ${{ env.SETUP }}
+
+      # Signed with the updater key both apps trust (minisign, as tauri signs).
+      - name: Sign
+        if: env.IS_TAG == 'true'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          npx --yes @tauri-apps/cli@2 signer sign "$env:SETUP"
+          if (-not (Test-Path "$env:SETUP.sig")) { throw "no signature written" }
+
+      - name: Release notes from CHANGELOG
+        if: env.IS_TAG == 'true'
+        shell: bash
+        run: |
+          v="$VERSION"
+          awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "ByteHive $v" > notes.md
+
+      # This repository is private, so installers and latest.json go to the
+      # public tdat-dev/bytehive-releases, which both updaters read. Never the
+      # old name maestro-releases.
+      - name: Publish
+        if: env.IS_TAG == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          $name = Split-Path $env:SETUP -Leaf
+          $tag = "v$env:VERSION"
+          $url = "https://github.com/tdat-dev/bytehive-releases/releases/download/$tag/$name"
+          node tools/latest_json.mjs $env:VERSION $url "$env:SETUP.sig" notes.md latest.json
+          gh release create $tag -R tdat-dev/bytehive-releases --target main --title "ByteHive $tag" --notes-file notes.md "$env:SETUP" "$env:SETUP.sig" latest.json

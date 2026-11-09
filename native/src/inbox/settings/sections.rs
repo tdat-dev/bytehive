@@ -90,6 +90,7 @@ impl Inbox {
                     cx.notify();
                 })),
             )
+            .child(row("Updates", format!("ByteHive {}", crate::updater::current())).child(button("pref-update", if self.updates.checking { "Checking…" } else { "Check for updates" }).on_click(cx.listener(|this, _, _, cx| this.check_updates(false, cx)))))
             .child(row("Reset settings", "Agents, text size, startup and the tray go back to how ByteHive ships. Projects and agents are not touched.").child(button("pref-reset", "Reset").on_click(cx.listener(|this, _, _, cx| {
                 if let Some(s) = &mut this.settings {
                     s.resetting = true;

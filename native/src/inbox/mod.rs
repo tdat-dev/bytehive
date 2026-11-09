@@ -29,6 +29,7 @@ mod memory;
 mod limits;
 mod diffs;
 mod app_keys;
+mod updates;
 mod dialog;
 mod usage_view;
 mod schedules;
@@ -160,6 +161,7 @@ pub struct Inbox {
     /// The Board (Ctrl+Shift+K), while open.
     board: Option<board::BoardView>,
     limits: limits::LimitGuard,
+    updates: updates::Updates,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -258,6 +260,7 @@ impl Inbox {
             scheduler: None,
             board: None,
             limits: limits::LimitGuard::default(),
+            updates: updates::Updates::default(),
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),
@@ -344,6 +347,7 @@ impl Inbox {
 impl Render for Inbox {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.start_bridge(window, cx);
+        self.start_updates(cx);
         if self.home {
             self.ensure_compose(window, cx);
         }
@@ -361,6 +365,7 @@ impl Render for Inbox {
         let memory = self.memory.as_ref().map(|m| self.memory_view(m, cx));
         let dialogs = self.dialogs(window, cx);
         let toast = self.toast_view();
+        let update_card = self.update_card(cx);
         let changes = self.changes.as_ref().and_then(|c| self.changes_view(c, cx));
         div()
             .relative()
@@ -384,6 +389,7 @@ impl Render for Inbox {
             .children(menu)
             .children(confirm)
             .children(palette)
+            .children(update_card)
             .children(toast)
     }
 }

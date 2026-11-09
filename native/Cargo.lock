@@ -747,14 +747,17 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "bytehive-native"
-version = "0.1.0"
+version = "0.15.0"
 dependencies = [
  "agent-core",
  "alacritty_terminal",
  "anyhow",
  "async-channel",
+ "base64 0.22.1",
  "chrono",
+ "embed-resource",
  "gpui-kit",
+ "minisign-verify",
  "portable-pty",
  "regex",
  "serde",
@@ -4164,6 +4167,12 @@ dependencies = [
  "mime",
  "unicase",
 ]
+
+[[package]]
+name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "miniz_oxide"
