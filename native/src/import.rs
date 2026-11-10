@@ -116,6 +116,7 @@ pub fn read(json: &str) -> Result<Found, String> {
                 branch: a.branch,
                 merged_into: None,
                 role: None,
+                person: None,
             });
         }
     }

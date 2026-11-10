@@ -48,6 +48,10 @@ pub struct Spec {
     /// "conductor" for the Director, which gets the dispatch laws.
     #[serde(default)]
     pub role: Option<String>,
+    /// The Company Person id when this seat is one of the company's people: it
+    /// starts with their prompt, tools and identity instead of the laws.
+    #[serde(default)]
+    pub person: Option<String>,
 }
 
 impl Spec {
@@ -197,6 +201,7 @@ impl Fleet {
             branch: None,
             merged_into: None,
             role: None,
+            person: None,
         };
         self.seats.push(Seat { spec, terminal: None, branch: None, pid: None, preparing: true, changes: ChangeCount::default() });
         self.save();
@@ -232,12 +237,8 @@ impl Fleet {
         };
         let mut args = base;
         args.extend(extra);
-        // ByteHive's protocol at the system-prompt level, so a Claude agent
-        // must follow it; only claude has the flag (pane.ts). Added to this
-        // run only, never to the saved args.
-        if program == "claude" {
-            args.extend(["--append-system-prompt".to_string(), crate::laws::for_role(seat.spec.role.as_deref()).to_string()]);
-        }
+        let (run_args, run_env) = run_extras(&seat.spec, &program);
+        args.extend(run_args);
         let mut spec = launch::launch_spec(&seat.spec.cli, &args);
         spec.cwd = Some(cwd.clone());
         // Who it is, for bytehive-mcp's fleet_send and agent_spawn (agentEnv).
@@ -246,6 +247,7 @@ impl Fleet {
             ("BYTEHIVE_WORKSPACE".to_string(), seat.spec.cwd.clone()),
             ("BYTEHIVE_RUN_DIR".to_string(), cwd.clone()),
         ];
+        spec.env.extend(run_env);
         let terminal = Terminal::spawn(spec, cx)?;
         seat.terminal = Some(terminal);
         seat.pid = None;
@@ -388,3 +390,23 @@ impl Fleet {
 fn seat_needs_capture(program: &str, spec: &Spec) -> bool {
     matches!(program, "codex" | "opencode") && spec.session_id.is_none()
 }
+
+/// What this run adds to the saved args, and to the env. A Company person starts
+/// with their own launch (prompt file, MCP config, plugin, denied tools, who they
+/// are). Anyone else gets ByteHive's protocol at the system-prompt level, so a
+/// Claude agent must follow it; only claude has the flag (pane.ts). So does a
+/// person whose files can't be found, rather than start with no rules at all.
+/// Added to this run only, never to the saved args.
+fn run_extras(spec: &Spec, program: &str) -> (Vec<String>, Vec<(String, String)>) {
+    if let Some(found) = spec.person.as_ref().and_then(|_| crate::company::seat::for_seat(spec)) {
+        return found;
+    }
+    if program != "claude" {
+        return (Vec::new(), Vec::new());
+    }
+    (vec!["--append-system-prompt".to_string(), crate::laws::for_role(spec.role.as_deref()).to_string()], Vec::new())
+}
+
+#[cfg(test)]
+#[path = "fleet_tests.rs"]
+mod tests;
