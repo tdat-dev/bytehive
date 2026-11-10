@@ -104,6 +104,8 @@ fn load(root: &std::path::Path) -> Result<Loaded, String> {
 /// Settle Claude's folder question, then make the worktree. Blocking.
 pub(crate) fn prepare(p: &Prepare) -> Ready {
     let trust = if p.claude { super::trust::trust_folder(&p.dir) } else { Ok(()) };
+    // The company read and the person's files written here, not at the start.
+    super::seat::prepare(&p.seat, &p.person);
     let worktree = p.worktree.then(|| {
         let root = agent_core::git::repo_root(std::path::Path::new(&p.dir)).ok_or_else(|| "the project is not a git repo".to_string())?;
         let branch = crate::worktree::branch_name(&p.name, &p.seat);

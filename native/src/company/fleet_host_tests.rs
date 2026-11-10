@@ -62,3 +62,20 @@ fn knows_a_running_process_and_an_invalid_pid() {
     assert!(pid_alive(std::process::id()));
     assert!(!pid_alive(0xFFFF_FFF0));
 }
+
+#[test]
+fn reads_a_screen_again_only_after_new_output() {
+    let mut reads = 0;
+    let mut look = |printed: u64, screen: &str| {
+        screen_facts("seat-screen-1", printed, || {
+            reads += 1;
+            (screen.to_string(), "claude".to_string())
+        })
+    };
+    let boxed = format!("{RULE}\n> \n{RULE}");
+    assert_eq!(look(5, &boxed), (false, true));
+    assert_eq!(look(5, "anything"), (false, true), "no new output: what it said before");
+    assert_eq!(look(6, "booting"), (false, false));
+    drop(look);
+    assert_eq!(reads, 2);
+}

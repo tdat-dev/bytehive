@@ -12,6 +12,7 @@ use crate::fleet::{Fleet, Seat, now_ms};
 use gpui_kit::App;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
 use supervise::ask::parse_ask;
 
 /// What the Inbox does once the engine's tick is over.
@@ -48,6 +49,26 @@ pub fn composer_drawn(screen: &str) -> bool {
     let rules: Vec<usize> = (0..lines.len()).filter(|&i| rule(lines[i])).collect();
     let [.., a, b] = rules[..] else { return false };
     lines[a + 1..b].iter().any(|l| matches!(l.trim_start().chars().next(), Some('>' | '\u{203A}')))
+}
+
+/// What each seat's screen said, by seat id, and when its terminal last printed.
+static SCREENS: Mutex<Vec<(String, u64, bool, bool)>> = Mutex::new(Vec::new());
+
+/// Whether a seat asks something and whether it is at its prompt. The screen is
+/// read only when the terminal printed since the last look: a screen with no new
+/// output says what it said before, and reading it every tick costs the UI thread.
+fn screen_facts(seat: &str, printed: u64, read: impl FnOnce() -> (String, String)) -> (bool, bool) {
+    let mut seen = SCREENS.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(&(_, at, asking, ready)) = seen.iter().find(|(id, ..)| id == seat) {
+        if at == printed {
+            return (asking, ready);
+        }
+    }
+    let (screen, cli) = read();
+    let facts = (parse_ask(&screen).is_some(), at_prompt(&cli, &screen));
+    seen.retain(|(id, ..)| id != seat);
+    seen.push((seat.to_string(), printed, facts.0, facts.1));
+    facts
 }
 
 /// Whether a seat is ready to be typed into. Only Claude draws a box to look for.
@@ -148,12 +169,10 @@ impl Host for FleetHost<'_> {
             ..SeatView::default()
         };
         if let Some(t) = s.terminal.as_ref().map(|t| t.read(self.cx)) {
-            let screen = t.screen_text();
             v.running = t.exit_code().is_none();
             v.last_output_at = t.last_output_ms() as i64;
             v.last_input_at = t.last_input_ms() as i64;
-            v.asking = parse_ask(&screen).is_some();
-            v.at_prompt = at_prompt(&s.spec.cli, &screen);
+            (v.asking, v.at_prompt) = screen_facts(&s.spec.id, t.last_output_ms(), || (t.screen_text(), s.spec.cli.clone()));
             if let Some(code) = t.exit_code().filter(|c| *c != 0) {
                 v.error = Some(format!("its CLI ended with code {code}"));
             }

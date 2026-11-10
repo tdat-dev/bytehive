@@ -71,3 +71,11 @@ fn a_seat_for_someone_not_on_the_roster_or_with_no_role_has_no_launch() {
     store::save_company(t.path(), &c).unwrap();
     assert!(seat_launch(t.path(), "C:\\Users\\o", "p1", Path::new("s.mjs")).unwrap_err().contains("gone"));
 }
+
+#[test]
+fn takes_a_launch_made_ready_off_the_ui_thread_once() {
+    let ready: Launch = Ok((vec!["--prepared".into()], vec![("K".into(), "V".into())]));
+    PREPARED.lock().unwrap().push(("seat-prepared-1".into(), ready.clone()));
+    assert_eq!(take_prepared("seat-prepared-1"), Some(ready));
+    assert_eq!(take_prepared("seat-prepared-1"), None);
+}
