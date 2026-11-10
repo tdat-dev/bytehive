@@ -221,6 +221,7 @@ struct Use {
 impl Inbox {
     /// Reread every agent; redraw when a state moved or a minute rolled on.
     fn tick(&mut self, cx: &mut Context<Self>) {
+        let _span = crate::stall::span("tick");
         if crate::tray::quit_asked() {
             cx.quit();
             return;
@@ -232,12 +233,16 @@ impl Inbox {
         if let Some(tray) = &mut self.tray {
             tray.set_running(running);
         }
-        self.refresh_usage(cx);
+        {
+            let _s = crate::stall::span("tick.usage");
+            self.refresh_usage(cx);
+        }
         let mut changed = self.fleet.absorb();
         let now = now_ms();
         let mut hits = Vec::new();
         let mut statuses = Vec::with_capacity(self.fleet.seats.len());
         let mut moved = Vec::new();
+        let statuses_span = crate::stall::span("tick.statuses");
         for (i, seat) in self.fleet.seats.iter().enumerate() {
             let status = seat.status(cx);
             if let Some(hit) = &status.limit {
@@ -256,6 +261,7 @@ impl Inbox {
             }
             statuses.push(status);
         }
+        drop(statuses_span);
         self.notices_tick(&statuses, now, cx);
         self.note_moves(&moved, &statuses);
         self.tips_tick(&moved, now, cx);
@@ -265,7 +271,10 @@ impl Inbox {
         self.check_limits(hits, cx);
         self.poll_changes(cx);
         self.conductor_tick(cx);
-        self.company_tick(cx);
+        {
+            let _s = crate::stall::span("tick.company");
+            self.company_tick(cx);
+        }
         // The times on the rows count in seconds under a minute.
         if changed || self.fleet.seats.iter().any(|s| self.since.get(&s.spec.id).is_some_and(|(_, at)| now - at < 60_000)) {
             cx.notify();
@@ -290,6 +299,7 @@ impl Inbox {
 
 impl Render for Inbox {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _span = crate::stall::span("render");
         self.start_bridge(window, cx);
         self.start_updates(cx);
         self.open_noticed(window, cx);

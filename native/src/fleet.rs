@@ -229,6 +229,7 @@ impl Fleet {
     /// Start the agent at `index`, carrying on its conversation when the CLI
     /// still has it.
     pub fn start(&mut self, index: usize, cx: &mut App) -> anyhow::Result<()> {
+        let _span = crate::stall::span("fleet.start");
         let seat = &mut self.seats[index];
         let program = seat.spec.cli.to_ascii_lowercase();
         seat.preparing = false;

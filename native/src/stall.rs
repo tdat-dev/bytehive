@@ -23,6 +23,37 @@ impl Probe {
     }
 }
 
+/// Where the probe writes, when it is on.
+fn log_path() -> Option<&'static std::path::PathBuf> {
+    static PATH: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| std::env::var_os("BYTEHIVE_STALL_LOG").map(Into::into)).as_ref()
+}
+
+/// Times one piece of UI-thread work while the probe is on; a piece that held the
+/// thread past a frame is written down by name, so a stall says what it was.
+pub struct Span {
+    label: &'static str,
+    at: Instant,
+}
+
+pub fn span(label: &'static str) -> Option<Span> {
+    log_path().map(|_| Span { label, at: Instant::now() })
+}
+
+impl Drop for Span {
+    fn drop(&mut self) {
+        let took = self.at.elapsed();
+        if took < TICK {
+            return;
+        }
+        if let Some(path) = log_path() {
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let _ = writeln!(f, "{} span {} {} ms", crate::fleet::now_ms(), self.label, took.as_millis());
+            }
+        }
+    }
+}
+
 pub fn limit_from(value: Option<&str>) -> Duration {
     Duration::from_millis(value.and_then(|v| v.trim().parse().ok()).unwrap_or(50))
 }
