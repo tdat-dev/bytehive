@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-11
+
+### Added
+
+- **The Company is back, in the native app.** Give the Founder a job, for
+  example "Add marketing to my-shop". The Founder writes a plan; you approve it
+  once, or send it back with a note. The people it hires work on your open
+  projects, each in their own terminal and branch, with a Lead on any project
+  that has more than one person. Jobs and people from the old app carry over.
+- **The Company page.** Open it with the Company button in the top bar or
+  Ctrl+Shift+O when no terminal has the keyboard. It shows the Founder, one
+  block per project with who is there and what they are on, and a box to give
+  a job. Click a person to sit at their desk: their real terminal on the stage.
+- **Needs you** lists only what waits for you: a plan to approve, a Job that
+  reached its token cap, a person who is stuck or asking, a merge to review.
+  Each has one button. Jobs sit under it with the tokens each has used.
+- **One merge row per Job walks you through every branch.** Review opens the
+  next person whose work is not merged yet and says how many are done; people
+  whose branch holds nothing to merge are skipped. When all are in, only Mark
+  done is left.
+- **Stop a Job** from its menu: running turns end and its cards say Stopped.
+
+### Changed
+
+- Company people start with only ByteHive's own MCP server, so they start
+  fast and never wait on your other servers, and they are told never to write
+  outside their own folder or into your Claude memory and settings.
+- A plan that hires people but gives them no cards is sent back to the Founder.
+- A Lead who moves a card to Doing hands it out; the person who does the work
+  takes it.
+
 ## [0.15.0] - 2026-11-10
 
 ### Changed
