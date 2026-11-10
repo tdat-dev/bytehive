@@ -10,7 +10,6 @@ pub(super) const OVER: u32 = 0x252a37;
 pub(super) const INK: u32 = 0xeceae4;
 pub(super) const INK_2: u32 = 0xb9bbc4;
 pub(super) const INK_3: u32 = 0x9095a3;
-pub(super) const INK_OFF: u32 = 0x6b7080;
 pub(super) const HONEY: u32 = 0xf5b83d;
 pub(super) const HONEY_HOVER: u32 = 0xffc85c;
 pub(super) const HONEY_INK: u32 = 0x17130a;
@@ -68,10 +67,9 @@ pub(super) const LEAD: (f32, f32, FontWeight) = (14.0, 22.0, FontWeight::NORMAL)
 pub(super) const TITLE: (f32, f32, FontWeight) = (16.0, 24.0, FontWeight::SEMIBOLD);
 pub(super) const PAGE: (f32, f32, FontWeight) = (20.0, 28.0, FontWeight::SEMIBOLD);
 
-/// parts.css .btn: quiet by itself, Secondary and Primary say more, Danger is a word in red.
+/// parts.css .btn: Secondary and Primary, and Danger, a word in red.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Btn {
-    Quiet,
     Secondary,
     Primary,
     Danger,
@@ -80,7 +78,6 @@ pub(super) enum Btn {
 /// A .btn (32 high), or .btn.sm (24 high). `off`: aria-disabled, at half strength.
 pub(super) fn button(id: impl Into<ElementId>, label: impl Into<SharedString>, kind: Btn, small: bool, off: bool) -> Stateful<Div> {
     let (bg, ink, hover_bg, hover_ink) = match kind {
-        Btn::Quiet => (None, INK_2, Some(RAISED), INK),
         Btn::Secondary => (Some(RAISED), INK, Some(OVER), INK),
         Btn::Primary => (Some(HONEY), HONEY_INK, Some(HONEY_HOVER), HONEY_INK),
         Btn::Danger => (None, DANGER, Some(RAISED), DANGER),

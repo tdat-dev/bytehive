@@ -11,7 +11,6 @@ pub(super) const JOBS_META: &str = "Tokens used of the cap";
 pub(super) const NOTHING_NEEDS_YOU: &str = "Nothing needs you.";
 pub(super) const NO_JOB: &str = "No job is running.";
 pub(super) const STARTING: &str = "Starting...";
-pub(super) const WORKING: &str = "Working...";
 pub(super) const GIVE_JOB: &str = "Give the Founder a job";
 pub(super) const SEND: &str = "Send";
 pub(super) const SEND_HINT: &str = "Enter sends. Shift+Enter starts a new line.";

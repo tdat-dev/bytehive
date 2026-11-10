@@ -49,7 +49,7 @@ impl Inbox {
                 cx.notify();
             }))
             .child(svg().path("icons/ellipsis.svg").size(px(16.0)).text_color(c(INK_2)));
-        let line = div()
+        let row = div()
             .relative()
             .flex()
             .items_center()
@@ -87,7 +87,7 @@ impl Inbox {
                     cx.notify();
                 })))
         });
-        div().flex().flex_col().child(line).children(menu).into_any_element()
+        div().flex().flex_col().child(row).children(menu).into_any_element()
     }
 
     /// Ending a job is its own decision: it says what stops and what stays.

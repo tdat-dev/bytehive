@@ -35,7 +35,7 @@ impl Inbox {
                 .child(text(BODY, INK_3).child(calm_line(m.counts.people, m.counts.working)))
                 .into_any_element()
         } else {
-            div().id("co-needs").flex().flex_col().gap(px(S2)).flex_shrink().min_h_0().overflow_y_scroll().children(cards).into_any_element()
+            div().id("co-needs").flex().flex_col().gap(px(S2)).min_h_0().overflow_y_scroll().children(cards).into_any_element()
         };
         let meta = (!m.jobs.is_empty()).then_some(JOBS_META);
         rail.child(heading(NEEDS_YOU, count, None)).child(needs).child(heading(JOBS, None, meta)).child(self.co_jobs(m, cx))

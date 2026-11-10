@@ -136,12 +136,13 @@ impl Inbox {
     }
 
     fn co_result(&mut self, r: Option<Result<(), String>>, cx: &mut Context<Self>) -> bool {
+        let ok = matches!(r, Some(Ok(())));
         self.company.failure = match r {
             Some(Err(why)) => Some(if why.is_empty() { "Something went wrong.".into() } else { why }),
             _ => None,
         };
         cx.notify();
-        matches!(r, Some(Ok(())))
+        ok
     }
 
     pub(super) fn co_approve(&mut self, job: &str, _window: &mut Window, cx: &mut Context<Self>) {
