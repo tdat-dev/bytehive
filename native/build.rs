@@ -13,7 +13,8 @@ fn main() {
 
 /// `SHIPPED`: (path under roles/ with forward slashes, the file's text), sorted by path.
 fn roles() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/company/roles");
+    // Read when the script runs: a script built for another checkout sharing the target folder is reused.
+    let dir = Path::new(&std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR")).join("assets/company/roles");
     println!("cargo:rerun-if-changed={}", dir.display());
     let mut files = Vec::new();
     walk(&dir, "", &mut files);
