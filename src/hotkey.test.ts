@@ -93,6 +93,18 @@ describe("the global key", () => {
     hotkeyPressed();
     expect(document.activeElement?.id).toBe("row");
   });
+
+  it("finds Needs you in the column the Inbox shows when the office cannot draw", () => {
+    setup();
+    document.body.insertAdjacentHTML("beforeend", `
+      <div class="of" hidden><ul data-needs><li><button id="gone">Review</button></li></ul></div>
+      <aside class="of-side"><div class="co-rail"><ul data-needs><li><button id="row">Review</button></li></ul></div></aside>`);
+    document.getElementById("gone")!.getClientRects = () => [] as unknown as DOMRectList;
+    document.getElementById("row")!.getClientRects = () => [{}] as unknown as DOMRectList;
+    hotkeyPressed();
+    expect(document.activeElement?.id).toBe("row");
+    expect(io.notes).toEqual([]);
+  });
 });
 
 describe("registering it", () => {

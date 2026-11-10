@@ -23,9 +23,10 @@ function terminalInFocus(): Pane | null {
   return null;
 }
 
-/** The next one waiting: the office's rail while it is up, else the agents' list. */
+/** The next one waiting: Needs you while it is on screen (the office's rail, or the
+ *  column the Inbox gets when the office cannot draw), else the agents' list. */
 function waitingRow(): HTMLElement | null {
-  const inOffice = shown(document.querySelector<HTMLElement>(".of [data-needs] button"));
+  const inOffice = [...document.querySelectorAll<HTMLElement>("[data-needs] button")].find((b) => shown(b));
   if (inOffice) return inOffice;
   const t = allTasks().find((x) => x.status.state === "needs");
   return t ? shown(document.querySelector<HTMLElement>(`.iq-row[data-id="${CSS.escape(t.paneId)}"]`)) : null;
