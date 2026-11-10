@@ -32,9 +32,25 @@ impl Inbox {
         // The box stands at the stage's foot: over a 2D list it would hide people, as it never did over the building.
         let mut stage = div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().child(div().flex_1().min_h_0().child(floors));
         let mut side = div().flex().flex_col().flex_none().w(px(rail_w)).min_h_0().bg(c(PANEL)).shadow(vec![BoxShadow { color: line(), offset: point(px(1.0), px(0.0)), blur_radius: px(0.0), spread_radius: px(0.0), inset: true }]);
-        let rail = self.co_rail(&snap, cx).p(px(S4)).flex_1().min_h_0();
+        let rail = self.co_rail(&snap, compact, cx).p(px(S4)).flex_1().min_h_0();
         if compact {
-            side = side.child(div().id("co-rail-scroll").flex_1().min_h_0().overflow_y_scroll().child(rail));
+            let below = self.co_rail_below(cx);
+            side = side
+                .child(
+                    div()
+                        .id("co-rail-scroll")
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.company.rail_scroll)
+                        // What waits below follows a scroll.
+                        .on_scroll(cx.listener(|_, _, window, cx| {
+                            cx.notify();
+                            cx.on_next_frame(window, |_, _, cx| cx.notify());
+                        }))
+                        .child(rail),
+                )
+                .children(below);
             if let Some(b) = job_box {
                 side = side.child(div().flex_none().px(px(S4)).py(px(S3)).border_t_1().border_color(line()).child(b));
             }

@@ -37,6 +37,11 @@ pub(in crate::inbox) struct CompanyUi {
     pub needs_scroll: ScrollHandle,
     /// The window size and card count the cards were last laid out at.
     pub laid_out: (Size<Pixels>, usize),
+    /// The narrow layout's rail, which scrolls as one, and where its cards and its Jobs
+    /// heading were painted last (window coordinates), to say what waits below.
+    pub rail_scroll: ScrollHandle,
+    pub cards_at: std::rc::Rc<std::cell::RefCell<Vec<Bounds<Pixels>>>>,
+    pub jobs_at: std::rc::Rc<std::cell::RefCell<Option<Bounds<Pixels>>>>,
     pub confirm: Option<String>,
     /// The job box, made the first time the page shows.
     pub ask: Option<Entity<TextareaState>>,

@@ -197,11 +197,6 @@ pub(super) fn desk_not_ready(name: &str) -> String {
     format!("Getting {name}'s desk ready. Try again in a moment.")
 }
 
-/// A button's full words, for whoever reads them: "Approve: Approve plan: Add login".
-pub(super) fn act_on(label: &str, title: &str) -> String {
-    format!("{label}: {title}")
-}
-
 /// Ending a job is its own decision: the confirm says what stops and what stays.
 pub(super) fn confirm_title(word: &str) -> String {
     format!("{word}?")
@@ -226,5 +221,15 @@ pub(super) fn doing_line(word: &str, doing: Option<&str>) -> String {
     match doing {
         Some(d) => format!("{word}: {d}"),
         None => word.to_string(),
+    }
+}
+
+/// The narrow rail's foot: what waits below, or None when nothing does.
+pub(super) fn jobs_below(cards: usize, jobs: bool) -> Option<String> {
+    match (cards, jobs) {
+        (0, false) => None,
+        (0, true) => Some("Jobs below".into()),
+        (n, false) => Some(below(n)),
+        (n, true) => Some(format!("{n} and Jobs below")),
     }
 }

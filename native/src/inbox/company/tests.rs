@@ -377,3 +377,11 @@ fn the_app_lands_on_the_company_only_for_a_job_still_going() {
         assert!(!still_going(&s), "{s:?}");
     }
 }
+
+#[test]
+fn the_narrow_rail_says_what_waits_below_it() {
+    assert_eq!(jobs_below(0, false), None);
+    assert_eq!(jobs_below(0, true).as_deref(), Some("Jobs below"));
+    assert_eq!(jobs_below(2, false).as_deref(), Some("2 below"));
+    assert_eq!(jobs_below(1, true).as_deref(), Some("1 and Jobs below"));
+}

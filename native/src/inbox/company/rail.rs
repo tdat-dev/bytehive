@@ -10,8 +10,9 @@ use super::words::*;
 use super::*;
 
 impl Inbox {
-    /// The rail: Needs you, then Jobs under it, always in sight.
-    pub(super) fn co_rail(&self, snap: &Snapshot, cx: &mut Context<Self>) -> Div {
+    /// The rail: Needs you, then Jobs under it, always in sight. In the narrow layout
+    /// the whole rail scrolls instead, and the cards are a plain column in it.
+    pub(super) fn co_rail(&self, snap: &Snapshot, compact: bool, cx: &mut Context<Self>) -> Div {
         let co = &self.company;
         let error = co.failure.clone().or_else(|| snap.error.clone());
         let mut rail = div().flex().flex_col().gap(px(S3)).min_h_0().text_color(c(INK));
@@ -34,6 +35,9 @@ impl Inbox {
                 .child(text(LEAD, INK).child(NOTHING_NEEDS_YOU))
                 .child(text(BODY, INK_3).child(calm_line(m.counts.people, m.counts.working)))
                 .into_any_element()
+        } else if compact {
+            let at = co.cards_at.clone();
+            div().flex().flex_col().gap(px(S2)).on_children_prepainted(move |bounds, _, _| *at.borrow_mut() = bounds).children(cards).into_any_element()
         } else {
             div()
                 .id("co-needs")
@@ -48,9 +52,11 @@ impl Inbox {
                 .children(cards)
                 .into_any_element()
         };
-        let below = self.co_below(m.needs.len(), cx);
+        let below = if compact { None } else { self.co_below(m.needs.len(), cx) };
         let meta = (!m.jobs.is_empty()).then_some(JOBS_META);
-        rail.child(heading(NEEDS_YOU, count, None)).child(needs).children(below).child(heading(JOBS, None, meta)).child(self.co_jobs(m, cx))
+        let jobs_at = co.jobs_at.clone();
+        let jobs_head = div().on_children_prepainted(move |bounds, _, _| *jobs_at.borrow_mut() = bounds.first().copied()).child(heading(JOBS, None, meta));
+        rail.child(heading(NEEDS_YOU, count, None)).child(needs).children(below).child(jobs_head).child(self.co_jobs(m, cx))
     }
 
     /// Cards past the bottom of the list, at least partly: the scrollbar hides until
@@ -87,6 +93,44 @@ impl Inbox {
                 }))
                 .child(svg().path("icons/chevron-down.svg").size(px(16.0)).text_color(c(INK_2)))
                 .child(text(ROW, INK_2).child(below(cut.len()))),
+        )
+    }
+
+    /// The narrow layout's line at the rail's foot: the cards cut there, and Jobs when
+    /// its heading is out of sight (rail.ts edge). Pressing it brings the first up.
+    pub(super) fn co_rail_below(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let co = &self.company;
+        let fold = co.rail_scroll.bounds().bottom();
+        let cards = co.cards_at.borrow();
+        let cut: Vec<Bounds<Pixels>> = cards.iter().filter(|b| b.bottom() > fold + px(CUT)).copied().collect();
+        let jobs = co.jobs_at.borrow().filter(|b| b.top() > fold);
+        let words = jobs_below(cut.len(), jobs.is_some())?;
+        let to = cut.first().copied().or(jobs)?;
+        let handle = co.rail_scroll.clone();
+        Some(
+            div()
+                .id("co-rail-below")
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .gap(px(S1))
+                .h(px(32.0))
+                .bg(c(PANEL))
+                .border_t_1()
+                .border_color(line())
+                .cursor_pointer()
+                .hover(|s| s.bg(c(RAISED)))
+                .on_click(cx.listener(move |_, _, window, cx| {
+                    // Move the rail so the first one below stands at its top, then
+                    // count again once it is painted there.
+                    let off = handle.offset();
+                    handle.set_offset(point(off.x, off.y - (to.top() - handle.bounds().top())));
+                    cx.notify();
+                    cx.on_next_frame(window, |_, _, cx| cx.notify());
+                }))
+                .child(svg().path("icons/chevron-down.svg").size(px(16.0)).text_color(c(INK_2)))
+                .child(text(ROW, INK_2).child(words)),
         )
     }
 
@@ -147,7 +191,8 @@ impl Inbox {
         let to = target.clone();
         let id = SharedString::from(format!("co-act-{:?}-{key}", b.act));
         button(id, b.label.clone(), kind, false, b.held)
-            .tooltip(tip(act_on(&b.label, &r.title)))
+            // No tooltip: the label says it, and one left over a button covers the note
+            // box that Send back opens under it.
             .on_click(cx.listener(move |this, _, window, cx| match b.act {
                 Act::Approve if !b.held => this.co_approve(&job, cx),
                 Act::Approve => {}
