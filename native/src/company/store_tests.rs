@@ -347,3 +347,10 @@ fn a_test_build_never_gets_the_real_company() {
     let got = root().unwrap().to_string_lossy().to_lowercase();
     assert!(got != real && !got.starts_with(&format!("{real}\\")), "{got}");
 }
+
+#[test]
+fn a_release_build_takes_a_sandbox_company_only_beside_a_sandbox_app() {
+    assert!(sandboxed(true, false), "a debug build always may");
+    assert!(sandboxed(false, true), "a release build with its own data folder is a test run");
+    assert!(!sandboxed(false, false), "the owner's app always runs the real company");
+}

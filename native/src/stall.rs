@@ -1,4 +1,4 @@
-//! Debug builds only: notes when the UI thread could not keep up. With
+//! Notes when the UI thread could not keep up, in any build. With
 //! BYTEHIVE_STALL_LOG set, a timer on the UI thread asks to wake every 16 ms and
 //! each wake that comes more than BYTEHIVE_STALL_MS (50) late is written down:
 //! for that long nothing on screen could change. Off, it costs nothing.
@@ -28,9 +28,6 @@ pub fn limit_from(value: Option<&str>) -> Duration {
 }
 
 pub fn start(cx: &mut App) {
-    if !cfg!(debug_assertions) {
-        return;
-    }
     let Some(path) = std::env::var_os("BYTEHIVE_STALL_LOG") else { return };
     let probe = Probe { tick: TICK, limit: limit_from(std::env::var("BYTEHIVE_STALL_MS").ok().as_deref()) };
     let write = move |line: String| {

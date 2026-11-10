@@ -116,7 +116,15 @@ fn clean_path(p: &str) -> String {
 pub fn root() -> Option<PathBuf> {
     let home = std::env::var("USERPROFILE").ok()?;
     let set = std::env::var("BYTEHIVE_COMPANY_ROOT").ok();
-    Some(resolve_root(&home, cfg!(debug_assertions) || cfg!(test), set.as_deref()))
+    let native_dir = std::env::var_os("BYTEHIVE_NATIVE_DIR").is_some();
+    Some(resolve_root(&home, sandboxed(cfg!(debug_assertions) || cfg!(test), native_dir), set.as_deref()))
+}
+
+/// A debug build may run a sandbox company, and so may a release build that was
+/// given its own data folder (BYTEHIVE_NATIVE_DIR): that is a test run, never the
+/// owner's app, which sets neither.
+pub fn sandboxed(debug: bool, native_dir: bool) -> bool {
+    debug || native_dir
 }
 
 /// Write through a temp file next to it, then swap it in whole: the MCP server
