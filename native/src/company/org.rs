@@ -73,10 +73,12 @@ pub fn person_by_name<'a>(c: &'a Company, name: &str) -> Option<&'a Person> {
     c.people.iter().find(|p| same(&p.name, name))
 }
 
+#[cfg_attr(not(test), allow(dead_code))] // org.ts: for the MCP server's side, not the app's
 pub fn reports_of<'a>(c: &'a Company, id: &str) -> Vec<&'a Person> {
     c.people.iter().filter(|p| p.boss.as_deref() == Some(id)).collect()
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn boss_of<'a>(c: &'a Company, p: &Person) -> Option<&'a Person> {
     p.boss.as_deref().and_then(|b| person_by_id(c, b))
 }
@@ -93,6 +95,7 @@ pub fn can_message(c: &Company, from_id: &str, to_id: &str) -> bool {
 }
 
 /// Who a message goes to: `to` by name, or with no name the boss, else the reports.
+#[cfg_attr(not(test), allow(dead_code))] // org.ts: for the MCP server's side, not the app's
 pub fn resolve_targets(c: &Company, from_id: &str, to: Option<&str>) -> Result<Vec<Person>, String> {
     let Some(from) = person_by_id(c, from_id) else {
         return Err(format!("You are not on the company roster ({from_id})."));

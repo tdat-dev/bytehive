@@ -147,9 +147,6 @@ pub trait Host {
     fn interrupt(&mut self, person: &str);
     fn folder_exists(&self, dir: &str) -> bool;
     fn session_exists(&self, dir: &str, session: &str) -> bool;
-    /// A floor's board, or None when it has none yet. Err for one that can't be read.
-    fn read_board(&mut self, dir: &str) -> Result<Option<(Board, BoardStamp)>, String>;
-    fn write_board(&mut self, dir: &str, board: &Board, seen: BoardStamp) -> Result<(), BoardWrite>;
     /// Start slow work off the UI thread.
     fn begin(&mut self, op: Op);
     /// What slow work has finished since the last call.

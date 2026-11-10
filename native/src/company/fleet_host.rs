@@ -227,15 +227,7 @@ impl Host for FleetHost<'_> {
         agent_core::claude::session_exists(dir, session)
     }
 
-    fn read_board(&mut self, dir: &str) -> Result<Option<(Board, BoardStamp)>, String> {
-        board::read(dir).map_err(|e| match e {
-            board::ReadError::Corrupt(why) | board::ReadError::Unreadable(why) => why,
-        })
-    }
 
-    fn write_board(&mut self, dir: &str, board: &Board, seen: BoardStamp) -> Result<(), BoardWrite> {
-        write_board_file(dir, board, seen)
-    }
 
     fn begin(&mut self, op: Op) {
         drive::begin(op);

@@ -2,9 +2,6 @@
 //! the Tauri app's src/company/*.ts, files on disk in the same format, so the
 //! bundled MCP server and the owner's company carry over unchanged.
 
-// Nothing calls in yet: the engine is the first caller.
-#![allow(dead_code)]
-
 pub mod alerts;
 pub mod drive;
 pub mod engine;

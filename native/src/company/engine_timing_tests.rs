@@ -5,7 +5,7 @@
 
 use super::harness::*;
 use crate::company::fleet_host::write_board_file;
-use crate::company::host::{BoardStamp, Done, Op};
+use crate::company::host::{Done, Op};
 use crate::company::types::{Company, Person, RoleDef};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -81,12 +81,6 @@ impl Host for Real {
     fn session_exists(&self, dir: &str, session: &str) -> bool {
         self.fake.session_exists(dir, session)
     }
-    fn read_board(&mut self, dir: &str) -> Result<Option<(Board, BoardStamp)>, String> {
-        crate::board::read(dir).map_err(|e| format!("{e:?}"))
-    }
-    fn write_board(&mut self, dir: &str, board: &Board, seen: BoardStamp) -> Result<(), BoardWrite> {
-        write_board_file(dir, board, seen)
-    }
     fn begin(&mut self, op: Op) {
         self.pending.push(op);
     }
@@ -98,7 +92,6 @@ impl Host for Real {
     }
 }
 
-use crate::board::Board;
 use crate::company::host::Host;
 
 fn person(id: &str, name: &str, role: &str, rank: Rank, floor: Option<&str>, boss: Option<&str>) -> serde_json::Value {

@@ -35,7 +35,10 @@ impl Engine {
     /// The folder a Founder with no seat starts in: the active project's, else
     /// the first open project with one.
     pub(crate) fn founder_dir(&self, host: &dyn Host) -> Option<String> {
-        host.active_project().and_then(|p| p.dir).or_else(|| host.projects().into_iter().find_map(|p| p.dir))
+        let active = host.active_project().map(|p| p.dir);
+        let open: Vec<Option<String>> = host.projects().into_iter().map(|p| p.dir).collect();
+        let open: Vec<Option<&str>> = open.iter().map(|d| d.as_deref()).collect();
+        super::super::launch::founder_folder(active.as_ref().map(|d| d.as_deref()), &open)
     }
 
     /// Write down what every seat runs on, so closing one loses nothing. Gives back whether anything moved.
@@ -203,6 +206,7 @@ impl Engine {
     }
 
     /// What waits to be typed, oldest first.
+    #[cfg(test)]
     pub fn waiting(&self) -> &[Pending] {
         &self.outbox
     }
@@ -258,7 +262,9 @@ impl Engine {
         }
     }
 
-    /// The owner types to someone. Their word goes straight through.
+    /// The owner types to someone. Their word goes straight through. For the
+    /// desk's message box, which the Company page does not have yet.
+    #[allow(dead_code)]
     pub fn message_person(&mut self, host: &mut dyn Host, id: &str, text: &str) {
         let words = typeable(text);
         let words = words.trim();

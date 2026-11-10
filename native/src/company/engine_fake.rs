@@ -148,6 +148,14 @@ impl Fake {
 }
 
 impl Fake {
+    pub fn read_board(&mut self, dir: &str) -> Result<Option<(Board, BoardStamp)>, String> {
+        self.board_reads.push(dir.into());
+        if let Some(e) = self.read_fails.get(dir) {
+            return Err(e.clone());
+        }
+        Ok(self.boards.get(dir).map(|b| (b.clone(), None)))
+    }
+
     fn load(&self, root: &Path) -> Result<Loaded, String> {
         if let Some(e) = &self.roles_fail {
             return Err(e.clone());
@@ -259,20 +267,6 @@ impl Host for Fake {
     }
     fn session_exists(&self, dir: &str, session: &str) -> bool {
         self.sessions.contains(&(dir.to_string(), session.to_string()))
-    }
-    fn read_board(&mut self, dir: &str) -> Result<Option<(Board, BoardStamp)>, String> {
-        self.board_reads.push(dir.into());
-        if let Some(e) = self.read_fails.get(dir) {
-            return Err(e.clone());
-        }
-        Ok(self.boards.get(dir).map(|b| (b.clone(), None)))
-    }
-    fn write_board(&mut self, dir: &str, board: &Board, _seen: BoardStamp) -> Result<(), BoardWrite> {
-        if let Some(fail) = self.write_fails.pop_front() {
-            return Err(fail);
-        }
-        self.boards.insert(dir.into(), board.clone());
-        Ok(())
     }
     fn begin(&mut self, op: Op) {
         self.ops.push(op.clone());

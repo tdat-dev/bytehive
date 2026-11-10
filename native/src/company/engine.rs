@@ -162,10 +162,6 @@ impl Engine {
         e
     }
 
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
     pub(crate) fn changed(&mut self) {
         self.changes += 1;
     }
@@ -344,12 +340,14 @@ impl Engine {
         }
     }
 
-    /// Why the company could not be loaded, when it could not.
+    /// Why the company could not be loaded, when it could not (the view carries it too).
+    #[cfg(test)]
     pub fn error(&self) -> Option<&str> {
         self.load_error.as_deref()
     }
 
     /// The company as this app holds it; None beside another app.
+    #[cfg(test)]
     pub fn state(&self) -> Option<&State> {
         self.state.as_ref()
     }
@@ -360,7 +358,8 @@ impl Engine {
     }
 
     /// A floor someone from the company works on: an open project with nobody
-    /// on it is still just your project.
+    /// on it is still just your project. For the Conductor, which does not ask yet.
+    #[allow(dead_code)]
     pub fn is_company_floor(&self, dir: &str) -> bool {
         let Some(s) = &self.state else { return false };
         s.company.floors.iter().find(|f| same_folder(&f.dir, dir)).is_some_and(|f| s.company.people.iter().any(|p| p.floor.as_deref() == Some(&f.id)))
