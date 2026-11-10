@@ -71,3 +71,13 @@ fn a_person_on_a_cli_other_than_claude_starts_as_a_plain_seat() {
     let got = run_extras_with(&person("codex"), "codex", |_| panic!("only claude runs a Company launch"));
     assert_eq!(got, Ok((vec![], vec![])));
 }
+
+#[test]
+fn takes_in_a_branch_read_off_the_ui_thread() {
+    let mut f = super::Fleet::default();
+    f.seats.push(super::Seat { spec: spec("claude", None), terminal: None, branch: None, pid: None, preparing: false, changes: Default::default() });
+    f.branches.lock().unwrap().push(("a1".into(), Some("main".into())));
+    assert!(f.absorb());
+    assert_eq!(f.seats[0].branch.as_deref(), Some("main"));
+    assert!(!f.absorb(), "nothing new");
+}

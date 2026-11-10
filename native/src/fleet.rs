@@ -148,15 +148,31 @@ pub struct Fleet {
     pub focused: Option<usize>,
     /// Conversation ids learned after boot: (agent id, session id).
     learned: Arc<Mutex<Vec<(String, String)>>>,
+    /// Branches read off the UI thread: (agent id, branch). git takes a process,
+    /// 100 to 250 ms, too long for a frame.
+    branches: Arc<Mutex<Vec<(String, Option<String>)>>>,
+}
+
+/// Read a folder's branch on a thread of its own; `absorb` takes it in.
+fn read_branch(branches: &Arc<Mutex<Vec<(String, Option<String>)>>>, id: String, dir: String) {
+    let branches = branches.clone();
+    std::thread::spawn(move || {
+        let branch = agent_core::git::current_branch(std::path::Path::new(&dir));
+        branches.lock().unwrap().push((id, branch));
+    });
 }
 
 impl Fleet {
     /// The saved fleet, every agent stopped.
     pub fn load() -> Self {
         let specs: Vec<Spec> = store().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: agent_core::git::current_branch(std::path::Path::new(spec.run_dir())), spec, terminal: None, pid: None, preparing: false, changes: ChangeCount::default() }).collect();
+        let seats: Vec<Seat> = specs.into_iter().map(|spec| Seat { branch: spec.branch.clone(), spec, terminal: None, pid: None, preparing: false, changes: ChangeCount::default() }).collect();
         let focused = if seats.is_empty() { None } else { Some(0) };
-        Self { seats, focused, learned: Arc::default() }
+        let fleet = Self { seats, focused, learned: Arc::default(), branches: Arc::default() };
+        for s in &fleet.seats {
+            read_branch(&fleet.branches, s.spec.id.clone(), s.spec.run_dir().to_string());
+        }
+        fleet
     }
 
     pub fn save(&self) {
@@ -251,7 +267,9 @@ impl Fleet {
         let terminal = Terminal::spawn(spec, cx)?;
         seat.terminal = Some(terminal);
         seat.pid = None;
-        seat.branch = agent_core::git::current_branch(std::path::Path::new(&cwd));
+        // What it was, or its worktree's own, until the read off the UI thread is in.
+        seat.branch = seat.spec.branch.clone().or(seat.branch.take());
+        read_branch(&self.branches, seat.spec.id.clone(), cwd.clone());
         seat.spec.session_id = session.or(seat.spec.session_id.take());
         let started = now_ms();
         seat.spec.started_ms = started;
@@ -279,8 +297,17 @@ impl Fleet {
         Ok(())
     }
 
-    /// Keep the conversation ids the CLIs chose since last time. True if any.
+    /// Keep the conversation ids the CLIs chose, and the branches read, since
+    /// last time. True if anything changed.
     pub fn absorb(&mut self) -> bool {
+        let read: Vec<_> = self.branches.lock().unwrap().drain(..).collect();
+        let mut moved = false;
+        for (id, branch) in read {
+            if let Some(seat) = self.seats.iter_mut().find(|s| s.spec.id == id).filter(|s| s.branch != branch) {
+                seat.branch = branch;
+                moved = true;
+            }
+        }
         let found: Vec<_> = self.learned.lock().unwrap().drain(..).collect();
         for (id, session) in &found {
             if let Some(seat) = self.seats.iter_mut().find(|s| &s.spec.id == id) {
@@ -290,7 +317,7 @@ impl Fleet {
         if !found.is_empty() {
             self.save();
         }
-        !found.is_empty()
+        moved || !found.is_empty()
     }
 
     /// The running Claude agents, by index, ready for follow.rs.
