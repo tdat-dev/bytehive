@@ -130,13 +130,20 @@ pub(crate) fn make_ready(p: Prepare) {
     });
 }
 
-/// Start the seats whose folder is ready, then hand over everything finished.
+/// Start a seat whose folder is ready, then hand over everything finished.
+/// One seat a tick: a start holds the UI thread for tens of ms (a ConPTY and a
+/// process), so a plan's hires start in turn instead of freezing one frame.
 pub(crate) fn take(fleet: &mut Fleet, cx: &mut App) -> Vec<Done> {
-    let ready = std::mem::take(&mut back().ready);
-    let started: Vec<Done> = ready.into_iter().map(|r| start_ready(fleet, cx, r)).collect();
+    let next = one_ready(&mut back().ready);
+    let started: Vec<Done> = next.into_iter().map(|r| start_ready(fleet, cx, r)).collect();
     let mut done = std::mem::take(&mut back().done);
     done.extend(started);
     done
+}
+
+/// The first seat waiting to start, leaving the rest in order.
+fn one_ready(queue: &mut Vec<Ready>) -> Option<Ready> {
+    (!queue.is_empty()).then(|| queue.remove(0))
 }
 
 /// Start a seat whose folder is ready, on the UI thread.

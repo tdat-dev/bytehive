@@ -24,3 +24,12 @@ fn excludes_nothing_outside_git_and_calls_it_done() {
     let d = dir.path().to_str().unwrap().to_string();
     assert_eq!(run_op(Op::Exclude { dir: d.clone() }), Done::Excluded { dir: d, result: Ok(()) });
 }
+
+#[test]
+fn starts_one_ready_seat_a_tick_and_keeps_the_rest_in_order() {
+    let r = |seat: &str| Ready { seat: seat.into(), person: seat.into(), trust: Ok(()), worktree: None };
+    let mut queue = vec![r("a"), r("b"), r("c")];
+    assert_eq!(one_ready(&mut queue).map(|r| r.seat), Some("a".to_string()));
+    assert_eq!(queue.iter().map(|r| r.seat.as_str()).collect::<Vec<_>>(), ["b", "c"]);
+    assert_eq!(one_ready(&mut Vec::new()), None);
+}
