@@ -303,3 +303,12 @@ fn refresh_files_rewrites_whoever_has_a_role_and_names_what_could_not_be_written
     assert!(failed[1].starts_with("Vy's MCP config was not updated: "));
     assert!(failed[2].starts_with("Vy's skills were not updated: "));
 }
+
+#[test]
+fn compose_prompt_takes_an_empty_boss_or_floor_name_for_none() {
+    let mut c = company();
+    c.people[0].name = String::new();
+    c.floors[0].name = String::new();
+    let text = compose_prompt(&person(), &role(), &c);
+    assert!(text.contains("\n\nYour name is Vy. You answer only to the person who owns the company.\n\n"), "{text}");
+}

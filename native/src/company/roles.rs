@@ -1,7 +1,7 @@
 //! The roles ByteHive ships with (roles.ts). A copy lands in the company's roles
 //! folder the first time, and that copy wins, so a role the owner edits stays edited.
 
-use super::store::parse_owned;
+use super::store::{missing, parse_owned};
 use super::types::{Look, Rank, RoleDef};
 use serde_json::Value;
 use std::fs;
@@ -106,8 +106,10 @@ fn role_json(r: &RoleDef) -> io::Result<String> {
 pub fn seed(root: &Path) -> io::Result<()> {
     for role in default_roles() {
         let dir = root.join("roles").join(&role.id);
-        if fs::read(dir.join("role.json")).is_ok() {
-            continue;
+        // Only a role that is not there is written: one that will not read now is the owner's to mend.
+        match fs::metadata(dir.join("role.json")) {
+            Err(e) if missing(&e) => {}
+            _ => continue,
         }
         // The shipped text as it is, so the key order the owner reads is the folder's.
         let json = shipped(&format!("{}/role.json", role.id)).map(|t| lf(t).trim_end().to_string());

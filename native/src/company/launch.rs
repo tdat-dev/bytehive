@@ -21,8 +21,9 @@ fn laws(rank: &Rank) -> &'static str {
 }
 
 pub fn compose_prompt(person: &Person, role: &RoleDef, c: &Company) -> String {
-    let boss = person.boss.as_deref().and_then(|b| person_by_id(c, b)).map(|p| p.name.as_str());
-    let floor = c.floors.iter().find(|f| Some(&f.id) == person.floor.as_ref()).map(|f| f.name.as_str());
+    // An empty name says nothing, as the TS's truthiness has it.
+    let boss = person.boss.as_deref().and_then(|b| person_by_id(c, b)).map(|p| p.name.as_str()).filter(|n| !n.is_empty());
+    let floor = c.floors.iter().find(|f| Some(&f.id) == person.floor.as_ref()).map(|f| f.name.as_str()).filter(|n| !n.is_empty());
     let place = [
         format!("Your name is {}.", person.name),
         boss.map_or_else(|| "You answer only to the person who owns the company.".into(), |b| format!("Your boss is {b}.")),

@@ -188,3 +188,24 @@ fn save_writes_an_approved_role_and_names_one_it_could_not() {
     assert!(failed[0].starts_with("Role blocked was not saved: "), "{}", failed[0]);
     assert!(failed[0].ends_with('.'));
 }
+
+#[test]
+fn seed_writes_a_role_only_where_its_file_is_missing_not_where_it_cannot_be_read() {
+    let root = tempfile::tempdir().unwrap();
+    // A folder where role.json should be: there, but not readable as a file.
+    fs::create_dir_all(root.path().join("roles/qa/role.json")).unwrap();
+    seed(root.path()).unwrap();
+    assert!(!root.path().join("roles/qa/prompt.md").exists());
+    assert!(root.path().join("roles/lead/role.json").is_file());
+}
+
+#[test]
+fn load_reads_a_role_json_that_leaves_out_its_denied_tools_and_skills() {
+    let root = tempfile::tempdir().unwrap();
+    let json = r##"{"id":"plain","title":"Plain","department":"D","rank":"staff","cli":"claude","look":{"shirt":"#fff","hair":"#000","prop":"none"}}"##;
+    put(root.path(), "roles/plain/role.json", json);
+    put(root.path(), "roles/plain/prompt.md", "Do plain things.");
+    let plain = load(root.path()).unwrap().pop().unwrap();
+    assert_eq!(plain.id, "plain");
+    assert!(plain.deny_tools.is_empty() && plain.skills.is_empty());
+}

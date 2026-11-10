@@ -180,10 +180,12 @@ pub struct RoleDef {
     pub department: String,
     pub rank: Rank,
     pub cli: String,
+    #[serde(default)]
     pub deny_tools: Vec<String>,
     pub look: Look,
     pub prompt: String,
     /// Folder names under the role's skills/.
+    #[serde(default)]
     pub skills: Vec<String>,
 }
 
