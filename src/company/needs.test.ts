@@ -57,6 +57,18 @@ describe("needsYou", () => {
     const rows = needsYou([job({ status: "awaiting-merge", people: ["p1", "p2"] }), job({ id: "J-2", status: "awaiting-merge" })], []);
     expect(rows.map((r) => r.personId)).toEqual(["p1", null]);
   });
+  it("moves a merge row on to the next person whose work is not merged yet, and counts", () => {
+    const jobs = [job({ status: "awaiting-merge", summary: "Done.", people: ["p1", "p2", "p3"] })];
+    const at = (done: string[]) => needsYou(jobs, [], undefined, (id) => done.includes(id))[0];
+    expect(at([])).toMatchObject({ personId: "p1", detail: "Done. 3 people to merge." });
+    expect(at(["p1"])).toMatchObject({ personId: "p2", detail: "Done. 1 of 3 merged." });
+    expect(at(["p1", "p3"])).toMatchObject({ personId: "p2", detail: "Done. 2 of 3 merged." });
+    expect(at(["p1", "p2", "p3"])).toMatchObject({ personId: null, detail: "Done. All 3 merged." });
+  });
+  it("keeps a one-person merge row's words as the Job's own", () => {
+    const [row] = needsYou([job({ status: "awaiting-merge", summary: "Done.", people: ["p1"] })], [], undefined, () => true);
+    expect(row).toMatchObject({ personId: "p1", detail: "Done." });
+  });
   it("puts plans first, then stops, then the rest", () => {
     const rows = needsYou([job({ status: "awaiting-merge" }), job({ id: "J-2", status: "awaiting-plan", plan: { summary: "s", cards: [], hires: [] } })], [
       { key: "k", job: "J-1", personId: "d1", text: "stuck", level: "warn" },

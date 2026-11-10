@@ -41,7 +41,19 @@ function planDetail(plan: JobPlan, limit: number, names: Names): PlanDetail {
   };
 }
 
-export function needsYou(jobs: Job[], alerts: Alert[], names: Names = { floors: [], roles: [] }): NeedRow[] {
+/** A Job with several people has a branch each: its one row takes the owner to
+ *  the next one still to merge, and says how far along the merging is. */
+function mergeRow(j: Job, merged: (personId: string) => boolean): NeedRow {
+  const summary = j.summary ?? "";
+  const n = j.people.length;
+  const done = j.people.filter(merged).length;
+  const next = n > 1 ? (j.people.find((p) => !merged(p)) ?? null) : (j.people[0] ?? null);
+  const left = done === 0 ? `${n} people to merge.` : done === n ? `All ${n} merged.` : `${done} of ${n} merged.`;
+  const detail = n > 1 ? [summary, left].filter(Boolean).join(" ") : summary;
+  return { key: `merge-${j.id}`, kind: "merge", jobId: j.id, personId: next, title: `Review and merge: ${j.title}`, detail };
+}
+
+export function needsYou(jobs: Job[], alerts: Alert[], names: Names = { floors: [], roles: [] }, merged: (personId: string) => boolean = () => false): NeedRow[] {
   const rows: NeedRow[] = [];
   for (const j of jobs) {
     if (j.status === "awaiting-plan" && j.plan) {
@@ -55,7 +67,7 @@ export function needsYou(jobs: Job[], alerts: Alert[], names: Names = { floors: 
       rows.push({ key: `paused-${j.id}`, kind: "paused", jobId: j.id, personId: null, title: `Paused: ${j.title}`, detail: "It reached its token cap." });
     }
     if (j.status === "awaiting-merge") {
-      rows.push({ key: `merge-${j.id}`, kind: "merge", jobId: j.id, personId: j.people[0] ?? null, title: `Review and merge: ${j.title}`, detail: j.summary ?? "" });
+      rows.push(mergeRow(j, merged));
     }
   }
   for (const a of alerts) {

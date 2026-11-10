@@ -261,6 +261,12 @@ describe("Needs you rail", () => {
     click(el, ".co-merge [data-act=\"finish\"]");
     expect(s.finishJob).toHaveBeenCalledWith("J-1");
   });
+  it("leaves only Mark done on a merge row with everyone merged, wherever you are", () => {
+    const row: NeedRow = { key: "merge-J-1", kind: "merge", jobId: "J-1", personId: null, title: "Review and merge: Add login", detail: "All 2 merged." };
+    const { el } = mountRail(fake({ model: model([row]) }), vi.fn(), () => ({ kind: "floor", floorId: "a" }));
+    expect(el.querySelector(".co-merge [data-open]")).toBeNull();
+    expect(el.querySelector('.co-merge [data-act="finish"]')!.classList.contains("primary")).toBe(true);
+  });
   it("offers Dismiss on an alert that stands, and only there", () => {
     const rows: NeedRow[] = [
       { key: "file", kind: "alert", jobId: null, personId: null, title: "J-1.json could not be read.", detail: "", standing: true },

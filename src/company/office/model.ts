@@ -130,7 +130,7 @@ export function officeModel(company: Company, jobs: Job[], alerts: Alert[], pane
   const top = company.people.find((p) => p.rank === "founder");
   const founder = top ? toPerson(top, roleOf(top.role), paneOf(top.id), 0) : null;
 
-  const rows = needsYou(jobs, alerts, { floors: company.floors, roles: extra.roles ?? [] });
+  const rows = needsYou(jobs, alerts, { floors: company.floors, roles: extra.roles ?? [] }, (id) => paneOf(id)?.task?.status.state === "merged");
 
   const floors = company.floors.map((f): OfficeFloor => {
     const here = company.people.filter((p) => p.floor === f.id);

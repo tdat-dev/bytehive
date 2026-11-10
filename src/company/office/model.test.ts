@@ -142,6 +142,11 @@ describe("officeModel", () => {
     expect(m.needs.map((r) => r.key)).toEqual(["plan-J-1", "ask-x", "merge-J-2"]);
     expect(m.needs[1]).toMatchObject({ kind: "alert", personId: "x", title: "X wants to run rm x", standing: false });
   });
+  it("sends a Job's merge row to the next person whose branch is not merged yet", () => {
+    const jobs = [job({ status: "awaiting-merge", summary: "Done.", people: ["x", "y"] })];
+    const m = officeModel(company([person("x"), person("y")]), jobs, [], [pane("x", status("merged")), pane("y", status("review"))]);
+    expect(m.needs[0]).toMatchObject({ kind: "merge", personId: "y", detail: "Done. 1 of 2 merged." });
+  });
   it("counts a floor's needs once per person", () => {
     const alert: Alert = { key: "k", job: null, personId: "x", text: "stuck", level: "warn" };
     const m = officeModel(company([person("x")]), [], [alert], [pane("x", status("needs"))]);

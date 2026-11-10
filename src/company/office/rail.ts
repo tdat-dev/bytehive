@@ -119,7 +119,7 @@ function rowHtml(r: NeedRow, busy: Busy, o: RowLook): string {
   const buttons =
     r.kind === "plan" ? btn("approve", "Approve", main, "", o.short ? wrongId : "") + btn("reject", "Send back", o.primary && o.asking ? "primary" : "secondary")
     : r.kind === "paused" ? btn("raise", "Add 1M tokens", main)
-    : r.kind === "merge" ? open("Review") + btn("finish", "Mark done", o.goes ? "secondary" : main)
+    : r.kind === "merge" ? (r.personId ? open("Review") : "") + btn("finish", "Mark done", o.goes && r.personId ? "secondary" : main)
     : r.standing ? btn("dismiss", "Dismiss", "secondary", ` data-key="${esc(r.key)}"`) : open(person ? (r.key.startsWith("ask-") ? `Answer at ${person.name}'s desk` : `Go to ${person.name}`) : "Open");
   // A plan and a paused job have nobody at a desk: they are the Founder's to bring you.
   const who = r.kind === "plan" || r.kind === "paused" ? o.model.founder ?? undefined : person;
