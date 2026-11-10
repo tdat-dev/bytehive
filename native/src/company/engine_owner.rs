@@ -95,7 +95,8 @@ impl Engine {
 
     /// The owner gives the Founder a job.
     pub fn give_job(&mut self, host: &mut dyn Host, ask: &str) -> Result<(), String> {
-        if self.state.is_none() || ask.trim().is_empty() {
+        self.running()?;
+        if ask.trim().is_empty() {
             return Ok(());
         }
         if host.seat(super::people::FOUNDER).is_none() && self.founder_dir(host).is_none() {
@@ -194,15 +195,16 @@ impl Engine {
 
     /// The owner approves a plan: hire, place the cards, start people. Whatever
     /// fails along the way, the Job runs, and the Founder hears what failed.
-    pub fn approve(&mut self, host: &mut dyn Host, id: &str) {
-        let Some(s) = &self.state else { return };
+    pub fn approve(&mut self, host: &mut dyn Host, id: &str) -> Result<(), String> {
+        self.running()?;
+        let Some(s) = &self.state else { return Ok(()) };
         if s.jobs.iter().find(|j| j.id == id).map(|j| &j.status) != Some(&JobStatus::AwaitingPlan) {
-            return;
+            return Ok(());
         }
         let seats = host.seat_names();
         let r = approve_plan(s, id, |taken: &[String]| name_for_new("agent", &[taken, &seats[..]].concat()), || format!("p{}", uid("")));
         self.state = Some(r.state);
-        let Some(job) = self.state.as_ref().and_then(|s| s.jobs.iter().find(|j| j.id == id)).cloned() else { return };
+        let Some(job) = self.state.as_ref().and_then(|s| s.jobs.iter().find(|j| j.id == id)).cloned() else { return Ok(()) };
         let mut failed = Vec::new();
         if let Err(e) = self.persist(std::slice::from_ref(&job)) {
             failed.push(format!("{} could not be saved: {e}.", job.id));
@@ -213,19 +215,22 @@ impl Engine {
         let starting: Vec<_> = r.hired.iter().chain(r.reused.iter()).cloned().collect();
         failed.extend(self.start_hires(host, &starting));
         self.run(host, report_failures(r.effects, &failed));
+        Ok(())
     }
 
     /// The owner sends a plan back to the Founder with a note.
-    pub fn send_back(&mut self, host: &mut dyn Host, id: &str, note: &str) {
-        let Some(s) = &self.state else { return };
+    pub fn send_back(&mut self, host: &mut dyn Host, id: &str, note: &str) -> Result<(), String> {
+        self.running()?;
+        let Some(s) = &self.state else { return Ok(()) };
         let r = reject_plan(s, id, note);
         if &r.state == s {
-            return;
+            return Ok(());
         }
         self.state = Some(r.state);
         let jobs = self.jobs_of(id);
         self.try_persist(host, &jobs);
         self.run(host, r.effects);
+        Ok(())
     }
 
     fn jobs_of(&self, id: &str) -> Vec<Job> {
@@ -239,11 +244,12 @@ impl Engine {
     }
 
     /// The owner ends a Job that is still going, for good.
-    pub fn stop_job(&mut self, host: &mut dyn Host, id: &str) {
-        let Some(s) = &self.state else { return };
+    pub fn stop_job(&mut self, host: &mut dyn Host, id: &str) -> Result<(), String> {
+        self.running()?;
+        let Some(s) = &self.state else { return Ok(()) };
         let next = halt_job(s, id);
         if &next == s {
-            return;
+            return Ok(());
         }
         self.state = Some(next);
         self.alerts.retain(|a| a.job.as_deref() != Some(id)); // the watch would only drop them on its next round
@@ -259,34 +265,39 @@ impl Engine {
             }
         }
         self.run(host, vec![stopped_note(id)]);
+        Ok(())
     }
 
     /// Give a paused Job more tokens and let it carry on.
-    pub fn raise_cap(&mut self, host: &mut dyn Host, id: &str, extra: u64) {
-        let Some(s) = &self.state else { return };
+    pub fn raise_cap(&mut self, host: &mut dyn Host, id: &str, extra: u64) -> Result<(), String> {
+        self.running()?;
+        let Some(s) = &self.state else { return Ok(()) };
         if extra == 0 {
-            return;
+            return Ok(());
         }
         let next = resume_job(s, id, extra);
         if &next == s {
-            return;
+            return Ok(());
         }
         self.state = Some(next);
         let jobs = self.jobs_of(id);
         self.try_persist(host, &jobs);
         let notes = self.state.as_ref().map(|s| resumed_notes(s, id, |p| host.seat(p).is_some_and(|x| x.running))).unwrap_or_default();
         self.run(host, notes);
+        Ok(())
     }
 
     /// The owner has merged what a Job made: close it.
-    pub fn finish_job(&mut self, host: &mut dyn Host, id: &str) {
-        let Some(s) = &self.state else { return };
+    pub fn finish_job(&mut self, host: &mut dyn Host, id: &str) -> Result<(), String> {
+        self.running()?;
+        let Some(s) = &self.state else { return Ok(()) };
         let next = close_job(s, id);
         if &next == s {
-            return;
+            return Ok(());
         }
         self.state = Some(next);
         let jobs = self.jobs_of(id);
         self.try_persist(host, &jobs);
+        Ok(())
     }
 }

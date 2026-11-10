@@ -88,7 +88,7 @@ impl T {
     }
 
     pub fn approve(&mut self, id: &str) {
-        self.e.approve(&mut self.host, id);
+        let _ = self.e.approve(&mut self.host, id);
     }
 
     pub fn job(&self, n: usize) -> Job {

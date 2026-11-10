@@ -245,3 +245,16 @@ fn takes_an_empty_job_or_person_on_a_card_for_none() {
     let r = watch(&board(vec![board_card("c1", Some(""), None)], vec![by("c2", "")]), &jobs(JobStatus::Running), Some("lead"), false, &mut HashMap::new(), 100);
     assert!(r.cards.is_empty());
 }
+
+#[test]
+fn takes_an_empty_boss_for_no_boss_and_asks_the_owner() {
+    let r = watch_work(&WorkIn { cards: &[watched(Some(80 * MIN), 0)], nudges: &none(), limits: &DEFAULT_LIMITS, boss_of: &|_| Some(String::new()), now: 100 * MIN });
+    assert!(r.delivers.is_empty());
+    assert_eq!(r.alerts[0].key, "stall-c1");
+}
+
+#[test]
+fn does_not_hand_a_to_do_card_with_an_empty_assignee_to_the_contact() {
+    let r = watch(&board(vec![board_card("c1", Some("J1"), Some(""))], vec![]), &jobs(JobStatus::Running), Some("lead"), false, &mut HashMap::new(), 100);
+    assert!(r.cards.is_empty());
+}

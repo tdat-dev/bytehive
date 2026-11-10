@@ -57,14 +57,14 @@ fn stays_read_only_beside_another_app_no_tick_no_watch_no_writes() {
     }
     std::fs::write(t.root().join("requests.jsonl"), "").unwrap();
     second_app(&mut t);
-    assert_eq!(t.give("do it"), Ok(()));
+    assert_eq!(t.give("do it").unwrap_err(), "The Company is running in another ByteHive window.");
     for _ in 0..6 {
         other_app(&t, t.host.now);
         t.advance(STEP);
     }
     t.approve("J-0001");
     assert!(t.e.state().is_none());
-    assert!(t.e.view(|_| false).locked_by_other);
+    assert!(t.e.view().locked_by_other);
     assert!(t.host.spawned.is_empty());
     assert_eq!(lock(&t).pid, 99);
     let mut names: Vec<String> = std::fs::read_dir(t.root()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
@@ -79,7 +79,7 @@ fn takes_over_the_lock_of_a_dead_app_after_15_seconds_with_no_heartbeat() {
     assert!(t.e.state().is_none());
     t.advance(16_500);
     assert!(t.e.state().is_some());
-    assert!(!t.e.view(|_| false).locked_by_other);
+    assert!(!t.e.view().locked_by_other);
     assert_eq!(lock(&t).pid, 7);
 }
 
@@ -107,7 +107,7 @@ fn steps_down_when_another_app_holds_the_lock_and_picks_up_from_the_files_later(
     let before = t.e.changes;
     t.advance(STEP);
     assert!(t.e.state().is_none());
-    assert!(t.e.view(|_| false).locked_by_other);
+    assert!(t.e.view().locked_by_other);
     assert!(t.e.changes > before, "the screen hears of it");
     t.advance(16_500);
     assert_eq!(t.jobs().iter().map(|j| j.id.as_str()).collect::<Vec<_>>(), ["J-0001"]);
@@ -326,7 +326,7 @@ fn tells_the_founder_a_plan_was_sent_back_even_when_it_cannot_save() {
     t.waiting_job(plan_for("a", 0));
     refuse_saves(&t);
     let id = t.job(0).id;
-    t.e.send_back(&mut t.host, &id, "too many people");
+    t.e.send_back(&mut t.host, &id, "too many people").unwrap();
     assert_eq!(t.job(0).status, JobStatus::Planning);
     assert!(t.said_all().contains("too many people"));
 }

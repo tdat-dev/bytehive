@@ -7,8 +7,9 @@ use super::super::org::{floor_contact, person_by_id};
 use super::super::reduce::{Effect, join_job, pause_job, paused_note};
 use super::super::types::{Job, JobStatus};
 use super::super::watch::{CardsIn, WatchList, WatchedCard, WorkIn, cards_to_watch, watch_budget, watch_work};
-use super::Engine;
-use std::collections::HashSet;
+use super::{Engine, JobCards};
+use crate::board::List;
+use std::collections::{BTreeMap, HashSet};
 
 /// Output this recent means someone is working a card.
 const WORKING_WINDOW_MS: i64 = 60_000;
@@ -46,6 +47,22 @@ pub(crate) fn measure(job: &Job, usage: impl Fn(&str) -> Option<Option<u64>>) ->
     Job { token_base: seen, tokens_used: job.tokens_used + added, ..job.clone() }
 }
 
+/// One board's cards by the Job they belong to: how many are done, of how many (cardsOnBoard).
+pub(crate) fn cards_on_board(lists: &[List]) -> BTreeMap<String, JobCards> {
+    let mut by_job: BTreeMap<String, JobCards> = BTreeMap::new();
+    for l in lists {
+        let done = l.title.trim().to_lowercase() == "done";
+        for job in l.cards.iter().filter_map(|c| c.job.as_ref()).filter(|j| !j.is_empty()) {
+            let t = by_job.entry(job.clone()).or_default();
+            t.1 += 1;
+            if done {
+                t.0 += 1;
+            }
+        }
+    }
+    by_job
+}
+
 impl Engine {
     /// The cards that could go quiet on every floor with people.
     fn watched_cards(&mut self, host: &mut dyn Host) -> Vec<WatchedCard> {
@@ -53,15 +70,22 @@ impl Engine {
         let mut seen = HashSet::new();
         let mut read_all = true;
         let now = host.now_ms();
-        for floor in self.floors_with_people() {
+        let floors = self.floors_with_people();
+        self.floor_cards.retain(|id, _| floors.iter().any(|f| &f.id == id));
+        for floor in floors {
+            // A read that failed keeps the last count; a board that is gone has none.
             let board = match host.read_board(&floor.dir) {
                 Ok(Some((b, _))) => b,
-                Ok(None) => continue,
+                Ok(None) => {
+                    self.floor_cards.remove(&floor.id);
+                    continue;
+                }
                 Err(_) => {
                     read_all = false;
                     continue;
                 }
             };
+            self.floor_cards.insert(floor.id.clone(), cards_on_board(&board.lists));
             let Some(s) = &self.state else { break };
             let contact = floor_contact(&s.company, &floor.id).map(|p| p.id.clone());
             let working = |id: &str| host.seat(id).is_some_and(|x| x.running && now - x.last_output_at < WORKING_WINDOW_MS);

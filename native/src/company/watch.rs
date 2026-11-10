@@ -144,7 +144,8 @@ pub fn watch_work(i: &WorkIn) -> WorkOut {
             continue;
         }
         let waiting = c.list == WatchList::Todo;
-        let boss = if had == 0 { (i.boss_of)(&c.assignee_id) } else { None };
+        // An empty boss id is no boss, as JavaScript's `!boss` reads it.
+        let boss = if had == 0 { (i.boss_of)(&c.assignee_id).filter(|b| !b.is_empty()) } else { None };
         match boss {
             Some(boss) => {
                 nudges.insert(c.id.clone(), 1);

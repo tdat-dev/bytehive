@@ -6,12 +6,11 @@
 use super::alerts::{Alert, Standing};
 use super::host::Host;
 use super::lock::{self, EngineLock, LOCK_STALE_MS, LockMove, LockRead};
-use super::needs::{Names, NeedRow, needs_you};
 use super::reduce::State;
 use super::requests::Drain;
 use super::store::{self, job_file_alert};
-use super::types::{Company, Job};
-use std::collections::{HashMap, HashSet};
+use super::types::{Company, Job, RoleDef};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[path = "engine_owner.rs"]
@@ -52,6 +51,10 @@ const REQUESTS: &str = "requests.jsonl";
 pub(crate) const WATCH_MS: i64 = 30_000;
 pub(crate) const NO_PROJECT: &str = "Open a project first.";
 pub(crate) const FOUNDER_WAITS: &str = "founder-no-project";
+const ELSEWHERE: &str = "The Company is running in another ByteHive window.";
+
+/// A Job's cards on the boards: how many are done, of how many.
+pub type JobCards = (u32, u32);
 
 /// What the Company surface shows.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -59,8 +62,12 @@ pub struct CompanyView {
     /// None while another app runs the company, or it could not be loaded.
     pub company: Option<Company>,
     pub jobs: Vec<Job>,
-    pub needs: Vec<NeedRow>,
+    pub roles: Vec<RoleDef>,
+    /// The standing alerts and the watch's, what Needs you takes.
     pub alerts: Vec<Alert>,
+    /// Job id to its cards (done, total) on the boards the watch read; a Job with
+    /// no card on any board is absent.
+    pub job_cards: BTreeMap<String, JobCards>,
     /// Another running ByteHive holds the lock.
     pub locked_by_other: bool,
     /// Why the company could not be loaded.
@@ -91,6 +98,8 @@ pub struct Engine {
     excluded: HashSet<String>,
     /// Messages waiting for their person to reach the prompt.
     outbox: Vec<Pending>,
+    /// Each floor's last good tally of cards by Job, by floor id.
+    floor_cards: HashMap<String, BTreeMap<String, JobCards>>,
     /// Goes up on every change the screen should follow.
     pub changes: u64,
     /// What was handed to someone, typed at once (false) or waiting (true).
@@ -125,6 +134,7 @@ impl Engine {
             requests: Drain::default(),
             excluded: HashSet::new(),
             outbox: Vec::new(),
+            floor_cards: HashMap::new(),
             changes: 0,
             #[cfg(test)]
             said: Vec::new(),
@@ -211,6 +221,7 @@ impl Engine {
         self.nudges.clear();
         self.quiet.clear();
         self.outbox.clear();
+        self.floor_cards.clear();
         self.requests.reset();
         self.changed();
     }
@@ -312,14 +323,29 @@ impl Engine {
         s.company.floors.iter().find(|f| same_folder(&f.dir, dir)).is_some_and(|f| s.company.people.iter().any(|p| p.floor.as_deref() == Some(&f.id)))
     }
 
-    /// `merged` says whether a person's branch is merged already.
-    pub fn view(&self, merged: impl Fn(&str) -> bool) -> CompanyView {
+    /// Ok while this app runs the company; else why an owner action did nothing.
+    pub(crate) fn running(&self) -> Result<(), String> {
+        if self.state.is_some() {
+            return Ok(());
+        }
+        if self.elsewhere {
+            return Err(ELSEWHERE.into());
+        }
+        Err(self.load_error.clone().unwrap_or_else(|| "The Company is still loading.".into()))
+    }
+
+    pub fn view(&self) -> CompanyView {
         let alerts = self.alerts();
-        let Some(s) = &self.state else {
-            return CompanyView { alerts, locked_by_other: self.elsewhere, error: self.load_error.clone(), ..CompanyView::default() };
-        };
-        // Nothing with no Jobs: someone who never used the Company keeps a quiet screen.
-        let needs = if s.jobs.is_empty() { Vec::new() } else { needs_you(&s.jobs, &alerts, &Names { floors: &s.company.floors, roles: &s.roles }, merged) };
-        CompanyView { company: Some(s.company.clone()), jobs: s.jobs.clone(), needs, alerts, locked_by_other: self.elsewhere, error: self.load_error.clone() }
+        let mut job_cards: BTreeMap<String, JobCards> = BTreeMap::new();
+        for floor in self.floor_cards.values() {
+            for (job, (done, total)) in floor {
+                let t = job_cards.entry(job.clone()).or_default();
+                t.0 += done;
+                t.1 += total;
+            }
+        }
+        let base = CompanyView { alerts, job_cards, locked_by_other: self.elsewhere, error: self.load_error.clone(), ..CompanyView::default() };
+        let Some(s) = &self.state else { return base };
+        CompanyView { company: Some(s.company.clone()), jobs: s.jobs.clone(), roles: s.roles.clone(), ..base }
     }
 }

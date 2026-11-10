@@ -199,7 +199,7 @@ fn a_drafted_role_is_never_saved_when_the_plan_is_sent_back() {
     let mut t = T::new();
     t.waiting_job(drafting());
     let id = t.job(0).id;
-    t.e.send_back(&mut t.host, &id, "no");
+    t.e.send_back(&mut t.host, &id, "no").unwrap();
     assert!(!t.root().join("roles").join("analyst").join("role.json").exists());
     assert!(!t.e.state().unwrap().roles.iter().any(|r| r.id == "analyst"));
 }
@@ -213,7 +213,7 @@ fn sending_back_leaves_a_running_job_alone() {
     let id = t.job(0).id;
     t.approve(&id);
     t.clear_said();
-    t.e.send_back(&mut t.host, &id, "no");
+    t.e.send_back(&mut t.host, &id, "no").unwrap();
     assert_eq!(t.job(0).status, JobStatus::Running);
     assert!(t.said().is_empty());
 }

@@ -13,7 +13,7 @@ fn stop_ends_the_turn_of_someone_working() {
     let mut t = T::new();
     let m = approved(&mut t);
     t.host.seat_mut(&m).last_output_at = t.host.now;
-    t.e.stop_job(&mut t.host, "J-0001");
+    t.e.stop_job(&mut t.host, "J-0001").unwrap();
     assert!(t.host.keys.contains(&m));
 }
 
@@ -25,7 +25,7 @@ fn stop_sends_no_key_when_the_owners_typing_is_all_that_came_out() {
     let s = t.host.seat_mut(&m);
     s.last_input_at = now - 100;
     s.last_output_at = now - 95; // the echo
-    t.e.stop_job(&mut t.host, "J-0001");
+    t.e.stop_job(&mut t.host, "J-0001").unwrap();
     assert!(!t.host.keys.contains(&m));
 }
 
@@ -37,7 +37,7 @@ fn stop_still_ends_the_turn_of_someone_working_after_the_owner_typed() {
     let s = t.host.seat_mut(&m);
     s.last_input_at = now - 2000;
     s.last_output_at = now;
-    t.e.stop_job(&mut t.host, "J-0001");
+    t.e.stop_job(&mut t.host, "J-0001").unwrap();
     assert!(t.host.keys.contains(&m));
 }
 
@@ -47,7 +47,7 @@ fn stop_sends_no_key_to_a_question_on_screen_esc_would_answer_it_no() {
     let m = approved(&mut t);
     t.host.seat_mut(&m).last_output_at = t.host.now;
     t.host.asking = true;
-    t.e.stop_job(&mut t.host, "J-0001");
+    t.e.stop_job(&mut t.host, "J-0001").unwrap();
     assert!(!t.host.keys.contains(&m));
 }
 
@@ -56,7 +56,7 @@ fn stop_sends_no_key_to_someone_quiet_who_may_be_at_a_prompt() {
     let mut t = T::new();
     let m = approved(&mut t);
     t.host.seat_mut(&m).last_output_at = t.host.now - 60_000;
-    t.e.stop_job(&mut t.host, "J-0001");
+    t.e.stop_job(&mut t.host, "J-0001").unwrap();
     assert!(!t.host.keys.contains(&m));
 }
 
@@ -77,7 +77,7 @@ fn a_pause_does_not_end_a_turn() {
 fn stop_marks_the_jobs_cards_on_the_boards() {
     let mut t = T::new();
     approved(&mut t);
-    t.e.stop_job(&mut t.host, "J-0001");
+    t.e.stop_job(&mut t.host, "J-0001").unwrap();
     assert!(t.cards(A).iter().all(|c| c.stopped));
     let written = crate::board::serialize(&t.host.boards[A]);
     assert!(written.contains("\"stopped\": true"));
@@ -89,7 +89,7 @@ fn stop_still_stops_when_a_board_cannot_be_written() {
     let mut t = T::new();
     approved(&mut t);
     t.host.write_fails.push_back(BoardWrite::Failed("disk full".into()));
-    t.e.stop_job(&mut t.host, "J-0001");
+    t.e.stop_job(&mut t.host, "J-0001").unwrap();
     assert_eq!(t.job(0).status, JobStatus::Stopped);
     assert!(t.host.logs.iter().any(|l| l.contains("disk full")));
 }
