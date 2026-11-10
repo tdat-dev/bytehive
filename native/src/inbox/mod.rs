@@ -40,6 +40,7 @@ mod browser;
 mod remote;
 mod grid;
 mod tips;
+mod company;
 #[cfg(test)]
 mod tests;
 
