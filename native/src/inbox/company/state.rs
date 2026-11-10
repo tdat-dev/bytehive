@@ -52,8 +52,6 @@ pub(in crate::inbox) struct CompanyUi {
     pub fresh: HashMap<String, Option<u64>>,
     pub fresh_at: u64,
     pub fresh_busy: bool,
-    /// (project folder, seat id): new hires waiting for their worktree.
-    pub isolate: Vec<(String, String)>,
 }
 
 impl CompanyUi {
@@ -190,14 +188,14 @@ impl Inbox {
         let ok = matches!(r, Some(Ok(())));
         self.company.failed_at = now_ms();
         self.company.failure = match r {
-            Some(Err(why)) => Some(if why.is_empty() { "Something went wrong.".into() } else { why }),
+            Some(Err(why)) => Some(if why.is_empty() { SOMETHING_WRONG.into() } else { why }),
             _ => None,
         };
         cx.notify();
         ok
     }
 
-    pub(super) fn co_approve(&mut self, job: &str, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn co_approve(&mut self, job: &str, cx: &mut Context<Self>) {
         // Told the note is missing, the owner answers that first: write it, or close it.
         if self.company.short.contains(job) {
             return;
@@ -244,7 +242,7 @@ impl Inbox {
         note
     }
 
-    pub(super) fn co_unask(&mut self, job: &str, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn co_unask(&mut self, job: &str, cx: &mut Context<Self>) {
         self.company.asking.remove(job);
         self.company.short.remove(job);
         self.company.notes.remove(job);
@@ -295,6 +293,14 @@ impl Inbox {
             }
         }
         let Some(index) = self.co_seat(&id) else { return };
+        // A seat just started is still getting its folder: no desk to show yet.
+        if self.fleet.seats[index].preparing {
+            let name = self.fleet.seats[index].spec.name.clone();
+            self.company.failure = Some(desk_not_ready(&name));
+            self.company.failed_at = now_ms();
+            cx.notify();
+            return;
+        }
         self.company.open = false;
         self.company.desk = Some(id);
         self.home = false;

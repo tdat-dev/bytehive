@@ -84,7 +84,7 @@ impl Inbox {
         let id = self.company.desk.as_deref()?;
         let seat = self.fleet.focused_seat().filter(|s| s.spec.person.as_deref() == Some(id))?;
         let back = button("co-crumb", words::COMPANY, Btn::Secondary, false, false)
-            .tooltip(tip("Back to the Company (Ctrl+Shift+O)"))
+            .tooltip(tip(words::BACK_TIP))
             .on_click(cx.listener(|this, _, window, cx| this.open_company(window, cx)));
         Some(
             div()
@@ -108,11 +108,11 @@ impl Inbox {
             .gap(px(S2))
             .px(px(S1))
             .child(img(logo::logo()).size(px(22.0)).flex_none())
-            .child(text(ROW, INK).font_weight(FontWeight::SEMIBOLD).child("ByteHive"))
+            .child(text(ROW, INK).font_weight(FontWeight::SEMIBOLD).child(words::BYTEHIVE))
             .child(text(ROW, INK_3).child("\u{203a}"))
             .child(text(ROW, INK).font_weight(FontWeight::SEMIBOLD).child(words::COMPANY));
         let inbox = button("co-inbox", words::INBOX, Btn::Secondary, false, false)
-            .tooltip(tip("Inbox (Ctrl+Shift+O)"))
+            .tooltip(tip(words::INBOX_TIP))
             .on_click(cx.listener(|this, _, window, cx| this.close_company(window, cx)));
         div()
             .relative()

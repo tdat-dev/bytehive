@@ -46,15 +46,11 @@ impl Inbox {
         Some(r)
     }
 
-    /// Messages go to the typer, which waits for a quiet prompt; a new hire's
-    /// worktree is made at the next frame, which has a window to start it in.
+    /// Messages go to the typer, which waits for a quiet prompt. A new hire's
+    /// worktree and folder trust are made by the engine's own threads (drive.rs).
     fn co_carry_out(&mut self, out: Outbound, cx: &mut Context<Self>) {
         for (id, text) in out.typed {
             self.queue_message(id, text, cx);
-        }
-        if !out.isolate.is_empty() {
-            self.company.isolate.extend(out.isolate);
-            cx.notify();
         }
     }
 
@@ -134,23 +130,11 @@ impl Inbox {
         .detach();
     }
 
-    /// Once a frame: land on the Company after the engine first read a Job,
-    /// and give new hires their worktrees.
+    /// Once a frame: land on the Company after the engine first read the company.
     pub(in crate::inbox) fn company_land(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.co_boot();
         if std::mem::take(&mut self.company.land) && !self.company.touched && !self.dialog_up() && self.sessions.is_none() {
             self.open_company(window, cx);
-        }
-        let waiting = std::mem::take(&mut self.company.isolate);
-        let mut by_dir: Vec<(String, Vec<String>)> = Vec::new();
-        for (dir, id) in waiting {
-            match by_dir.iter_mut().find(|(d, _)| *d == dir) {
-                Some((_, ids)) => ids.push(id),
-                None => by_dir.push((dir, vec![id])),
-            }
-        }
-        for (dir, ids) in by_dir {
-            self.isolate(dir, ids, window, cx);
         }
     }
 

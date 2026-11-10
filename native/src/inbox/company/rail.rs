@@ -86,7 +86,7 @@ impl Inbox {
                     .detach();
                 }))
                 .child(svg().path("icons/chevron-down.svg").size(px(16.0)).text_color(c(INK_2)))
-                .child(text(ROW, INK_2).child(format!("{} below", cut.len()))),
+                .child(text(ROW, INK_2).child(below(cut.len()))),
         )
     }
 
@@ -147,9 +147,9 @@ impl Inbox {
         let to = target.clone();
         let id = SharedString::from(format!("co-act-{:?}-{key}", b.act));
         button(id, b.label.clone(), kind, false, b.held)
-            .tooltip(tip(format!("{}: {}", b.label, r.title)))
+            .tooltip(tip(act_on(&b.label, &r.title)))
             .on_click(cx.listener(move |this, _, window, cx| match b.act {
-                Act::Approve if !b.held => this.co_approve(&job, window, cx),
+                Act::Approve if !b.held => this.co_approve(&job, cx),
                 Act::Approve => {}
                 Act::SendBack => this.co_send_back(&job, window, cx),
                 Act::Raise => this.co_raise(&job, cx),
@@ -210,7 +210,7 @@ impl Inbox {
             .cursor_pointer()
             .hover(|s| s.bg(c(RAISED)))
             .tooltip(tip(CLOSE_NOTE))
-            .on_click(cx.listener(move |this, _, window, cx| this.co_unask(&j, window, cx)))
+            .on_click(cx.listener(move |this, _, _, cx| this.co_unask(&j, cx)))
             .child(svg().path("icons/x.svg").size(px(16.0)).text_color(c(INK_2)));
         let head = div().flex().items_center().justify_between().gap(px(S2)).child(text(ROW, INK).child(WHY_LABEL)).child(close);
         let wrong = short.then(|| text(META, DANGER).mt(px(S1)).child(NOTE_NEEDED));

@@ -44,7 +44,7 @@ impl Inbox {
             .cursor_pointer()
             .when(menu_open, |s| s.bg(c(OVER)))
             .hover(|s| s.bg(c(RAISED)))
-            .tooltip(tip(format!("More for {}", j.title)))
+            .tooltip(tip(more_for(&j.title)))
             // Its own press: the page's closes the menu.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -119,8 +119,8 @@ impl Inbox {
             .bg(c(PANEL))
             .shadow(vec![ring(line()), lift()])
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(text(TITLE, INK).child(format!("{word}?")))
-            .child(text(BODY, INK_2).child(format!("\u{201c}{}\u{201d} ends here, and its people stop working on it. Its cards and branches stay.", j.title)))
+            .child(text(TITLE, INK).child(confirm_title(word)))
+            .child(text(BODY, INK_2).child(ends_here(&j.title)))
             .child(div().flex().justify_end().gap(px(S2)).child(keep).child(stop));
         Some(
             div()

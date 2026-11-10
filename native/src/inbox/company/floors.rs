@@ -5,7 +5,7 @@
 use super::look::*;
 use super::model::{OfficeFloor, OfficeModel, OfficePerson, OfficeState};
 use super::rows::Target;
-use super::words::plural;
+use super::words::{NOBODY_HERE, doing_line, floor_meta, open_desk};
 use super::*;
 
 /// The state's word, as the Inbox says it, and its colour. Who waits on you is ink,
@@ -34,10 +34,9 @@ impl Inbox {
     }
 
     fn co_floor(&self, f: &OfficeFloor, m: &OfficeModel, cx: &mut Context<Self>) -> Div {
-        let count = plural(f.people.len() as u64, "person").replace("persons", "people");
         let people: Vec<AnyElement> = f.people.iter().map(|p| self.co_person(p, m, cx)).collect();
-        let meta = if f.needs > 0 { format!("{count}, {} needs you", f.needs) } else { count };
-        let body = if people.is_empty() { vec![text(BODY, INK_3).px(px(S2)).child("Nobody works here yet.").into_any_element()] } else { people };
+        let meta = floor_meta(f.people.len() as u64, f.needs);
+        let body = if people.is_empty() { vec![text(BODY, INK_3).px(px(S2)).child(NOBODY_HERE).into_any_element()] } else { people };
         block(Some(f.name.clone().into()), Some(meta), f.lit || f.open, body)
     }
 
@@ -46,10 +45,7 @@ impl Inbox {
         let to = Target::Desk(p.id.clone());
         // A role that only repeats the name says nothing.
         let role = Some(m.role_of(p)).filter(|r| *r != p.name);
-        let line = match &p.doing {
-            Some(d) if p.state != OfficeState::Stopped => format!("{word}: {d}"),
-            _ => word.to_string(),
-        };
+        let line = doing_line(word, p.doing.as_deref().filter(|_| p.state != OfficeState::Stopped));
         div()
             .id(SharedString::from(format!("co-person-{}", p.id)))
             .flex()
@@ -60,7 +56,7 @@ impl Inbox {
             .rounded(px(R_CONTROL))
             .cursor_pointer()
             .hover(|s| s.bg(c(OVER)))
-            .tooltip(tip(format!("Open {}'s desk", p.name)))
+            .tooltip(tip(open_desk(&p.name)))
             .on_click(cx.listener(move |this, _, window, cx| this.co_go(to.clone(), window, cx)))
             .child(div().flex_none().size(px(32.0)).rounded_full().bg(c(OVER)).flex().items_center().justify_center().child(text(ROW, INK).child(p.name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default())))
             .child(

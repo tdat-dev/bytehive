@@ -21,6 +21,11 @@ pub(super) const CLOSE_NOTE: &str = "Close the note";
 pub(super) const DETAILS: &str = "Details";
 pub(super) const KEEP_JOB: &str = "Keep job";
 pub(super) const COMPANY: &str = "Company";
+pub(super) const BYTEHIVE: &str = "ByteHive";
+pub(super) const NOBODY_HERE: &str = "Nobody works here yet.";
+pub(super) const SOMETHING_WRONG: &str = "Something went wrong.";
+pub(super) const INBOX_TIP: &str = "Inbox (Ctrl+Shift+O)";
+pub(super) const BACK_TIP: &str = "Back to the Company (Ctrl+Shift+O)";
 pub(super) const INBOX: &str = "Inbox";
 pub(super) const LOCKED: &str = "The Company is running in another ByteHive window.";
 /// Examples for an empty box: what a first job can sound like.
@@ -177,5 +182,49 @@ pub(super) fn status_line(name: &str, s: &TaskStatus) -> String {
         TaskState::Stopped => format!("{name} stopped"),
         TaskState::Merged => format!("{name}'s work is merged"),
         _ => format!("{name} is waiting for a task"),
+    }
+}
+
+pub(super) fn more_for(title: &str) -> String {
+    format!("More for {title}")
+}
+
+pub(super) fn open_desk(name: &str) -> String {
+    format!("Open {name}'s desk")
+}
+
+pub(super) fn desk_not_ready(name: &str) -> String {
+    format!("Getting {name}'s desk ready. Try again in a moment.")
+}
+
+/// A button's full words, for whoever reads them: "Approve: Approve plan: Add login".
+pub(super) fn act_on(label: &str, title: &str) -> String {
+    format!("{label}: {title}")
+}
+
+/// Ending a job is its own decision: the confirm says what stops and what stays.
+pub(super) fn confirm_title(word: &str) -> String {
+    format!("{word}?")
+}
+
+pub(super) fn ends_here(title: &str) -> String {
+    format!("\u{201c}{title}\u{201d} ends here, and its people stop working on it. Its cards and branches stay.")
+}
+
+pub(super) fn below(n: usize) -> String {
+    format!("{n} below")
+}
+
+/// A floor's quiet line: its people, and how many someone is waiting on.
+pub(super) fn floor_meta(people: u64, needs: usize) -> String {
+    let count = plural(people, "person").replace("persons", "people");
+    if needs > 0 { format!("{count}, {needs} needs you") } else { count }
+}
+
+/// What a person's line says: their state, and what they are on while not stopped.
+pub(super) fn doing_line(word: &str, doing: Option<&str>) -> String {
+    match doing {
+        Some(d) => format!("{word}: {d}"),
+        None => word.to_string(),
     }
 }
