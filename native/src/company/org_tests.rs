@@ -11,7 +11,7 @@ fn role(id: &str, rank: Rank) -> RoleDef {
         rank,
         cli: "claude".into(),
         deny_tools: vec![],
-        look: Look { shirt: "#fff".into(), hair: "#000".into(), prop: "none".into(), edited: None },
+        look: Look { shirt: "#fff".into(), hair: "#000".into(), prop: "none".into(), edited: None, ..Default::default() },
         prompt: "p".into(),
         skills: vec![],
     }

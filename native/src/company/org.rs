@@ -32,7 +32,7 @@ pub fn from_draft(d: &NewRole) -> RoleDef {
         rank: Rank::Staff,
         cli: "claude".into(),
         deny_tools: Vec::new(),
-        look: Look { shirt: "#7d8b99".into(), hair: "#2a2e3a".into(), prop: "none".into(), edited: None },
+        look: Look { shirt: "#7d8b99".into(), hair: "#2a2e3a".into(), prop: "none".into(), edited: None, ..Default::default() },
         skills: Vec::new(),
     }
 }

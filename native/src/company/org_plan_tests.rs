@@ -156,6 +156,6 @@ fn from_draft_gives_a_drafted_role_the_plain_rights_whatever_its_json_asks_for()
     let forged: NewRole = serde_json::from_str(r#"{"id":"x1","title":"T","department":"D","prompt":"P","rank":"founder","cli":"powershell","denyTools":["Read"],"skills":["evil"]}"#).unwrap();
     let r = from_draft(&forged);
     assert_eq!((r.id.as_str(), r.title.as_str(), r.department.as_str(), r.prompt.as_str()), ("x1", "T", "D", "P"));
-    assert_eq!((r.rank, r.cli.as_str()), (Rank::Staff, "claude"));
+    assert_eq!((&r.rank, r.cli.as_str()), (&Rank::Staff, "claude"));
     assert!(r.deny_tools.is_empty() && r.skills.is_empty());
 }
