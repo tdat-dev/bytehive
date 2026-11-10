@@ -10,7 +10,8 @@
 //! key event a console window would get.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
@@ -40,7 +41,8 @@ const NO_STATE_CHANGE: u32 = 0x4;
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 /// ConPTY opened win32-input-mode (it does on every session).
 static WIN32_MODE: AtomicBool = AtomicBool::new(false);
-static SINK: Mutex<Option<Sender<Vec<u8>>>> = Mutex::new(None);
+/// The focused terminal's writer, and where it notes when you last typed into it.
+static SINK: Mutex<Option<(Sender<Vec<u8>>, Arc<AtomicU64>)>> = Mutex::new(None);
 static HOOK: AtomicIsize = AtomicIsize::new(0);
 
 /// Hook this thread's message queue. Call once, on the thread running GPUI.
@@ -52,9 +54,9 @@ pub fn install() {
     HOOK.store(hook as isize, Ordering::Relaxed);
 }
 
-/// Where keys go from now on: the focused terminal's writer.
-pub fn set_sink(sink: Sender<Vec<u8>>) {
-    *SINK.lock().unwrap() = Some(sink);
+/// Where keys go from now on: the focused terminal's writer, and its last-input time.
+pub fn set_sink(sink: Sender<Vec<u8>>, last_input: Arc<AtomicU64>) {
+    *SINK.lock().unwrap() = Some((sink, last_input));
 }
 
 pub fn set_active(active: bool) {
@@ -145,6 +147,17 @@ fn local_key(vk: u16, ctrl: bool, alt: bool, shift: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn notes_when_you_last_typed_into_the_terminal() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let last = std::sync::Arc::new(super::AtomicU64::new(0));
+        super::set_sink(tx, last.clone());
+        let before = crate::fleet::now_ms();
+        super::send(b"a".to_vec());
+        assert_eq!(rx.recv().unwrap(), b"a");
+        assert!(last.load(super::Ordering::Relaxed) >= before);
+    }
+
     use super::*;
 
     #[test]
@@ -160,7 +173,8 @@ mod tests {
 }
 
 fn send(bytes: Vec<u8>) {
-    if let Some(sink) = SINK.lock().unwrap().as_ref() {
+    if let Some((sink, last_input)) = SINK.lock().unwrap().as_ref() {
+        last_input.store(crate::fleet::now_ms(), Ordering::Relaxed);
         let _ = sink.send(bytes);
     }
 }

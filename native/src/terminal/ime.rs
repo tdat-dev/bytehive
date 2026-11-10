@@ -23,6 +23,7 @@ impl EntityInputHandler for Terminal {
     /// An IME committed: its text goes to the program as typed characters.
     fn replace_text_in_range(&mut self, _: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
         self.preedit.clear();
+        self.note_input();
         self.write(keys::text_records(text));
         cx.notify();
     }

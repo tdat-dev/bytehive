@@ -152,6 +152,9 @@ pub struct Terminal {
     /// When output last arrived, ms since the epoch: the queue reads working
     /// or idle from it.
     last_output: Arc<AtomicU64>,
+    /// When you last typed or pasted into it, ms since the epoch (0: never).
+    /// Output within a moment of it is its echo, not the agent at work.
+    last_input: Arc<AtomicU64>,
     writer: Sender<Vec<u8>>,
     copies: Arc<Mutex<Vec<String>>>,
     cell_px: Arc<Mutex<WindowSize>>,
@@ -237,6 +240,7 @@ impl Terminal {
                 agent,
                 exit,
                 last_output,
+                last_input: Arc::new(AtomicU64::new(0)),
                 writer,
                 copies,
                 cell_px,
@@ -256,7 +260,17 @@ impl Terminal {
 
     /// Take the keyboard: keys.rs hands keys to this terminal from now on.
     pub fn claim_keys(&self) {
-        keys::set_sink(self.writer.clone());
+        keys::set_sink(self.writer.clone(), self.last_input.clone());
+    }
+
+    /// When you last typed or pasted into it, ms since the epoch (0: never).
+    pub fn last_input_ms(&self) -> u64 {
+        self.last_input.load(Ordering::Relaxed)
+    }
+
+    /// Your own input is on its way: what comes out next is its echo.
+    pub(super) fn note_input(&self) {
+        self.last_input.store(now_ms(), Ordering::Relaxed);
     }
 
     /// The CLI's exit code once it has ended.

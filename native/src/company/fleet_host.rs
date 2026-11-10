@@ -152,6 +152,7 @@ impl Host for FleetHost<'_> {
             let screen = t.screen_text();
             v.running = t.exit_code().is_none();
             v.last_output_at = t.last_output_ms() as i64;
+            v.last_input_at = t.last_input_ms() as i64;
             v.asking = parse_ask(&screen).is_some();
             v.at_prompt = at_prompt(&s.spec.cli, &screen);
             if let Some(code) = t.exit_code().filter(|c| *c != 0) {

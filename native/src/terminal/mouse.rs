@@ -127,6 +127,7 @@ impl Terminal {
     }
 
     pub(super) fn paste_text(&self, text: &str) {
+        self.note_input();
         let text = text.replace("\r\n", "\r").replace('\n', "\r");
         if self.term.lock().unwrap().mode().contains(TermMode::BRACKETED_PASTE) {
             self.write(format!("\x1b[200~{text}\x1b[201~"));
