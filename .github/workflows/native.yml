@@ -86,6 +86,16 @@ jobs:
           foreach ($f in @("bytehive.exe", "icon.ico", "uninstall.exe", "browser-extension\manifest.json", "mcp-server\bytehive-mcp.mjs")) {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "missing $f after install" }
           }
+          # The MCP server runs with plain node, far from any node_modules: a package
+          # the bundle left out ends it at once. With stdin empty it ends cleanly.
+          $empty = New-TemporaryFile
+          $err = New-TemporaryFile
+          $node = Start-Process -FilePath node -ArgumentList "`"$(Join-Path $dir 'mcp-server\bytehive-mcp.mjs')`"" -RedirectStandardInput $empty -RedirectStandardError $err -NoNewWindow -PassThru
+          $null = $node.Handle
+          if ($node.WaitForExit(15000)) {
+            if ($node.ExitCode -ne 0) { throw "the MCP server ended with code $($node.ExitCode): $(Get-Content $err -Raw)" }
+          } else { Stop-Process -Id $node.Id -Force }
+          if ((Get-Content $err -Raw) -match "ERR_MODULE_NOT_FOUND|Cannot find (module|package)") { throw "the MCP server misses a package: $(Get-Content $err -Raw)" }
           $key = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\bytehive"
           if ($key.DisplayVersion -ne $env:VERSION) { throw "uninstall key says $($key.DisplayVersion)" }
           # It starts and stays up (a missing DLL or a panic at start ends it at once).
