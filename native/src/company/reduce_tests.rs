@@ -65,7 +65,8 @@ pub(super) fn hire(role: &str, floor: &str) -> Hire {
 pub(super) fn plan() -> JobPlan {
     JobPlan {
         summary: "Add marketing".into(),
-        cards: vec![],
+        // A hire comes with work: a plan that hires with no cards is refused.
+        cards: vec![card("b", None)],
         hires: vec![hire("marketing", "b")],
         token_cap: None,
         new_roles: None,

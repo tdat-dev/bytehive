@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn validate_plan_accepts_a_one_person_hire_on_an_empty_floor() {
-    assert_eq!(validate(&company(vec![]), &JobPlan { hires: hires(&[("marketing", "a")]), ..plan() }), "");
+    assert_eq!(validate(&company(vec![]), &JobPlan { hires: hires(&[("marketing", "a")]), cards: vec![card("a", "t")], ..plan() }), "");
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn validate_plan_rejects_a_card_on_an_unknown_floor() {
 fn validate_plan_holds_the_company_to_its_size() {
     let mut c = company(vec![]);
     c.limits.people_total = 2;
-    let e = validate(&c, &JobPlan { hires: hires(&[("lead", "a"), ("developer", "a")]), ..plan() });
+    let e = validate(&c, &JobPlan { hires: hires(&[("lead", "a"), ("developer", "a")]), cards: vec![card("a", "t")], ..plan() });
     assert_eq!(e, "The company is limited to 2 people.");
 }
 
@@ -72,7 +72,7 @@ fn validate_plan_takes_a_card_on_a_floor_with_someone_on_it_or_someone_hired_the
 #[test]
 fn validate_plan_allows_one_lead_a_floor() {
     let c = company(vec![person("l1", Rank::Lead, Some("a"), F)]);
-    let e = validate(&c, &JobPlan { hires: hires(&[("lead", "a")]), ..plan() });
+    let e = validate(&c, &JobPlan { hires: hires(&[("lead", "a")]), cards: vec![card("a", "t")], ..plan() });
     assert_eq!(e, "Floor a can only have one Lead.");
 }
 
@@ -84,7 +84,7 @@ fn analyst_hire() -> Vec<Hire> {
 
 #[test]
 fn validate_plan_with_new_roles_knows_a_role_the_plan_drafts() {
-    let p = JobPlan { new_roles: Some(vec![draft("data-analyst")]), hires: analyst_hire(), ..plan() };
+    let p = JobPlan { new_roles: Some(vec![draft("data-analyst")]), hires: analyst_hire(), cards: vec![card("a", "t")], ..plan() };
     assert_eq!(validate(&company(vec![]), &p), "");
 }
 
@@ -167,4 +167,12 @@ fn from_draft_gives_a_drafted_role_the_plain_rights_whatever_its_json_asks_for()
     assert_eq!((r.id.as_str(), r.title.as_str(), r.department.as_str(), r.prompt.as_str()), ("x1", "T", "D", "P"));
     assert_eq!((&r.rank, r.cli.as_str()), (&Rank::Staff, "claude"));
     assert!(r.deny_tools.is_empty() && r.skills.is_empty());
+}
+
+#[test]
+fn validate_plan_refuses_hires_with_no_cards_to_work_on() {
+    let e = validate(&company(vec![]), &JobPlan { hires: hires(&[("marketing", "a")]), cards: vec![], ..plan() });
+    assert_eq!(e, "It hires people but gives them no cards. Add the cards they will work on.");
+    assert_eq!(validate(&company(vec![]), &JobPlan { hires: hires(&[("marketing", "a")]), cards: vec![card("a", "Launch post")], ..plan() }), "");
+    assert_eq!(validate(&company(vec![]), &JobPlan { hires: vec![], cards: vec![], ..plan() }), "", "a plan of no work hires nobody either");
 }

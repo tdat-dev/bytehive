@@ -151,8 +151,15 @@ fn counts_a_merge_with_no_summary_without_a_leading_space() {
 #[test]
 fn keeps_a_one_person_merge_rows_words_as_the_jobs_own() {
     let jobs = [Job { summary: Some("Done.".into()), people: vec!["p1".into()], ..job(JobStatus::AwaitingMerge) }];
-    let row = needs_you(&jobs, &[], &NO_NAMES, |_| true).remove(0);
+    let row = needs_you(&jobs, &[], &NO_NAMES, |_| false).remove(0);
     assert_eq!((row.person_id.as_deref(), row.detail.as_str()), (Some("p1"), "Done."));
+}
+
+#[test]
+fn moves_a_one_person_merge_row_on_once_their_work_is_merged_leaving_mark_done() {
+    let jobs = [Job { summary: Some("Done.".into()), people: vec!["p1".into()], ..job(JobStatus::AwaitingMerge) }];
+    let row = needs_you(&jobs, &[], &NO_NAMES, |_| true).remove(0);
+    assert_eq!((row.person_id.as_deref(), row.detail.as_str()), (None, "Done."));
 }
 
 #[test]

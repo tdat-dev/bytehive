@@ -216,6 +216,11 @@ pub fn validate_plan(c: &Company, plan: &JobPlan, roles: &[RoleDef]) -> Vec<Stri
             errors.push(format!("Unknown role {}. See role_list, or draft it in newRoles in this plan.", h.role));
         }
     }
+    // Someone hired with nothing to do would only wait.
+    let reusing = plan.reuse.as_ref().is_some_and(|r| !r.is_empty());
+    if (!plan.hires.is_empty() || reusing) && plan.cards.is_empty() {
+        errors.push("It hires people but gives them no cards. Add the cards they will work on.".into());
+    }
     for card in &plan.cards {
         if !known.contains(&card.floor.as_str()) {
             errors.push(format!("Card \"{}\" is on unknown floor {}.", card.title, card.floor));

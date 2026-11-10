@@ -29,8 +29,9 @@ pub fn plan_for(floor: &str, hires: usize) -> JobPlan {
     }
 }
 
+/// A plan that hires one person, with one card for them: a hire with no work is refused.
 pub fn hiring(role: &str, floor: &str) -> JobPlan {
-    JobPlan { cards: Vec::new(), hires: vec![Hire { role: role.into(), floor: floor.into() }], ..plan_for(floor, 0) }
+    JobPlan { hires: vec![Hire { role: role.into(), floor: floor.into() }], ..plan_for(floor, 0) }
 }
 
 impl T {

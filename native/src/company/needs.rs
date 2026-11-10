@@ -78,13 +78,14 @@ fn plan_detail(plan: &JobPlan, limit: u64, names: &Names) -> PlanDetail {
     }
 }
 
-/// A Job with several people has a branch each: its one row takes the owner to
-/// the next one still to merge, and says how far along the merging is.
+/// A Job's people have a branch each: its one row takes the owner to the next
+/// one still to merge, and with several people says how far along the merging is.
 fn merge_row(j: &Job, merged: &impl Fn(&str) -> bool) -> NeedRow {
     let summary = j.summary.as_deref().unwrap_or("");
     let n = j.people.len();
     let done = j.people.iter().filter(|p| merged(p)).count();
-    let next = if n > 1 { j.people.iter().find(|p| !merged(p)) } else { j.people.first() };
+    // The next branch still to merge; once all are, no one, and Mark done is what is left.
+    let next = j.people.iter().find(|p| !merged(p));
     let left = if done == 0 {
         format!("{n} people to merge.")
     } else if done == n {

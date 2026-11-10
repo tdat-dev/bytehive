@@ -352,3 +352,13 @@ fn tells_the_founder_a_drafted_role_could_not_be_saved_and_still_runs_the_job() 
     assert_eq!(t.job(0).status, JobStatus::Running);
     assert!(t.said_all().contains("Role analyst was not saved"), "{:?}", t.said());
 }
+
+#[test]
+fn tells_the_founder_a_plan_that_hires_with_no_cards_is_refused() {
+    let mut t = T::new();
+    t.give("do it").unwrap();
+    t.clear_said();
+    t.plan("J-0001", &JobPlan { cards: Vec::new(), ..hiring("marketing", "a") });
+    assert_eq!(t.job(0).status, JobStatus::Planning);
+    assert!(t.said_all().contains("Plan for J-0001 refused: It hires people but gives them no cards. Add the cards they will work on."), "{:?}", t.said());
+}
