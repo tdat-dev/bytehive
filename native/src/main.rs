@@ -30,6 +30,7 @@ mod project_usage;
 mod review;
 mod schedule;
 mod single;
+mod stall;
 mod terminal;
 mod transcript;
 mod tray;
@@ -65,6 +66,7 @@ fn main() {
         // dark, like the rest, never the OS's light mode.
         gpui_kit::component::theme::Theme::change(gpui_kit::component::theme::ThemeMode::Dark, None, cx);
         keys::install();
+        stall::start(cx);
         cx.text_system().add_fonts(FONTS.iter().map(|f| Cow::Borrowed(*f)).collect()).expect("bundled fonts");
         let options = WindowOptions {
             titlebar: Some(TitlebarOptions { title: Some("ByteHive".into()), appears_transparent: true, ..Default::default() }),
