@@ -7,7 +7,9 @@
 
 pub mod alerts;
 pub mod lock;
+pub mod needs;
 pub mod org;
 pub mod reduce;
 pub mod store;
 pub mod types;
+pub mod watch;
