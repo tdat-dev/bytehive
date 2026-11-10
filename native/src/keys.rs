@@ -135,14 +135,15 @@ fn character(vk: u16, sc: u32) -> u16 {
 
 /// Keys that stay ours even over a terminal, the same few today's app takes
 /// before xterm sees them: Ctrl+V pastes, Ctrl+K opens the palette,
-/// Ctrl+Shift+T starts a new agent, Ctrl+Shift+O switches Company and the
-/// Inbox, Alt+F4 closes the window. Everything else is the program's.
+/// Ctrl+Shift+T starts a new agent, Alt+F4 closes the window. Everything
+/// else is the program's: Ctrl+Shift+O reaches the CLI too, and works only
+/// when no terminal has the keyboard.
 fn stays_local(vk: u16) -> bool {
     local_key(vk, pressed(VK_CONTROL), pressed(VK_MENU), pressed(VK_SHIFT))
 }
 
 fn local_key(vk: u16, ctrl: bool, alt: bool, shift: bool) -> bool {
-    (ctrl && !alt && !shift && (vk == b'V' as u16 || vk == b'K' as u16)) || (ctrl && shift && !alt && (vk == b'T' as u16 || vk == b'O' as u16)) || (alt && vk == VK_F4)
+    (ctrl && !alt && !shift && (vk == b'V' as u16 || vk == b'K' as u16)) || (ctrl && shift && !alt && vk == b'T' as u16) || (alt && vk == VK_F4)
 }
 
 #[cfg(test)]
@@ -163,7 +164,7 @@ mod tests {
     #[test]
     fn only_the_app_s_few_keys_stay_local_over_a_terminal() {
         let o = b'O' as u16;
-        assert!(local_key(o, true, false, true));
+        assert!(!local_key(o, true, false, true), "Ctrl+Shift+O is the program's: a focused terminal keeps every key");
         assert!(!local_key(o, true, false, false), "Ctrl+O is the program's");
         assert!(!local_key(o, false, false, true), "Shift+O is the program's");
         assert!(!local_key(o, true, true, true), "Ctrl+Alt+Shift+O is the program's");
