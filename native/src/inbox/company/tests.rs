@@ -413,3 +413,11 @@ fn a_running_job_with_everyone_stopped_asks_to_resume_them() {
     let m = model_of(&c, &[running], &[], &[], &[]);
     assert!(m.needs.iter().all(|r| !r.key.starts_with("resume-")), "a paused job has its own row");
 }
+
+#[test]
+fn a_long_job_title_is_cut_where_a_line_names_it() {
+    let long = "On tea-shop: add an order form page linked from the home page, built by a developer and checked by QA";
+    assert_eq!(resume_title(long), "Nobody is at work on: On tea-shop: add an order form page linked from the home\u{2026}");
+    assert_eq!(more_for(long), "More for On tea-shop: add an order form page linked from the home\u{2026}");
+    assert_eq!(resume_title("Add login"), "Nobody is at work on: Add login");
+}

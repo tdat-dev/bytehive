@@ -13,7 +13,7 @@ pub(super) const NO_JOB: &str = "No job is running.";
 pub(super) const RESUME_DETAIL: &str = "Its people stopped when ByteHive closed. Resume starts them again.";
 
 pub(super) fn resume_title(job: &str) -> String {
-    format!("Nobody is at work on: {job}")
+    format!("Nobody is at work on: {}", clip(job))
 }
 pub(super) const STARTING: &str = "Starting...";
 pub(super) const GIVE_JOB: &str = "Give the Founder a job";
@@ -190,8 +190,19 @@ pub(super) fn status_line(name: &str, s: &TaskStatus) -> String {
     }
 }
 
+/// A job's title is the whole ask: a line that names it takes its first words.
+fn clip(title: &str) -> String {
+    const MAX: usize = 60;
+    if title.chars().count() <= MAX {
+        return title.to_string();
+    }
+    let head: String = title.chars().take(MAX).collect();
+    let cut = head.rfind(' ').map_or(head.as_str(), |i| &head[..i]);
+    format!("{}\u{2026}", cut.trim_end_matches([' ', ',', ':', ';', '.']))
+}
+
 pub(super) fn more_for(title: &str) -> String {
-    format!("More for {title}")
+    format!("More for {}", clip(title))
 }
 
 pub(super) fn open_desk(name: &str) -> String {
