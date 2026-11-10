@@ -123,9 +123,10 @@ pub(super) fn card() -> Div {
     div().flex().flex_col().gap(px(S2)).p(px(S3)).rounded(px(R_CARD)).bg(c(RAISED)).shadow(vec![ring(line())])
 }
 
-/// A text box's frame: --ground, --ring-control.
+/// A text box's frame: --ground, --ring-control. The textarea inside brings 8 of
+/// the 12 the box's text sits in from its side.
 pub(super) fn field() -> Div {
-    div().rounded(px(R_CONTROL)).bg(c(GROUND)).shadow(vec![ring(line_control())]).px(px(S3)).py(px(S2))
+    div().rounded(px(R_CONTROL)).bg(c(GROUND)).shadow(vec![ring(line_control())]).px(px(S1)).py(px(S2))
 }
 
 /// A text in one of the type scale's steps.

@@ -16,6 +16,13 @@ impl Inbox {
         let rail_w = if narrow { RAIL_W_NARROW } else { RAIL_W };
         let first_floor = snap.model.as_ref().and_then(|m| m.floors.first().map(|f| f.name.clone()));
         self.co_hint(first_floor.as_deref(), window, cx);
+        // What is cut below the fold is read from the last layout: after a resize or a
+        // new card, draw once more so the count is of this one.
+        let key = (size, snap.model.as_ref().map_or(0, |m| m.needs.len()));
+        if self.company.laid_out != key {
+            self.company.laid_out = key;
+            cx.on_next_frame(window, |_, _, cx| cx.notify());
+        }
 
         let floors = match &snap.model {
             Some(m) => self.co_floors(m, cx),

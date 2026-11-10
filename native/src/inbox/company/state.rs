@@ -31,6 +31,8 @@ pub(in crate::inbox) struct CompanyUi {
     pub menu: Option<String>,
     /// The Needs you list, to tell which cards are cut at its foot.
     pub needs_scroll: ScrollHandle,
+    /// The window size and card count the cards were last laid out at.
+    pub laid_out: (Size<Pixels>, usize),
     pub confirm: Option<String>,
     /// The job box, made the first time the page shows.
     pub ask: Option<Entity<TextareaState>>,
