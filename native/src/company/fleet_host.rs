@@ -118,6 +118,7 @@ impl Host for FleetHost<'_> {
             session: s.spec.session_id.clone(),
             worktree: s.spec.worktree.clone(),
             branch: s.spec.branch.clone(),
+            run_dir: Some(s.spec.run_dir().to_string()),
             fresh_tokens: self.fresh.get(person).copied(),
             ..SeatView::default()
         };
@@ -216,6 +217,10 @@ impl Host for FleetHost<'_> {
 
     fn log(&mut self, line: &str) {
         eprintln!("[bytehive] {line}");
+    }
+
+    fn trust_folder(&mut self, dir: &str) -> Result<(), String> {
+        super::trust::trust_folder(dir)
     }
 }
 

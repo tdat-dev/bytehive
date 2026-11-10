@@ -85,3 +85,46 @@ fn says_nothing_for_someone_who_never_had_any() {
     t.give("do it").unwrap();
     assert!(t.e.alerts().is_empty());
 }
+
+// Claude's folder question
+
+#[test]
+fn trusts_the_folder_before_a_claude_person_starts() {
+    let mut t = T::new();
+    t.give("do it").unwrap();
+    assert_eq!(t.host.trusted, [A]);
+}
+
+#[test]
+fn trusts_the_folder_again_when_a_stopped_person_is_woken() {
+    let mut t = T::new();
+    t.give("do it").unwrap();
+    t.host.seat_mut("founder").running = false;
+    t.host.trusted.clear();
+    t.e.message_person(&mut t.host, "founder", "hello");
+    assert_eq!(t.host.trusted, [A]);
+    assert_eq!(t.host.restarts, ["founder"]);
+}
+
+#[test]
+fn says_when_a_person_may_be_stuck_on_the_folder_question_and_clears_it_on_the_next_start() {
+    let mut t = T::new();
+    t.host.trust_fails = Some("another Claude is holding it".into());
+    t.give("one").unwrap();
+    let a = t.e.alerts().into_iter().find(|a| a.key == "trust-founder").unwrap();
+    assert_eq!(a.text, "Founder may be stuck on Claude's folder question: another Claude is holding it.");
+    assert_eq!(a.person_id.as_deref(), Some("founder"));
+    assert_eq!(t.host.spawned, ["Founder"], "it starts anyway");
+    t.host.trust_fails = None;
+    t.host.close("founder");
+    t.give("two").unwrap();
+    assert!(!t.alert_keys().contains(&"trust-founder".to_string()));
+}
+
+#[test]
+fn asks_nothing_for_a_person_on_another_cli() {
+    let mut t = T::new();
+    t.e.state_mut().company.people[0].cli = "codex".into();
+    t.give("do it").unwrap();
+    assert!(t.host.trusted.is_empty());
+}

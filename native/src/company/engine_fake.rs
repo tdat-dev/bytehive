@@ -48,6 +48,9 @@ pub struct Fake {
     pub gone: HashSet<String>,
     pub sessions: HashSet<(String, String)>,
     pub logs: Vec<String>,
+    /// Folders Claude was told to trust, in order.
+    pub trusted: Vec<String>,
+    pub trust_fails: Option<String>,
 }
 
 fn role(id: &str, rank: Rank) -> RoleDef {
@@ -105,11 +108,14 @@ impl Fake {
             gone: HashSet::new(),
             sessions: HashSet::new(),
             logs: Vec::new(),
+            trusted: Vec::new(),
+            trust_fails: None,
         }
     }
 
     /// A seat already there, as the app left it.
-    pub fn add_seat(&mut self, person: &str, name: &str, dir: &str, view: SeatView) {
+    pub fn add_seat(&mut self, person: &str, name: &str, dir: &str, mut view: SeatView) {
+        view.run_dir = view.run_dir.or_else(|| Some(dir.to_string()));
         self.seats.insert(person.into(), Seat { view, name: name.into(), dir: dir.into() });
     }
 
@@ -168,7 +174,8 @@ impl Host for Fake {
             return Err("no terminal".into());
         }
         let r = self.on_boot.get(&person.name).cloned().unwrap_or_else(|| restore.clone());
-        let view = SeatView { running: true, at_prompt: true, spawned_at: Some(self.now), session: r.session, worktree: r.worktree, branch: r.branch, ..SeatView::default() };
+        let run_dir = Some(r.worktree.clone().unwrap_or_else(|| dir.to_string()));
+        let view = SeatView { running: true, at_prompt: true, spawned_at: Some(self.now), session: r.session, worktree: r.worktree, branch: r.branch, run_dir, ..SeatView::default() };
         self.spawned.push(person.name.clone());
         self.seats.insert(person.id.clone(), Seat { view, name: person.name.clone(), dir: dir.into() });
         Ok(())
@@ -220,5 +227,12 @@ impl Host for Fake {
     }
     fn log(&mut self, line: &str) {
         self.logs.push(line.into());
+    }
+    fn trust_folder(&mut self, dir: &str) -> Result<(), String> {
+        self.trusted.push(dir.into());
+        match &self.trust_fails {
+            Some(e) => Err(e.clone()),
+            None => Ok(()),
+        }
     }
 }

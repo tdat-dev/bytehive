@@ -32,6 +32,8 @@ pub struct SeatView {
     pub session: Option<String>,
     pub worktree: Option<String>,
     pub branch: Option<String>,
+    /// The folder its CLI runs in: its worktree, else its project.
+    pub run_dir: Option<String>,
     /// Why it did not start, when it did not.
     pub error: Option<String>,
     /// Fresh tokens so far: None before the first read, Some(None) for a read with no figure.
@@ -92,4 +94,6 @@ pub trait Host {
     fn node_check(&mut self) -> Result<(), String>;
     /// A line for the log, where the TS wrote console.error.
     fn log(&mut self, line: &str);
+    /// Tell Claude that `dir` is trusted, so it does not open on its folder question.
+    fn trust_folder(&mut self, dir: &str) -> Result<(), String>;
 }

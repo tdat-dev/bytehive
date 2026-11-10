@@ -20,5 +20,6 @@ pub mod roles;
 pub mod seat;
 pub mod server;
 pub mod store;
+pub mod trust;
 pub mod types;
 pub mod watch;
