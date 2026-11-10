@@ -51,6 +51,9 @@ pub struct Card {
     pub assignee_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", serialize_with = "js_opt_number")]
     pub returns: Option<f64>,
+    /// Its Job was stopped: nobody works it any more.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub done: Option<DoneInfo>,
 }
@@ -116,7 +119,7 @@ pub fn uid(prefix: &str) -> String {
 }
 
 pub fn mk_card(title: &str) -> Card {
-    Card { id: uid("c"), title: title.to_string(), desc: String::new(), labels: Vec::new(), due: None, checklist: Vec::new(), assignee: None, job: None, assignee_id: None, returns: None, done: None }
+    Card { id: uid("c"), title: title.to_string(), desc: String::new(), labels: Vec::new(), due: None, checklist: Vec::new(), assignee: None, job: None, assignee_id: None, returns: None, stopped: false, done: None }
 }
 
 pub fn default_board() -> Board {
@@ -166,6 +169,7 @@ fn normalize_card(c: &Value) -> Card {
         job: filled(o, "job"),
         assignee_id: filled(o, "assigneeId"),
         returns: o.get("returns").and_then(Value::as_f64).filter(|n| *n > 0.0),
+        stopped: o.get("stopped") == Some(&Value::Bool(true)),
         done,
     }
 }

@@ -139,6 +139,7 @@ fn board_card(id: &str, job: Option<&str>, assignee: Option<&str>) -> Card {
         job: job.map(Into::into),
         assignee_id: assignee.map(Into::into),
         returns: None,
+        stopped: false,
         done: None,
     }
 }
