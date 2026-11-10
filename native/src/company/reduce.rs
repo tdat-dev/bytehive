@@ -341,7 +341,7 @@ pub fn resume_job(s: &State, id: &str, extra: u64) -> State {
     if status_of(s, id) != Some(JobStatus::Paused) {
         return s.clone();
     }
-    patch(s, id, |j| (j.status, j.token_cap) = (JobStatus::Running, j.token_cap + extra))
+    patch(s, id, |j| (j.status, j.token_cap) = (JobStatus::Running, j.token_cap.saturating_add(extra)))
 }
 
 /// The owner has reviewed and merged what a Job made: it is done. Only a Job

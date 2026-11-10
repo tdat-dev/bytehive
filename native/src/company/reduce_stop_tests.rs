@@ -163,6 +163,12 @@ fn resume_job_resumes_a_paused_job_with_a_higher_cap() {
 }
 
 #[test]
+fn resume_job_never_wraps_a_huge_cap() {
+    let s = pause_job(&running(), "J-0001");
+    assert_eq!(resume_job(&s, "J-0001", u64::MAX).jobs[0].token_cap, u64::MAX);
+}
+
+#[test]
 fn resume_job_acts_only_on_a_paused_job() {
     let s = running();
     assert_eq!(resume_job(&s, "J-0001", 1000), s);
