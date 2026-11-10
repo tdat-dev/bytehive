@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-10
+
+### Changed
+
+- **ByteHive is now a native app.** The whole window is rebuilt in Rust, with
+  no web view: it starts faster, uses less memory, and the terminal draws every
+  key and colour exactly as the CLI sends it. It installs over the old app in
+  the same place, so the update arrives the usual way and Add/Remove Programs
+  still shows one ByteHive.
+- **Your agents come with you.** On its first start the new app reads what
+  0.14.2 handed over: your projects, agents, settings and recent folders. The
+  agents show up stopped and resume their own conversations when you start
+  them. A conversation another app still has open is never resumed twice.
+
+### Kept from the old app
+
+- The Inbox: projects and their agents on the left, the agent on stage with
+  its real terminal, the needs-you headline, plan limits in the footer.
+- New agent with races, presets, Custom CLIs and its own worktree per agent;
+  Home with the composer and recent projects; Ctrl+K for agents, sessions,
+  settings, Changes, History and Merge.
+- Changes with diff, line comments, merge, send back and discard, and arrow
+  keys to walk the lines; History by day; the Files panel; Project memory.
+- Board with the conductor and plan import, Usage, Scheduled agents, the Grid
+  (one terminal and the others as cards), Limit Guard (hand over, carry on,
+  a warning at 90%), and the first agent of a new project as its Director.
+- Windows notifications when an agent needs you or finishes, the browser hub
+  and the phone dashboard, Hide to tray, one-time tips, and the updater.
+
+### Not in this version yet
+
+- **The Founder and the Company.** They come back in a later version, once
+  they settle in the old app. Your job files stay on disk untouched.
+
+## [0.14.2] - 2026-11-09
+
+### Added
+
+- **Getting ready for the native ByteHive.** This version writes your agents,
+  your settings and your recent folders to `~/.bytehive/export/web-state.json`
+  when it starts, whenever they change, and when it closes. The native app,
+  coming next, reads that file once on its first start, so your agents show
+  up there stopped and resume their own conversations. Nothing changes in how
+  this app works.
+
+### Changed
+
+- **Updates come from `tdat-dev/bytehive-releases`.** The public releases
+  repository was renamed from `maestro-releases`; the updater now asks the new
+  name directly.
+
 ## [0.14.1] - 2026-11-06
 
 ### Changed
