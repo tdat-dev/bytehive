@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "floors": [
+    {
+      "id": "bakery-site",
+      "dir": "D:\\Temp\\claude\\D--bytehive\\c04ff738-760b-47e9-a043-a031c38c18c0\\scratchpad\\t12\\repos\\bakery-site",
+      "name": "bakery-site"
+    },
+    {
+      "id": "tea-shop",
+      "dir": "D:\\Temp\\claude\\D--bytehive\\c04ff738-760b-47e9-a043-a031c38c18c0\\scratchpad\\t12\\repos\\tea-shop",
+      "name": "tea-shop"
+    }
+  ],
+  "people": [
+    {
+      "id": "founder",
+      "name": "Founder",
+      "role": "founder",
+      "rank": "founder",
+      "floor": null,
+      "boss": null,
+      "cli": "claude",
+      "look": {
+        "shirt": "#f5b83d",
+        "hair": "#2a2e3a",
+        "prop": "none"
+      },
+      "session": "abb7d75c-e35e-448c-85a2-85722bfa542d"
+    },
+    {
+      "id": "pagent-9-6nvnhd",
+      "name": "Hux",
+      "role": "lead",
+      "rank": "lead",
+      "floor": "tea-shop",
+      "boss": "founder",
+      "cli": "claude",
+      "look": {
+        "shirt": "#5ec2f0",
+        "hair": "#2a2e3a",
+        "prop": "clipboard"
+      },
+      "session": "8861cc68-1e36-4d0f-97b0-9638154befa0",
+      "worktree": "D:\\.bytehive-worktrees\\tea-shop-s9xlla\\bytehive-hux-rys21k-i3x4ma",
+      "branch": "bytehive/hux-rys21k"
+    },
+    {
+      "id": "pagent-10-8u2d1j",
+      "name": "Ivy",
+      "role": "designer",
+      "rank": "staff",
+      "floor": "tea-shop",
+      "boss": "pagent-9-6nvnhd",
+      "cli": "claude",
+      "look": {
+        "shirt": "#ff6b6b",
+        "hair": "#2a2e3a",
+        "prop": "pencil"
+      },
+      "session": "0446f8a3-ac75-473e-9e53-d84aa54a8e20",
+      "worktree": "D:\\.bytehive-worktrees\\tea-shop-s9xlla\\bytehive-ivy-rjk8l6-b5ysje",
+      "branch": "bytehive/ivy-rjk8l6"
+    },
+    {
+      "id": "pagent-11-a6fz6u",
+      "name": "Jax",
+      "role": "copywriter",
+      "rank": "staff",
+      "floor": "tea-shop",
+      "boss": "pagent-9-6nvnhd",
+      "cli": "claude",
+      "look": {
+        "shirt": "#e6c84a",
+        "hair": "#2a2e3a",
+        "prop": "pen"
+      },
+      "session": "bcea65cb-291f-4399-b987-886ef692e880",
+      "worktree": "D:\\.bytehive-worktrees\\tea-shop-s9xlla\\bytehive-jax-zzk4hd-0yaear",
+      "branch": "bytehive/jax-zzk4hd"
+    },
+    {
+      "id": "pagent-15-2vn3c0",
+      "name": "Kim",
+      "role": "developer",
+      "rank": "staff",
+      "floor": "bakery-site",
+      "boss": "founder",
+      "cli": "claude",
+      "look": {
+        "shirt": "#5fd08a",
+        "hair": "#2a2e3a",
+        "prop": "laptop"
+      },
+      "session": "403826b9-27df-4312-8dac-ecd02c8e0ee0",
+      "worktree": "D:\\.bytehive-worktrees\\bakery-site-ed9n0t\\bytehive-kim-2kyvmo-9fu1je",
+      "branch": "bytehive/kim-2kyvmo"
+    }
+  ],
+  "limits": {
+    "peoplePerJob": 5,
+    "peoplePerLead": 5,
+    "peopleTotal": 20,
+    "tokensPerJob": 5000000,
+    "stallMinutes": 10,
+    "maxReturns": 3
+  },
+  "nextJob": 4
+}

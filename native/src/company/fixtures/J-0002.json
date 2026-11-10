@@ -1,0 +1,74 @@
+{
+  "id": "J-0002",
+  "title": "On tea-shop, hire a developer, a designer and a copywriter. Developer: an About page. Designer: a price list page. Copywriter: a short welcome text on the home page. One card each, they work at the same time.",
+  "ask": "On tea-shop, hire a developer, a designer and a copywriter. Developer: an About page. Designer: a price list page. Copywriter: a short welcome text on the home page. One card each, they work at the same time.",
+  "status": "awaiting-merge",
+  "plan": {
+    "summary": "tea-shop gets 3 people working in parallel: a Team Lead who builds the About page (the rules require a Lead, so the developer hire is the Lead), a Designer who builds a price list page, and a Copywriter who writes a short welcome text on the home page. The Lead owns the nav and the merge order so their edits don't collide. Shop facts and prices are placeholders marked TODO(owner).",
+    "cards": [
+      {
+        "floor": "tea-shop",
+        "title": "Build About page",
+        "desc": "Create src/about.html using the shared src/styles.css and the same nav, skip link and favicon tag as src/menu.html. One short paragraph (50 to 80 words) about the shop, using only repo facts; anything specific (name, story, location) gets a TODO(owner) comment, nothing invented. As floor Lead you also own the main nav: add About and Prices links to the nav on every page (aria-current on the active one), so the Designer and Copywriter do not touch the nav. No em dashes. Check at 390px and 1280px: no horizontal scroll, no console errors. Commit locally on your own feature branch from main, do not push. When all three cards are done, review each diff, make sure the three branches do not conflict (rebase or stack if needed), and report.",
+        "checklist": [
+          "Create src/about.html with a short paragraph and TODO(owner) for specifics",
+          "Add About and Prices to the nav on every page",
+          "Check at 390px and 1280px, no console errors",
+          "Commit locally on a feature branch",
+          "Review all three diffs and resolve any conflicts"
+        ]
+      },
+      {
+        "floor": "tea-shop",
+        "title": "Design price list page",
+        "desc": "Create src/prices.html: a clean, readable price list page using the shared src/styles.css (add page-specific styles there in a clearly marked section), with the same head, skip link and nav markup as src/menu.html. Do not edit the nav on other pages; the Lead adds the Prices link. The repo has no real prices, so reuse the items from src/menu.html with clearly marked placeholder prices and a TODO(owner) comment; do not invent a real price list. Good hierarchy, aligned price column, accessible contrast and headings. No em dashes. Check at 390px and 1280px: no horizontal scroll, no console errors. Commit locally on your own feature branch from main, do not push.",
+        "checklist": [
+          "Read src/menu.html and src/styles.css for structure and style",
+          "Create src/prices.html with placeholder prices and TODO(owner)",
+          "Check at 390px and 1280px, no console errors",
+          "Commit locally on a feature branch"
+        ]
+      },
+      {
+        "floor": "tea-shop",
+        "title": "Write home page welcome text",
+        "desc": "Write a short welcome text (2 to 3 sentences, about 30 to 50 words) and place it on the home page src/index.html near the top of the main content. Warm, plain voice like a real local tea shop, no hype, no em dashes. Use only repo facts; leave a TODO(owner) comment for specifics such as the shop name. Edit only the welcome text area in src/index.html, not the nav or other pages. Commit locally on your own feature branch from main, do not push.",
+        "checklist": [
+          "Read the site to learn the shop and its tone",
+          "Write the welcome text with TODO(owner) for specifics",
+          "Place it in src/index.html without touching the nav",
+          "Commit locally on a feature branch"
+        ]
+      }
+    ],
+    "hires": [
+      {
+        "role": "lead",
+        "floor": "tea-shop"
+      },
+      {
+        "role": "designer",
+        "floor": "tea-shop"
+      },
+      {
+        "role": "copywriter",
+        "floor": "tea-shop"
+      }
+    ],
+    "tokenCap": 1200000
+  },
+  "tokenCap": 1200000,
+  "tokensUsed": 282543,
+  "tokenBase": {
+    "pagent-9-6nvnhd": 98686,
+    "pagent-10-8u2d1j": 93732,
+    "pagent-11-a6fz6u": 90125
+  },
+  "people": [
+    "pagent-9-6nvnhd",
+    "pagent-10-8u2d1j",
+    "pagent-11-a6fz6u"
+  ],
+  "createdAt": 1794295016192,
+  "summary": "All 3 tea-shop cards done; everything is on one local branch, feat/about-nav (tip a76c9e3, based on main 0dda376), not pushed. About page and a Home/Menu/About/Prices nav with aria-current on all 4 pages (Hux, b342397); prices.html with two accessible tables, $0.00 placeholders and TODO(owner), styles in a marked section (Ivy, 692ec48); a 46-word welcome inside <main> with TODO(owner) (Jax, 282bfce). Merges were clean, no em dashes in src/. Left for the owner: real shop name, story, location, hours and prices; feat/about-page (old J-0003 draft) is superseded; untracked .playwright-mcp/ logs. No one has browser-tested the merged branch as a whole, so a QA pass before merging is advised. Jax's card shows Done but its checklist was never ticked."
+}
