@@ -22,7 +22,8 @@ impl Inbox {
             None => text(BODY, INK_2).p(px(S4)).child(snap.note.clone().unwrap_or_else(|| words::STARTING.into())).into_any_element(),
         };
         let job_box = self.co_job_box(snap.model.as_ref(), compact, cx);
-        let mut stage = div().relative().flex_1().min_w_0().min_h_0().child(floors);
+        // The box stands at the stage's foot: over a 2D list it would hide people, as it never did over the building.
+        let mut stage = div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().child(div().flex_1().min_h_0().child(floors));
         let mut side = div().flex().flex_col().flex_none().w(px(rail_w)).min_h_0().bg(c(PANEL)).shadow(vec![BoxShadow { color: line(), offset: point(px(1.0), px(0.0)), blur_radius: px(0.0), spread_radius: px(0.0), inset: true }]);
         let rail = self.co_rail(&snap, cx).p(px(S4)).flex_1().min_h_0();
         if compact {
@@ -34,7 +35,7 @@ impl Inbox {
             side = side.child(rail.overflow_hidden());
             if let Some(b) = job_box {
                 let w = (size.width.as_f32() * 0.32).clamp(300.0, 460.0);
-                stage = stage.child(div().absolute().bottom(px(S4)).left(px(S4)).w(px(w)).p(px(S4)).rounded(px(R_CARD)).bg(c(PANEL)).shadow(vec![ring(line()), lift()]).child(b));
+                stage = stage.child(div().flex_none().px(px(S4)).pb(px(S4)).child(div().w(px(w)).p(px(S4)).rounded(px(R_CARD)).bg(c(PANEL)).shadow(vec![ring(line()), lift()]).child(b)));
             }
         }
         let confirm = snap.model.as_ref().and_then(|m| self.co_confirm(m, cx));

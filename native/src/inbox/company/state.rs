@@ -14,6 +14,8 @@ pub(in crate::inbox) struct CompanyUi {
     /// The person whose desk is on the stage, for the crumb back.
     pub desk: Option<String>,
     pub engine: Option<crate::company::engine::Engine>,
+    /// The fixture company a debug build shows with BYTEHIVE_COMPANY_DEMO=1, in place of the engine.
+    pub demo: Option<super::demo::Demo>,
     /// When the engine last ticked.
     pub ticked: u64,
     /// Why the last action failed, in the owner's words.
@@ -125,11 +127,15 @@ impl Inbox {
     pub(super) fn co_give(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ask) = self.company.ask.clone() else { return };
         let text = ask.read(cx).value().to_string();
-        if text.trim().is_empty() || self.company.engine.is_none() {
+        if text.trim().is_empty() || (self.company.engine.is_none() && self.company.demo.is_none()) {
             return;
         }
         self.company.box_failure = None;
-        match self.co_engine(cx, |e, host| e.give_job(host, &text)) {
+        let r = match &mut self.company.demo {
+            Some(d) => Some(Ok(d.give_job(&text))),
+            None => self.co_engine(cx, |e, host| e.give_job(host, &text)),
+        };
+        match r {
             Some(Ok(())) => {
                 if ask.read(cx).value() == text {
                     ask.update(cx, |a, cx| a.set_value("", window, cx));
@@ -139,6 +145,22 @@ impl Inbox {
             None => {}
         }
         cx.notify();
+    }
+
+    /// An owner action on the demo when it is up, else on the engine.
+    fn co_act(
+        &mut self,
+        cx: &mut Context<Self>,
+        demo: impl FnOnce(&mut super::demo::Demo),
+        real: impl FnOnce(&mut crate::company::engine::Engine, &mut dyn crate::company::host::Host) -> Result<(), String>,
+    ) -> Option<Result<(), String>> {
+        match &mut self.company.demo {
+            Some(d) => {
+                demo(d);
+                Some(Ok(()))
+            }
+            None => self.co_engine(cx, real),
+        }
     }
 
     fn co_result(&mut self, r: Option<Result<(), String>>, cx: &mut Context<Self>) -> bool {
@@ -156,7 +178,7 @@ impl Inbox {
         if self.company.short.contains(job) {
             return;
         }
-        let r = self.co_engine(cx, |e, host| e.approve(host, job));
+        let r = self.co_act(cx, |d| d.approve(job), |e, host| e.approve(host, job));
         self.co_result(r, cx);
     }
 
@@ -174,7 +196,7 @@ impl Inbox {
             return;
         }
         self.company.short.remove(job);
-        let r = self.co_engine(cx, |e, host| e.send_back(host, job, &words));
+        let r = self.co_act(cx, |d| d.send_back(job, &words), |e, host| e.send_back(host, job, &words));
         if self.co_result(r, cx) && note.read(cx).value() == words {
             self.company.notes.remove(job);
             self.company.asking.remove(job);
@@ -206,22 +228,24 @@ impl Inbox {
     }
 
     pub(super) fn co_raise(&mut self, job: &str, cx: &mut Context<Self>) {
-        let r = self.co_engine(cx, |e, host| e.raise_cap(host, job, RAISE_BY));
+        let r = self.co_act(cx, |d| d.raise_cap(job, RAISE_BY), |e, host| e.raise_cap(host, job, RAISE_BY));
         self.co_result(r, cx);
     }
 
     pub(super) fn co_finish(&mut self, job: &str, cx: &mut Context<Self>) {
-        let r = self.co_engine(cx, |e, host| e.finish_job(host, job));
+        let r = self.co_act(cx, |d| d.finish(job), |e, host| e.finish_job(host, job));
         self.co_result(r, cx);
     }
 
     pub(super) fn co_stop(&mut self, job: &str, cx: &mut Context<Self>) {
-        let r = self.co_engine(cx, |e, host| e.stop_job(host, job));
+        let r = self.co_act(cx, |d| d.stop(job), |e, host| e.stop_job(host, job));
         self.co_result(r, cx);
     }
 
     pub(super) fn co_dismiss(&mut self, key: &str, cx: &mut Context<Self>) {
-        if let Some(e) = &mut self.company.engine {
+        if let Some(d) = &mut self.company.demo {
+            d.dismiss(key);
+        } else if let Some(e) = &mut self.company.engine {
             e.dismiss(key);
         }
         cx.notify();

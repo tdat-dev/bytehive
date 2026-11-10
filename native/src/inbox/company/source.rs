@@ -59,6 +59,14 @@ impl Inbox {
     /// From the Inbox's timer: start the engine the first time, then beat every 1.5 s.
     pub(in crate::inbox) fn company_tick(&mut self, cx: &mut Context<Self>) {
         let now = now_ms();
+        if super::demo::wanted() {
+            if self.company.demo.is_none() {
+                self.company.demo = Some(super::demo::Demo::new());
+                self.company.land = true;
+                cx.notify();
+            }
+            return;
+        }
         self.co_read_fresh(now, cx);
         if now.saturating_sub(self.company.ticked) < BEAT_MS {
             return;
@@ -139,6 +147,9 @@ impl Inbox {
 
     /// This frame's office, from the engine and every person's seat.
     pub(super) fn company_snapshot(&self, cx: &App) -> Snapshot {
+        if let Some(d) = &self.company.demo {
+            return Snapshot { model: Some(d.model()), note: None, error: None };
+        }
         let Some(engine) = &self.company.engine else {
             return Snapshot { model: None, note: Some(words::STARTING.into()), error: None };
         };

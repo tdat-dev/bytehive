@@ -2,6 +2,7 @@
 //! ported from src/company/office/rail.ts, model.ts and office.css. A person's
 //! desk is their seat on the stage, with a crumb back here.
 
+mod demo;
 mod floors;
 mod jobs;
 mod look;

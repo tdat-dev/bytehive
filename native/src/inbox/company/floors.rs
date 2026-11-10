@@ -29,7 +29,7 @@ impl Inbox {
         for f in &m.floors {
             blocks.push(self.co_floor(f, m, cx).into_any_element());
         }
-        div().id("co-floors").size_full().overflow_y_scroll().p(px(S4)).pb(px(240.0)).flex().flex_col().gap(px(S3)).children(blocks).into_any_element()
+        div().id("co-floors").size_full().overflow_y_scroll().p(px(S4)).flex().flex_col().gap(px(S3)).children(blocks).into_any_element()
     }
 
     fn co_floor(&self, f: &OfficeFloor, m: &OfficeModel, cx: &mut Context<Self>) -> Div {
