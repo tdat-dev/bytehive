@@ -17,8 +17,18 @@ const FORMAT: u64 = 1;
 const MARKER: &str = "imported.json";
 
 pub fn export_file() -> Option<PathBuf> {
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
-    Some(PathBuf::from(home).join(".bytehive").join("export").join("web-state.json"))
+    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+    let sandbox = std::env::var_os("BYTEHIVE_NATIVE_DIR").map(PathBuf::from);
+    export_path(sandbox.as_deref(), home.as_deref())
+}
+
+/// A run in a sandbox (BYTEHIVE_NATIVE_DIR) reads an export only from inside it,
+/// so a dev run never takes the owner's projects and agents.
+fn export_path(sandbox: Option<&std::path::Path>, home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+    match sandbox {
+        Some(dir) => Some(dir.join("export").join("web-state.json")),
+        None => Some(PathBuf::from(home?).join(".bytehive").join("export").join("web-state.json")),
+    }
 }
 
 /// One agent as the old app saved it (AgentSpec in panetypes.ts).
@@ -240,6 +250,15 @@ pub fn mark_done(dir: &std::path::Path, exported_at: u64, agents: usize) {
 #[cfg(test)]
 mod tests {
     use super::read;
+
+    #[test]
+    fn a_sandbox_reads_the_export_only_from_inside_itself() {
+        use std::path::{Path, PathBuf};
+        let home = std::ffi::OsStr::new("C:\\Users\\me");
+        assert_eq!(super::export_path(Some(Path::new("D:\\sb\\native")), Some(home)), Some(PathBuf::from("D:\\sb\\native\\export\\web-state.json")));
+        assert_eq!(super::export_path(None, Some(home)), Some(PathBuf::from("C:\\Users\\me\\.bytehive\\export\\web-state.json")));
+        assert_eq!(super::export_path(None, None), None);
+    }
 
     #[test]
     fn brings_agents_and_settings_over() {
