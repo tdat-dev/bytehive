@@ -134,8 +134,12 @@ pub(crate) const MACHINE_FILES: [&str; 5] = [
     ".bytehive/spawn-requests.jsonl",
 ];
 
+/// Folders a tool fills with its own logs at the top of a checkout, named one by
+/// one like the files: Playwright MCP writes console and page snapshots here.
+pub(crate) const MACHINE_DIRS: [&str; 1] = [".playwright-mcp/"];
+
 fn is_machine_file(path: &str) -> bool {
-    MACHINE_FILES.contains(&path)
+    MACHINE_FILES.contains(&path) || MACHINE_DIRS.iter().any(|d| path.starts_with(d))
 }
 
 /// Every untracked, unignored path in `dir`. git shows a checkout nested in it as
@@ -228,6 +232,7 @@ fn add_listed(dir: &str, flag: &str, envs: &[(&str, &str)], files: &[String]) ->
 pub(crate) fn left_out_of(dir: &str) -> Result<Vec<String>, CommandError> {
     let mut args = vec!["--literal-pathspecs", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z", "--"];
     args.extend(MACHINE_FILES);
+    args.extend(MACHINE_DIRS);
     let out = git_env(&args, dir, &READ_ONLY)?;
     let mut names: Vec<String> = out.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect();
     names.sort();
@@ -830,6 +835,20 @@ mod tests {
         assert_eq!(agent_diff_impl(&root, None, None).unwrap().matches("+real work").count(), 4);
         assert_eq!(folder_state_impl(&root, None).unwrap().files.len(), 4);
         assert!(left_out_of(&root).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_browser_tool_s_log_folder_is_left_out_like_a_machine_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = repo_at(tmp.path());
+        write(tmp.path(), ".playwright-mcp/console-1.log", "noise\n");
+        write(tmp.path(), ".playwright-mcp/page-1.yml", "noise\n");
+        write(tmp.path(), "new.txt", "fresh\n");
+        assert_eq!(sorted(&agent_changes_impl(&root, None, None).unwrap()), vec!["new.txt"]);
+        assert_eq!(new_work(&root).unwrap(), vec!["new.txt"]);
+        assert_eq!(left_out_of(&root).unwrap(), vec![".playwright-mcp/console-1.log", ".playwright-mcp/page-1.yml"]);
+        assert!(!is_machine_file("x/.playwright-mcp/a.log"));
+        assert!(!is_machine_file(".playwright-mcp.log"));
     }
 
     #[test]
