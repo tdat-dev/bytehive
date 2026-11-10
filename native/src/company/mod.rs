@@ -8,5 +8,6 @@
 pub mod alerts;
 pub mod lock;
 pub mod org;
+pub mod reduce;
 pub mod store;
 pub mod types;
