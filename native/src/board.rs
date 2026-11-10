@@ -368,9 +368,9 @@ pub fn board_to_markdown(board: &Board) -> String {
 mod file;
 pub mod round;
 
-pub use file::{change, mtime, read, save, write_mirror};
+pub use file::{ReadError, change, mtime, read, save, write_mirror};
 #[cfg(test)]
-use file::{ReadError, board_path};
+use file::board_path;
 
 #[cfg(test)]
 #[path = "board_tests.rs"]

@@ -7,6 +7,7 @@
 
 pub mod alerts;
 pub mod engine;
+pub mod fleet_host;
 pub mod host;
 pub mod launch;
 pub mod laws;

@@ -65,7 +65,7 @@ pub fn held_by(session: &str) -> Option<u32> {
     agent_core::claude::live_sessions().into_iter().find(|l| l.session_id == session && alive(l.pid)).map(|l| l.pid)
 }
 
-fn alive(pid: u32) -> bool {
+pub(crate) fn alive(pid: u32) -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
     use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
     unsafe {
