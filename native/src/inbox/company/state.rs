@@ -14,6 +14,8 @@ pub(in crate::inbox) struct CompanyUi {
     /// The person whose desk is on the stage, for the crumb back.
     pub desk: Option<String>,
     pub engine: Option<crate::company::engine::Engine>,
+    /// The engine's view as of its change count: a frame reads this, not a fresh clone.
+    pub view: std::cell::RefCell<Option<(u64, crate::company::engine::CompanyView)>>,
     /// The fixture company a debug build shows with BYTEHIVE_COMPANY_DEMO=1, in place of the engine.
     pub demo: Option<super::demo::Demo>,
     /// When the engine last ticked.
@@ -21,6 +23,8 @@ pub(in crate::inbox) struct CompanyUi {
     /// Why the last action failed, in the owner's words.
     pub failure: Option<String>,
     pub box_failure: Option<String>,
+    /// When a failure was said: it clears on its own a few seconds on.
+    pub failed_at: u64,
     /// Notes being typed, by job.
     pub notes: HashMap<String, Entity<TextareaState>>,
     /// Jobs whose note box is open, the ones told they need a note, and plans unfolded.
@@ -137,6 +141,10 @@ impl Inbox {
     }
 
     pub(super) fn co_give(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Behind the confirm's scrim the box takes no Enter.
+        if self.company.confirm.is_some() {
+            return;
+        }
         let Some(ask) = self.company.ask.clone() else { return };
         let text = ask.read(cx).value().to_string();
         if text.trim().is_empty() || (self.company.engine.is_none() && self.company.demo.is_none()) {
@@ -153,7 +161,10 @@ impl Inbox {
                     ask.update(cx, |a, cx| a.set_value("", window, cx));
                 }
             }
-            Some(Err(why)) => self.company.box_failure = Some(why),
+            Some(Err(why)) => {
+                self.company.box_failure = Some(why);
+                self.company.failed_at = now_ms();
+            }
             None => {}
         }
         cx.notify();
@@ -177,6 +188,7 @@ impl Inbox {
 
     fn co_result(&mut self, r: Option<Result<(), String>>, cx: &mut Context<Self>) -> bool {
         let ok = matches!(r, Some(Ok(())));
+        self.company.failed_at = now_ms();
         self.company.failure = match r {
             Some(Err(why)) => Some(if why.is_empty() { "Something went wrong.".into() } else { why }),
             _ => None,

@@ -45,6 +45,16 @@ impl Inbox {
                 stage = stage.child(div().flex_none().px(px(S4)).pb(px(S4)).child(div().w(px(w)).p(px(S4)).rounded(px(R_CARD)).bg(c(PANEL)).shadow(vec![ring(line()), lift()]).child(b)));
             }
         }
+        // A confirm or a menu for a job that has gone goes with it.
+        if let Some(m) = &snap.model {
+            let gone = |id: &Option<String>| id.as_ref().is_some_and(|id| !m.jobs.iter().any(|j| &j.id == id));
+            if gone(&self.company.confirm) {
+                self.company.confirm = None;
+            }
+            if gone(&self.company.menu) {
+                self.company.menu = None;
+            }
+        }
         let confirm = snap.model.as_ref().and_then(|m| self.co_confirm(m, cx));
         div()
             .relative()
@@ -54,6 +64,15 @@ impl Inbox {
             .bg(c(GROUND))
             .text_color(c(INK))
             .font_family("Geist")
+            // A press anywhere else closes a job's menu.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.company.menu.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
             .child(self.co_bar(cx))
             .child(div().flex().flex_1().min_h_0().child(stage).child(side))
             .children(confirm)

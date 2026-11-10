@@ -45,6 +45,8 @@ impl Inbox {
             .when(menu_open, |s| s.bg(c(OVER)))
             .hover(|s| s.bg(c(RAISED)))
             .tooltip(tip(format!("More for {}", j.title)))
+            // Its own press: the page's closes the menu.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.company.menu = if this.company.menu.as_deref() == Some(id.as_str()) { None } else { Some(id.clone()) };
                 cx.notify();
@@ -82,6 +84,7 @@ impl Inbox {
                 .rounded(px(R_CARD))
                 .bg(c(OVER))
                 .shadow(vec![ring(line())])
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(button(SharedString::from(format!("co-stop-{id}")), stop_word(&j.status), Btn::Danger, false, false).justify_start().w_full().on_click(cx.listener(move |this, _, _, cx| {
                     this.company.menu = None;
                     this.company.confirm = Some(id.clone());
