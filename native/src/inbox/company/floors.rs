@@ -8,10 +8,11 @@ use super::rows::Target;
 use super::words::plural;
 use super::*;
 
-/// The state's word, as the Inbox says it, and its colour. Honey marks who waits on you.
+/// The state's word, as the Inbox says it, and its colour. Who waits on you is ink,
+/// not honey: honey is the rail's one button.
 fn state_look(s: OfficeState) -> (&'static str, u32) {
     match s {
-        OfficeState::Needs => ("Needs you", HONEY),
+        OfficeState::Needs => ("Needs you", INK),
         OfficeState::Working => ("Working", WORK),
         OfficeState::Review => ("Ready to review", REVIEW),
         OfficeState::Idle => ("Idle", STOP),

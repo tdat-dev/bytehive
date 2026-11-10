@@ -9,11 +9,12 @@ use super::model::{OfficeJob, OfficeModel};
 use super::words::*;
 use super::*;
 
-/// The dot before a job: paused and planning are quiet, waiting is yours.
+/// The dot before a job: working is green, the rest quiet. A job waiting on its
+/// plan is ink, not honey: honey is the rail's one button.
 fn job_dot(status: &JobStatus) -> u32 {
     match status {
         JobStatus::Running => WORK,
-        JobStatus::AwaitingPlan => HONEY,
+        JobStatus::AwaitingPlan => INK,
         _ => STOP,
     }
 }

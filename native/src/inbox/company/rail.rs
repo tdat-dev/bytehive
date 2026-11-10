@@ -218,13 +218,14 @@ impl Inbox {
     }
 }
 
-/// A rail heading: its words, the honey count of what needs you, and a quiet note at its end.
+/// A rail heading: its words, the count of what needs you, and a quiet note at its end.
+/// The count is ink: honey goes on the one button that waits for the owner.
 fn heading(words: &'static str, count: Option<String>, meta: Option<&'static str>) -> Div {
     div()
         .flex()
         .items_baseline()
         .gap(px(S2))
         .child(text(TITLE, INK).child(words))
-        .children(count.map(|n| text(TITLE, HONEY).child(n)))
+        .children(count.map(|n| text(TITLE, INK).child(n)))
         .children(meta.map(|m| text(META, INK_3).ml_auto().child(m)))
 }
