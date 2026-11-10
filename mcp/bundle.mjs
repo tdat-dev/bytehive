@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const out = path.join(here, "..", "src-tauri", "resources", "mcp", "bytehive-mcp.mjs");
+// The native app's installer passes where it stages the file: `npm run bundle -- <file>`.
+const out = process.argv[2] ? path.resolve(process.argv[2]) : path.join(here, "..", "src-tauri", "resources", "mcp", "bytehive-mcp.mjs");
 
 const { outputFiles: [file] } = await build({
   entryPoints: [path.join(here, "src", "index.ts")],
@@ -22,6 +23,7 @@ const { outputFiles: [file] } = await build({
 const before = fs.existsSync(out) ? fs.readFileSync(out) : null;
 if (before?.equals(file.contents)) console.log(`bytehive-mcp.mjs unchanged, ${file.contents.length} bytes`);
 else {
+  fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, file.contents);
   console.log(`bytehive-mcp.mjs written, ${file.contents.length} bytes`);
 }

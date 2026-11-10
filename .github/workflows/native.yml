@@ -42,6 +42,14 @@ jobs:
         working-directory: native
         run: cargo test
 
+      # The installer bundles the MCP server (mcp/) with npm and esbuild.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
       - name: NSIS
         shell: pwsh
         run: |
@@ -75,7 +83,7 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "installer exit $($p.ExitCode)" }
           if (Get-Process bytehive -ErrorAction SilentlyContinue) { throw "a plain /S install opened the app" }
           $dir = Join-Path $env:LOCALAPPDATA "ByteHive"
-          foreach ($f in @("bytehive.exe", "icon.ico", "uninstall.exe", "browser-extension\manifest.json")) {
+          foreach ($f in @("bytehive.exe", "icon.ico", "uninstall.exe", "browser-extension\manifest.json", "mcp-server\bytehive-mcp.mjs")) {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "missing $f after install" }
           }
           $key = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\bytehive"
@@ -90,6 +98,7 @@ jobs:
           foreach ($i in 1..30) { if (-not (Test-Path (Join-Path $dir "bytehive.exe"))) { break }; Start-Sleep -Seconds 1 }
           Start-Sleep -Seconds 2
           if (Test-Path (Join-Path $dir "bytehive.exe")) { throw "uninstall left bytehive.exe" }
+          if (Test-Path (Join-Path $dir "mcp-server")) { throw "uninstall left mcp-server" }
           if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\bytehive") { throw "uninstall left the key" }
 
       - name: Keep the installer

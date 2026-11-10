@@ -1,6 +1,7 @@
 ; ByteHive's Windows installer for the native app: bytehive.exe (the crate's
-; bytehive-native.exe), its icon and the ByteHive for Chrome extension folder,
-; installed for the current user.
+; bytehive-native.exe), its icon, the ByteHive for Chrome extension folder and
+; the MCP server the Company's people run (mcp-server\bytehive-mcp.mjs, where
+; the Tauri app kept it too), installed for the current user.
 ;
 ; It takes the Tauri ByteHive's place: the same folder (%LOCALAPPDATA%\ByteHive)
 ; and the same uninstall key "bytehive", so the Tauri app's updater, which runs
@@ -11,7 +12,7 @@
 ;
 ; Build (tools/build_native_installer.ps1 does this):
 ;   makensis /DVERSION=0.15.0 /DEXE=<bytehive-native.exe> /DEXT=<browser-extension dir>
-;            /DICON=<icon.ico> /DOUTFILE=<setup.exe> bytehive.nsi
+;            /DICON=<icon.ico> /DMCP=<dir holding bytehive-mcp.mjs> /DOUTFILE=<setup.exe> bytehive.nsi
 
 Unicode true
 !include "MUI2.nsh"
@@ -19,6 +20,9 @@ Unicode true
 
 !ifndef VERSION
   !error "pass /DVERSION=x.y.z"
+!endif
+!ifndef MCP
+  !error "pass /DMCP=<dir holding bytehive-mcp.mjs>"
 !endif
 !define APP "ByteHive"
 !define KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\bytehive"
@@ -77,6 +81,8 @@ Section "ByteHive"
   ; Marks the folder as ours, so uninstalling removes only what we put there.
   FileOpen $9 "$INSTDIR\browser-extension\.bytehive-installed" w
   FileClose $9
+  SetOutPath "$INSTDIR\mcp-server"
+  File "${MCP}\bytehive-mcp.mjs"
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -122,6 +128,8 @@ Section "Uninstall"
   Delete "$INSTDIR\uninstall.exe"
   IfFileExists "$INSTDIR\browser-extension\.bytehive-installed" 0 +2
     RMDir /r "$INSTDIR\browser-extension"
+  Delete "$INSTDIR\mcp-server\bytehive-mcp.mjs"
+  RMDir "$INSTDIR\mcp-server"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APP}.lnk"
   Delete "$DESKTOP\${APP}.lnk"

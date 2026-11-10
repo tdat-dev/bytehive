@@ -1,6 +1,8 @@
 # Build the native ByteHive installer: a release build of native/, packed with
 # NSIS (native/installer/bytehive.nsi) together with the browser-extension
-# folder and the app icon. Prints the installer's path.
+# folder, the app icon and the MCP server the Company's people run (mcp/, as
+# one file: mcp-server\bytehive-mcp.mjs). Needs Node 22.13+ and npm. Prints the
+# installer's path.
 #
 #   powershell -File tools/build_native_installer.ps1            # build + pack
 #   powershell -File tools/build_native_installer.ps1 -NoBuild   # pack the last build
@@ -30,6 +32,16 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $setup = Join-Path $out "ByteHive_${version}_x64-setup.exe"
 $ext = Join-Path $root "browser-extension"
 $icon = Join-Path $root "src-tauri\icons\icon.ico"
-& $makensis /V2 "/DVERSION=$version" "/DEXE=$exe" "/DEXT=$ext" "/DICON=$icon" "/DOUTFILE=$setup" (Join-Path $crate "installer\bytehive.nsi")
+
+# The MCP server, bundled with its packages into one file that plain node runs.
+$mcp = Join-Path $root "mcp"
+$server = Join-Path $out "mcp-server\bytehive-mcp.mjs"
+npm --prefix $mcp ci --no-audit --no-fund
+if ($LASTEXITCODE -ne 0) { throw "npm ci in mcp failed" }
+npm --prefix $mcp run bundle -- $server
+if ($LASTEXITCODE -ne 0) { throw "bundling the MCP server failed" }
+if (-not (Test-Path $server)) { throw "no MCP server at $server" }
+
+& $makensis /V2 "/DVERSION=$version" "/DEXE=$exe" "/DEXT=$ext" "/DICON=$icon" "/DMCP=$(Split-Path -Parent $server)" "/DOUTFILE=$setup" (Join-Path $crate "installer\bytehive.nsi")
 if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
 $setup
