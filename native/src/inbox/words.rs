@@ -41,6 +41,13 @@ pub(super) fn waits(state: State) -> bool {
     matches!(state, State::Needs | State::Blocked)
 }
 
+/// Whether an idle seat reads as done. A Company person's never does: their
+/// work comes from the company, so idle is waiting (the Founder, on a plan
+/// the owner has not answered yet).
+pub(super) fn counts_done(worked: bool, person: Option<&str>) -> bool {
+    worked && person.is_none()
+}
+
 pub(super) fn ended(state: State) -> bool {
     matches!(state, State::Stopped | State::Merged)
 }

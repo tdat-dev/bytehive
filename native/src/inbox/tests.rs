@@ -79,3 +79,13 @@ fn evening_reads_pm() {
     let morning = Local.with_ymd_and_hms(2026, 11, 9, 9, 5, 0).unwrap().timestamp_millis() as u64;
     assert_eq!(supervise::task_state::clock_of(morning, morning), "9:05 AM");
 }
+
+#[test]
+fn a_company_person_is_never_done_only_waiting() {
+    use super::words::{counts_done, said_line};
+    assert!(counts_done(true, None));
+    assert!(!counts_done(true, Some("founder")), "the Founder idles on a plan waiting for the owner");
+    assert!(!counts_done(false, None));
+    let idle = supervise::task_state::TaskStatus { state: State::Idle, ask: None, limit: None, blocked: None, spent: false, stuck: None, clash: None };
+    assert_eq!(said_line(&idle, counts_done(true, Some("p1"))), "Waiting for a task");
+}

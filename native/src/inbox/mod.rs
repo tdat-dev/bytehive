@@ -281,7 +281,7 @@ impl Inbox {
 
     fn view(&self, cx: &App) -> View {
         let statuses: Vec<TaskStatus> = self.fleet.seats.iter().map(|s| s.status(cx)).collect();
-        let worked = self.fleet.seats.iter().map(|s| self.worked.contains(&s.spec.id)).collect();
+        let worked = self.fleet.seats.iter().map(|s| counts_done(self.worked.contains(&s.spec.id), s.spec.person.as_deref())).collect();
         let since = self.fleet.seats.iter().map(|s| self.since.get(&s.spec.id).map(|(_, at)| *at).unwrap_or(s.spec.started_ms)).collect();
         View { statuses, worked, since }
     }
