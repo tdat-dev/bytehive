@@ -94,9 +94,23 @@ fn snapshot(s: &Sides) -> Result<String, String> {
     let scratch = ScratchIndex::copy_of(&s.worktree);
     let index = scratch.path.to_string_lossy().into_owned();
     let env = [("GIT_INDEX_FILE", index.as_str())];
-    git_env(&["add", "-A", "--", "."], &s.worktree, &env)?;
-    let tree = git_env(&["write-tree"], &s.worktree, &env)?;
-    git(&["commit-tree", &tree, "-p", &head, "-m", "bytehive: merge check"], &s.worktree)
+    // Checks at once write the same objects, and on Windows the second writer
+    // of one is refused ("unable to write file ... Permission denied"): one
+    // snapshot at a time here, and one more try for a writer outside this app.
+    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+    let write = || -> Result<String, String> {
+        git_env(&["add", "-A", "--", "."], &s.worktree, &env)?;
+        let tree = git_env(&["write-tree"], &s.worktree, &env)?;
+        git(&["commit-tree", &tree, "-p", &head, "-m", "bytehive: merge check"], &s.worktree)
+    };
+    match write() {
+        Err(e) if e.contains("unable to write") || e.contains("Permission denied") => {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            write()
+        }
+        got => got,
+    }
 }
 
 /// Files the branch (as `tip`) changed since it left the base.
