@@ -1,0 +1,14 @@
+{
+  "id": "copywriter",
+  "title": "Copywriter",
+  "department": "Marketing",
+  "rank": "staff",
+  "cli": "claude",
+  "denyTools": [],
+  "look": {
+    "shirt": "#e6c84a",
+    "hair": "#2a2e3a",
+    "prop": "pen"
+  },
+  "skills": []
+}

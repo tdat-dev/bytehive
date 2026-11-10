@@ -1,0 +1,21 @@
+{
+  "id": "founder",
+  "title": "Founder",
+  "department": "Management",
+  "rank": "founder",
+  "cli": "claude",
+  "denyTools": [
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit",
+    "Bash",
+    "PowerShell"
+  ],
+  "look": {
+    "shirt": "#f5b83d",
+    "hair": "#2a2e3a",
+    "prop": "none"
+  },
+  "skills": []
+}

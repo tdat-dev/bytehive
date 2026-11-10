@@ -6,10 +6,13 @@
 #![allow(dead_code)]
 
 pub mod alerts;
+pub mod launch;
+pub mod laws;
 pub mod lock;
 pub mod needs;
 pub mod org;
 pub mod reduce;
+pub mod roles;
 pub mod store;
 pub mod types;
 pub mod watch;
