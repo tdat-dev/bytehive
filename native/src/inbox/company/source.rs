@@ -16,6 +16,8 @@ use super::*;
 const BEAT_MS: u64 = 1500;
 /// How often what each person has used is read again, off the UI thread.
 const FRESH_MS: u64 = 30_000;
+/// How long a failure stays on the page.
+const FAILURE_MS: u64 = 6_000;
 
 impl Inbox {
     /// Every open project, the current one first, and the current one.
@@ -68,6 +70,13 @@ impl Inbox {
             return;
         }
         self.co_read_fresh(now, cx);
+        // A failure is said, then goes: the next try says its own.
+        let co = &mut self.company;
+        if (co.failure.is_some() || co.box_failure.is_some()) && now.saturating_sub(co.failed_at) > FAILURE_MS {
+            co.failure = None;
+            co.box_failure = None;
+            cx.notify();
+        }
         if now.saturating_sub(self.company.ticked) < BEAT_MS {
             return;
         }
@@ -182,7 +191,11 @@ impl Inbox {
                 Some(Pane { person_id: id, status: s.status(cx), doing: s.spec.title.clone() })
             })
             .collect();
-        let view = engine.view();
+        let mut cache = self.company.view.borrow_mut();
+        if cache.as_ref().is_some_and(|(n, _)| *n != engine.changes) {
+            *cache = None;
+        }
+        let (_, view) = cache.get_or_insert_with(|| (engine.changes, engine.view()));
         let Some(company) = &view.company else {
             let note = view.locked_by_other.then(|| words::LOCKED.to_string());
             return Snapshot { model: None, note: note.or_else(|| view.error.is_none().then(|| words::STARTING.into())), error: view.error.clone() };
