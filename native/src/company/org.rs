@@ -258,7 +258,9 @@ pub fn apply_hires(
     let is_lead = |rid: &str| role_of(rid).is_some_and(|r| r.rank == Rank::Lead);
     let mut add = |people: &mut Vec<Person>, h: &Hire, boss: String| -> Option<String> {
         // validate_plan has checked the role; one that went missing is no hire.
-        let role = role_of(&h.role)?;
+        let role = role_of(&h.role);
+        debug_assert!(role.is_some(), "hire of unknown role {}", h.role);
+        let role = role?;
         let pid = id();
         let taken: Vec<String> = people.iter().map(|p| p.name.clone()).collect();
         let person = Person {

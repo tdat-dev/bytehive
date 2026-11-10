@@ -111,6 +111,15 @@ fn validate_plan_with_new_roles_refuses_a_draft_with_no_id_at_all() {
 }
 
 #[test]
+fn a_plan_line_with_a_nameless_new_role_does_not_read() {
+    // The MCP server refuses such a plan before it writes the line; one written by hand reads as no request.
+    let line = r#"{"type":"plan","ts":1,"from":"founder","job":"J-0001","plan":{"summary":"s","cards":[],"hires":[],"newRoles":[{"title":"T","department":"D","prompt":"P"}]}}"#;
+    assert!(serde_json::from_str::<crate::company::types::CompanyRequest>(line).is_err());
+    let named = line.replace(r#"{"title""#, r#"{"id":"writer","title""#);
+    assert!(serde_json::from_str::<crate::company::types::CompanyRequest>(&named).is_ok());
+}
+
+#[test]
 fn validate_plan_with_new_roles_refuses_an_id_that_exists_so_a_plan_cant_rewrite_a_role() {
     let e = validate(&company(vec![]), &JobPlan { new_roles: Some(vec![draft("developer")]), ..plan() });
     assert_eq!(e, "Role developer refused: that role exists already. Use it, or pick another id.");
