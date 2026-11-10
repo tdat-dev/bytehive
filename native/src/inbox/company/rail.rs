@@ -199,6 +199,7 @@ impl Inbox {
                 Act::SendBack => this.co_send_back(&job, window, cx),
                 Act::Raise => this.co_raise(&job, cx),
                 Act::Finish => this.co_finish(&job, cx),
+                Act::Resume => this.co_resume(&job, cx),
                 Act::Dismiss => this.co_dismiss(&key, cx),
                 Act::Open => this.co_go(to.clone(), window, cx),
             }))

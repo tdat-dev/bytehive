@@ -397,3 +397,19 @@ fn a_job_merge_row_skips_people_with_nothing_to_merge() {
     let m = model_of(&company(people), &[merging], &[], &[empty("lead"), pane("dev", TaskState::Merged), empty("qa")], &[]);
     assert_eq!(m.needs[0].person_id, None, "with everyone merged or empty, only Mark done is left");
 }
+
+#[test]
+fn a_running_job_with_everyone_stopped_asks_to_resume_them() {
+    let mut running = job("J-1", JobStatus::Running);
+    running.people = vec!["x".into(), "y".into()];
+    let c = company(vec![person("x", Rank::Staff, "a"), person("y", Rank::Staff, "a")]);
+    let m = model_of(&c, &[running.clone()], &[], &[pane("x", TaskState::Stopped)], &[]);
+    let r = m.needs.iter().find(|r| r.key == "resume-J-1").expect("a resume row");
+    assert_eq!((r.kind, r.title.as_str()), (NeedKind::Alert, "Nobody is at work on: Add login"));
+    assert_eq!(acts(&row_buttons(r, PRIMARY, &m)), [(Act::Resume, "Resume", Kind::Primary)]);
+    let m = model_of(&c, &[running.clone()], &[], &[pane("x", TaskState::Working)], &[]);
+    assert!(m.needs.iter().all(|r| r.key != "resume-J-1"), "someone is at work");
+    running.status = JobStatus::Paused;
+    let m = model_of(&c, &[running], &[], &[], &[]);
+    assert!(m.needs.iter().all(|r| !r.key.starts_with("resume-")), "a paused job has its own row");
+}

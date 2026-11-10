@@ -37,6 +37,8 @@ pub(super) enum Act {
     Raise,
     Finish,
     Dismiss,
+    /// Start again the stopped people of a Job that is still running.
+    Resume,
     /// Go where the card points (Review, Go to, Answer at, Open).
     Open,
 }
@@ -91,6 +93,7 @@ pub(super) fn row_buttons(r: &NeedRow, o: RowLook, m: &OfficeModel) -> Vec<Butto
             let finish = if o.goes && r.person_id.is_some() { Kind::Secondary } else { main };
             review.into_iter().chain([btn(Act::Finish, "Mark done", finish)]).collect()
         }
+        NeedKind::Alert if r.key.starts_with("resume-") => vec![btn(Act::Resume, "Resume", main)],
         NeedKind::Alert if r.standing => vec![btn(Act::Dismiss, "Dismiss", Kind::Secondary)],
         NeedKind::Alert => {
             let label = match person {

@@ -10,6 +10,11 @@ pub(super) const JOBS: &str = "Jobs";
 pub(super) const JOBS_META: &str = "Tokens used of the cap";
 pub(super) const NOTHING_NEEDS_YOU: &str = "Nothing needs you.";
 pub(super) const NO_JOB: &str = "No job is running.";
+pub(super) const RESUME_DETAIL: &str = "Its people stopped when ByteHive closed. Resume starts them again.";
+
+pub(super) fn resume_title(job: &str) -> String {
+    format!("Nobody is at work on: {job}")
+}
 pub(super) const STARTING: &str = "Starting...";
 pub(super) const GIVE_JOB: &str = "Give the Founder a job";
 pub(super) const SEND: &str = "Send";

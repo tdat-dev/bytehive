@@ -8,7 +8,7 @@ use crate::company::types::{Company, Job, JobStatus, Person, Rank, RoleDef};
 use std::collections::BTreeMap;
 use supervise::task_state::{TaskState, TaskStatus};
 
-use super::words::{going, status_line};
+use super::words::{RESUME_DETAIL, going, resume_title, status_line};
 
 /// The one place a person's state comes from. Stopped covers no seat and a
 /// merged agent: the chair is empty.
@@ -200,6 +200,20 @@ pub(super) fn office_model(
         .filter(|p| p.state == OfficeState::Needs)
         .filter_map(|p| pane_of(&p.id).map(|pane| ask_row(p, &pane.status)))
         .collect();
+    // A Job still running with all its people stopped (ByteHive closed under them)
+    // goes nowhere until they start again: say so, with the one button that does it.
+    let stopped = |id: &String| pane_of(id).is_none_or(|p| office_state(Some(&p.status)) == OfficeState::Stopped);
+    let resumes = jobs.iter().filter(|j| j.status == JobStatus::Running && !j.people.is_empty() && j.people.iter().all(stopped)).map(|j| NeedRow {
+        key: format!("resume-{}", j.id),
+        kind: NeedKind::Alert,
+        job_id: Some(j.id.clone()),
+        person_id: None,
+        title: resume_title(&j.title),
+        detail: RESUME_DETAIL.into(),
+        standing: false,
+        plan: None,
+    });
+    let asks: Vec<NeedRow> = asks.into_iter().chain(resumes).collect();
     // A person's question goes before the merges: it is waiting on an answer now.
     let at = rows.iter().position(|r| r.kind == NeedKind::Merge).unwrap_or(rows.len());
     let mut needs = rows[..at].to_vec();

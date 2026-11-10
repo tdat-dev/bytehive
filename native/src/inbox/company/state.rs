@@ -259,6 +259,35 @@ impl Inbox {
         self.co_result(r, cx);
     }
 
+    /// Start the stopped people of a Job again, one at a time: a start holds the UI
+    /// thread for tens of ms, so they go in turn rather than in one frozen frame.
+    pub(super) fn co_resume(&mut self, job: &str, cx: &mut Context<Self>) {
+        let Some(engine) = &self.company.engine else { return };
+        let people = engine.view().jobs.into_iter().find(|j| j.id == job).map(|j| j.people).unwrap_or_default();
+        let seats: Vec<String> = self
+            .fleet
+            .seats
+            .iter()
+            .filter(|s| s.terminal.is_none() && s.spec.person.as_ref().is_some_and(|p| people.contains(p)))
+            .map(|s| s.spec.id.clone())
+            .collect();
+        cx.spawn(async move |this, cx| {
+            for id in seats {
+                let went = this.update(cx, |this, cx| {
+                    if let Some(i) = this.fleet.seats.iter().position(|s| s.spec.id == id && s.terminal.is_none()) {
+                        this.start_seat(i, cx);
+                    }
+                    cx.notify();
+                });
+                if went.is_err() {
+                    break;
+                }
+                cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn co_finish(&mut self, job: &str, cx: &mut Context<Self>) {
         let r = self.co_act(cx, |d| d.finish(job), |e, host| e.finish_job(host, job));
         self.co_result(r, cx);
