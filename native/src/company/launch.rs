@@ -108,7 +108,9 @@ pub struct PersonFiles {
 /// a `bytehive` of their own, Claude starts this one instead.
 pub fn args(role: &RoleDef, files: &PersonFiles) -> Vec<String> {
     let path = |p: &Path| p.to_string_lossy().into_owned();
-    let mut args = vec!["--append-system-prompt-file".into(), path(&files.prompt), "--mcp-config".into(), path(&files.mcp)];
+    // Only the company's server: the owner's own MCP servers, dozens of them, would
+    // start again for every person, and slow their start past the server's timeout.
+    let mut args = vec!["--append-system-prompt-file".into(), path(&files.prompt), "--mcp-config".into(), path(&files.mcp), "--strict-mcp-config".into()];
     if let Some(dir) = &files.plugin {
         args.extend(["--plugin-dir".into(), path(dir)]);
     }

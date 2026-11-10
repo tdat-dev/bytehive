@@ -187,12 +187,20 @@ fn node_verdict_does_not_block_on_an_answer_it_cannot_read() {
     }
 }
 
+#[test]
+fn every_rank_is_told_to_keep_out_of_the_owners_claude_files() {
+    for laws in [FOUNDER_LAWS, LEAD_LAWS, STAFF_LAWS] {
+        assert!(laws.contains("Never save memories or write files outside"), "{laws}");
+        assert!(laws.contains("personal Claude memory"), "{laws}");
+    }
+}
+
 // buildRoleLaunch
 
 #[test]
 fn args_pass_the_prompt_file_the_mcp_config_the_plugin_and_env_the_identity() {
     let f = PersonFiles { prompt: "C:\\p\\prompt.md".into(), mcp: "C:\\p\\mcp.json".into(), plugin: Some("C:\\p\\plugin".into()), settings: None };
-    assert_eq!(args(&role(), &f), ["--append-system-prompt-file", "C:\\p\\prompt.md", "--mcp-config", "C:\\p\\mcp.json", "--plugin-dir", "C:\\p\\plugin"]);
+    assert_eq!(args(&role(), &f), ["--append-system-prompt-file", "C:\\p\\prompt.md", "--mcp-config", "C:\\p\\mcp.json", "--strict-mcp-config", "--plugin-dir", "C:\\p\\plugin"]);
     let home = "C:\\Users\\me";
     let real = std::path::PathBuf::from(store::company_root(home));
     assert_eq!(env(&person(), &real, home), [("BYTEHIVE_AGENT_ID".to_string(), "p1".to_string())]);
@@ -201,7 +209,7 @@ fn args_pass_the_prompt_file_the_mcp_config_the_plugin_and_env_the_identity() {
 #[test]
 fn args_add_denied_tools_only_when_the_role_has_some_and_skip_an_empty_plugin() {
     let r = RoleDef { deny_tools: vec!["Edit".into(), "Write".into()], ..role() };
-    assert_eq!(args(&r, &files(None, None)), ["--append-system-prompt-file", "f", "--mcp-config", "m", "--disallowedTools", "Edit,Write"]);
+    assert_eq!(args(&r, &files(None, None)), ["--append-system-prompt-file", "f", "--mcp-config", "m", "--strict-mcp-config", "--disallowedTools", "Edit,Write"]);
 }
 
 #[test]
@@ -220,7 +228,7 @@ fn the_founders_settings_turn_every_hook_off() {
 
 #[test]
 fn the_founders_settings_are_passed_when_given_and_only_then() {
-    assert_eq!(args(&role(), &files(None, Some("C:\\p\\settings.json"))), ["--append-system-prompt-file", "f", "--mcp-config", "m", "--settings", "C:\\p\\settings.json"]);
+    assert_eq!(args(&role(), &files(None, Some("C:\\p\\settings.json"))), ["--append-system-prompt-file", "f", "--mcp-config", "m", "--strict-mcp-config", "--settings", "C:\\p\\settings.json"]);
     assert!(!args(&role(), &files(None, None)).contains(&"--settings".to_string()));
 }
 
