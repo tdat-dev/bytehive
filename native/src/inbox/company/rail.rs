@@ -35,10 +35,59 @@ impl Inbox {
                 .child(text(BODY, INK_3).child(calm_line(m.counts.people, m.counts.working)))
                 .into_any_element()
         } else {
-            div().id("co-needs").flex().flex_col().gap(px(S2)).min_h_0().overflow_y_scroll().children(cards).into_any_element()
+            div()
+                .id("co-needs")
+                .flex()
+                .flex_col()
+                .gap(px(S2))
+                .min_h_0()
+                .overflow_y_scroll()
+                .track_scroll(&co.needs_scroll)
+                // The count of cards below follows a scroll.
+                .on_scroll(cx.listener(|_, _, _, cx| cx.notify()))
+                .children(cards)
+                .into_any_element()
         };
+        let below = self.co_below(m.needs.len(), cx);
         let meta = (!m.jobs.is_empty()).then_some(JOBS_META);
-        rail.child(heading(NEEDS_YOU, count, None)).child(needs).child(heading(JOBS, None, meta)).child(self.co_jobs(m, cx))
+        rail.child(heading(NEEDS_YOU, count, None)).child(needs).children(below).child(heading(JOBS, None, meta)).child(self.co_jobs(m, cx))
+    }
+
+    /// Cards past the bottom of the list, at least partly: the scrollbar hides until
+    /// hovered, so a cut list would read as the whole of it. A card counts once its
+    /// buttons are cut. Measured on the last frame, where the cut was.
+    fn co_below(&self, n: usize, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let scroll = &self.company.needs_scroll;
+        // Child bounds are laid out unscrolled: the fold moves down as the list scrolls (offset is negative).
+        let fold = scroll.bounds().bottom() - scroll.offset().y + px(CUT);
+        let cut: Vec<usize> = (0..n).filter(|&i| scroll.bounds_for_item(i).is_some_and(|b| b.bottom() > fold)).collect();
+        let first = *cut.first()?;
+        let handle = scroll.clone();
+        Some(
+            div()
+                .id("co-below")
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .gap(px(S1))
+                .h(px(24.0))
+                .mt(px(-S2))
+                .rounded(px(R_CONTROL))
+                .cursor_pointer()
+                .hover(|s| s.bg(c(RAISED)))
+                .on_click(cx.listener(move |_, _, _, cx| {
+                    handle.scroll_to_top_of_item(first);
+                    // The scroll lands on the next frame: count again once it has.
+                    cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_millis(50)).await;
+                        let _ = this.update(cx, |_, cx| cx.notify());
+                    })
+                    .detach();
+                }))
+                .child(svg().path("icons/chevron-down.svg").size(px(16.0)).text_color(c(INK_2)))
+                .child(text(ROW, INK_2).child(format!("{} below", cut.len()))),
+        )
     }
 
     fn co_card(&self, r: &NeedRow, m: &OfficeModel, primary: bool, cx: &mut Context<Self>) -> AnyElement {

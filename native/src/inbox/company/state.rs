@@ -29,6 +29,8 @@ pub(in crate::inbox) struct CompanyUi {
     pub unfolded: HashSet<String>,
     /// The job whose menu is open, and the job waiting on its Stop to be confirmed.
     pub menu: Option<String>,
+    /// The Needs you list, to tell which cards are cut at its foot.
+    pub needs_scroll: ScrollHandle,
     pub confirm: Option<String>,
     /// The job box, made the first time the page shows.
     pub ask: Option<Entity<TextareaState>>,

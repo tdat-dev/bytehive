@@ -25,6 +25,8 @@ pub(super) const S4: f32 = 16.0;
 pub(super) const S6: f32 = 24.0;
 pub(super) const R_CONTROL: f32 = 6.0;
 pub(super) const R_CARD: f32 = 10.0;
+/// How much of a card's foot may be out of sight before it counts as below: its padding and half a button.
+pub(super) const CUT: f32 = 16.0;
 /// --office-bar-h, --office-rail-w (280 under 1000px wide).
 pub(super) const BAR_H: f32 = 44.0;
 pub(super) const RAIL_W: f32 = 340.0;
