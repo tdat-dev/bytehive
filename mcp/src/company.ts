@@ -19,6 +19,13 @@ export function readCompany(root: string): Company | null {
   }
 }
 
+/** A Lead or the Founder moves a card to Doing for someone else; only the person
+ *  who does the work takes it that way, so the app's watchers follow the worker. */
+export function claimsCards(root: string, personId: string): boolean {
+  const rank = readCompany(root)?.people.find((p) => p.id === personId)?.rank;
+  return rank !== "lead" && rank !== "founder";
+}
+
 export function readRoles(root: string): RoleDef[] {
   const dir = path.join(root, "roles");
   if (!fs.existsSync(dir)) return [];

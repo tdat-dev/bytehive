@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { companyRoot, floorDir, planAsFounder, queueRequest, readCompany, readRoles, sendAsMember, statusFor } from "./company.js";
+import { claimsCards, companyRoot, floorDir, planAsFounder, queueRequest, readCompany, readRoles, sendAsMember, statusFor } from "./company.js";
 
 describe("companyRoot", () => {
   afterEach(() => { delete process.env.BYTEHIVE_COMPANY_ROOT; });
@@ -35,6 +35,15 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 const lines = () => fs.readFileSync(path.join(root, "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+
+describe("claimsCards", () => {
+  it("lets only the people who do the work take a card by moving it to Doing", () => {
+    expect(claimsCards(root, "d1")).toBe(true);
+    expect(claimsCards(root, "l1")).toBe(false);
+    expect(claimsCards(root, "founder")).toBe(false);
+    expect(claimsCards(root, "nobody")).toBe(true);
+  });
+});
 
 describe("company MCP", () => {
   it("reads the roster", () => {

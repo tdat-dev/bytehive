@@ -20,7 +20,7 @@ import {
 import { evidenceDir, workFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
-import { companyRoot, floorDir, registerCompanyTools, sendAsMember } from "./company.js";
+import { claimsCards, companyRoot, floorDir, registerCompanyTools, sendAsMember } from "./company.js";
 import { agentContext } from "./context/agentcontext.js";
 import { memoryDelete, memoryForInstructions, memoryGet, memorySave, memoryUpdate } from "./memory.js";
 import os from "node:os";
@@ -178,7 +178,11 @@ export function createServer(dir: string): McpServer {
       },
     },
     async ({ card, to_list, position }) =>
-      mutate((b) => moveCard(b, card, to_list, position, agentName, personId)),
+      mutate((b) => {
+        // A Lead or the Founder moving a card hands it out; it stays the worker's to take.
+        const claims = !personId || claimsCards(companyRoot(), personId);
+        return moveCard(b, card, to_list, position, claims ? agentName : undefined, claims ? personId : undefined);
+      }),
   );
 
   server.registerTool(
