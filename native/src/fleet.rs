@@ -88,6 +88,8 @@ pub struct ChangeCount {
     pub at: u64,
     pub pending: bool,
     pub was_running: bool,
+    /// Its branch holds nothing a merge would bring in (review::land::nothing_to_merge).
+    pub empty: Option<bool>,
 }
 
 impl Seat {

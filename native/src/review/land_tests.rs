@@ -1,7 +1,7 @@
 //! land.rs against temporary repos.
 
 use super::super::git::{git, TempDir};
-use super::{branch_diff, branch_diff_impl, commit_message, discard_branch, land_expecting, land_impl, LandResult};
+use super::{branch_diff, branch_diff_impl, commit_message, discard_branch, land_expecting, land_impl, nothing_to_merge, LandResult};
 use std::path::{Path, PathBuf};
 
 fn g(args: &[&str], dir: &Path) -> String {
@@ -253,4 +253,20 @@ fn commit_message_comes_from_the_title() {
     assert_eq!(commit_message(Some(" "), None, "bytehive/ana-1"), "Work from bytehive/ana-1");
     let long = "x".repeat(100);
     assert_eq!(commit_message(None, Some(&long), "b").chars().count(), 73);
+}
+
+#[test]
+fn a_branch_with_no_commits_and_no_changes_has_nothing_to_merge() {
+    let tmp = TempDir::new();
+    let (main, wt) = setup(tmp.path());
+    assert_eq!(nothing_to_merge(&s(&wt)), Some(true));
+    std::fs::write(wt.join("new.txt"), "x
+").unwrap();
+    assert_eq!(nothing_to_merge(&s(&wt)), Some(false), "an uncommitted file is work");
+    g(&["add", "-A"], &wt);
+    g(&["commit", "-qm", "work"], &wt);
+    assert_eq!(nothing_to_merge(&s(&wt)), Some(false), "a commit ahead is work");
+    g(&["merge", "-q", "--no-ff", "-m", "m", "agent"], &main);
+    assert_eq!(nothing_to_merge(&s(&wt)), Some(true), "once merged, nothing is left");
+    assert_eq!(nothing_to_merge(&s(&tmp.path().join("gone"))), None);
 }

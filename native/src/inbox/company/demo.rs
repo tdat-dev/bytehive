@@ -72,7 +72,7 @@ fn hire(name: &str, role_id: &str, floor: &str, roles: &[RoleDef]) -> Person {
 
 fn pane(id: &str, state: TaskState, title: &str) -> Pane {
     let status = TaskStatus { state, ask: None, limit: None, blocked: None, spent: false, stuck: None, clash: None };
-    Pane { person_id: id.into(), status, doing: (!title.is_empty()).then(|| title.to_string()) }
+    Pane { person_id: id.into(), status, doing: (!title.is_empty()).then(|| title.to_string()), nothing_to_merge: false }
 }
 
 fn job(id: &str, title: &str, status: JobStatus, used: u64, people: &[&str]) -> Job {

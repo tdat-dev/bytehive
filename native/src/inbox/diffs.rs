@@ -29,14 +29,16 @@ impl Inbox {
             let id = seat.spec.id.clone();
             let read = cx.background_spawn(async move {
                 let path = std::path::Path::new(&wt);
-                path.is_dir().then(|| agent_core::git::changed_files(path).len() as u32)
+                let n = path.is_dir().then(|| agent_core::git::changed_files(path).len() as u32);
+                (n, crate::review::land::nothing_to_merge(&wt))
             });
             cx.spawn(async move |this, cx| {
-                let n = read.await;
+                let (n, empty) = read.await;
                 let _ = this.update(cx, |this, cx| {
                     if let Some(seat) = this.fleet.seats.iter_mut().find(|s| s.spec.id == id) {
-                        let moved = seat.changes.count != n;
+                        let moved = seat.changes.count != n || seat.changes.empty != empty;
                         seat.changes.count = n;
+                        seat.changes.empty = empty;
                         seat.changes.at = now_ms();
                         seat.changes.pending = false;
                         if moved {

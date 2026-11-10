@@ -172,7 +172,7 @@ impl Inbox {
             .iter()
             .filter_map(|s| {
                 let id = s.spec.person.clone()?;
-                Some(Pane { person_id: id, status: s.status(cx), doing: s.spec.title.clone() })
+                Some(Pane { person_id: id, status: s.status(cx), doing: s.spec.title.clone(), nothing_to_merge: s.changes.empty == Some(true) })
             })
             .collect();
         let mut cache = self.company.view.borrow_mut();

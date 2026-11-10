@@ -50,7 +50,7 @@ fn job(id: &str, status: JobStatus) -> Job {
 }
 
 fn pane(id: &str, state: TaskState) -> Pane {
-    Pane { person_id: id.into(), status: status(state), doing: None }
+    Pane { person_id: id.into(), status: status(state), doing: None, nothing_to_merge: false }
 }
 
 fn model_of(c: &Company, jobs: &[Job], alerts: &[Alert], panes: &[Pane], open: &[&str]) -> OfficeModel {
@@ -322,7 +322,7 @@ fn the_model_puts_what_a_person_asks_in_needs_you_before_merges_after_plans() {
     planned.plan = Some(JobPlan { summary: "s".into(), cards: vec![], hires: vec![], token_cap: None, new_roles: None, reuse: None, extra: Map::new() });
     let mut merging = job("J-2", JobStatus::AwaitingMerge);
     merging.people = vec!["x".into()];
-    let panes = [Pane { person_id: "x".into(), status: asking, doing: None }];
+    let panes = [Pane { person_id: "x".into(), status: asking, doing: None, nothing_to_merge: false }];
     let m = model_of(&company(vec![person("x", Rank::Staff, "a")]), &[planned, merging], &[], &panes, &[]);
     assert_eq!(m.needs.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), ["plan-J-1", "ask-x", "merge-J-2"]);
     assert_eq!((m.needs[1].kind, m.needs[1].title.as_str(), m.needs[1].standing), (NeedKind::Alert, "X wants to run rm x", false));
@@ -384,4 +384,16 @@ fn the_narrow_rail_says_what_waits_below_it() {
     assert_eq!(jobs_below(0, true).as_deref(), Some("Jobs below"));
     assert_eq!(jobs_below(2, false).as_deref(), Some("2 below"));
     assert_eq!(jobs_below(1, true).as_deref(), Some("1 and Jobs below"));
+}
+
+#[test]
+fn a_job_merge_row_skips_people_with_nothing_to_merge() {
+    let mut merging = job("J-1", JobStatus::AwaitingMerge);
+    merging.people = vec!["lead".into(), "dev".into(), "qa".into()];
+    let empty = |id: &str| Pane { nothing_to_merge: true, ..pane(id, TaskState::Idle) };
+    let people = vec![person("lead", Rank::Lead, "a"), person("dev", Rank::Staff, "a"), person("qa", Rank::Staff, "a")];
+    let m = model_of(&company(people.clone()), &[merging.clone()], &[], &[empty("lead"), pane("dev", TaskState::Review), empty("qa")], &[]);
+    assert_eq!(m.needs[0].person_id.as_deref(), Some("dev"));
+    let m = model_of(&company(people), &[merging], &[], &[empty("lead"), pane("dev", TaskState::Merged), empty("qa")], &[]);
+    assert_eq!(m.needs[0].person_id, None, "with everyone merged or empty, only Mark done is left");
 }

@@ -38,6 +38,9 @@ pub(super) struct Pane {
     pub status: TaskStatus,
     /// What their seat is on, its task's title.
     pub doing: Option<String>,
+    /// Their branch holds nothing a merge would bring in: no commit ahead of the
+    /// base and nothing uncommitted (a Lead who only hands out cards, a QA who reports).
+    pub nothing_to_merge: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -163,7 +166,9 @@ pub(super) fn office_model(
 
     let founder = company.people.iter().find(|p| p.rank == Rank::Founder).map(|p| to_person(p, role_of(&p.role), pane_of(&p.id)));
     let names = Names { floors: &company.floors, roles };
-    let merged = |id: &str| pane_of(id).is_some_and(|p| p.status.state == TaskState::Merged);
+    // Someone with nothing to merge is as done as someone merged: the walk never
+    // sends the owner to a Review that says there is nothing to review.
+    let merged = |id: &str| pane_of(id).is_some_and(|p| p.status.state == TaskState::Merged || p.nothing_to_merge);
     let rows = needs_you(jobs, alerts, &names, merged);
 
     let floors: Vec<OfficeFloor> = company

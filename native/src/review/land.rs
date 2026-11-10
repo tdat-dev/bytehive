@@ -308,6 +308,15 @@ fn ahead(s: &Sides, tip: &str) -> u64 {
     git(&["rev-list", "--count", &range], &s.main).ok().and_then(|n| n.parse().ok()).unwrap_or(0)
 }
 
+/// True when a merge would bring nothing in: no commit ahead of the base and
+/// nothing uncommitted. A Lead who only hands out cards, or a QA who only reports,
+/// ends a Job like this. None when the worktree has no branch of its own.
+pub fn nothing_to_merge(worktree: &str) -> Option<bool> {
+    let s = sides(worktree).ok()?;
+    let clean = dirty_paths(&s.worktree).ok()?.is_empty();
+    Some(clean && ahead(&s, &s.branch) == 0)
+}
+
 /// Everything on an agent's branch since it left the base: its commits and
 /// what it has not committed yet (new files too), as one unified diff. This
 /// is what a merge would bring in, which a plain working-tree diff misses
