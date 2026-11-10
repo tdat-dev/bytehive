@@ -56,3 +56,9 @@ fn has_no_fresh_tokens_for_a_cli_it_cannot_read() {
     assert_eq!(fresh_tokens("powershell", "D:\\a", None, 0), None);
     assert_eq!(fresh_tokens("claude", "D:\\a", None, 0), None);
 }
+
+#[test]
+fn knows_a_running_process_and_an_invalid_pid() {
+    assert!(pid_alive(std::process::id()));
+    assert!(!pid_alive(0xFFFF_FFF0));
+}

@@ -315,3 +315,43 @@ fn wakes_someone_with_no_seat() {
     t.e.wake_person(&mut t.host, &m).unwrap();
     assert_eq!(t.host.spawned.len(), 1);
 }
+
+// a message for someone still starting
+
+#[test]
+fn keeps_a_message_for_someone_still_starting_and_types_it_once_they_are_up() {
+    let mut t = T::new();
+    t.host.add_seat("founder", "Founder", A, SeatView { spawning: true, ..SeatView::default() });
+    t.give("do it").unwrap();
+    t.advance(30_000);
+    assert!(t.host.typed.is_empty());
+    assert_eq!(t.e.waiting().len(), 1);
+    let now = t.host.now;
+    let s = t.host.seat_mut("founder");
+    s.spawning = false;
+    s.running = true;
+    s.at_prompt = true;
+    s.spawned_at = Some(now);
+    t.advance(STEP);
+    assert_eq!(t.host.typed.len(), 1);
+}
+
+#[test]
+fn gives_up_on_someone_who_never_starts_and_says_so() {
+    let mut t = T::new();
+    t.host.add_seat("founder", "Founder", A, SeatView { spawning: true, ..SeatView::default() });
+    t.give("do it").unwrap();
+    t.advance(16 * 60_000);
+    assert!(t.e.waiting().is_empty());
+    assert!(t.host.logs.iter().any(|l| l.contains("was not delivered")), "{:?}", t.host.logs);
+}
+
+#[test]
+fn says_so_when_a_message_has_nobody_to_go_to() {
+    let mut t = T::new();
+    t.give("do it").unwrap();
+    t.host.close("founder");
+    t.advance(9000);
+    assert!(t.e.waiting().is_empty());
+    assert!(t.host.logs.iter().any(|l| l.contains("was not delivered")), "{:?}", t.host.logs);
+}

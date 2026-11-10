@@ -51,6 +51,8 @@ pub struct Fake {
     /// Folders Claude was told to trust, in order.
     pub trusted: Vec<String>,
     pub trust_fails: Option<String>,
+    /// Typing text with this in it panics, as a bug in a host would.
+    pub panic_on: Option<String>,
 }
 
 fn role(id: &str, rank: Rank) -> RoleDef {
@@ -110,6 +112,7 @@ impl Fake {
             logs: Vec::new(),
             trusted: Vec::new(),
             trust_fails: None,
+            panic_on: None,
         }
     }
 
@@ -189,6 +192,9 @@ impl Host for Fake {
         }
     }
     fn type_message(&mut self, person: &str, text: &str) {
+        if self.panic_on.as_deref().is_some_and(|p| text.contains(p)) {
+            panic!("the fake host broke on {text}");
+        }
         self.typed.push((person.into(), text.into()));
     }
     fn interrupt(&mut self, person: &str) {

@@ -170,3 +170,11 @@ fn reads_a_lock_file_saved_with_a_byte_order_mark() {
     fs::write(dir.path().join("engine.lock"), "\u{FEFF}{\"pid\":9,\"at\":5}").unwrap();
     assert_eq!(read(dir.path()), LockRead::Held(EngineLock { pid: 9, at: 5 }));
 }
+
+#[test]
+fn runs_only_when_the_lock_it_wrote_reads_back_as_its_own() {
+    assert!(won(&LockRead::Held(EngineLock { pid: 7, at: 5 }), 7));
+    assert!(!won(&LockRead::Held(EngineLock { pid: 9, at: 5 }), 7), "another app wrote at the same moment");
+    assert!(won(&LockRead::Unknown, 7), "a read that failed says nothing against it");
+    assert!(!won(&LockRead::Free, 7));
+}

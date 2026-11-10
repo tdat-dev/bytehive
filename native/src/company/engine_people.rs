@@ -140,6 +140,8 @@ impl Engine {
     /// only just started isn't at its prompt yet, and a question on screen would
     /// take the message's Enter as its answer: such a message waits.
     pub(crate) fn deliver(&mut self, host: &mut dyn Host, person: &str, text: &str) {
+        // Whatever reaches a terminal is text: a control key in it would be a keypress.
+        let text = &typeable(text);
         let Some(p) = self.state.as_ref().and_then(|s| person_by_id(&s.company, person)).cloned() else { return };
         // Starting them would fail, and take the rest of this round's effects with it.
         if p.rank == Rank::Founder && host.seat(&p.id).is_none() && self.founder_dir(host).is_none() {
@@ -183,12 +185,26 @@ impl Engine {
                 keep.push(m);
                 continue;
             }
-            let Some(seat) = host.seat(&m.person).filter(|s| s.running) else { continue };
+            let Some(seat) = host.seat(&m.person) else {
+                host.log(&format!("A message for {} was not delivered: they have no seat any more.", m.person));
+                continue;
+            };
+            if !seat.running {
+                // Still starting: it waits, as long as a question would.
+                if seat.spawning && now - m.start <= GIVE_UP_MS {
+                    keep.push(m);
+                } else {
+                    host.log(&format!("A message for {} was not delivered: they did not start.", m.person));
+                }
+                continue;
+            }
             if seat.asking {
                 m.answered = Some(None);
                 // Never answer it for them.
                 if now - m.start <= GIVE_UP_MS {
                     keep.push(m);
+                } else {
+                    host.log(&format!("A message for {} was not delivered: a question stayed on their screen.", m.person));
                 }
                 continue;
             }
@@ -244,8 +260,9 @@ impl Engine {
         };
         let r = super::super::reduce::apply_request(s, &req);
         if &r.state != s {
+            // Only the Jobs it changed: an idle Job's file is left as it is.
+            let jobs: Vec<_> = r.state.jobs.iter().filter(|j| !s.jobs.contains(j)).cloned().collect();
             self.state = Some(r.state);
-            let jobs = self.state.as_ref().map(|s| s.jobs.clone()).unwrap_or_default();
             self.try_persist(host, &jobs);
         }
         self.run(host, r.effects);

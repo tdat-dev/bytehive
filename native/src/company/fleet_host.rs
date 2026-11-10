@@ -69,6 +69,25 @@ pub fn fresh_tokens(cli: &str, dir: &str, session: Option<&str>, since_ms: u64) 
     }
 }
 
+/// Whether a process runs. One that can't be asked counts as alive, as
+/// processAlive's catch did: staying out costs less than starting everyone twice.
+/// Only a pid Windows calls invalid is dead; NO_PID never reaches here (not a u32).
+pub fn pid_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, GetLastError, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    // SAFETY: a handle opened here is closed here, and nothing else is touched.
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return GetLastError() != ERROR_INVALID_PARAMETER;
+        }
+        let mut code = 0u32;
+        let asked = GetExitCodeProcess(h, &mut code) != 0;
+        CloseHandle(h);
+        !asked || code == STILL_ACTIVE as u32
+    }
+}
+
 /// Write a board unless an agent wrote it since `seen` (changeBoard's Conflict).
 pub fn write_board_file(dir: &str, board: &Board, seen: BoardStamp) -> Result<(), BoardWrite> {
     if seen.is_some() && board::mtime(dir) != seen {
@@ -99,7 +118,7 @@ impl Host for FleetHost<'_> {
     }
 
     fn process_alive(&self, pid: u64) -> bool {
-        u32::try_from(pid).is_ok_and(crate::follow::alive)
+        u32::try_from(pid).is_ok_and(pid_alive)
     }
 
     fn projects(&self) -> Vec<Project> {

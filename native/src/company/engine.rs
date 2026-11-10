@@ -162,6 +162,10 @@ impl Engine {
         self.read_requests(host);
         self.send_waiting(host);
         let now = host.now_ms();
+        // A clock moved back would hold the watch off for as long as it moved.
+        if now < self.last_watch {
+            self.last_watch = now;
+        }
         if now - self.last_watch >= WATCH_MS {
             self.last_watch = now;
             self.watch(host);
@@ -182,6 +186,7 @@ impl Engine {
             LockRead::Held(l) if lock::lock_silent(&l, me, now) => Some(l),
             _ => None,
         };
+        // A lock with no real pid (lock::NO_PID) belongs to no process: process_alive says no.
         let alive = silent.is_some_and(|l| host.process_alive(l.pid));
         match lock::lock_move(&read, me, now, alive, self.awake_since) {
             LockMove::Skip => {}
@@ -196,6 +201,14 @@ impl Engine {
             }
             moved => {
                 let _ = lock::write(&self.root, &EngineLock { pid: u64::from(me), at: now });
+                // Two apps can write it at the same moment: the one whose lock stayed runs.
+                if !lock::won(&lock::read(&self.root), me) {
+                    self.elsewhere = true;
+                    if self.holding {
+                        self.step_down();
+                    }
+                    return;
+                }
                 self.elsewhere = false;
                 if moved == LockMove::TakeOver {
                     let pid = silent.map_or(0, |l| l.pid);
@@ -287,7 +300,11 @@ impl Engine {
     fn read_requests(&mut self, host: &mut dyn Host) {
         let lines = self.requests.lines(&self.root.join(REQUESTS));
         for line in lines {
-            self.apply_line(host, &line);
+            // These lines are read only once: one that breaks something never costs the rest.
+            let ran = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.apply_line(host, &line)));
+            if ran.is_err() {
+                host.log(&format!("a request went wrong and was skipped: {line}"));
+            }
         }
     }
 

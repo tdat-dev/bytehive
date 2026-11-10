@@ -274,3 +274,70 @@ fn reads_a_request_once() {
     t.advance(10 * STEP);
     assert_eq!(t.said().iter().filter(|s| s.contains("only once")).count(), 1);
 }
+
+#[test]
+fn types_no_control_keys_from_a_request_into_anyones_terminal() {
+    let mut t = T::new();
+    t.give("do it").unwrap();
+    t.staff_floors(&plan_for("a", 0));
+    t.clear_said();
+    t.request(json!({ "type": "x\r/exit\r", "from": "r-a" }));
+    let said = t.said();
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(!said[0].contains('\r') && !said[0].contains('\u{1b}'), "{said:?}");
+    assert!(said[0].contains("/exit"));
+}
+
+#[test]
+fn types_no_control_keys_from_a_message_either() {
+    let mut t = T::new();
+    t.give("do it").unwrap();
+    t.staff_floors(&plan_for("a", 0));
+    t.founder_up(A);
+    t.clear_said();
+    t.message("r-a", "Founder", "hi\r/exit\r\u{1b}[2J");
+    t.advance(STEP);
+    assert!(t.host.typed.iter().all(|(_, text)| !text.contains('\r') && !text.contains('\u{1b}')), "{:?}", t.host.typed);
+}
+
+#[test]
+fn keeps_reading_after_a_request_that_throws() {
+    let mut t = T::new();
+    t.give("do it").unwrap();
+    t.staff_floors(&plan_for("a", 0));
+    t.founder_up(A);
+    t.host.panic_on = Some("boom".into());
+    let at = t.root().join("requests.jsonl");
+    let lines = [
+        json!({ "type": "message", "ts": 1, "from": "r-a", "to": "Founder", "message": "boom" }),
+        json!({ "type": "message", "ts": 2, "from": "r-a", "to": "Founder", "message": "after it" }),
+    ];
+    std::fs::write(&at, lines.iter().map(|l| format!("{l}\n")).collect::<String>()).unwrap();
+    t.advance(STEP);
+    assert!(t.host.typed.iter().any(|(_, text)| text.contains("after it")), "{:?}", t.host.typed);
+    assert!(t.host.logs.iter().any(|l| l.contains("went wrong")), "{:?}", t.host.logs);
+}
+
+#[test]
+fn saves_only_the_jobs_a_request_changed() {
+    let mut t = T::new();
+    t.give("one").unwrap();
+    t.give("two").unwrap();
+    let first = t.root().join("jobs").join("J-0001.json");
+    std::fs::write(&first, "untouched").unwrap();
+    t.staff_floors(&plan_for("a", 0));
+    t.plan("J-0002", &plan_for("a", 0));
+    assert_eq!(t.job(1).status, JobStatus::AwaitingPlan);
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "untouched");
+}
+
+#[test]
+fn tells_the_founder_a_drafted_role_could_not_be_saved_and_still_runs_the_job() {
+    let mut t = T::new();
+    t.waiting_job(drafting());
+    std::fs::create_dir_all(t.root().join("roles")).unwrap();
+    std::fs::write(t.root().join("roles").join("analyst"), "a file in the way").unwrap();
+    t.approve(&t.job(0).id);
+    assert_eq!(t.job(0).status, JobStatus::Running);
+    assert!(t.said_all().contains("Role analyst was not saved"), "{:?}", t.said());
+}

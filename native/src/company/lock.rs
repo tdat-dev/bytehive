@@ -21,7 +21,7 @@ pub struct EngineLock {
 
 /// A pid no process has: a lock whose pid is not a whole number is still held,
 /// by an app this one can never be.
-const NO_PID: u64 = u64::MAX;
+pub const NO_PID: u64 = u64::MAX;
 
 /// What a read of the lock gave. Unknown is a read that failed, which says nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,6 +89,16 @@ pub fn lock_move(read: &LockRead, me: u32, now: i64, holder_alive: bool, awake_s
     // Woken in the future (a clock moved back) counts as just woken.
     let awake = u64::try_from(now.saturating_sub(awake_since)).unwrap_or(0);
     if silence(lock, now).min(awake) >= LOCK_ABANDONED_MS as u64 { LockMove::TakeOver } else { LockMove::StayOut }
+}
+
+/// Whether the lock read back after writing it is this app's. A read that
+/// failed says nothing against it; another pid means another app wrote last.
+pub fn won(read_back: &LockRead, me: u32) -> bool {
+    match read_back {
+        LockRead::Held(l) => l.pid == u64::from(me),
+        LockRead::Unknown => true,
+        LockRead::Free => false,
+    }
 }
 
 /// A missing file is no lock, and so is one a crash filled with zeros: it reads as

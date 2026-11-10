@@ -131,3 +131,22 @@ fn tells_the_sender_what_was_not_understood() {
     assert!(text.starts_with("Your request was not understood"), "{text}");
     assert!(text.contains(&bad.why));
 }
+
+#[test]
+fn cuts_a_long_reason_short() {
+    let line = format!(r#"{{"type":"{}","from":"ana"}}"#, "x".repeat(500));
+    let bad = parse(&line).unwrap_err();
+    assert!(bad.why.chars().count() <= 201, "{}", bad.why.len());
+    assert!(not_understood(&bad).chars().count() < 400);
+}
+
+#[test]
+fn finds_the_last_whole_line_far_back_in_a_big_file() {
+    let (_dir, path) = file();
+    let whole = format!("{}\n", "x".repeat(99)).repeat(2000);
+    append(&path, &format!("{whole}{}", "y".repeat(100_000)));
+    let mut d = Drain::default();
+    assert!(d.lines(&path).is_empty());
+    append(&path, "z\nnew\n");
+    assert_eq!(d.lines(&path), [format!("{}z", "y".repeat(100_000)), "new".to_string()]);
+}

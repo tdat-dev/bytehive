@@ -449,3 +449,13 @@ fn says_why_an_owner_action_did_nothing_beside_another_app() {
     assert_eq!(t.e.stop_job(&mut t.host, "J-0001").unwrap_err(), "The Company is running in another ByteHive window.");
     assert!(t.e.view().company.is_none());
 }
+
+#[test]
+fn keeps_watching_after_the_clock_moves_back() {
+    let mut t = T::new();
+    running(&mut t, None);
+    t.host.now -= 60 * MIN;
+    t.host.board_reads.clear();
+    t.advance(31_500);
+    assert_eq!(t.host.board_reads, [A]);
+}

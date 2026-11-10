@@ -41,10 +41,23 @@ fn read_from(path: &Path, at: u64) -> std::io::Result<(Vec<u8>, u64, u64)> {
     Ok((buf, start + cut as u64, size))
 }
 
-/// Just past the last whole line: where a first look starts, skipping the backlog.
+/// Just past the last whole line: where a first look starts, skipping the
+/// backlog. Read backward a block at a time, never the whole file.
 fn last_line_end(path: &Path) -> std::io::Result<u64> {
-    let bytes = std::fs::read(path)?;
-    Ok(bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i as u64 + 1))
+    let mut file = File::open(path)?;
+    let mut end = file.metadata()?.len();
+    let mut buf = vec![0u8; 64 * 1024];
+    while end > 0 {
+        let at = end.saturating_sub(buf.len() as u64);
+        let n = (end - at) as usize;
+        file.seek(SeekFrom::Start(at))?;
+        file.read_exact(&mut buf[..n])?;
+        if let Some(i) = buf[..n].iter().rposition(|&b| b == b'\n') {
+            return Ok(at + i as u64 + 1);
+        }
+        end = at;
+    }
+    Ok(0)
 }
 
 /// Empty the file, only if nothing was appended since it was read. Opened with
@@ -98,6 +111,16 @@ impl Drain {
     }
 }
 
+/// How much of a reason a sender is told: a line can be any length.
+const WHY_MAX: usize = 200;
+
+fn short(why: String) -> String {
+    if why.chars().count() <= WHY_MAX {
+        return why;
+    }
+    format!("{}\u{2026}", why.chars().take(WHY_MAX).collect::<String>())
+}
+
 /// A line that is not a request this app knows, and who sent it when the line says.
 #[derive(Debug, PartialEq)]
 pub struct Unread {
@@ -106,9 +129,9 @@ pub struct Unread {
 }
 
 pub fn parse(line: &str) -> Result<CompanyRequest, Unread> {
-    let value: Value = serde_json::from_str(line).map_err(|e| Unread { from: None, why: format!("it is not JSON ({e})") })?;
+    let value: Value = serde_json::from_str(line).map_err(|e| Unread { from: None, why: short(format!("it is not JSON ({e})")) })?;
     let from = value.get("from").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-    serde_json::from_value(value).map_err(|e| Unread { from, why: e.to_string() })
+    serde_json::from_value(value).map_err(|e| Unread { from, why: short(e.to_string()) })
 }
 
 /// What the sender of a line that could not be read is told, so nothing is
