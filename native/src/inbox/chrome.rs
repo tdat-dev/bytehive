@@ -52,6 +52,26 @@ impl Inbox {
                     .child(div().flex_none().font_weight(FontWeight::SEMIBOLD).text_color(color(INK)).child(lead))
                     .child(div().min_w_0().truncate().child(rest)),
             )
+            // The door to the Company, as Office was in today's bar: a focused
+            // terminal keeps Ctrl+Shift+O, so the mouse needs a way in.
+            .child(
+                div()
+                    .id("company-door")
+                    .tooltip(tip("Company (Ctrl+Shift+O)"))
+                    .flex()
+                    .items_center()
+                    .h(px(32.0))
+                    .px(px(14.0))
+                    .when(stopped > 0, |d| d.mr(px(8.0)))
+                    .when(stopped == 0, |d| d.mr(px(146.0)))
+                    .rounded_full()
+                    .text_size(px(13.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(color(INK_2))
+                    .hover(|d| d.bg(white(0.06)).text_color(color(INK)))
+                    .on_click(cx.listener(|this, _, window, cx| this.open_company(window, cx)))
+                    .child("Company"),
+            )
             .when(stopped > 0, |bar| {
                 bar.child(
                     div()
