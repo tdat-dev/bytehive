@@ -13,11 +13,15 @@ use std::path::Path;
 const LOCK: &str = "engine.lock";
 
 /// `at` is the last heartbeat, in ms.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct EngineLock {
-    pub pid: u32,
+    pub pid: u64,
     pub at: i64,
 }
+
+/// A pid no process has: a lock whose pid is not a whole number is still held,
+/// by an app this one can never be.
+const NO_PID: u64 = u64::MAX;
 
 /// What a read of the lock gave. Unknown is a read that failed, which says nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,14 +46,28 @@ pub const LOCK_STALE_MS: i64 = 15_000;
 /// No heartbeat from a living app for this long: it is stuck, and the company won't wait.
 pub const LOCK_ABANDONED_MS: i64 = 600_000;
 
+/// Any two numbers are a lock, as in the Tauri app: a fraction or a value too big
+/// for this build's types is still another app's lock, never none.
 pub fn parse_lock(text: &str) -> Option<EngineLock> {
-    parse_owned(text).ok()
+    #[derive(Deserialize)]
+    struct Raw {
+        pid: f64,
+        at: f64,
+    }
+    let raw: Raw = parse_owned(text).ok()?;
+    let pid = if raw.pid >= 0.0 && raw.pid.fract() == 0.0 { raw.pid as u64 } else { NO_PID };
+    Some(EngineLock { pid, at: raw.at as i64 })
+}
+
+/// How long since the heartbeat, either way, without overflow at any value.
+fn silence(lock: &EngineLock, now: i64) -> u64 {
+    now.saturating_sub(lock.at).unsigned_abs()
 }
 
 /// Another app's lock has gone quiet, so it matters whether that app is alive. A
 /// heartbeat from far ahead of the clock counts too: it would never age.
 pub fn lock_silent(lock: &EngineLock, me: u32, now: i64) -> bool {
-    lock.pid != me && (now - lock.at).abs() >= LOCK_STALE_MS
+    lock.pid != u64::from(me) && silence(lock, now) >= LOCK_STALE_MS as u64
 }
 
 /// What this app does about the lock. Its own pid is a window that reloaded.
@@ -59,7 +77,7 @@ pub fn lock_move(read: &LockRead, me: u32, now: i64, holder_alive: bool, awake_s
     let lock = match read {
         LockRead::Unknown => return LockMove::Skip,
         LockRead::Free => return LockMove::Run,
-        LockRead::Held(l) if l.pid == me => return LockMove::Run,
+        LockRead::Held(l) if l.pid == u64::from(me) => return LockMove::Run,
         LockRead::Held(l) => l,
     };
     if !lock_silent(lock, me, now) {
@@ -68,7 +86,9 @@ pub fn lock_move(read: &LockRead, me: u32, now: i64, holder_alive: bool, awake_s
     if !holder_alive {
         return LockMove::Run;
     }
-    if (now - lock.at).abs().min(now - awake_since) >= LOCK_ABANDONED_MS { LockMove::TakeOver } else { LockMove::StayOut }
+    // Woken in the future (a clock moved back) counts as just woken.
+    let awake = u64::try_from(now.saturating_sub(awake_since)).unwrap_or(0);
+    if silence(lock, now).min(awake) >= LOCK_ABANDONED_MS as u64 { LockMove::TakeOver } else { LockMove::StayOut }
 }
 
 /// A missing file is no lock, and so is one a crash filled with zeros: it reads as

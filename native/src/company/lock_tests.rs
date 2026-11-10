@@ -9,7 +9,7 @@ fn held(silent: i64) -> LockRead {
     LockRead::Held(EngineLock { pid: 9, at: NOW - silent })
 }
 
-fn at(at: i64, pid: u32) -> LockRead {
+fn at(at: i64, pid: u64) -> LockRead {
     LockRead::Held(EngineLock { pid, at })
 }
 
@@ -140,4 +140,33 @@ fn reads_a_lock_a_crash_filled_with_zeros_as_none_no_later_read_would_ever_do_be
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("engine.lock"), "\0\0\0\0").unwrap();
     assert_eq!(read(dir.path()), LockRead::Free);
+}
+
+// Values a newer or odder writer leaves
+
+#[test]
+fn never_panics_or_waits_forever_on_a_heartbeat_at_the_ends_of_time() {
+    assert!(lock_silent(&EngineLock { pid: 9, at: i64::MIN }, 7, NOW));
+    assert!(lock_silent(&EngineLock { pid: 9, at: i64::MAX }, 7, i64::MIN));
+    assert_eq!(lock_move(&at(i64::MIN, 9), 7, NOW, false, 0), LockMove::Run);
+    assert_eq!(lock_move(&at(i64::MAX, 9), 7, NOW, true, 0), LockMove::TakeOver);
+    assert_eq!(lock_move(&at(i64::MIN, 9), 7, i64::MAX, true, i64::MIN), LockMove::TakeOver);
+    assert_eq!(lock_move(&at(i64::MIN, 9), 7, NOW, true, i64::MAX), LockMove::StayOut);
+}
+
+#[test]
+fn honours_a_lock_with_odd_numbers_as_held_by_another_app() {
+    assert_eq!(parse_lock(r#"{"pid":9,"at":5.5}"#), Some(EngineLock { pid: 9, at: 5 }));
+    assert_eq!(parse_lock(r#"{"pid":5000000000,"at":5}"#), Some(EngineLock { pid: 5_000_000_000, at: 5 }));
+    let odd = parse_lock(r#"{"pid":7.5,"at":1000000}"#).unwrap();
+    assert_ne!(odd.pid, 7);
+    assert_eq!(lock_move(&LockRead::Held(odd), 7, NOW, false, 0), LockMove::StayOut);
+    assert_eq!(parse_lock(r#"{"pid":9,"at":1e300}"#).map(|l| l.at), Some(i64::MAX));
+}
+
+#[test]
+fn reads_a_lock_file_saved_with_a_byte_order_mark() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("engine.lock"), "\u{FEFF}{\"pid\":9,\"at\":5}").unwrap();
+    assert_eq!(read(dir.path()), LockRead::Held(EngineLock { pid: 9, at: 5 }));
 }

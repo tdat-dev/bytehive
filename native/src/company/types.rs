@@ -1,30 +1,67 @@
 //! The Company's files, field for field as the Tauri app wrote them (types.ts),
 //! so the MCP server and a company made before carry over. Unknown fields on the
-//! company, a floor, a person, a plan and a Job are kept, so a newer build's
-//! additions survive an older build's save.
+//! company, a floor, a person, a look, the limits, a plan and a Job are kept, and
+//! so is a rank or a status this build does not know, so a newer build's additions
+//! survive an older build's save.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
 pub const FOUNDER_ID: &str = "founder";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Rank {
-    Founder,
-    Lead,
-    Staff,
+/// An enum written as a string. A value this build does not know is kept in
+/// `Other` and written back as it was.
+macro_rules! open_enum {
+    ($(#[$m:meta])* $name:ident { $($v:ident = $s:literal),* $(,)? }) => {
+        $(#[$m])*
+        #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+        #[serde(from = "String", into = "String")]
+        pub enum $name {
+            $($v,)*
+            Other(String),
+        }
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                match self {
+                    $(Self::$v => $s,)*
+                    Self::Other(s) => s,
+                }
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(s: String) -> Self {
+                match s.as_str() {
+                    $($s => Self::$v,)*
+                    _ => Self::Other(s),
+                }
+            }
+        }
+
+        impl From<$name> for String {
+            fn from(v: $name) -> String {
+                v.as_str().to_string()
+            }
+        }
+    };
 }
 
+open_enum!(Rank { Founder = "founder", Lead = "lead", Staff = "staff" });
+
+/// A field the file leaves out reads as empty.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Look {
     pub shirt: String,
     pub hair: String,
     pub prop: String,
     /// The owner chose this look.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub edited: Option<bool>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -61,7 +98,7 @@ pub struct Person {
 }
 
 /// A limit a file leaves out takes its default, so a limit added later reads in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Limits {
     pub people_per_job: u32,
@@ -70,6 +107,8 @@ pub struct Limits {
     pub tokens_per_job: u64,
     pub stall_minutes: u32,
     pub max_returns: u32,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
 }
 
 pub const DEFAULT_LIMITS: Limits = Limits {
@@ -79,12 +118,18 @@ pub const DEFAULT_LIMITS: Limits = Limits {
     tokens_per_job: 5_000_000,
     stall_minutes: 10,
     max_returns: 3,
+    extra: BTreeMap::new(),
 };
 
 impl Default for Limits {
     fn default() -> Self {
         DEFAULT_LIMITS
     }
+}
+
+/// `"limits": null` reads as the defaults, as `{ ...DEFAULT_LIMITS, ...null }` does.
+fn limits_or_default<'de, D: Deserializer<'de>>(d: D) -> Result<Limits, D::Error> {
+    Ok(Option::<Limits>::deserialize(d)?.unwrap_or_default())
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -94,7 +139,7 @@ pub struct Company {
     pub version: u32,
     pub floors: Vec<Floor>,
     pub people: Vec<Person>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "limits_or_default")]
     pub limits: Limits,
     #[serde(default = "first_job")]
     pub next_job: u64,
@@ -117,7 +162,7 @@ impl Company {
             floor: None,
             boss: None,
             cli: "claude".into(),
-            look: Look { shirt: "#f5b83d".into(), hair: "#2a2e3a".into(), prop: "none".into(), edited: None },
+            look: Look { shirt: "#f5b83d".into(), hair: "#2a2e3a".into(), prop: "none".into(), edited: None, extra: Map::new() },
             session: None,
             worktree: None,
             branch: None,
@@ -188,18 +233,16 @@ pub struct JobPlan {
     pub extra: Map<String, Value>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum JobStatus {
-    Planning,
-    AwaitingPlan,
-    Running,
-    AwaitingMerge,
-    Paused,
-    Stopped,
-    Done,
-    Rejected,
-}
+open_enum!(JobStatus {
+    Planning = "planning",
+    AwaitingPlan = "awaiting-plan",
+    Running = "running",
+    AwaitingMerge = "awaiting-merge",
+    Paused = "paused",
+    Stopped = "stopped",
+    Done = "done",
+    Rejected = "rejected",
+});
 
 /// Only id, status and people are required, as loadJobs checks; the rest
 /// takes a default when a file leaves it out.

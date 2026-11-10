@@ -36,14 +36,61 @@ pub fn pick_root(home: &str, dev: bool, root: Option<&str>) -> String {
     let set = root.map(clean_path).unwrap_or_default();
     let b = set.as_bytes();
     let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'\\';
-    let share = set.strip_prefix("\\\\").is_some_and(|s| s.split('\\').filter(|p| !p.is_empty()).count() >= 2 && !s.starts_with('\\'));
-    let at = set.to_lowercase();
-    let mine = real.to_lowercase();
+    let share = set.strip_prefix("\\\\").is_some_and(|s| s.split('\\').count() >= 2);
+    // Before clean_path folds the dot of `\\.\` away.
+    let raw = root.unwrap_or("").trim().replace('/', "\\");
+    let device = raw.starts_with("\\\\?\\") || raw.starts_with("\\\\.\\");
     // The real company, or anything inside it, is never a sandbox, however it is spelled.
-    if !(drive || share) || at == mine || at.starts_with(&format!("{mine}\\")) {
+    if !(drive || share) || device || this_machine_share(&set) || inside(&set.to_lowercase(), &real.to_lowercase()) {
         return format!("{real}-dev");
     }
     set
+}
+
+fn inside(at: &str, dir: &str) -> bool {
+    at == dir || at.starts_with(&format!("{dir}\\"))
+}
+
+/// `\\?\C:\...`, `\\.\C:\...`, `\\localhost\C$\...`: a spelling that can lead back to
+/// this machine's own disks. A sandbox never needs one, so none is taken.
+fn this_machine_share(set: &str) -> bool {
+    let Some(rest) = set.strip_prefix("\\\\") else { return false };
+    let mut parts = rest.split('\\');
+    let host = parts.next().unwrap_or("").to_lowercase();
+    let share = parts.next().unwrap_or("");
+    let me = std::env::var("COMPUTERNAME").unwrap_or_default().to_lowercase();
+    matches!(host.as_str(), "?" | "." | "localhost" | "127.0.0.1" | "::1" | "[::1]") || host == me || share.ends_with('$')
+}
+
+/// The folder a path really names once junctions, links and short names are
+/// followed, as far as it exists, lowercased. The rest is joined on as written.
+fn canonical(p: &Path) -> String {
+    let mut rest = Vec::new();
+    let mut at = p;
+    loop {
+        if let Ok(mut out) = fs::canonicalize(at) {
+            out.extend(rest.iter().rev());
+            return out.to_string_lossy().to_lowercase();
+        }
+        match (at.parent(), at.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_owned());
+                at = parent;
+            }
+            _ => return p.to_string_lossy().to_lowercase(),
+        }
+    }
+}
+
+/// pick_root, then the same check on the disk: a junction or a short name that
+/// leads into the real company is not a sandbox either.
+pub fn resolve_root(home: &str, dev: bool, set: Option<&str>) -> PathBuf {
+    let picked = pick_root(home, dev, set);
+    let real = company_root(home);
+    if picked != real && inside(&canonical(Path::new(&picked)), &canonical(Path::new(&real))) {
+        return PathBuf::from(format!("{real}-dev"));
+    }
+    PathBuf::from(picked)
 }
 
 /// Backslashes, no trailing slash, and . and .. folded away.
@@ -65,11 +112,11 @@ fn clean_path(p: &str) -> String {
 
 /// The company folder for this build: `BYTEHIVE_COMPANY_ROOT` in a dev build when
 /// it names a sandbox, else `%USERPROFILE%\.bytehive\company` (`company-dev` in a
-/// dev build).
+/// dev build). A test build counts as a dev build, `cargo test --release` included.
 pub fn root() -> Option<PathBuf> {
     let home = std::env::var("USERPROFILE").ok()?;
     let set = std::env::var("BYTEHIVE_COMPANY_ROOT").ok();
-    Some(PathBuf::from(pick_root(&home, cfg!(debug_assertions), set.as_deref())))
+    Some(resolve_root(&home, cfg!(debug_assertions) || cfg!(test), set.as_deref()))
 }
 
 /// Write through a temp file next to it, then swap it in whole: the MCP server
@@ -92,7 +139,7 @@ pub fn parse_company(text: &str) -> anyhow::Result<Company> {
 /// a company that could not be read is never started over.
 pub fn load_company(root: &Path) -> anyhow::Result<Company> {
     match fs::read(root.join(COMPANY)) {
-        Ok(bytes) => parse_company(&String::from_utf8_lossy(&bytes)),
+        Ok(bytes) => parse_company(&String::from_utf8(bytes).context("company.json is not UTF-8")?),
         Err(e) if missing(&e) => Ok(Company::empty()),
         Err(e) => Err(e).context("company.json could not be read"),
     }
@@ -126,7 +173,7 @@ pub fn load_jobs(root: &Path) -> anyhow::Result<(Vec<Job>, Vec<String>)> {
         if e.file_type().is_ok_and(|t| t.is_dir()) || !name.ends_with(".json") {
             continue;
         }
-        match fs::read(e.path()).map_err(anyhow::Error::from).and_then(|b| parse_job(&String::from_utf8_lossy(&b))) {
+        match fs::read(e.path()).map_err(anyhow::Error::from).and_then(|b| parse_job(&String::from_utf8(b)?)) {
             Ok(job) => jobs.push(job),
             Err(_) => unreadable.push(name),
         }
