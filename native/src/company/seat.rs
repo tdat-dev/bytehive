@@ -7,18 +7,15 @@ use super::{roles, server, store};
 use std::path::Path;
 
 /// A seat's launch when it is one of the company's people: their files written
-/// again, as personSpec does on every start, then their args and env. None,
-/// logged, when the company, the person, their role or the app's MCP server can't
-/// be found: the seat then starts as a plain one.
-pub fn for_seat(spec: &crate::fleet::Spec) -> Option<(Vec<String>, Vec<(String, String)>)> {
-    let person = spec.person.as_deref()?;
-    let found = (|| {
-        let root = store::root().ok_or("no home folder")?;
-        let home = std::env::var("USERPROFILE").map_err(|e| e.to_string())?;
-        let server = server::mcp_server().ok_or("the app's MCP server (mcp-server\\bytehive-mcp.mjs) is missing")?;
-        seat_launch(&root, &home, person, &server)
-    })();
-    found.map_err(|e| eprintln!("[bytehive] {}'s Company launch: {e}", spec.name)).ok()
+/// again, as personSpec does on every start, then their args and env. An error
+/// is the reason, for the owner: the seat stays stopped rather than start as a
+/// plain agent. Runs on the UI thread (a few small files): Task 9 measures it.
+pub fn for_seat(spec: &crate::fleet::Spec) -> Result<(Vec<String>, Vec<(String, String)>), String> {
+    let person = spec.person.as_deref().ok_or("it is not one of the company's people")?;
+    let root = store::root().ok_or("there is no home folder to find the company in")?;
+    let home = std::env::var("USERPROFILE").map_err(|e| e.to_string())?;
+    let server = server::mcp_server().ok_or("the app's MCP server (mcp-server\\bytehive-mcp.mjs) is missing. Reinstall ByteHive.")?;
+    seat_launch(&root, &home, person, &server)
 }
 
 fn seat_launch(root: &Path, home: &str, person_id: &str, mcp_server: &Path) -> Result<(Vec<String>, Vec<(String, String)>), String> {

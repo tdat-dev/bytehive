@@ -11,16 +11,18 @@ const FILE: &str = "bytehive-mcp.mjs";
 const NODE_WAIT: Duration = Duration::from_secs(30);
 
 /// The server file: beside the app in mcp-server\, where the installer puts it (and
-/// the Tauri app kept it), else in a checkout's mcp\dist, which
-/// `npm --prefix mcp run bundle -- dist/bytehive-mcp.mjs` writes for a dev run.
+/// the Tauri app kept it), else, in a dev build only, in the checkout's mcp\dist,
+/// which `npm --prefix mcp run bundle -- dist/bytehive-mcp.mjs` writes.
 pub fn mcp_server() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok();
-    server_in(exe.as_deref().and_then(Path::parent), Path::new(env!("CARGO_MANIFEST_DIR")))
+    server_in(exe.as_deref().and_then(Path::parent), Path::new(env!("CARGO_MANIFEST_DIR")), cfg!(debug_assertions))
 }
 
-fn server_in(exe_dir: Option<&Path>, crate_dir: &Path) -> Option<PathBuf> {
+/// A release build never looks in the folder it was built from: on the owner's
+/// machine that can be an old checkout.
+fn server_in(exe_dir: Option<&Path>, crate_dir: &Path, dev: bool) -> Option<PathBuf> {
     let beside = exe_dir.map(|d| d.join("mcp-server").join(FILE));
-    let checkout = crate_dir.parent().map(|repo| repo.join("mcp").join("dist").join(FILE));
+    let checkout = crate_dir.parent().filter(|_| dev).map(|repo| repo.join("mcp").join("dist").join(FILE));
     beside.into_iter().chain(checkout).find(|p| p.is_file())
 }
 
@@ -38,8 +40,10 @@ pub fn node_check() -> Result<(), String> {
     }
 }
 
-/// `node --version`, through cmd /c as every launch here, with no window.
+/// `node --version`, through cmd /c as every launch here, with no window. It runs
+/// in a job, so one that hangs is ended with its node, not only its cmd.exe.
 fn run_node() -> NodeRun {
+    use std::os::windows::io::AsRawHandle;
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -55,12 +59,18 @@ fn run_node() -> NodeRun {
         Ok(c) => c,
         Err(e) => return NodeRun::Failed(e.to_string()),
     };
+    // Closing the job (it drops when this returns) ends whatever is left of the tree.
+    let tree = agent_core::job::Job::new_kill_on_close().ok();
+    if let Some(job) = &tree {
+        let _ = job.assign_raw(child.as_raw_handle());
+    }
     let start = Instant::now();
     loop {
         match child.try_wait() {
             Ok(Some(_)) => break,
             Ok(None) if start.elapsed() < NODE_WAIT => std::thread::sleep(Duration::from_millis(50)),
             Ok(None) => {
+                drop(tree);
                 let _ = child.kill();
                 return NodeRun::Failed(format!("node took longer than {} s", NODE_WAIT.as_secs()));
             }
@@ -88,7 +98,7 @@ mod tests {
         let (app, repo) = (t.path().join("app"), t.path().join("repo"));
         put(&app.join("mcp-server").join(FILE));
         put(&repo.join("mcp").join("dist").join(FILE));
-        assert_eq!(server_in(Some(&app), &repo.join("native")), Some(app.join("mcp-server").join(FILE)));
+        assert_eq!(server_in(Some(&app), &repo.join("native"), true), Some(app.join("mcp-server").join(FILE)));
     }
 
     #[test]
@@ -96,13 +106,21 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let repo = t.path().join("repo");
         put(&repo.join("mcp").join("dist").join(FILE));
-        assert_eq!(server_in(Some(&t.path().join("target")), &repo.join("native")), Some(repo.join("mcp").join("dist").join(FILE)));
+        assert_eq!(server_in(Some(&t.path().join("target")), &repo.join("native"), true), Some(repo.join("mcp").join("dist").join(FILE)));
+    }
+
+    #[test]
+    fn mcp_server_in_a_release_build_never_reads_the_checkout() {
+        let t = tempfile::tempdir().unwrap();
+        let repo = t.path().join("repo");
+        put(&repo.join("mcp").join("dist").join(FILE));
+        assert_eq!(server_in(Some(&t.path().join("app")), &repo.join("native"), false), None);
     }
 
     #[test]
     fn mcp_server_is_none_when_neither_is_there() {
         let t = tempfile::tempdir().unwrap();
-        assert_eq!(server_in(Some(t.path()), &t.path().join("native")), None);
-        assert_eq!(server_in(None, &t.path().join("native")), None);
+        assert_eq!(server_in(Some(t.path()), &t.path().join("native"), true), None);
+        assert_eq!(server_in(None, &t.path().join("native"), true), None);
     }
 }

@@ -237,7 +237,7 @@ impl Fleet {
         };
         let mut args = base;
         args.extend(extra);
-        let (run_args, run_env) = run_extras(&seat.spec, &program);
+        let (run_args, run_env) = run_extras(&seat.spec, &program).map_err(|e| anyhow::anyhow!("{} did not start: {e}", seat.spec.name))?;
         args.extend(run_args);
         let mut spec = launch::launch_spec(&seat.spec.cli, &args);
         spec.cwd = Some(cwd.clone());
@@ -391,20 +391,32 @@ fn seat_needs_capture(program: &str, spec: &Spec) -> bool {
     matches!(program, "codex" | "opencode") && spec.session_id.is_none()
 }
 
-/// What this run adds to the saved args, and to the env. A Company person starts
-/// with their own launch (prompt file, MCP config, plugin, denied tools, who they
-/// are). Anyone else gets ByteHive's protocol at the system-prompt level, so a
-/// Claude agent must follow it; only claude has the flag (pane.ts). So does a
-/// person whose files can't be found, rather than start with no rules at all.
-/// Added to this run only, never to the saved args.
-fn run_extras(spec: &Spec, program: &str) -> (Vec<String>, Vec<(String, String)>) {
-    if let Some(found) = spec.person.as_ref().and_then(|_| crate::company::seat::for_seat(spec)) {
-        return found;
+/// Args and env added to one run.
+type Extras = (Vec<String>, Vec<(String, String)>);
+
+/// What this run adds to the saved args, and to the env. A Company person on
+/// claude starts with their own launch (prompt file, MCP config, plugin, denied
+/// tools, who they are), and a launch that can't be built keeps them stopped with
+/// the reason: as a plain agent they would take orders nobody gave them. Anyone
+/// else gets ByteHive's protocol at the system-prompt level, so a Claude agent
+/// must follow it; only claude has the flag (pane.ts). Added to this run only,
+/// never to the saved args.
+fn run_extras(spec: &Spec, program: &str) -> Result<Extras, String> {
+    run_extras_with(spec, program, crate::company::seat::for_seat)
+}
+
+fn run_extras_with(spec: &Spec, program: &str, company: impl FnOnce(&Spec) -> Result<Extras, String>) -> Result<Extras, String> {
+    if spec.person.is_some() {
+        if program == "claude" {
+            return company(spec);
+        }
+        // The Company launch is claude's flags only (launch.ts).
+        eprintln!("[bytehive] {} runs {program}, which has no Company launch: started as a plain agent", spec.name);
     }
     if program != "claude" {
-        return (Vec::new(), Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
-    (vec!["--append-system-prompt".to_string(), crate::laws::for_role(spec.role.as_deref()).to_string()], Vec::new())
+    Ok((vec!["--append-system-prompt".to_string(), crate::laws::for_role(spec.role.as_deref()).to_string()], Vec::new()))
 }
 
 #[cfg(test)]
