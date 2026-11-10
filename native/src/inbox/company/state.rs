@@ -34,6 +34,12 @@ pub(in crate::inbox) struct CompanyUi {
     /// The engine found a Job on disk at start: open on the Company once.
     pub land: bool,
     pub subs: Vec<Subscription>,
+    /// What each person has used in fresh tokens, by person id, and when it was last read.
+    pub fresh: HashMap<String, Option<u64>>,
+    pub fresh_at: u64,
+    pub fresh_busy: bool,
+    /// (project folder, seat id): new hires waiting for their worktree.
+    pub isolate: Vec<(String, String)>,
 }
 
 impl CompanyUi {
@@ -150,7 +156,7 @@ impl Inbox {
         if self.company.short.contains(job) {
             return;
         }
-        let r = self.co_engine(cx, |e, host| { e.approve(host, job); Ok(()) });
+        let r = self.co_engine(cx, |e, host| e.approve(host, job));
         self.co_result(r, cx);
     }
 
@@ -168,7 +174,7 @@ impl Inbox {
             return;
         }
         self.company.short.remove(job);
-        let r = self.co_engine(cx, |e, host| { e.send_back(host, job, &words); Ok(()) });
+        let r = self.co_engine(cx, |e, host| e.send_back(host, job, &words));
         if self.co_result(r, cx) && note.read(cx).value() == words {
             self.company.notes.remove(job);
             self.company.asking.remove(job);
@@ -200,17 +206,17 @@ impl Inbox {
     }
 
     pub(super) fn co_raise(&mut self, job: &str, cx: &mut Context<Self>) {
-        let r = self.co_engine(cx, |e, host| { e.raise_cap(host, job, RAISE_BY); Ok(()) });
+        let r = self.co_engine(cx, |e, host| e.raise_cap(host, job, RAISE_BY));
         self.co_result(r, cx);
     }
 
     pub(super) fn co_finish(&mut self, job: &str, cx: &mut Context<Self>) {
-        let r = self.co_engine(cx, |e, host| { e.finish_job(host, job); Ok(()) });
+        let r = self.co_engine(cx, |e, host| e.finish_job(host, job));
         self.co_result(r, cx);
     }
 
     pub(super) fn co_stop(&mut self, job: &str, cx: &mut Context<Self>) {
-        let r = self.co_engine(cx, |e, host| { e.stop_job(host, job); Ok(()) });
+        let r = self.co_engine(cx, |e, host| e.stop_job(host, job));
         self.co_result(r, cx);
     }
 

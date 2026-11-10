@@ -170,6 +170,8 @@ pub struct Inbox {
     board: Option<board::BoardView>,
     /// The Board's conductor and plan import, open or not.
     conductor: board::Conductor,
+    /// The Company (Ctrl+Shift+O): its engine runs open or not.
+    company: company::CompanyUi,
     limits: limits::LimitGuard,
     updates: updates::Updates,
     notices: notices::Notices,
@@ -279,6 +281,7 @@ impl Inbox {
             scheduler: None,
             board: None,
             conductor: Default::default(),
+            company: Default::default(),
             limits: limits::LimitGuard::default(),
             updates: updates::Updates::default(),
             notices: notices::Notices::default(),
@@ -361,6 +364,7 @@ impl Inbox {
         self.check_limits(hits, cx);
         self.poll_changes(cx);
         self.conductor_tick(cx);
+        self.company_tick(cx);
         // The times on the rows count in seconds under a minute.
         if changed || self.fleet.seats.iter().any(|s| self.since.get(&s.spec.id).is_some_and(|(_, at)| now - at < 60_000)) {
             cx.notify();
@@ -396,7 +400,14 @@ impl Render for Inbox {
         let history = self.history_view(cx);
         let board = self.board_view(cx);
         let view = self.view(cx);
-        let body = if self.home { self.home_view(&view, window, cx).into_any_element() } else { self.agents_view(&view, cx).into_any_element() };
+        self.company_land(window, cx);
+        let body = if self.company.open {
+            self.company_page(window, cx)
+        } else if self.home {
+            self.home_view(&view, window, cx).into_any_element()
+        } else {
+            self.agents_view(&view, cx).into_any_element()
+        };
         let sheet = self.sheet.as_ref().map(|sheet| self.sheet_view(sheet, cx));
         let menu = self.menu.as_ref().filter(|m| m.index < self.fleet.seats.len()).map(|m| self.menu_view(m, &view, cx));
         let confirm = self.removing.filter(|i| *i < self.fleet.seats.len()).map(|i| self.confirm_view(i, cx));

@@ -15,6 +15,7 @@ pub(super) enum PalRun {
     Schedules,
     Usage,
     Board,
+    Company,
     Changes,
     History,
     Merge,
@@ -98,6 +99,7 @@ impl Inbox {
             items.push(act("History of the current agent", "Alt+H", Some("What it did and what you answered"), PalRun::History));
         }
         items.push(act("Board", "Ctrl+Shift+K", Some("Cards the agents move as they work"), PalRun::Board));
+        items.push(act("Company", "Ctrl+Shift+O", Some("Give the Founder a job, and see what needs you"), PalRun::Company));
         items.push(act("Sessions", "Alt+O", Some("Read back earlier Claude conversations"), PalRun::Sessions));
         if let Some(dir) = self.project_dir() {
             let name = crate::fleet::project_of(&dir);
@@ -159,6 +161,7 @@ impl Inbox {
             PalRun::Schedules => self.open_schedules(window, cx),
             PalRun::Usage => self.open_usage(window, cx),
             PalRun::Board => self.open_board(window, cx),
+            PalRun::Company => self.open_company(window, cx),
             PalRun::Memory => {
                 if let Some(dir) = self.project_dir() {
                     self.open_memory(dir, window, cx);

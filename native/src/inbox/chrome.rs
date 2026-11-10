@@ -38,6 +38,7 @@ impl Inbox {
             .pr(px(4.0))
             .window_control_area(WindowControlArea::Drag)
             .child(div().id("home").tooltip(tip("Home (keep agents running)")).on_click(cx.listener(|this, _, window, cx| this.open_home(window, cx))).size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("home", 16.0, color(INK_3))))
+            .children(self.co_crumb(cx))
             .child(
                 div()
                     .flex()

@@ -18,6 +18,10 @@ impl Inbox {
             self.toggle_files(window, cx);
         } else if m.control && m.shift && !m.alt && k.key == "k" {
             if self.board.is_some() { self.close_board(window, cx) } else { self.open_board(window, cx) }
+        } else if m.control && m.shift && !m.alt && k.key == "o" {
+            self.toggle_company(window, cx);
+        } else if k.key == "escape" && self.company.open && self.company_escape(cx) {
+            // The Company's confirm or menu went away.
         } else if m.control && !m.alt && !m.shift && k.key == "," {
             self.open_settings(window, cx);
         } else if m.alt && !m.control && !m.shift && k.key == "o" {

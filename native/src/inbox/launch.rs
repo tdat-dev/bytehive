@@ -74,7 +74,7 @@ impl Inbox {
     /// Make each waiting agent its worktree off the UI thread, then start it
     /// there. Outside a git repo, or when git says no, it starts in the
     /// project folder, and a failure is said.
-    fn isolate(&mut self, dir: String, ids: Vec<String>, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn isolate(&mut self, dir: String, ids: Vec<String>, window: &mut Window, cx: &mut Context<Self>) {
         let names: Vec<(String, String)> = ids.iter().filter_map(|id| self.fleet.seats.iter().find(|s| &s.spec.id == id).map(|s| (id.clone(), s.spec.name.clone()))).collect();
         let made = cx.background_spawn(async move {
             let root = agent_core::git::repo_root(std::path::Path::new(&dir));
