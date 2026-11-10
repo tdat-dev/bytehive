@@ -23,7 +23,8 @@ impl Inbox {
     pub(super) fn co_floors(&self, m: &OfficeModel, cx: &mut Context<Self>) -> AnyElement {
         let mut blocks: Vec<AnyElement> = Vec::new();
         if let Some(f) = &m.founder {
-            blocks.push(block("co-top", "Founder", None, true, vec![self.co_person(f, m, cx)]).into_any_element());
+            // The Founder needs no heading: their name says it.
+            blocks.push(block(None, None, true, vec![self.co_person(f, m, cx)]).into_any_element());
         }
         for f in &m.floors {
             blocks.push(self.co_floor(f, m, cx).into_any_element());
@@ -32,17 +33,18 @@ impl Inbox {
     }
 
     fn co_floor(&self, f: &OfficeFloor, m: &OfficeModel, cx: &mut Context<Self>) -> Div {
-        let count = plural(f.people.len() as u64, "person").replace("persons", "people").replace("0 people", "0 people");
+        let count = plural(f.people.len() as u64, "person").replace("persons", "people");
         let people: Vec<AnyElement> = f.people.iter().map(|p| self.co_person(p, m, cx)).collect();
         let meta = if f.needs > 0 { format!("{count}, {} needs you", f.needs) } else { count };
         let body = if people.is_empty() { vec![text(BODY, INK_3).px(px(S2)).child("Nobody works here yet.").into_any_element()] } else { people };
-        block(SharedString::from(format!("co-floor-{}", f.id)), f.name.clone(), Some(meta), f.lit || f.open, body)
+        block(Some(f.name.clone().into()), Some(meta), f.lit || f.open, body)
     }
 
     fn co_person(&self, p: &OfficePerson, m: &OfficeModel, cx: &mut Context<Self>) -> AnyElement {
         let (word, tone) = state_look(p.state);
         let to = Target::Desk(p.id.clone());
-        let role = m.role_of(p);
+        // A role that only repeats the name says nothing.
+        let role = Some(m.role_of(p)).filter(|r| *r != p.name);
         let line = match &p.doing {
             Some(d) if p.state != OfficeState::Stopped => format!("{word}: {d}"),
             _ => word.to_string(),
@@ -66,7 +68,7 @@ impl Inbox {
                     .flex_col()
                     .flex_1()
                     .min_w_0()
-                    .child(div().flex().items_baseline().gap(px(S2)).min_w_0().child(text(ROW, INK).flex_none().child(p.name.clone())).child(text(META, INK_3).min_w_0().truncate().child(role)))
+                    .child(div().flex().items_baseline().gap(px(S2)).min_w_0().child(text(ROW, INK).flex_none().child(p.name.clone())).children(role.map(|r| text(META, INK_3).min_w_0().truncate().child(r))))
                     .child(div().flex().items_center().gap(px(S2)).min_w_0().child(div().flex_none().size(px(8.0)).rounded_full().bg(c(tone))).child(text(META, INK_2).min_w_0().truncate().child(line))),
             )
             .child(svg().path("icons/chevron-right.svg").size(px(16.0)).text_color(c(INK_3)))
@@ -75,9 +77,8 @@ impl Inbox {
 }
 
 /// A floor's block: its name, a quiet count, and its people. A closed project dims.
-fn block(id: impl Into<ElementId>, name: impl Into<SharedString>, meta: Option<String>, lit: bool, people: Vec<AnyElement>) -> Div {
-    let head = div().flex().items_baseline().gap(px(S2)).px(px(S2)).child(text(TITLE, if lit { INK } else { INK_2 }).child(name.into())).children(meta.map(|m| text(META, INK_3).child(m)));
-    let _ = id.into();
+fn block(name: Option<SharedString>, meta: Option<String>, lit: bool, people: Vec<AnyElement>) -> Div {
+    let head = name.map(|name| div().flex().items_baseline().gap(px(S2)).px(px(S2)).child(text(TITLE, if lit { INK } else { INK_2 }).child(name)).children(meta.map(|m| text(META, INK_3).child(m))));
     div()
         .flex()
         .flex_col()
@@ -86,6 +87,6 @@ fn block(id: impl Into<ElementId>, name: impl Into<SharedString>, meta: Option<S
         .rounded(px(R_CARD))
         .bg(c(PANEL))
         .shadow(vec![ring(line())])
-        .child(head)
+        .children(head)
         .child(div().flex().flex_col().gap(px(2.0)).children(people))
 }
