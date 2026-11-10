@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 pub mod alerts;
+pub mod drive;
 pub mod engine;
 pub mod fleet_host;
 pub mod host;

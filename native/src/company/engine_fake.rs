@@ -1,7 +1,7 @@
 //! A Host for the engine's tests: projects, seats and boards in memory, a clock
 //! the test moves, and a record of everything the engine did to them.
 
-use super::super::host::{BoardStamp, BoardWrite, Host, Project, Restore, SeatView};
+use super::super::host::{BoardStamp, BoardWrite, Done, Host, Op, Project, Restore, SeatView};
 use super::super::types::{Company, Look, Person, Rank, RoleDef};
 use crate::board::Board;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -53,6 +53,14 @@ pub struct Fake {
     pub trust_fails: Option<String>,
     /// Typing text with this in it panics, as a bug in a host would.
     pub panic_on: Option<String>,
+    /// Slow work started, in order.
+    pub ops: Vec<Op>,
+    /// What slow work came to, handed over on the next `done`.
+    pub finished: Vec<Done>,
+    /// Slow work never finishes while this is set.
+    pub hold: bool,
+    /// Names whose start fails after it began, with why.
+    pub late_fails: HashMap<String, String>,
 }
 
 fn role(id: &str, rank: Rank) -> RoleDef {
@@ -113,6 +121,10 @@ impl Fake {
             trusted: Vec::new(),
             trust_fails: None,
             panic_on: None,
+            ops: Vec::new(),
+            finished: Vec::new(),
+            hold: false,
+            late_fails: HashMap::new(),
         }
     }
 
@@ -132,6 +144,16 @@ impl Fake {
 
     pub fn dir_of(&self, person: &str) -> Option<&str> {
         self.seats.get(person).map(|s| s.dir.as_str())
+    }
+}
+
+impl Fake {
+    fn trust(&mut self, cli: &str, dir: &str) -> Result<(), String> {
+        if !cli.eq_ignore_ascii_case("claude") {
+            return Ok(());
+        }
+        self.trusted.push(dir.into());
+        self.trust_fails.clone().map_or(Ok(()), Err)
     }
 }
 
@@ -177,19 +199,25 @@ impl Host for Fake {
             return Err("no terminal".into());
         }
         let r = self.on_boot.get(&person.name).cloned().unwrap_or_else(|| restore.clone());
-        let run_dir = Some(r.worktree.clone().unwrap_or_else(|| dir.to_string()));
-        let view = SeatView { running: true, at_prompt: true, spawned_at: Some(self.now), session: r.session, worktree: r.worktree, branch: r.branch, run_dir, ..SeatView::default() };
+        let run_dir = r.worktree.clone().unwrap_or_else(|| dir.to_string());
+        let trust = self.trust(&person.cli, &run_dir);
+        let late = self.late_fails.get(&person.name).cloned();
+        let view = SeatView { running: late.is_none(), at_prompt: true, spawned_at: Some(self.now), session: r.session, worktree: r.worktree, branch: r.branch, run_dir: Some(run_dir), ..SeatView::default() };
         self.spawned.push(person.name.clone());
         self.seats.insert(person.id.clone(), Seat { view, name: person.name.clone(), dir: dir.into() });
+        self.finished.push(Done::Started { person: person.id.clone(), trust, start: late.map_or(Ok(()), Err) });
         Ok(())
     }
     fn restart(&mut self, person: &str) {
         self.restarts.push(person.into());
         let now = self.now;
+        let Some(dir) = self.seats.get(person).and_then(|s| s.view.run_dir.clone()) else { return };
+        let trust = self.trust("claude", &dir);
         if let Some(s) = self.seats.get_mut(person) {
             s.view.running = true;
             s.view.spawned_at = Some(now);
         }
+        self.finished.push(Done::Started { person: person.into(), trust, start: Ok(()) });
     }
     fn type_message(&mut self, person: &str, text: &str) {
         if self.panic_on.as_deref().is_some_and(|p| text.contains(p)) {
@@ -220,25 +248,29 @@ impl Host for Fake {
         self.boards.insert(dir.into(), board.clone());
         Ok(())
     }
-    fn exclude_from_git(&mut self, dir: &str) -> Result<(), String> {
-        if self.exclude_fails {
-            return Err("git's exclude file: access denied".into());
-        }
-        self.excluded.push(dir.into());
-        Ok(())
+    fn begin(&mut self, op: Op) {
+        self.ops.push(op.clone());
+        let done = match op {
+            Op::NodeCheck => {
+                self.node_checks += 1;
+                Done::Node(self.node.clone())
+            }
+            Op::Exclude { dir } if self.exclude_fails => Done::Excluded { dir, result: Err("git's exclude file: access denied".into()) },
+            Op::Exclude { dir } => {
+                self.excluded.push(dir.clone());
+                Done::Excluded { dir, result: Ok(()) }
+            }
+        };
+        self.finished.push(done);
     }
-    fn node_check(&mut self) -> Result<(), String> {
-        self.node_checks += 1;
-        self.node.clone()
+    fn done(&mut self) -> Vec<Done> {
+        if self.hold {
+            return Vec::new();
+        }
+        std::mem::take(&mut self.finished)
     }
     fn log(&mut self, line: &str) {
         self.logs.push(line.into());
     }
-    fn trust_folder(&mut self, dir: &str) -> Result<(), String> {
-        self.trusted.push(dir.into());
-        match &self.trust_fails {
-            Some(e) => Err(e.clone()),
-            None => Ok(()),
-        }
-    }
+
 }

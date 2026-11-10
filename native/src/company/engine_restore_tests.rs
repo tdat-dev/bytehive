@@ -111,6 +111,7 @@ fn says_when_a_person_may_be_stuck_on_the_folder_question_and_clears_it_on_the_n
     let mut t = T::new();
     t.host.trust_fails = Some("another Claude is holding it".into());
     t.give("one").unwrap();
+    t.advance(STEP);
     let a = t.e.alerts().into_iter().find(|a| a.key == "trust-founder").unwrap();
     assert_eq!(a.text, "Founder may be stuck on Claude's folder question: another Claude is holding it.");
     assert_eq!(a.person_id.as_deref(), Some("founder"));
@@ -118,6 +119,7 @@ fn says_when_a_person_may_be_stuck_on_the_folder_question_and_clears_it_on_the_n
     t.host.trust_fails = None;
     t.host.close("founder");
     t.give("two").unwrap();
+    t.advance(STEP);
     assert!(!t.alert_keys().contains(&"trust-founder".to_string()));
 }
 

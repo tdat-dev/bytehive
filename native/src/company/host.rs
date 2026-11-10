@@ -58,10 +58,35 @@ pub enum BoardWrite {
     Failed(String),
 }
 
+/// Slow work the engine starts and never waits for: it runs off the UI thread,
+/// and its result comes back through `Host::done`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Op {
+    /// Whether Node can run the MCP server.
+    NodeCheck,
+    /// Keep a project's .bytehive/ out of its git status.
+    Exclude { dir: String },
+}
+
+/// What came of slow work since the last tick.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Done {
+    /// Err is why a job is refused.
+    Node(Result<(), String>),
+    Excluded { dir: String, result: Result<(), String> },
+    /// A person's start or restart is over: Claude's folder question settled
+    /// first (Ok when there was none to settle), then the CLI started or not.
+    Started { person: String, trust: Result<(), String>, start: Result<(), String> },
+}
+
+/// No Host call blocks for more than a few ms: whatever takes longer (git, a
+/// worktree, Claude's config lock, Node) runs off the UI thread and reports
+/// through `done`.
 pub trait Host {
     fn now_ms(&self) -> i64;
     /// This app's process id.
     fn pid(&self) -> u32;
+    /// A process that can't be asked counts as alive.
     fn process_alive(&self, pid: u64) -> bool;
     /// Every open project, in the order they are listed.
     fn projects(&self) -> Vec<Project>;
@@ -75,9 +100,11 @@ pub trait Host {
     /// Write a person's prompt, MCP config, plugin and settings. Gives back what
     /// could not be written, as words for the Founder.
     fn write_person_files(&mut self, root: &Path, person: &Person, role: &RoleDef, company: &Company) -> Vec<String>;
-    /// Start a person's seat in `dir`, on what `restore` still has.
+    /// Give a person a seat in `dir`, on what `restore` still has, and start it
+    /// off the UI thread: the seat is spawning at once, and `Done::Started` says
+    /// how it went. Err only for what is wrong before anything runs.
     fn spawn_person(&mut self, root: &Path, person: &Person, role: &RoleDef, dir: &str, restore: &Restore) -> Result<(), String>;
-    /// Start a stopped seat again.
+    /// Start a stopped seat again, the same way: spawning now, `Done::Started` later.
     fn restart(&mut self, person: &str);
     /// Type a message and Enter into a person's terminal.
     fn type_message(&mut self, person: &str, text: &str);
@@ -88,12 +115,10 @@ pub trait Host {
     /// A floor's board, or None when it has none yet. Err for one that can't be read.
     fn read_board(&mut self, dir: &str) -> Result<Option<(Board, BoardStamp)>, String>;
     fn write_board(&mut self, dir: &str, board: &Board, seen: BoardStamp) -> Result<(), BoardWrite>;
-    /// Keep a project's .bytehive/ out of its git status.
-    fn exclude_from_git(&mut self, dir: &str) -> Result<(), String>;
-    /// Whether Node can run the MCP server: Err is why a job is refused.
-    fn node_check(&mut self) -> Result<(), String>;
+    /// Start slow work off the UI thread.
+    fn begin(&mut self, op: Op);
+    /// What slow work has finished since the last call.
+    fn done(&mut self) -> Vec<Done>;
     /// A line for the log, where the TS wrote console.error.
     fn log(&mut self, line: &str);
-    /// Tell Claude that `dir` is trusted, so it does not open on its folder question.
-    fn trust_folder(&mut self, dir: &str) -> Result<(), String>;
 }

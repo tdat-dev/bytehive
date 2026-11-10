@@ -54,6 +54,7 @@ fn never_blocks_a_job_on_git_says_why_and_tries_again() {
     t.host.exclude_fails = true;
     t.give("one").unwrap();
     assert_eq!(t.jobs().len(), 1);
+    t.advance(STEP);
     assert!(t.host.logs.iter().any(|l| l.contains("access denied")));
     t.host.exclude_fails = false;
     t.give("two").unwrap();

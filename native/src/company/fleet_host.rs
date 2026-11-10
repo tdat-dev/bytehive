@@ -1,10 +1,11 @@
 //! The engine's Host over the native app: people are fleet seats with
 //! `spec.person` set, boards are `.bytehive/board.json`, person files come from
-//! launch.rs. Typing and worktrees take time, so they are handed back in
-//! `Outbound` for the Inbox to carry out: the typer types a message over
-//! several frames, and a worktree is made off the UI thread before its seat starts.
+//! launch.rs. Slow work (a seat's folder, git, Node) runs off the UI thread
+//! through drive.rs. Typing a message takes several frames, so it is handed
+//! back in `Outbound` for the Inbox's typer.
 
-use super::host::{BoardStamp, BoardWrite, Host, Project, Restore, SeatView};
+use super::drive::{self, Prepare};
+use super::host::{BoardStamp, BoardWrite, Done, Host, Op, Project, Restore, SeatView};
 use super::types::{Company, Person, Rank, RoleDef};
 use super::{launch, roles, server};
 use crate::board::{self, Board};
@@ -19,7 +20,8 @@ use supervise::ask::parse_ask;
 pub struct Outbound {
     /// (seat id, text): type it through the Inbox's typer.
     pub typed: Vec<(String, String)>,
-    /// (project folder, seat id): make the seat its worktree, then start it.
+    /// Always empty now: drive.rs makes a hire's worktree off the UI thread and
+    /// starts the seat itself. Kept until the Inbox stops reading it.
     pub isolate: Vec<(String, String)>,
 }
 
@@ -29,8 +31,8 @@ pub struct FleetHost<'a> {
     /// Every open project, in the order they are listed, and the one on screen.
     pub projects: Vec<Project>,
     pub active: Option<Project>,
-    /// Fresh tokens by person id, read off the UI thread (fresh_tokens).
-    /// A person missing here has not been read yet.
+    /// Fresh tokens by person id, read off the UI thread (fresh_tokens). A
+    /// person missing here has not been read yet.
     pub fresh: &'a HashMap<String, Option<u64>>,
     pub out: Outbound,
 }
@@ -99,6 +101,11 @@ pub fn write_board_file(dir: &str, board: &Board, seen: BoardStamp) -> Result<()
 }
 
 impl FleetHost<'_> {
+    /// Make a seat's folder ready off the UI thread; it starts on a later tick.
+    fn prepare(&mut self, p: Prepare) {
+        drive::make_ready(p);
+    }
+
     fn seat_of(&self, person: &str) -> Option<&Seat> {
         self.fleet.seats.iter().rev().find(|s| s.spec.person.as_deref() == Some(person))
     }
@@ -180,20 +187,28 @@ impl Host for FleetHost<'_> {
         spec.session_id = restore.session.clone();
         spec.worktree = restore.worktree.clone();
         spec.branch = restore.branch.clone();
-        let id = spec.id.clone();
+        let run_dir = spec.run_dir().to_string();
+        let seat = spec.id.clone();
         self.fleet.save();
         // Hired staff work in a worktree of their own; the Founder in the project.
-        if person.rank != Rank::Founder && restore.worktree.is_none() {
-            self.out.isolate.push((dir.to_string(), id));
-            return Ok(());
-        }
-        self.fleet.start(index, self.cx).map_err(|e| e.to_string())
+        let worktree = person.rank != Rank::Founder && restore.worktree.is_none();
+        self.prepare(Prepare { seat, person: person.id.clone(), name: person.name.clone(), dir: run_dir, claude: person.cli.eq_ignore_ascii_case("claude"), worktree });
+        Ok(())
     }
 
     fn restart(&mut self, person: &str) {
-        if let Some(i) = self.index_of(person) {
-            let _ = self.fleet.start(i, self.cx);
-        }
+        let Some(i) = self.index_of(person) else { return };
+        let seat = &mut self.fleet.seats[i];
+        seat.preparing = true;
+        let p = Prepare {
+            seat: seat.spec.id.clone(),
+            person: person.to_string(),
+            name: seat.spec.name.clone(),
+            dir: seat.spec.run_dir().to_string(),
+            claude: seat.spec.cli.eq_ignore_ascii_case("claude"),
+            worktree: false,
+        };
+        self.prepare(p);
     }
 
     fn type_message(&mut self, person: &str, text: &str) {
@@ -226,21 +241,18 @@ impl Host for FleetHost<'_> {
         write_board_file(dir, board, seen)
     }
 
-    fn exclude_from_git(&mut self, dir: &str) -> Result<(), String> {
-        crate::gitexclude::keep_out(dir)
+    fn begin(&mut self, op: Op) {
+        drive::begin(op);
     }
 
-    fn node_check(&mut self) -> Result<(), String> {
-        server::node_check()
+    fn done(&mut self) -> Vec<Done> {
+        drive::take(self.fleet, self.cx)
     }
 
     fn log(&mut self, line: &str) {
         eprintln!("[bytehive] {line}");
     }
 
-    fn trust_folder(&mut self, dir: &str) -> Result<(), String> {
-        super::trust::trust_folder(dir)
-    }
 }
 
 #[cfg(test)]

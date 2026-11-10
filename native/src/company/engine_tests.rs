@@ -6,8 +6,9 @@ use serde_json::json;
 
 #[test]
 fn says_what_it_found_and_starts_nothing_when_node_is_refused() {
-    let mut t = T::new();
-    t.host.node = Err("ByteHive needs Node.js 22.13 or newer to run the Company. Found v18.20.0.".into());
+    let mut host = Fake::new();
+    host.node = Err("ByteHive needs Node.js 22.13 or newer to run the Company. Found v18.20.0.".into());
+    let mut t = T::with(host);
     assert_eq!(t.give("do it").unwrap_err(), "ByteHive needs Node.js 22.13 or newer to run the Company. Found v18.20.0.");
     assert!(t.jobs().is_empty());
     assert!(t.host.spawned.is_empty());
@@ -15,13 +16,23 @@ fn says_what_it_found_and_starts_nothing_when_node_is_refused() {
 
 #[test]
 fn looks_again_next_time_node_may_have_been_installed_since() {
-    let mut t = T::new();
-    t.host.node = Err("no node".into());
-    assert!(t.give("do it").is_err());
+    let mut host = Fake::new();
+    host.node = Err("no node".into());
+    let mut t = T::with(host);
     t.host.node = Ok(());
+    assert!(t.give("do it").is_err());
+    t.advance(STEP);
     t.give("do it").unwrap();
     assert_eq!(t.jobs().len(), 1);
     assert_eq!(t.host.node_checks, 2);
+}
+
+#[test]
+fn asks_node_once_off_the_ui_thread_not_on_every_job() {
+    let mut t = T::new();
+    t.give("one").unwrap();
+    t.give("two").unwrap();
+    assert_eq!(t.host.node_checks, 1);
 }
 
 // starting the app

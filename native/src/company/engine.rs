@@ -13,6 +13,8 @@ use super::types::{Company, Job, RoleDef};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+#[path = "engine_ops.rs"]
+mod ops;
 #[path = "engine_owner.rs"]
 mod owner;
 #[path = "engine_people.rs"]
@@ -35,11 +37,17 @@ mod harness;
 #[path = "engine_lock_tests.rs"]
 mod lock_tests;
 #[cfg(test)]
+#[path = "engine_ops_tests.rs"]
+mod ops_tests;
+#[cfg(test)]
 #[path = "engine_people_tests.rs"]
 mod people_tests;
 #[cfg(test)]
 #[path = "engine_restore_tests.rs"]
 mod restore_tests;
+#[cfg(test)]
+#[path = "engine_stop_tests.rs"]
+mod stop_tests;
 #[cfg(test)]
 #[path = "engine_tests.rs"]
 mod tests;
@@ -100,6 +108,10 @@ pub struct Engine {
     outbox: Vec<Pending>,
     /// Each floor's last good tally of cards by Job, by floor id.
     floor_cards: HashMap<String, BTreeMap<String, JobCards>>,
+    /// What the last Node check said; None until it has said anything.
+    node: Option<Result<(), String>>,
+    /// Slow work under way off the UI thread.
+    ops: Vec<ops::Running>,
     /// Goes up on every change the screen should follow.
     pub changes: u64,
     /// What was handed to someone, typed at once (false) or waiting (true).
@@ -135,6 +147,8 @@ impl Engine {
             excluded: HashSet::new(),
             outbox: Vec::new(),
             floor_cards: HashMap::new(),
+            node: None,
+            ops: Vec::new(),
             changes: 0,
             #[cfg(test)]
             said: Vec::new(),
@@ -159,6 +173,7 @@ impl Engine {
         if self.state.is_none() {
             return;
         }
+        self.take_done(host);
         self.read_requests(host);
         self.send_waiting(host);
         let now = host.now_ms();
@@ -253,7 +268,11 @@ impl Engine {
             Ok(State { company, jobs, roles })
         })();
         match loaded {
-            Ok(state) => self.state = Some(state),
+            Ok(state) => {
+                self.state = Some(state);
+                // Every member's MCP server runs on Node: asked once, off the UI thread.
+                self.begin(host, super::host::Op::NodeCheck, "node".into(), "Checking Node.js".into());
+            }
             Err(e) => {
                 // No state means nothing writes: the file stays as it is for you to mend.
                 host.log(&format!("the company could not be loaded: {e}"));

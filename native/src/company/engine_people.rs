@@ -83,28 +83,6 @@ impl Engine {
         r
     }
 
-    /// Claude opens on its folder question the first time it runs somewhere, with
-    /// nobody there to answer: tell it the folder is trusted before every start.
-    /// When that fails the person still starts, and the owner hears why they may wait.
-    fn trust(&mut self, host: &mut dyn Host, p: &Person, dir: &str) {
-        if !p.cli.eq_ignore_ascii_case("claude") {
-            return;
-        }
-        let key = format!("trust-{}", p.id);
-        match host.trust_folder(dir) {
-            Ok(()) => {
-                if self.standing.clear(&key) {
-                    self.changed();
-                }
-            }
-            Err(e) => {
-                host.log(&format!("Claude's folder question stays: {e}"));
-                self.standing.raise(&key, &format!("{} may be stuck on Claude's folder question: {e}.", p.name), Some(&p.id));
-                self.changed();
-            }
-        }
-    }
-
     /// Start someone who has no seat yet, on what they had.
     pub(crate) fn ensure_person(&mut self, host: &mut dyn Host, p: &Person) -> Result<(), String> {
         let Some(s) = &self.state else { return Ok(()) };
@@ -125,8 +103,8 @@ impl Engine {
             return Err(first.clone());
         }
         let restore = self.check_restore(host, p, &dir);
-        self.trust(host, p, restore.worktree.as_deref().unwrap_or(&dir));
         host.spawn_person(&self.root, p, &role, &dir, &restore)?;
+        self.track(host, super::ops::start_key(&p.id), format!("Starting {}", p.name));
         if founder && self.standing.clear(FOUNDER_WAITS) {
             self.changed();
         }
@@ -157,10 +135,8 @@ impl Engine {
         let mut running = seat.running;
         let mut spawned_at = seat.spawned_at;
         if !seat.running && !seat.spawning {
-            if let Some(dir) = &seat.run_dir {
-                self.trust(host, &p, dir);
-            }
             host.restart(&p.id);
+            self.track(host, super::ops::start_key(&p.id), format!("Starting {}", p.name));
             let after = host.seat(&p.id).unwrap_or_default();
             running = after.running;
             spawned_at = after.spawned_at;
@@ -295,11 +271,9 @@ impl Engine {
     pub fn wake_person(&mut self, host: &mut dyn Host, id: &str) -> Result<(), String> {
         let Some(p) = self.state.as_ref().and_then(|s| person_by_id(&s.company, id)).cloned() else { return Ok(()) };
         self.ensure_person(host, &p)?;
-        if let Some(seat) = host.seat(id).filter(|s| !s.running && !s.spawning) {
-            if let Some(dir) = &seat.run_dir {
-                self.trust(host, &p, dir);
-            }
+        if host.seat(id).is_some_and(|s| !s.running && !s.spawning) {
             host.restart(id);
+            self.track(host, super::ops::start_key(id), format!("Starting {}", p.name));
         }
         Ok(())
     }

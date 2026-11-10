@@ -2,7 +2,7 @@
 //! raise its cap, close it (engine.ts giveJob, approve, reject, stopJob, raiseCap,
 //! finishJob), and the floors and boards those touch.
 
-use super::super::host::{BoardWrite, Host};
+use super::super::host::{BoardWrite, Host, Op};
 use super::super::org::{floor_id, person_by_name};
 use super::super::reduce::{
     approve_plan, close_job, halt_job, new_job, reject_plan, report_failures, resume_job, resumed_notes, stop_turns, stopped_note,
@@ -59,16 +59,14 @@ pub(crate) fn mark_job_stopped(board: &mut Board, job: &str) -> usize {
 
 impl Engine {
     /// Keep a project's .bytehive/ out of its git status, once per folder per run.
-    /// A git that fails never holds up a job: the next one tries again.
+    /// Off the UI thread: a git that fails or hangs never holds up a job, and
+    /// one that fails is tried again with the next.
     pub(crate) fn keep_out_of_git(&mut self, host: &mut dyn Host, dir: &str) {
-        let key = dir.to_lowercase();
-        if !self.excluded.insert(key.clone()) {
+        if !self.excluded.insert(dir.to_lowercase()) {
             return;
         }
-        if let Err(e) = host.exclude_from_git(dir) {
-            self.excluded.remove(&key);
-            host.log(&format!(".bytehive/ could not be excluded in {dir}: {e}"));
-        }
+        let label = format!("Keeping .bytehive/ out of git in {dir}");
+        self.begin(host, Op::Exclude { dir: dir.to_string() }, super::ops::exclude_key(dir), label);
     }
 
     /// Every open project with a folder is a floor.
@@ -103,7 +101,12 @@ impl Engine {
             return Err(NO_PROJECT.into());
         }
         // Every member's MCP server runs on Node: without it the Founder has no job_plan.
-        host.node_check()?;
+        // Asked off the UI thread; a refusal asks again, as Node may be installed since.
+        if let Some(Err(e)) = self.node.clone() {
+            self.node = None;
+            self.begin(host, Op::NodeCheck, "node".into(), "Checking Node.js".into());
+            return Err(e);
+        }
         self.sync_floors(host);
         self.exclude_floors(host);
         let Some(s) = &self.state else { return Ok(()) };
