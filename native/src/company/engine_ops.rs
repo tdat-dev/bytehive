@@ -3,7 +3,7 @@
 //! Work that outlives OP_LIMIT_MS is reported once, as queue.ts did; its result
 //! still counts when it comes.
 
-use super::super::host::{Done, Host, Op};
+use super::super::host::{BoardChange, Done, Host, Op};
 use super::super::org::person_by_id;
 use super::super::reduce::Effect;
 use super::super::types::{FOUNDER_ID, Rank};
@@ -44,25 +44,29 @@ impl Engine {
         self.ops.retain(|r| r.key != key);
     }
 
+    /// Whether slow work under this key is still going.
+    pub(crate) fn ops_running(&self, key: &str) -> bool {
+        self.ops.iter().any(|r| r.key == key)
+    }
+
+    /// Words for the Founder, as a failed approve would have put them.
+    fn tell_founder(&mut self, host: &mut dyn Host, failed: Vec<String>) {
+        if failed.is_empty() || self.state.is_none() {
+            return;
+        }
+        self.run(host, vec![Effect::Deliver { person_id: FOUNDER_ID.into(), text: failed.join(" ") }]);
+    }
+
     /// Take in what slow work has finished, and report what ran out of time.
+    /// What one result starts may finish at once: take that in too, a few rounds at most.
     pub(crate) fn take_done(&mut self, host: &mut dyn Host) {
-        for d in host.done() {
-            match d {
-                Done::Node(result) => {
-                    self.untrack("node");
-                    self.node = Some(result);
-                }
-                Done::Excluded { dir, result } => {
-                    self.untrack(&exclude_key(&dir));
-                    if let Err(e) = result {
-                        self.excluded.remove(&dir.to_lowercase()); // the next job tries again
-                        host.log(&format!(".bytehive/ could not be excluded in {dir}: {e}"));
-                    }
-                }
-                Done::Started { person, trust, start } => {
-                    self.untrack(&start_key(&person));
-                    self.started(host, &person, trust, start);
-                }
+        for _ in 0..4 {
+            let done = host.done();
+            if done.is_empty() {
+                break;
+            }
+            for d in done {
+                self.one_done(host, d);
             }
         }
         let now = host.now_ms();
@@ -72,6 +76,58 @@ impl Engine {
             let text = format!("{} took over {} s, so ByteHive moved on. It may still finish.", r.label, OP_LIMIT_MS / 1000);
             self.standing.raise(&format!("late-{}", r.label), &text, None);
             self.changed();
+        }
+    }
+
+    fn one_done(&mut self, host: &mut dyn Host, d: Done) {
+        match d {
+            Done::Node(result) => {
+                self.untrack("node");
+                self.node = Some(result);
+            }
+            Done::Excluded { dir, result } => {
+                self.untrack(&exclude_key(&dir));
+                if let Err(e) = result {
+                    self.excluded.remove(&dir.to_lowercase()); // the next job tries again
+                    host.log(&format!(".bytehive/ could not be excluded in {dir}: {e}"));
+                }
+            }
+            Done::Started { person, trust, start } => {
+                self.untrack(&start_key(&person));
+                self.started(host, &person, trust, start);
+            }
+            Done::Loaded(read) => {
+                self.untrack("load");
+                self.loaded(host, read);
+            }
+            Done::Files { failed, report } => {
+                self.ops.retain(|r| !r.key.starts_with("files-"));
+                if report {
+                    self.tell_founder(host, failed);
+                } else {
+                    failed.iter().for_each(|f| host.log(f));
+                }
+            }
+            Done::RolesSaved(failed) => {
+                self.ops.retain(|r| !r.key.starts_with("roles-"));
+                self.tell_founder(host, failed);
+            }
+            Done::BoardChanged { floor, change, result } => {
+                let job = match &change {
+                    BoardChange::Place { job, .. } => job.id.clone(),
+                    BoardChange::MarkStopped { job } => job.clone(),
+                };
+                self.untrack(&format!("board-{job}-{floor}"));
+                match (result, change) {
+                    (Ok(()), _) => {}
+                    (Err(e), BoardChange::Place { .. }) => self.tell_founder(host, vec![format!("Cards for {floor} were not placed: {e}.")]),
+                    (Err(e), BoardChange::MarkStopped { .. }) => host.log(&format!("{job}'s cards on {floor} were not marked: {e}")),
+                }
+            }
+            Done::BoardsRead(boards) => {
+                self.untrack("watch");
+                self.watched(host, boards);
+            }
         }
     }
 

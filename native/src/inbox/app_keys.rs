@@ -9,6 +9,8 @@ impl Inbox {
     pub(super) fn app_keys(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = &event.keystroke;
         let m = k.modifiers;
+        // The owner is at work: the boot no longer moves them to the Company.
+        self.company.touched = true;
         if m.control && !m.alt && !m.shift && k.key == "k" {
             if self.palette.is_some() { self.close_palette(window, cx) } else { self.open_palette(window, cx) }
         } else if m.control && m.shift && !m.alt && k.key == "t" {

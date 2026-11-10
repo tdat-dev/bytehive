@@ -79,8 +79,7 @@ impl Inbox {
             let mut host = FleetHost { fleet, cx, projects, active, fresh: &company.fresh, out: Outbound::default() };
             let engine = Engine::start(&root, &mut host);
             let out = std::mem::take(&mut host.out);
-            // Opening the app with a Job on disk lands on the Company.
-            company.land = !engine.view().jobs.is_empty();
+            company.boot = true;
             company.engine = Some(engine);
             self.co_carry_out(out, cx);
             cx.notify();
@@ -129,7 +128,8 @@ impl Inbox {
     /// Once a frame: land on the Company after the engine first read a Job,
     /// and give new hires their worktrees.
     pub(in crate::inbox) fn company_land(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if std::mem::take(&mut self.company.land) {
+        self.co_boot();
+        if std::mem::take(&mut self.company.land) && !self.company.touched && !self.dialog_up() && self.sessions.is_none() {
             self.open_company(window, cx);
         }
         let waiting = std::mem::take(&mut self.company.isolate);
@@ -143,6 +143,26 @@ impl Inbox {
         for (dir, ids) in by_dir {
             self.isolate(dir, ids, window, cx);
         }
+    }
+
+    /// At boot, once the engine has read the company (officeBoot): land on the
+    /// Company when a Job is still going or something waits, unless the owner has
+    /// already pressed a key or clicked, or another window runs the company.
+    fn co_boot(&mut self) {
+        if !self.company.boot {
+            return;
+        }
+        if self.company.touched {
+            self.company.boot = false;
+            return;
+        }
+        let Some(engine) = &self.company.engine else { return };
+        let view = engine.view();
+        if view.company.is_none() && !view.locked_by_other && view.error.is_none() {
+            return; // still loading
+        }
+        self.company.boot = false;
+        self.company.land = view.company.is_some() && (view.jobs.iter().any(|j| still_going(&j.status)) || !view.alerts.is_empty());
     }
 
     /// This frame's office, from the engine and every person's seat.
@@ -174,4 +194,10 @@ impl Inbox {
         let model = office_model(company, &view.jobs, &alerts, &panes, &view.roles, &view.job_cards, &open);
         Snapshot { model: Some(model), note: None, error: view.error.clone() }
     }
+}
+
+/// A Job still going: not finished, stopped or turned down.
+pub(super) fn still_going(status: &crate::company::types::JobStatus) -> bool {
+    use crate::company::types::JobStatus;
+    !matches!(status, JobStatus::Done | JobStatus::Stopped | JobStatus::Rejected)
 }

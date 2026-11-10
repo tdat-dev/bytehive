@@ -1,7 +1,7 @@
 //! A Host for the engine's tests: projects, seats and boards in memory, a clock
 //! the test moves, and a record of everything the engine did to them.
 
-use super::super::host::{BoardStamp, BoardWrite, Done, Host, Op, Project, Restore, SeatView};
+use super::super::host::{BoardChange, BoardStamp, BoardWrite, Done, Host, Loaded, Op, Project, Restore, SeatView};
 use super::super::types::{Company, Look, Person, Rank, RoleDef};
 use crate::board::Board;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -148,6 +148,38 @@ impl Fake {
 }
 
 impl Fake {
+    fn load(&self, root: &Path) -> Result<Loaded, String> {
+        if let Some(e) = &self.roles_fail {
+            return Err(e.clone());
+        }
+        let company = crate::company::store::load_company(root).map_err(|e| format!("{e:#}"))?;
+        let (jobs, unreadable) = crate::company::store::load_jobs(root).map_err(|e| format!("{e:#}"))?;
+        Ok(Loaded { company, jobs, unreadable, roles: self.roles.clone() })
+    }
+
+    fn change(&mut self, dir: &str, change: &BoardChange) -> Result<(), String> {
+        let boards = std::cell::RefCell::new(std::mem::take(&mut self.boards));
+        let mut fails = std::mem::take(&mut self.write_fails);
+        let read_fails = self.read_fails.clone();
+        let result = super::change_board_with(
+            &mut || match read_fails.get(dir) {
+                Some(e) => Err(e.clone()),
+                None => Ok(boards.borrow().get(dir).map(|b| (b.clone(), None))),
+            },
+            &mut |b, _| match fails.pop_front() {
+                Some(fail) => Err(fail),
+                None => {
+                    boards.borrow_mut().insert(dir.to_string(), b.clone());
+                    Ok(())
+                }
+            },
+            change,
+        );
+        self.boards = boards.into_inner();
+        self.write_fails = fails;
+        result
+    }
+
     fn trust(&mut self, cli: &str, dir: &str) -> Result<(), String> {
         if !cli.eq_ignore_ascii_case("claude") {
             return Ok(());
@@ -183,12 +215,6 @@ impl Host for Fake {
     }
     fn seat_names(&self) -> Vec<String> {
         self.seats.values().map(|s| s.name.clone()).collect()
-    }
-    fn load_roles(&mut self, _root: &Path) -> Result<Vec<RoleDef>, String> {
-        match &self.roles_fail {
-            Some(e) => Err(e.clone()),
-            None => Ok(self.roles.clone()),
-        }
     }
     fn write_person_files(&mut self, _root: &Path, person: &Person, _role: &RoleDef, _company: &Company) -> Vec<String> {
         self.files.push(person.id.clone());
@@ -260,6 +286,17 @@ impl Host for Fake {
                 self.excluded.push(dir.clone());
                 Done::Excluded { dir, result: Ok(()) }
             }
+            Op::Load { root } => Done::Loaded(self.load(&root)),
+            Op::Files { people, report, .. } => {
+                self.files.extend(people.iter().map(|p| p.id.clone()));
+                Done::Files { failed: Vec::new(), report }
+            }
+            Op::SaveRoles { root, roles } => Done::RolesSaved(crate::company::roles::save(&root, &roles)),
+            Op::ChangeBoard { floor, dir, change } => {
+                let result = self.change(&dir, &change);
+                Done::BoardChanged { floor, change, result }
+            }
+            Op::ReadBoards { floors } => Done::BoardsRead(floors.into_iter().map(|(id, dir)| (id, self.read_board(&dir).map(|b| b.map(|(b, _)| b)))).collect()),
         };
         self.finished.push(done);
     }

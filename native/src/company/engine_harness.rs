@@ -65,6 +65,8 @@ impl T {
     pub fn relaunch(&mut self) {
         self.host.seats.clear();
         self.e = Engine::start(self.dir.path(), &mut self.host);
+        // The load runs off the UI thread: the next tick takes it in.
+        self.e.tick(&mut self.host);
     }
 
     /// The MCP server appends a request, and a tick reads it.

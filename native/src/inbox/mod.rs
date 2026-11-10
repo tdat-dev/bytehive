@@ -430,6 +430,7 @@ impl Render for Inbox {
             // Today's app takes these before the terminal sees them (keys.rs
             // lets them through): Ctrl+K the palette, Ctrl+Shift+T New agent.
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| this.app_keys(event, window, cx)))
+            .capture_any_mouse_down(cx.listener(|this, _, _, _| this.company.touched = true))
             .font_family("Geist")
             .line_height(relative(1.2))
             .child(body)

@@ -2,13 +2,13 @@
 //! (engine.ts watch, watchedCards, measure).
 
 use super::super::alerts::{Alert, Level};
-use super::super::host::Host;
+use super::super::host::{Host, Op};
 use super::super::org::{floor_contact, person_by_id};
 use super::super::reduce::{Effect, join_job, pause_job, paused_note};
 use super::super::types::{Job, JobStatus};
 use super::super::watch::{CardsIn, WatchList, WatchedCard, WorkIn, cards_to_watch, watch_budget, watch_work};
 use super::{Engine, JobCards};
-use crate::board::List;
+use crate::board::{Board, List};
 use std::collections::{BTreeMap, HashSet};
 
 /// Output this recent means someone is working a card.
@@ -64,20 +64,33 @@ pub(crate) fn cards_on_board(lists: &[List]) -> BTreeMap<String, JobCards> {
 }
 
 impl Engine {
+    /// Every 30 s: read the boards of the floors with people, off the UI thread.
+    /// The watch goes on once they are read (`watched`).
+    pub(crate) fn watch(&mut self, host: &mut dyn Host) {
+        if self.state.is_none() || self.ops_running("watch") {
+            return;
+        }
+        let floors = self.floors_with_people().into_iter().map(|f| (f.id, f.dir)).collect();
+        self.begin(host, Op::ReadBoards { floors }, "watch".into(), "Reading the boards".into());
+    }
+
     /// The cards that could go quiet on every floor with people.
-    fn watched_cards(&mut self, host: &mut dyn Host) -> Vec<WatchedCard> {
+    fn watched_cards(&mut self, host: &dyn Host, boards: Vec<(String, Result<Option<Board>, String>)>) -> Vec<WatchedCard> {
         let mut out = Vec::new();
         let mut seen = HashSet::new();
         let mut read_all = true;
         let now = host.now_ms();
         let floors = self.floors_with_people();
         self.floor_cards.retain(|id, _| floors.iter().any(|f| &f.id == id));
-        for floor in floors {
+        for (floor, read) in boards {
+            if !floors.iter().any(|f| f.id == floor) {
+                continue;
+            }
             // A read that failed keeps the last count; a board that is gone has none.
-            let board = match host.read_board(&floor.dir) {
-                Ok(Some((b, _))) => b,
+            let board = match read {
+                Ok(Some(b)) => b,
                 Ok(None) => {
-                    self.floor_cards.remove(&floor.id);
+                    self.floor_cards.remove(&floor);
                     continue;
                 }
                 Err(_) => {
@@ -85,9 +98,9 @@ impl Engine {
                     continue;
                 }
             };
-            self.floor_cards.insert(floor.id.clone(), cards_on_board(&board.lists));
+            self.floor_cards.insert(floor.clone(), cards_on_board(&board.lists));
             let Some(s) = &self.state else { break };
-            let contact = floor_contact(&s.company, &floor.id).map(|p| p.id.clone());
+            let contact = floor_contact(&s.company, &floor).map(|p| p.id.clone());
             let working = |id: &str| host.seat(id).is_some_and(|x| x.running && now - x.last_output_at < WORKING_WINDOW_MS);
             let r = cards_to_watch(&CardsIn { lists: &board.lists, jobs: &s.jobs, contact: contact.as_deref(), is_working: &working, now }, &mut self.quiet);
             out.extend(r.cards);
@@ -100,11 +113,12 @@ impl Engine {
         out
     }
 
-    pub(crate) fn watch(&mut self, host: &mut dyn Host) {
+    /// The boards are read: who has gone quiet, and how many tokens each Job has used.
+    pub(crate) fn watched(&mut self, host: &mut dyn Host, boards: Vec<(String, Result<Option<Board>, String>)>) {
         if self.state.is_none() {
             return;
         }
-        let cards = self.watched_cards(host);
+        let cards = self.watched_cards(host, boards);
         let Some(s) = self.state.clone() else { return };
         let boss = |id: &str| person_by_id(&s.company, id).and_then(|p| p.boss.clone());
         let work = watch_work(&WorkIn { cards: &cards, nudges: &self.nudges, limits: &s.company.limits, boss_of: &boss, now: host.now_ms() });

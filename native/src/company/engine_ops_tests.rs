@@ -6,8 +6,10 @@ fn tells_the_founder_when_a_hire_fails_to_start_after_it_began() {
     let mut t = T::new();
     t.waiting_job(plan_for("a", 1));
     t.host.late_fails.insert("Ana".into(), "no terminal".into());
+    t.host.hold = true;
     t.approve(&t.job(0).id);
     assert!(!t.said_all().contains("did not start"));
+    t.host.hold = false;
     t.advance(STEP);
     assert!(t.said_all().contains("Ana did not start: no terminal."), "{:?}", t.said());
     assert_eq!(t.job(0).status, JobStatus::Running);
@@ -34,9 +36,8 @@ fn tells_the_owner_once_when_slow_work_runs_out_of_time() {
     let late: Vec<_> = t.e.alerts().into_iter().filter(|a| a.key.starts_with("late-")).collect();
     assert!(late.iter().any(|a| a.text == "Starting Founder took over 300 s, so ByteHive moved on. It may still finish."), "{late:?}");
     assert!(late.iter().any(|a| a.text.starts_with("Keeping .bytehive/ out of git in D:\\a took over 300 s")), "{late:?}");
-    let n = late.len();
     t.advance(60_000);
-    assert_eq!(t.e.alerts().into_iter().filter(|a| a.key.starts_with("late-")).count(), n);
+    assert_eq!(t.e.alerts().into_iter().filter(|a| a.key == "late-Starting Founder").count(), 1, "told once");
 }
 
 #[test]

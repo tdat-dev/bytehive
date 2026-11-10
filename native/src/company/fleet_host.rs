@@ -7,7 +7,6 @@
 use super::drive::{self, Prepare};
 use super::host::{BoardStamp, BoardWrite, Done, Host, Op, Project, Restore, SeatView};
 use super::types::{Company, Person, Rank, RoleDef};
-use super::{launch, roles, server};
 use crate::board::{self, Board};
 use crate::fleet::{Fleet, Seat, now_ms};
 use gpui_kit::App;
@@ -166,16 +165,12 @@ impl Host for FleetHost<'_> {
         self.fleet.seats.iter().map(|s| s.spec.name.clone()).collect()
     }
 
-    fn load_roles(&mut self, root: &Path) -> Result<Vec<RoleDef>, String> {
-        roles::seed(root).map_err(|e| format!("the roles could not be written: {e}"))?;
-        roles::load(root).map_err(|e| format!("the roles could not be read: {e}"))
-    }
 
-    fn write_person_files(&mut self, root: &Path, person: &Person, role: &RoleDef, company: &Company) -> Vec<String> {
-        let Some(mcp) = server::mcp_server() else {
-            return vec![format!("{}'s files were not written: the app's MCP server is missing.", person.name)];
-        };
-        launch::refresh_files(root, std::slice::from_ref(person), std::slice::from_ref(role), company, &mcp)
+    /// Nothing to do here: a seat writes its person's files itself at every
+    /// start (seat::for_seat), and a load or a rewire writes them off the UI
+    /// thread (Op::Files).
+    fn write_person_files(&mut self, _root: &Path, _person: &Person, _role: &RoleDef, _company: &Company) -> Vec<String> {
+        Vec::new()
     }
 
     fn spawn_person(&mut self, _root: &Path, person: &Person, role: &RoleDef, dir: &str, restore: &Restore) -> Result<(), String> {

@@ -366,3 +366,14 @@ fn says_what_a_person_is_doing_in_a_line() {
     q.ask = Some(Ask { kind: AskKind::Question, prompt: "Which one?".into(), title: None, detail: None, options: vec![], free_text_option: None });
     assert_eq!(status_line("Ana", &q), "Ana asks: Which one?");
 }
+
+#[test]
+fn the_app_lands_on_the_company_only_for_a_job_still_going() {
+    use super::source::still_going;
+    for s in [JobStatus::Planning, JobStatus::AwaitingPlan, JobStatus::Running, JobStatus::Paused, JobStatus::AwaitingMerge] {
+        assert!(still_going(&s), "{s:?}");
+    }
+    for s in [JobStatus::Done, JobStatus::Stopped, JobStatus::Rejected] {
+        assert!(!still_going(&s), "{s:?}");
+    }
+}

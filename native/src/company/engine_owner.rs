@@ -2,12 +2,12 @@
 //! raise its cap, close it (engine.ts giveJob, approve, reject, stopJob, raiseCap,
 //! finishJob), and the floors and boards those touch.
 
-use super::super::host::{BoardWrite, Host, Op};
+use super::super::host::{BoardChange, BoardStamp, BoardWrite, Host, Op};
 use super::super::org::{floor_id, person_by_name};
 use super::super::reduce::{
     approve_plan, close_job, halt_job, new_job, reject_plan, report_failures, resume_job, resumed_notes, stop_turns, stopped_note,
 };
-use super::super::types::{Company, Floor, Job, JobStatus, PlanCard, RoleDef};
+use super::super::types::{Company, Floor, Job, JobStatus, PlanCard};
 use super::{Engine, NO_PROJECT, same_folder};
 use crate::board::{Board, ChecklistItem, List, default_board, mk_card, uid};
 use serde_json::Map;
@@ -55,6 +55,39 @@ pub(crate) fn mark_job_stopped(board: &mut Board, job: &str) -> usize {
         }
     }
     n
+}
+
+/// Make a change to a board. Gives back false when there is nothing to write.
+pub(crate) fn apply_change(board: &mut Board, change: &BoardChange) -> bool {
+    match change {
+        BoardChange::Place { job, cards, company } => {
+            place_on_board(board, company, job, &cards.iter().collect::<Vec<_>>());
+            true
+        }
+        BoardChange::MarkStopped { job } => mark_job_stopped(board, job) > 0,
+    }
+}
+
+/// Change a floor's board (changeBoard). An agent writing it at the same moment
+/// is a Conflict: read its copy and try again, three times at most, no waiting.
+pub(crate) fn change_board_with(
+    read: &mut dyn FnMut() -> Result<Option<(Board, BoardStamp)>, String>,
+    write: &mut dyn FnMut(&Board, BoardStamp) -> Result<(), BoardWrite>,
+    change: &BoardChange,
+) -> Result<(), String> {
+    for tries in 1..=BOARD_TRIES {
+        let (mut board, seen) = read()?.unwrap_or_else(|| (default_board(), None));
+        if !apply_change(&mut board, change) {
+            return Ok(());
+        }
+        match write(&board, seen) {
+            Ok(()) => return Ok(()),
+            Err(BoardWrite::Conflict) if tries < BOARD_TRIES => continue,
+            Err(BoardWrite::Conflict) => return Err("the board kept changing while it was written".into()),
+            Err(BoardWrite::Failed(e)) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 impl Engine {
@@ -117,44 +150,21 @@ impl Engine {
         Ok(())
     }
 
-    /// Change a floor's board. An agent writing it at the same moment is a
-    /// Conflict: read its copy and try again. `change` gives back false when
-    /// there is nothing to write.
-    pub(crate) fn change_board(&mut self, host: &mut dyn Host, dir: &str, change: &dyn Fn(&mut Board) -> bool) -> Result<(), String> {
-        for tries in 1.. {
-            let (mut board, seen) = host.read_board(dir)?.unwrap_or_else(|| (default_board(), None));
-            if !change(&mut board) {
-                return Ok(());
-            }
-            match host.write_board(dir, &board, seen) {
-                Ok(()) => return Ok(()),
-                Err(BoardWrite::Conflict) if tries < BOARD_TRIES => continue,
-                Err(BoardWrite::Conflict) => return Err("the board kept changing while it was written".into()),
-                Err(BoardWrite::Failed(e)) => return Err(e),
-            }
-        }
-        Ok(())
-    }
-
-    /// Put a Job's cards on the boards. Gives back what could not be placed.
-    fn place_cards(&mut self, host: &mut dyn Host, job: &Job) -> Vec<String> {
-        let mut failed = Vec::new();
-        let Some(s) = &self.state else { return failed };
-        let Some(plan) = &job.plan else { return failed };
+    /// Put a Job's cards on the boards, off the UI thread; what could not be
+    /// placed reaches the Founder when it is known.
+    fn place_cards(&mut self, host: &mut dyn Host, job: &Job) {
+        let Some(s) = &self.state else { return };
+        let Some(plan) = &job.plan else { return };
         let company = s.company.clone();
         for floor in &company.floors {
-            let cards: Vec<&PlanCard> = plan.cards.iter().filter(|c| c.floor == floor.id).collect();
+            let cards: Vec<PlanCard> = plan.cards.iter().filter(|c| c.floor == floor.id).cloned().collect();
             if cards.is_empty() {
                 continue;
             }
-            if let Err(e) = self.change_board(host, &floor.dir, &|b| {
-                place_on_board(b, &company, job, &cards);
-                true
-            }) {
-                failed.push(format!("Cards for {} were not placed: {e}.", floor.id));
-            }
+            let change = BoardChange::Place { job: job.clone(), cards, company: company.clone() };
+            let label = format!("Placing {}'s cards on {}", job.id, floor.id);
+            self.begin(host, Op::ChangeBoard { floor: floor.id.clone(), dir: floor.dir.clone(), change }, format!("board-{}-{}", job.id, floor.id), label);
         }
-        failed
     }
 
     /// Start the new hires, and anyone a plan reuses whose floor was closed. Gives
@@ -177,25 +187,6 @@ impl Engine {
         failed
     }
 
-    /// Write the roles a plan drafted, now the owner has approved them. Gives back which could not be.
-    fn save_roles(&self, roles: &[RoleDef]) -> Vec<String> {
-        let mut failed = Vec::new();
-        for r in roles {
-            let dir = self.root.join("roles").join(&r.id);
-            let mut def = serde_json::to_value(r).unwrap_or_default();
-            if let Some(o) = def.as_object_mut() {
-                o.remove("prompt");
-            }
-            let wrote = std::fs::create_dir_all(&dir)
-                .and_then(|()| std::fs::write(dir.join("role.json"), serde_json::to_string_pretty(&def).unwrap_or_default()))
-                .and_then(|()| std::fs::write(dir.join("prompt.md"), &r.prompt));
-            if let Err(e) = wrote {
-                failed.push(format!("Role {} was not saved: {e}.", r.id));
-            }
-        }
-        failed
-    }
-
     /// The owner approves a plan: hire, place the cards, start people. Whatever
     /// fails along the way, the Job runs, and the Founder hears what failed.
     pub fn approve(&mut self, host: &mut dyn Host, id: &str) -> Result<(), String> {
@@ -212,12 +203,16 @@ impl Engine {
         if let Err(e) = self.persist(std::slice::from_ref(&job)) {
             failed.push(format!("{} could not be saved: {e}.", job.id));
         }
-        failed.extend(self.save_roles(&r.saved));
-        failed.extend(self.refresh_files(host, &r.rewired));
-        failed.extend(self.place_cards(host, &job));
+        if !r.saved.is_empty() {
+            let op = Op::SaveRoles { root: self.root.clone(), roles: r.saved.clone() };
+            self.begin(host, op, format!("roles-{id}"), "Saving the new roles".into());
+        }
+        self.refresh_files(host, &r.rewired, true);
+        self.place_cards(host, &job);
         let starting: Vec<_> = r.hired.iter().chain(r.reused.iter()).cloned().collect();
         failed.extend(self.start_hires(host, &starting));
         self.run(host, report_failures(r.effects, &failed));
+        self.take_done(host);
         Ok(())
     }
 
@@ -263,11 +258,12 @@ impl Engine {
             self.interrupt(host, &p);
         }
         for f in self.floors_with_people() {
-            if let Err(e) = self.change_board(host, &f.dir, &|b| mark_job_stopped(b, id) > 0) {
-                host.log(&format!("{id}'s cards on {} were not marked: {e}", f.id));
-            }
+            let change = BoardChange::MarkStopped { job: id.to_string() };
+            let label = format!("Marking {id}'s cards on {}", f.id);
+            self.begin(host, Op::ChangeBoard { floor: f.id.clone(), dir: f.dir.clone(), change }, format!("board-{id}-{}", f.id), label);
         }
         self.run(host, vec![stopped_note(id)]);
+        self.take_done(host);
         Ok(())
     }
 

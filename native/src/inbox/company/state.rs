@@ -39,6 +39,10 @@ pub(in crate::inbox) struct CompanyUi {
     pub hint: String,
     /// The engine found a Job on disk at start: open on the Company once.
     pub land: bool,
+    /// The boot has not decided yet whether to land on the Company.
+    pub boot: bool,
+    /// The owner pressed a key or clicked since start: the app stays where they are.
+    pub touched: bool,
     pub subs: Vec<Subscription>,
     /// What each person has used in fresh tokens, by person id, and when it was last read.
     pub fresh: HashMap<String, Option<u64>>,
@@ -92,6 +96,10 @@ impl Inbox {
 
     /// Ctrl+Shift+O and the palette: Company and the Inbox, back and forth.
     pub(in crate::inbox) fn toggle_company(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A dialog, a sheet, Settings or Sessions stays in front: no page swaps under it.
+        if self.dialog_up() || self.sessions.is_some() {
+            return;
+        }
         if self.company.open { self.close_company(window, cx) } else { self.open_company(window, cx) }
     }
 

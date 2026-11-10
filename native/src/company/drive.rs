@@ -4,13 +4,16 @@
 //! tick takes it in through `Host::done`. A seat whose folder is ready starts
 //! then, on the UI thread, as a terminal must.
 
-use super::host::{Done, Op};
+use super::host::{Done, Loaded, Op};
 use crate::fleet::Fleet;
 use gpui_kit::App;
 use std::sync::Mutex;
 
 /// git's exclude file is one per repo, and floors share repos: one at a time.
 static EXCLUDING: Mutex<()> = Mutex::new(());
+
+/// One board change at a time, so two changes to one board never cross.
+static BOARDS: Mutex<()> = Mutex::new(());
 
 /// What slow work left for the next tick. One engine runs per app.
 static BACK: Mutex<Back> = Mutex::new(Back { done: Vec::new(), ready: Vec::new() });
@@ -56,7 +59,46 @@ pub(crate) fn run_op(op: Op) -> Done {
             let result = crate::gitexclude::keep_out(&dir);
             Done::Excluded { dir, result }
         }
+        Op::Load { root } => Done::Loaded(load(&root)),
+        Op::Files { root, people, roles, company, report } => {
+            let failed = match super::server::mcp_server() {
+                Some(mcp) => super::launch::refresh_files(&root, &people, &roles, &company, &mcp),
+                None => people.iter().map(|p| format!("{}'s files were not written: the app's MCP server is missing.", p.name)).collect(),
+            };
+            Done::Files { failed, report }
+        }
+        Op::SaveRoles { root, roles } => Done::RolesSaved(super::roles::save(&root, &roles)),
+        Op::ChangeBoard { floor, dir, change } => {
+            let _one = BOARDS.lock().unwrap_or_else(|p| p.into_inner());
+            let result = super::engine::change_board_with(
+                &mut || crate::board::read(&dir).map_err(|e| match e {
+                    crate::board::ReadError::Corrupt(why) | crate::board::ReadError::Unreadable(why) => why,
+                }),
+                &mut |b, seen| super::fleet_host::write_board_file(&dir, b, seen),
+                &change,
+            );
+            Done::BoardChanged { floor, change, result }
+        }
+        Op::ReadBoards { floors } => {
+            let read = floors
+                .into_iter()
+                .map(|(id, dir)| {
+                    let board = crate::board::read(&dir).map(|b| b.map(|(b, _)| b)).map_err(|e| format!("{e:?}"));
+                    (id, board)
+                })
+                .collect();
+            Done::BoardsRead(read)
+        }
     }
+}
+
+/// Seed the roles, then read the roles, the company and its Jobs.
+fn load(root: &std::path::Path) -> Result<Loaded, String> {
+    super::roles::seed(root).map_err(|e| format!("the roles could not be written: {e}"))?;
+    let roles = super::roles::load(root).map_err(|e| format!("the roles could not be read: {e}"))?;
+    let company = super::store::load_company(root).map_err(|e| format!("{e:#}"))?;
+    let (jobs, unreadable) = super::store::load_jobs(root).map_err(|e| format!("{e:#}"))?;
+    Ok(Loaded { company, jobs, unreadable, roles })
 }
 
 /// Settle Claude's folder question, then make the worktree. Blocking.

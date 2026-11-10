@@ -1,7 +1,7 @@
 //! People: starting them on what they had, typing messages in when they are
 //! ready for them, ending a turn (engine.ts ensurePerson, deliver, interrupt).
 
-use super::super::host::{Host, Restore};
+use super::super::host::{Host, Op, Restore};
 use super::super::org::person_by_id;
 use super::super::reduce::{Effect, Seen, note_person, typeable};
 use super::super::requests::{self, not_understood};
@@ -278,16 +278,16 @@ impl Engine {
         Ok(())
     }
 
-    /// A seat restarts on the files it was given: write everyone's again. Gives back whose could not be.
-    pub(crate) fn refresh_files(&mut self, host: &mut dyn Host, people: &[Person]) -> Vec<String> {
-        let Some(s) = &self.state else { return Vec::new() };
-        let company = s.company.clone();
-        let mut failed = Vec::new();
-        for p in people {
-            let Some(role) = s.roles.iter().find(|r| r.id == p.role) else { continue };
-            failed.extend(host.write_person_files(&self.root, p, role, &company));
+    /// A seat restarts on the files it was given: write these people's again, off
+    /// the UI thread. `report`: what could not be written goes to the Founder.
+    pub(crate) fn refresh_files(&mut self, host: &mut dyn Host, people: &[Person], report: bool) {
+        let Some(s) = &self.state else { return };
+        if people.is_empty() {
+            return;
         }
-        failed
+        let op = Op::Files { root: self.root.clone(), people: people.to_vec(), roles: s.roles.clone(), company: s.company.clone(), report };
+        let key = format!("files-{}", people.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(","));
+        self.begin(host, op, key, "Writing the people's files".into());
     }
 }
 

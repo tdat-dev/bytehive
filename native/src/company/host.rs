@@ -3,9 +3,9 @@
 //! the company's own files (company.json, jobs, the lock, requests) itself;
 //! everything else goes through here, so the engine is tested with a fake.
 
-use super::types::{Company, Person, RoleDef};
+use super::types::{Company, Job, Person, PlanCard, RoleDef};
 use crate::board::Board;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 /// An open project: every one with a folder is a floor.
@@ -58,18 +58,48 @@ pub enum BoardWrite {
     Failed(String),
 }
 
+/// The company as it was read off the disk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Loaded {
+    pub company: Company,
+    pub jobs: Vec<Job>,
+    /// Job files that could not be read, left in place.
+    pub unreadable: Vec<String>,
+    pub roles: Vec<RoleDef>,
+}
+
+/// A change to a floor's board.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BoardChange {
+    /// A Job's cards for this floor, at the end of its To do list.
+    Place { job: Job, cards: Vec<PlanCard>, company: Company },
+    /// A stopped Job's open cards marked as stopped.
+    MarkStopped { job: String },
+}
+
 /// Slow work the engine starts and never waits for: it runs off the UI thread,
 /// and its result comes back through `Host::done`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     /// Whether Node can run the MCP server.
     NodeCheck,
     /// Keep a project's .bytehive/ out of its git status.
     Exclude { dir: String },
+    /// Seed the roles, read the company, its Jobs and its roles.
+    Load { root: PathBuf },
+    /// Write these people's prompt, MCP config, plugin and settings. `report`:
+    /// failures go to the Founder, not only the log.
+    Files { root: PathBuf, people: Vec<Person>, roles: Vec<RoleDef>, company: Company, report: bool },
+    /// Write the roles a plan drafted, now the owner approved them.
+    SaveRoles { root: PathBuf, roles: Vec<RoleDef> },
+    /// Change a floor's board, trying again on an agent's write in between.
+    ChangeBoard { floor: String, dir: String, change: BoardChange },
+    /// Read these floors' boards (floor id, folder), for the watch.
+    ReadBoards { floors: Vec<(String, String)> },
 }
 
 /// What came of slow work since the last tick.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Done {
     /// Err is why a job is refused.
     Node(Result<(), String>),
@@ -77,6 +107,13 @@ pub enum Done {
     /// A person's start or restart is over: Claude's folder question settled
     /// first (Ok when there was none to settle), then the CLI started or not.
     Started { person: String, trust: Result<(), String>, start: Result<(), String> },
+    Loaded(Result<Loaded, String>),
+    /// What could not be written, as words.
+    Files { failed: Vec<String>, report: bool },
+    RolesSaved(Vec<String>),
+    BoardChanged { floor: String, change: BoardChange, result: Result<(), String> },
+    /// Each floor's board: None when it has none, Err when it could not be read.
+    BoardsRead(Vec<(String, Result<Option<Board>, String>)>),
 }
 
 /// No Host call blocks for more than a few ms: whatever takes longer (git, a
@@ -95,8 +132,6 @@ pub trait Host {
     fn seat(&self, person: &str) -> Option<SeatView>;
     /// Every seat's name: a new hire must not share one.
     fn seat_names(&self) -> Vec<String>;
-    /// The roles, the shipped ones written first where none is on disk.
-    fn load_roles(&mut self, root: &Path) -> Result<Vec<RoleDef>, String>;
     /// Write a person's prompt, MCP config, plugin and settings. Gives back what
     /// could not be written, as words for the Founder.
     fn write_person_files(&mut self, root: &Path, person: &Person, role: &RoleDef, company: &Company) -> Vec<String>;

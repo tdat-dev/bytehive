@@ -4,7 +4,7 @@
 //! Calls come one at a time through `&mut self`, which is the TS queue.
 
 use super::alerts::{Alert, Standing};
-use super::host::Host;
+use super::host::{Host, Loaded, Op};
 use super::lock::{self, EngineLock, LOCK_STALE_MS, LockMove, LockRead};
 use super::reduce::State;
 use super::requests::Drain;
@@ -23,6 +23,7 @@ mod people;
 mod watching;
 
 pub use people::Pending;
+pub(crate) use owner::change_board_with;
 
 #[cfg(test)]
 #[path = "engine_fake.rs"]
@@ -51,6 +52,9 @@ mod stop_tests;
 #[cfg(test)]
 #[path = "engine_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "engine_timing_tests.rs"]
+mod timing_tests;
 #[cfg(test)]
 #[path = "engine_watch_tests.rs"]
 mod watch_tests;
@@ -170,10 +174,13 @@ impl Engine {
     /// and every 30 s watch the work.
     pub fn tick(&mut self, host: &mut dyn Host) {
         self.heartbeat(host);
-        if self.state.is_none() {
+        if !self.holding {
             return;
         }
         self.take_done(host);
+        if self.state.is_none() {
+            return;
+        }
         self.read_requests(host);
         self.send_waiting(host);
         let now = host.now_ms();
@@ -185,6 +192,7 @@ impl Engine {
             self.last_watch = now;
             self.watch(host);
         }
+        self.take_done(host);
     }
 
     /// Who runs the company.
@@ -254,33 +262,34 @@ impl Engine {
         self.changed();
     }
 
-    /// Load the company and take charge of it.
+    /// Load the company and take charge of it, off the UI thread (`loaded`).
     fn load(&mut self, host: &mut dyn Host) {
         self.load_error = None;
-        let loaded = (|| -> Result<State, String> {
-            let roles = host.load_roles(&self.root)?;
-            let company = store::load_company(&self.root).map_err(|e| format!("{e:#}"))?;
-            let (jobs, unreadable) = store::load_jobs(&self.root).map_err(|e| format!("{e:#}"))?;
-            for name in unreadable {
-                let (key, text) = job_file_alert(&name);
-                self.standing.raise(&key, &text, None);
-            }
-            Ok(State { company, jobs, roles })
-        })();
-        match loaded {
-            Ok(state) => {
-                self.state = Some(state);
-                // Every member's MCP server runs on Node: asked once, off the UI thread.
-                self.begin(host, super::host::Op::NodeCheck, "node".into(), "Checking Node.js".into());
-            }
+        self.begin(host, Op::Load { root: self.root.clone() }, "load".into(), "Loading the company".into());
+    }
+
+    /// The company is read. Nothing loaded means nothing writes: a file that
+    /// could not be read stays as it is for you to mend.
+    pub(crate) fn loaded(&mut self, host: &mut dyn Host, read: Result<Loaded, String>) {
+        if !self.holding || self.state.is_some() {
+            return;
+        }
+        let l = match read {
+            Ok(l) => l,
             Err(e) => {
-                // No state means nothing writes: the file stays as it is for you to mend.
                 host.log(&format!("the company could not be loaded: {e}"));
                 self.load_error = Some(e);
                 self.changed();
                 return;
             }
+        };
+        for name in &l.unreadable {
+            let (key, text) = job_file_alert(name);
+            self.standing.raise(&key, &text, None);
         }
+        self.state = Some(State { company: l.company, jobs: l.jobs, roles: l.roles });
+        // Every member's MCP server runs on Node: asked once, off the UI thread.
+        self.begin(host, Op::NodeCheck, "node".into(), "Checking Node.js".into());
         self.sync_floors(host);
         if self.state.as_ref().is_some_and(|s| !s.jobs.is_empty()) {
             self.exclude_floors(host);
@@ -292,9 +301,7 @@ impl Engine {
         }
         // A seat restarts on the files it was given: after an update those are old laws.
         let people = self.state.as_ref().map(|s| s.company.people.clone()).unwrap_or_default();
-        for failed in self.refresh_files(host, &people) {
-            host.log(&failed);
-        }
+        self.refresh_files(host, &people, false);
         self.changed();
     }
 
