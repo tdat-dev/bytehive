@@ -174,7 +174,8 @@ impl Inbox {
         let acts = div().flex().flex_wrap().justify_end().gap(px(S2)).children(buttons);
         let what = (!w.what.is_empty()).then(|| text(BODY, INK).child(w.what.clone()));
         let more = (!w.more.is_empty()).then(|| text(META, INK_2).child(w.more.clone()));
-        let mut card = card().id(SharedString::from(format!("co-card-{key}"))).child(top);
+        // Everything here waits on you: amber, as the Inbox's rows that need you.
+        let mut card = card().bg(c(HONEY).opacity(0.08)).shadow(vec![ring(c(HONEY).opacity(0.3))]).id(SharedString::from(format!("co-card-{key}"))).child(top);
         if r.kind == NeedKind::Plan {
             card = card.children(what).children(self.co_details(r, cx)).children(self.co_note(&job, asking, short, cx)).child(acts);
         } else {

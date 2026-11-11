@@ -1,7 +1,8 @@
-//! The Company page (office.css .of): a bar with where you are and the way back
-//! to the Inbox, the floors where the building stood with the job box over
-//! them, and the rail beside. A short or narrow window gives the box its own
-//! row under the rail, which then scrolls as one.
+//! The Company page, dressed as the Inbox: the same top bar (Home, a headline,
+//! the way back to the Inbox), the floors in one panel with the job box at its
+//! foot, the rail in another beside it, and the Inbox's dock below. A short or
+//! narrow window gives the box its own row under the rail, which then scrolls
+//! as one.
 
 use super::look::*;
 use super::*;
@@ -30,8 +31,10 @@ impl Inbox {
         };
         let job_box = self.co_job_box(snap.model.as_ref(), compact, cx);
         // The box stands at the stage's foot: over a 2D list it would hide people, as it never did over the building.
-        let mut stage = div().relative().flex().flex_col().flex_1().min_w_0().min_h_0().child(div().flex_1().min_h_0().child(floors));
-        let mut side = div().flex().flex_col().flex_none().w(px(rail_w)).min_h_0().bg(c(PANEL)).shadow(vec![BoxShadow { color: line(), offset: point(px(1.0), px(0.0)), blur_radius: px(0.0), spread_radius: px(0.0), inset: true }]);
+        // The Inbox's panels: the queue's and the stage's frame, the dock's room below.
+        let panel = || div().flex().flex_col().min_h_0().mb(px(DOCK_H)).rounded(px(R_PANEL)).bg(c(PANEL)).shadow(vec![ring(line())]).overflow_hidden();
+        let mut stage = panel().relative().flex_1().min_w_0().ml(px(16.0)).child(div().flex_1().min_h_0().child(floors));
+        let mut side = panel().flex_none().w(px(rail_w)).mx(px(16.0));
         let rail = self.co_rail(&snap, compact, cx).p(px(S4)).flex_1().min_h_0();
         if compact {
             let below = self.co_rail_below(cx);
@@ -58,7 +61,7 @@ impl Inbox {
             side = side.child(rail.overflow_hidden());
             if let Some(b) = job_box {
                 let w = (size.width.as_f32() * 0.32).clamp(300.0, 460.0);
-                stage = stage.child(div().flex_none().px(px(S4)).pb(px(S4)).child(div().w(px(w)).p(px(S4)).rounded(px(R_CARD)).bg(c(PANEL)).shadow(vec![ring(line()), lift()]).child(b)));
+                stage = stage.child(div().flex_none().px(px(S4)).pb(px(S4)).child(div().w(px(w)).p(px(S4)).rounded(px(R_CARD)).bg(c(RAISED)).shadow(vec![ring(line()), lift()]).child(b)));
             }
         }
         // A confirm or a menu for a job that has gone goes with it.
@@ -72,6 +75,7 @@ impl Inbox {
             }
         }
         let confirm = snap.model.as_ref().and_then(|m| self.co_confirm(m, cx));
+        let needs = snap.model.as_ref().map_or(0, |m| m.needs.len());
         div()
             .relative()
             .size_full()
@@ -89,8 +93,11 @@ impl Inbox {
                     }
                 }),
             )
-            .child(self.co_bar(cx))
+            // The Inbox's amber haze over the top (agents_view).
+            .child(div().absolute().left(relative(0.62)).ml(px(-1100.0)).top(relative(-0.12)).mt(px(-460.0)).w(px(2200.0)).h(px(920.0)).child(img(haze()).size_full().object_fit(ObjectFit::Fill)))
+            .child(self.co_bar(needs, cx))
             .child(div().flex().flex_1().min_h_0().child(stage).child(side))
+            .child(self.dock(cx))
             .children(confirm)
             .into_any_element()
     }
@@ -117,37 +124,71 @@ impl Inbox {
         )
     }
 
-    /// .of-bar: where you are on the left, the way back to the Inbox on the right.
-    fn co_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let crumbs = div()
-            .flex()
-            .items_center()
-            .gap(px(S2))
-            .px(px(S1))
-            .child(img(logo::logo()).size(px(22.0)).flex_none())
-            .child(text(ROW, INK).font_weight(FontWeight::SEMIBOLD).child(words::BYTEHIVE))
-            .child(text(ROW, INK_3).child("\u{203a}"))
-            .child(text(ROW, INK).font_weight(FontWeight::SEMIBOLD).child(words::COMPANY));
-        let inbox = button("co-inbox", words::INBOX, Btn::Secondary, false, false)
-            .occlude()
-            .tooltip(tip(words::INBOX_TIP))
-            .on_click(cx.listener(|this, _, window, cx| this.close_company(window, cx)));
+    /// The Inbox's top bar (chrome.rs top_bar): Home, a headline of what waits,
+    /// the way back to the Inbox where the Company door stands there.
+    fn co_bar(&self, needs: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let rest = match needs {
+            0 => "Nothing needs you.".to_string(),
+            1 => "1 needs you.".to_string(),
+            n => format!("{n} need you."),
+        };
         div()
             .relative()
             .flex()
             .flex_none()
             .items_center()
-            .justify_between()
-            .gap(px(S3))
-            .h(px(BAR_H))
-            .pl(px(S3))
-            .pr(px(150.0))
-            .bg(c(PANEL))
-            .border_b_1()
-            .border_color(line())
+            .h(px(68.0))
+            .pl(px(12.0))
+            .pr(px(4.0))
             .window_control_area(WindowControlArea::Drag)
-            .child(crumbs)
-            .child(inbox)
+            .child(
+                div()
+                    .id("co-home")
+                    .occlude()
+                    .tooltip(tip("Home (keep agents running)"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.close_company(window, cx);
+                        this.open_home(window, cx);
+                    }))
+                    .size(px(30.0))
+                    .rounded(px(7.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .hover(|h| h.bg(c(PANEL)))
+                    .child(icon("home", 16.0, c(INK_3))),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_w_0()
+                    .ml(px(18.0))
+                    .truncate()
+                    .text_size(px(24.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(c(INK_3))
+                    .child(div().flex_none().font_weight(FontWeight::SEMIBOLD).text_color(c(INK)).child(format!("{}. ", words::COMPANY)))
+                    .child(div().min_w_0().truncate().child(rest)),
+            )
+            .child(
+                div()
+                    .id("co-inbox")
+                    .occlude()
+                    .tooltip(tip(words::INBOX_TIP))
+                    .flex()
+                    .items_center()
+                    .h(px(32.0))
+                    .px(px(14.0))
+                    .mr(px(146.0))
+                    .rounded_full()
+                    .text_size(px(13.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(c(INK_2))
+                    .hover(|d| d.bg(white_at(0.06)).text_color(c(INK)))
+                    .on_click(cx.listener(|this, _, window, cx| this.close_company(window, cx)))
+                    .child(words::INBOX),
+            )
             .child(div().absolute().top_0().right_0().child(chrome::window_buttons()))
     }
 }

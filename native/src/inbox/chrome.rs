@@ -155,7 +155,7 @@ impl Inbox {
             .justify_center()
             .items_center()
             .gap(px(10.0))
-            .child(div().flex().gap(px(2.0)).p(px(4.0)).rounded_full().bg(color(RAISE)).shadow(float()).child(seg("dock-focus", "focus", "Focus", !self.grid.on, "Focus: one agent at a time, full size (Alt+S switches)").on_click(cx.listener(|this, _, window, cx| this.set_grid(false, window, cx)))).child(seg("dock-grid", "grid", "Grid", self.grid.on, "Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)").on_click(cx.listener(|this, _, window, cx| this.set_grid(!this.grid.on, window, cx)))))
+            .child(div().flex().gap(px(2.0)).p(px(4.0)).rounded_full().bg(color(RAISE)).shadow(float()).child(seg("dock-focus", "focus", "Focus", !self.grid.on, "Focus: one agent at a time, full size (Alt+S switches)").on_click(cx.listener(|this, _, window, cx| this.dock_set_grid(false, window, cx)))).child(seg("dock-grid", "grid", "Grid", self.grid.on, "Grid: the agent you work with as a terminal, the others as cards beside it (Alt+S switches, Alt+P adds one)").on_click(cx.listener(|this, _, window, cx| this.dock_set_grid(!this.grid.on, window, cx)))))
             .child(
                 div()
                     .id("dock-search")
@@ -199,5 +199,13 @@ impl Inbox {
             .child(round("dock-sessions", "Sessions: read back earlier conversations (Alt+O)").on_click(cx.listener(|this, _, window, cx| this.open_sessions(window, cx))).child(icon("sessions", 17.0, color(INK_2))))
             .child(round("dock-help", "What ByteHive can do (?)").text_size(px(16.0)).font_weight(FontWeight::SEMIBOLD).text_color(color(INK_2)).child("?"))
             .child(round("dock-settings", "Settings (Ctrl+,)").on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))).child(icon("settings", 17.0, color(INK_2))))
+    }
+
+    /// Focus or Grid from the dock: on the Company page it also goes back to the agents.
+    fn dock_set_grid(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.company.open {
+            self.close_company(window, cx);
+        }
+        self.set_grid(on, window, cx);
     }
 }

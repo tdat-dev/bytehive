@@ -26,7 +26,6 @@ pub(super) const CLOSE_NOTE: &str = "Close the note";
 pub(super) const DETAILS: &str = "Details";
 pub(super) const KEEP_JOB: &str = "Keep job";
 pub(super) const COMPANY: &str = "Company";
-pub(super) const BYTEHIVE: &str = "ByteHive";
 pub(super) const NOBODY_HERE: &str = "Nobody works here yet.";
 pub(super) const SOMETHING_WRONG: &str = "Something went wrong.";
 pub(super) const INBOX_TIP: &str = "Inbox (Ctrl+Shift+O)";

@@ -25,8 +25,8 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use super::style::tip;
-use super::{Inbox, chrome, logo};
+use super::style::{haze, icon, tip};
+use super::{DOCK_H, Inbox, chrome};
 use crate::fleet::now_ms;
 
 pub(in crate::inbox) use state::CompanyUi;
