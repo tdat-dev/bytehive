@@ -789,7 +789,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "bytehive-native"
-version = "0.16.2"
+version = "0.16.3"
 dependencies = [
  "agent-core",
  "alacritty_terminal",

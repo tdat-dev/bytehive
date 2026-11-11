@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.3] - 2026-11-11
+
+### Fixed
+
+- **Company staff never work in the project folder.** Someone whose worktree
+  was merged away or deleted started again in the project itself when the next
+  job, or Resume, woke them. They now get a fresh worktree from the base.
+
+### Changed
+
+- **Mark done tidies up.** People on the finished job who have nothing to merge
+  (a Lead who only handed out cards, a QA who only reported) stop, and their
+  empty worktree and branch are removed. Anyone with work in theirs, or still
+  on another job, is left alone.
+
 ## [0.16.2] - 2026-11-11
 
 ### Fixed
