@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.5] - 2026-11-11
+
+### Fixed
+
+- **Every key reaches the terminal again, not only letters.** While an agent
+  was printing, keys typed into its terminal skipped ByteHive's key handling:
+  arrows, Enter, Backspace, Esc, Shift+Tab and Ctrl or Alt shortcuts were lost,
+  so Claude Code's choice menus froze and shortcuts did nothing. Plain letters
+  still got through, which hid it.
+- **Vietnamese typing no longer drops letters at random.** UniKey's backspaces
+  were among the lost keys, in the terminal and in ByteHive's own text boxes
+  (Home, New agent, Ctrl+K, the Company's job box).
+
 ## [0.16.4] - 2026-11-11
 
 ### Changed
