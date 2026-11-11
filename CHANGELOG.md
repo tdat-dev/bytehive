@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-11
+
+### Fixed
+
+- **Buttons in the top bar click again.** In 0.16.0 a click on Home, Company,
+  Resume all, or minimise, maximise and close grabbed the window to drag it
+  instead of pressing the button. The same went for Inbox and the way back on
+  the Company page and Back to your agents on Home. The empty part of each bar
+  still moves the window.
+- **A tip no longer covers the Company's job box.** Tips about the agent list
+  wait until you are back on it.
+- **A person's line in the Company names their job.** The Founder read
+  "Working: Founder"; it now names the job they are planning or running.
+
 ## [0.16.0] - 2026-11-11
 
 ### Added
