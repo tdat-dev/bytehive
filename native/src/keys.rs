@@ -165,6 +165,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_key_taken_with_a_queue_filter_still_counts_as_taken() {
+        assert!(removing(PM_REMOVE as usize));
+        assert!(removing(PM_REMOVE as usize | PM_QS_POSTMESSAGE as usize), "GPUI's busy drain passes PM_REMOVE with a filter (measured: 0x980001)");
+        assert!(removing(0x0007_0001), "PM_REMOVE | PM_QS_INPUT");
+        assert!(!removing(0), "PM_NOREMOVE only looks");
+    }
+
+    #[test]
     fn only_the_app_s_few_keys_stay_local_over_a_terminal() {
         let o = b'O' as u16;
         assert!(!local_key(o, true, false, true), "Ctrl+Shift+O is the program's: a focused terminal keeps every key");
@@ -202,6 +210,24 @@ fn take_packet(msg: &MSG) -> bool {
     true
 }
 
+/// The same race in the app's own text boxes (Home, New agent, Ctrl+K, the
+/// Company's job box): GPUI deletes on UniKey's backspace at once while the
+/// letter's WM_CHAR waits. Turn the key into its WM_CHAR here, so GPUI takes
+/// the letter in its place.
+fn packet_to_char(msg: &mut MSG) {
+    IN_PACKET.store(true, Ordering::Relaxed);
+    unsafe {
+        TranslateMessage(msg);
+        let mut ch: MSG = std::mem::zeroed();
+        if PeekMessageW(&mut ch, msg.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE | PM_QS_POSTMESSAGE) != 0 {
+            msg.message = WM_CHAR;
+            msg.wParam = ch.wParam;
+            msg.lParam = ch.lParam;
+        }
+    }
+    IN_PACKET.store(false, Ordering::Relaxed);
+}
+
 fn send(bytes: Vec<u8>) {
     if let Some((sink, last_input)) = SINK.lock().unwrap().as_ref() {
         last_input.store(crate::fleet::now_ms(), Ordering::Relaxed);
@@ -209,8 +235,23 @@ fn send(bytes: Vec<u8>) {
     }
 }
 
+/// The message is being taken off the queue. The hook's wParam carries the
+/// whole PeekMessage flags, filter and all: GPUI, busy with a terminal's
+/// output, drains keys with PM_REMOVE | PM_QS_INPUT, and a check for exactly
+/// PM_REMOVE let every one of those past the terminal (arrows, Enter,
+/// Backspace, Shift+Tab, Ctrl+anything: only plain text still got through).
+fn removing(wparam: WPARAM) -> bool {
+    wparam & PM_REMOVE as usize != 0
+}
+
 unsafe extern "system" fn on_message(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code >= 0 && wparam == PM_REMOVE as usize && ACTIVE.load(Ordering::Relaxed) {
+    if code >= 0 && removing(wparam) && !ACTIVE.load(Ordering::Relaxed) && !IN_PACKET.load(Ordering::Relaxed) {
+        let msg = unsafe { &mut *(lparam as *mut MSG) };
+        if msg.message == WM_KEYDOWN && msg.wParam as u16 == VK_PACKET {
+            packet_to_char(msg);
+        }
+    }
+    if code >= 0 && removing(wparam) && ACTIVE.load(Ordering::Relaxed) {
         let msg = unsafe { &mut *(lparam as *mut MSG) };
         match msg.message {
             WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP => {
