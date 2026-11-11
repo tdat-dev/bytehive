@@ -4,6 +4,7 @@
 
 
 mod colors;
+mod focus;
 mod mouse;
 mod paint;
 mod ime;
@@ -171,6 +172,9 @@ pub struct Terminal {
     wheel: f32,
     /// Its own text size, while the Grid grows it; else the setting's.
     font: Option<f32>,
+    /// It had the keyboard when last told (focus.rs), and what watches for that.
+    had_focus: bool,
+    focus_watch: Vec<Subscription>,
 }
 
 impl Terminal {
@@ -254,6 +258,8 @@ impl Terminal {
                 selecting: false,
                 wheel: 0.0,
                 font: None,
+                had_focus: false,
+                focus_watch: Vec::new(),
             }
         }))
     }
@@ -383,7 +389,8 @@ fn is_emoji(c: char) -> bool {
 }
 
 impl Render for Terminal {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.watch_focus(window, cx);
         let this = cx.entity();
         let focus = self.focus.clone();
         let size = self.text_px();

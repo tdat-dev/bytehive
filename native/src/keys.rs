@@ -149,10 +149,19 @@ fn local_key(vk: u16, ctrl: bool, alt: bool, shift: bool) -> bool {
     (ctrl && !alt && !shift && (vk == b'V' as u16 || vk == b'K' as u16)) || (ctrl && shift && !alt && vk == b'T' as u16) || (alt && vk == VK_F4)
 }
 
+/// The hook's state is one per process: tests that drive it take turns.
+#[cfg(test)]
+static TEST_KEYS: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+#[path = "keys_tests.rs"]
+mod coverage;
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn notes_when_you_last_typed_into_the_terminal() {
+        let _one = super::TEST_KEYS.lock().unwrap_or_else(|e| e.into_inner());
         let (tx, rx) = std::sync::mpsc::channel();
         let last = std::sync::Arc::new(super::AtomicU64::new(0));
         super::set_sink(tx, last.clone());
