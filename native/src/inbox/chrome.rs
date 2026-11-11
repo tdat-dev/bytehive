@@ -2,11 +2,15 @@
 
 use super::*;
 
-/// Minimise, maximise, close: Windows' own caption buttons, drawn.
+/// Minimise, maximise, close: Windows' own caption buttons, drawn. Each one
+/// occludes: GPUI answers Windows' hit test with the first control area under
+/// the mouse in paint order, so the bar's Drag behind a button would win and
+/// turn every click on it into a window drag.
 pub(super) fn window_buttons() -> Div {
     let button = |name: &'static str, area: WindowControlArea, id: &'static str, close: bool| {
         div()
             .id(id)
+            .occlude()
             .w(px(46.0))
             .h(px(38.0))
             .flex()
@@ -37,7 +41,7 @@ impl Inbox {
             .pl(px(12.0))
             .pr(px(4.0))
             .window_control_area(WindowControlArea::Drag)
-            .child(div().id("home").tooltip(tip("Home (keep agents running)")).on_click(cx.listener(|this, _, window, cx| this.open_home(window, cx))).size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("home", 16.0, color(INK_3))))
+            .child(div().id("home").occlude().tooltip(tip("Home (keep agents running)")).on_click(cx.listener(|this, _, window, cx| this.open_home(window, cx))).size(px(30.0)).rounded(px(7.0)).flex().items_center().justify_center().hover(|h| h.bg(color(0x0e0f11))).child(icon("home", 16.0, color(INK_3))))
             .children(self.co_crumb(cx))
             .child(
                 div()
@@ -57,6 +61,7 @@ impl Inbox {
             .child(
                 div()
                     .id("company-door")
+                    .occlude()
                     .tooltip(tip("Company (Ctrl+Shift+O)"))
                     .flex()
                     .items_center()
@@ -76,6 +81,7 @@ impl Inbox {
                 bar.child(
                     div()
                         .id("resume-all")
+                        .occlude()
                         .tooltip(tip("Resume every stopped agent"))
                         .flex()
                         .items_center()

@@ -259,6 +259,7 @@ impl Inbox {
             div().absolute().top(px(9.0)).left_0().right_0().flex().justify_center().child(
                 div()
                     .id("home-resume")
+                    .occlude()
                     .flex()
                     .items_center()
                     .gap(px(8.0))
