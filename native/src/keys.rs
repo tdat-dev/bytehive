@@ -21,7 +21,8 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_PACKET, VK_PROCESSKEY, VK_RCONTROL, VK_RMENU, VK_SCROLL, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, MSG, PM_REMOVE, SetWindowsHookExW, WH_GETMESSAGE, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_NULL, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, MSG, PM_QS_POSTMESSAGE, PM_REMOVE, PeekMessageW, SetWindowsHookExW, TranslateMessage, WH_GETMESSAGE, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_NULL, WM_SYSKEYDOWN,
+    WM_SYSKEYUP,
 };
 
 const RIGHT_ALT: u32 = 0x01;
@@ -44,6 +45,8 @@ static WIN32_MODE: AtomicBool = AtomicBool::new(false);
 /// The focused terminal's writer, and where it notes when you last typed into it.
 static SINK: Mutex<Option<(Sender<Vec<u8>>, Arc<AtomicU64>)>> = Mutex::new(None);
 static HOOK: AtomicIsize = AtomicIsize::new(0);
+/// A UniKey character is being pulled out of its WM_CHAR right now.
+static IN_PACKET: AtomicBool = AtomicBool::new(false);
 
 /// Hook this thread's message queue. Call once, on the thread running GPUI.
 pub fn install() {
@@ -173,6 +176,32 @@ mod tests {
     }
 }
 
+/// Text typed in by SendInput (UniKey, EVKey) comes as VK_PACKET, and only
+/// TranslateMessage knows its character: it posts a WM_CHAR. Left to GPUI,
+/// that WM_CHAR waits in the posted queue while GPUI, busy with a terminal's
+/// output, drains only input messages, so UniKey's backspaces overtook the
+/// letters they made room for ("k lamf" came out "k àm"). Translate it here
+/// and take the WM_CHAR at once, so the letter goes out in its place (as
+/// Firefox does). Only posted messages are peeked: nothing sent to a window
+/// runs from inside this hook. Should no WM_CHAR come, the key is left to GPUI.
+fn take_packet(msg: &MSG) -> bool {
+    let mut units = Vec::new();
+    IN_PACKET.store(true, Ordering::Relaxed);
+    unsafe {
+        TranslateMessage(msg);
+        let mut ch: MSG = std::mem::zeroed();
+        while PeekMessageW(&mut ch, msg.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE | PM_QS_POSTMESSAGE) != 0 {
+            units.push(ch.wParam as u16);
+        }
+    }
+    IN_PACKET.store(false, Ordering::Relaxed);
+    if units.is_empty() {
+        return false;
+    }
+    send(text_records(&String::from_utf16_lossy(&units)));
+    true
+}
+
 fn send(bytes: Vec<u8>) {
     if let Some((sink, last_input)) = SINK.lock().unwrap().as_ref() {
         last_input.store(crate::fleet::now_ms(), Ordering::Relaxed);
@@ -186,9 +215,13 @@ unsafe extern "system" fn on_message(code: i32, wparam: WPARAM, lparam: LPARAM) 
         match msg.message {
             WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP => {
                 let vk = msg.wParam as u16;
-                // An IME's key, and text typed in by SendInput (UniKey): both
-                // come back as text, through GPUI's input handler or WM_CHAR.
-                if vk != VK_PROCESSKEY && vk != VK_PACKET && !stays_local(vk) {
+                if vk == VK_PACKET {
+                    let up = matches!(msg.message, WM_KEYUP | WM_SYSKEYUP);
+                    if up || take_packet(msg) {
+                        msg.message = WM_NULL;
+                    }
+                // An IME's key comes back as text, through GPUI's input handler.
+                } else if vk != VK_PROCESSKEY && !stays_local(vk) {
                     let down = matches!(msg.message, WM_KEYDOWN | WM_SYSKEYDOWN);
                     let sc = ((msg.lParam >> 16) & 0xff) as u32;
                     let enhanced = msg.lParam & (1 << 24) != 0;
@@ -202,7 +235,7 @@ unsafe extern "system" fn on_message(code: i32, wparam: WPARAM, lparam: LPARAM) 
                     msg.message = WM_NULL;
                 }
             }
-            WM_CHAR => {
+            WM_CHAR if !IN_PACKET.load(Ordering::Relaxed) => {
                 send(text_records(&String::from_utf16_lossy(&[msg.wParam as u16])));
                 msg.message = WM_NULL;
             }
