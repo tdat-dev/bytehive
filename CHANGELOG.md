@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-11-11
+
+### Fixed
+
+- **Vietnamese typing with UniKey or EVKey in a terminal.** While an agent was
+  printing, a letter with a tone mark could arrive after the backspaces UniKey
+  sends to make room for it, so letters went missing ("k lamf" came out
+  "k àm"). Each letter now reaches the terminal in the order it was typed.
+
 ## [0.16.1] - 2026-11-11
 
 ### Fixed
