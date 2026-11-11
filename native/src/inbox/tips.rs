@@ -2,7 +2,7 @@
 //! (hint.ts, .hint) the first time something it explains becomes useful: the
 //! welcome a moment after start, the right-click menu with the first agent,
 //! the Grid with the second, Changes when an agent finishes. Each shows once,
-//! never two within 20 s, never over Home. Settings > Inbox turns them off or
+//! never two within 20 s, never over Home or the Company page. Settings > Inbox turns them off or
 //! brings them back.
 
 use super::*;
@@ -99,8 +99,9 @@ impl Inbox {
     /// Show a tip if it is new, tips are on, and none showed in the last 20 s.
     /// `lead` goes before it (an agent's name). Whether it showed.
     fn show_tip(&mut self, tip: Tip, lead: &str, now: u64, cx: &mut Context<Self>) -> bool {
-        // Not over Home: the tip would be about a screen you can't see.
-        if !self.prefs.tips || self.home || self.tip_seen(tip) || now.saturating_sub(self.tips.last_at) < GAP_MS {
+        // Not over Home or the Company page: the tip would be about a screen
+        // you can't see, and on the Company page it covered the job box.
+        if !self.prefs.tips || self.away_from_agents() || self.tip_seen(tip) || now.saturating_sub(self.tips.last_at) < GAP_MS {
             return false;
         }
         self.prefs.tips_seen.push(tip.id().to_string());
@@ -146,6 +147,11 @@ impl Inbox {
         }
     }
 
+    /// Home or the Company page is up, not the agent list a tip points at.
+    fn away_from_agents(&self) -> bool {
+        self.home || self.company.open
+    }
+
     /// Settings > Show tips again.
     pub(super) fn reset_tips(&mut self) {
         self.prefs.tips_seen.clear();
@@ -156,7 +162,7 @@ impl Inbox {
 
     /// .hint: the card over the agent list, bottom left.
     pub(super) fn tip_view(&self) -> Option<AnyElement> {
-        let (words, _) = self.tips.shown.as_ref().filter(|_| !self.home)?;
+        let (words, _) = self.tips.shown.as_ref().filter(|_| !self.away_from_agents())?;
         let words = words.iter().map(|w| match w {
             Word::Plain(t) => div().text_color(color(INK)).child(t.clone()),
             Word::Bold(t) => div().text_color(color(INK)).font_weight(FontWeight::BOLD).child(t.clone()),
