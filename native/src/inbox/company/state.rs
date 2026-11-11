@@ -259,38 +259,33 @@ impl Inbox {
         self.co_result(r, cx);
     }
 
-    /// Start the stopped people of a Job again, one at a time: a start holds the UI
-    /// thread for tens of ms, so they go in turn rather than in one frozen frame.
+    /// Start the stopped people of a Job again, the way the engine wakes anyone: on
+    /// their own worktree, a fresh one if theirs is gone. Their folders are made
+    /// ready off the UI thread and they start one a tick, so no frame freezes.
     pub(super) fn co_resume(&mut self, job: &str, cx: &mut Context<Self>) {
         let Some(engine) = &self.company.engine else { return };
         let people = engine.view().jobs.into_iter().find(|j| j.id == job).map(|j| j.people).unwrap_or_default();
-        let seats: Vec<String> = self
-            .fleet
-            .seats
-            .iter()
-            .filter(|s| s.terminal.is_none() && s.spec.person.as_ref().is_some_and(|p| people.contains(p)))
-            .map(|s| s.spec.id.clone())
-            .collect();
-        cx.spawn(async move |this, cx| {
-            for id in seats {
-                let went = this.update(cx, |this, cx| {
-                    if let Some(i) = this.fleet.seats.iter().position(|s| s.spec.id == id && s.terminal.is_none()) {
-                        this.start_seat(i, cx);
-                    }
-                    cx.notify();
-                });
-                if went.is_err() {
-                    break;
-                }
-                cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
+        for p in people {
+            let r = self.co_engine(cx, |e, host| e.wake_person(host, &p));
+            if let Some(Err(why)) = r {
+                self.co_result(Some(Err(why)), cx);
+                return;
             }
-        })
-        .detach();
+        }
+        cx.notify();
     }
 
     pub(super) fn co_finish(&mut self, job: &str, cx: &mut Context<Self>) {
         let r = self.co_act(cx, |d| d.finish(job), |e, host| e.finish_job(host, job));
-        self.co_result(r, cx);
+        if self.co_result(r, cx)
+            && let Some(e) = &self.company.engine
+        {
+            let jobs = e.view().jobs;
+            // Someone still on another Job keeps their folder and their seat.
+            let busy: Vec<&String> = jobs.iter().filter(|j| j.id != job && going(&j.status).is_some()).flat_map(|j| &j.people).collect();
+            let done: Vec<String> = jobs.iter().filter(|j| j.id == job).flat_map(|j| j.people.clone()).filter(|p| !busy.contains(&p)).collect();
+            self.co_tidy(&done, cx);
+        }
     }
 
     pub(super) fn co_stop(&mut self, job: &str, cx: &mut Context<Self>) {

@@ -79,3 +79,12 @@ fn reads_a_screen_again_only_after_new_output() {
     drop(look);
     assert_eq!(reads, 2);
 }
+
+#[test]
+fn makes_staff_a_fresh_worktree_once_theirs_is_gone_and_never_the_founder() {
+    let here = |w: &str| w == "D:/wt/hai";
+    assert!(!needs_worktree("hai", Some("D:/wt/hai"), here), "theirs is still there");
+    assert!(needs_worktree("hai", None, here), "merged away or given back");
+    assert!(needs_worktree("hai", Some("D:/wt/gone"), here), "deleted under them");
+    assert!(!needs_worktree(FOUNDER_ID, None, here), "the Founder works in the project");
+}

@@ -11,6 +11,7 @@ mod rail;
 mod rows;
 mod source;
 mod state;
+mod tidy;
 mod view;
 mod words;
 #[cfg(test)]

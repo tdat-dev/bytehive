@@ -6,7 +6,7 @@
 
 use super::drive::{self, Prepare};
 use super::host::{BoardStamp, BoardWrite, Done, Host, Op, Project, Restore, SeatView};
-use super::types::{Company, Person, Rank, RoleDef};
+use super::types::{Company, FOUNDER_ID, Person, Rank, RoleDef};
 use crate::board::{self, Board};
 use crate::fleet::{Fleet, Seat, now_ms};
 use gpui_kit::App;
@@ -215,13 +215,20 @@ impl Host for FleetHost<'_> {
         let Some(i) = self.index_of(person) else { return };
         let seat = &mut self.fleet.seats[i];
         seat.preparing = true;
+        let worktree = needs_worktree(person, seat.spec.worktree.as_deref(), |w| Path::new(w).is_dir());
+        if worktree {
+            // Merged away or given back at Mark done: never the project folder, a fresh one from the base.
+            seat.spec.worktree = None;
+            seat.spec.branch = None;
+            seat.spec.merged_into = None;
+        }
         let p = Prepare {
             seat: seat.spec.id.clone(),
             person: person.to_string(),
             name: seat.spec.name.clone(),
             dir: seat.spec.run_dir().to_string(),
             claude: seat.spec.cli.eq_ignore_ascii_case("claude"),
-            worktree: false,
+            worktree,
         };
         self.prepare(p);
     }
@@ -260,6 +267,12 @@ impl Host for FleetHost<'_> {
         eprintln!("[bytehive] {line}");
     }
 
+}
+
+/// Staff work in a worktree of their own: one that was merged away, given back
+/// or deleted is made again before they start. The Founder works in the project.
+pub(crate) fn needs_worktree(person: &str, worktree: Option<&str>, exists: impl Fn(&str) -> bool) -> bool {
+    person != FOUNDER_ID && worktree.is_none_or(|w| !exists(w))
 }
 
 #[cfg(test)]
