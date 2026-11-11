@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.4] - 2026-11-11
+
+### Changed
+
+- **The Company page looks like the rest of ByteHive.** It had kept the old
+  office's own colours, a thin bar and square buttons. It now has the Inbox's
+  top bar (Home, a headline of what waits on you, the way back to the Inbox),
+  the same near-black panels, pill buttons, and the dock at the bottom. The
+  floors read like the agent list, and what waits on you is amber, as it is
+  in the Inbox.
+
 ## [0.16.3] - 2026-11-11
 
 ### Fixed
