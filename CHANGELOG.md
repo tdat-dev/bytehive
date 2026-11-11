@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.6] - 2026-11-11
+
+### Fixed
+
+- **A terminal says when it gains or loses focus, as a console window does.**
+  A program that asks to be told (DECSET 1004) now hears it when you click
+  into its terminal, move to another agent or switch to another window.
+
+### Internal
+
+- **Every Windows key is tested through the real key hook.** All 254 virtual
+  keys, bare and under Ctrl, Alt and Shift, must reach the program as a
+  console record; only ByteHive's own Ctrl+V, Ctrl+K, Ctrl+Shift+T and Alt+F4
+  stay with the app. The bug fixed in 0.16.5 fails this test.
+
 ## [0.16.5] - 2026-11-11
 
 ### Fixed
