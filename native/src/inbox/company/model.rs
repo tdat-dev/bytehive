@@ -8,7 +8,7 @@ use crate::company::types::{Company, Job, JobStatus, Person, Rank, RoleDef};
 use std::collections::BTreeMap;
 use supervise::task_state::{TaskState, TaskStatus};
 
-use super::words::{RESUME_DETAIL, going, resume_title, status_line};
+use super::words::{RESUME_DETAIL, clip, going, resume_title, status_line};
 
 /// The one place a person's state comes from. Stopped covers no seat and a
 /// merged agent: the chair is empty.
@@ -123,14 +123,27 @@ fn title_case(id: &str) -> String {
     }).collect::<Vec<_>>().join(" ")
 }
 
-fn to_person(p: &Person, role: Option<&RoleDef>, pane: Option<&Pane>) -> OfficePerson {
+/// The Job a person is on. The Founder is on the one they plan, else the newest running;
+/// anyone else on a running Job that counts them in.
+fn job_for<'a>(jobs: &'a [Job], p: &Person) -> Option<&'a Job> {
+    if p.rank == Rank::Founder {
+        let planning = jobs.iter().find(|j| j.status == JobStatus::Planning);
+        return planning.or_else(|| jobs.iter().rev().find(|j| j.status == JobStatus::Running));
+    }
+    jobs.iter().rev().find(|j| j.status == JobStatus::Running && j.people.contains(&p.id))
+}
+
+fn to_person(p: &Person, role: Option<&RoleDef>, pane: Option<&Pane>, jobs: &[Job]) -> OfficePerson {
+    let title = role.map_or_else(|| title_case(&p.role), |r| r.title.clone());
+    // A seat is named after its role, which the line already says: name the Job instead.
+    let seat = pane.and_then(|x| x.doing.clone()).filter(|d| *d != title);
     OfficePerson {
         id: p.id.clone(),
         name: p.name.clone(),
         rank: p.rank.clone(),
-        title: role.map_or_else(|| title_case(&p.role), |r| r.title.clone()),
         state: office_state(pane.map(|x| &x.status)),
-        doing: pane.and_then(|x| x.doing.clone()),
+        doing: job_for(jobs, p).map(|j| clip(&j.title)).or(seat),
+        title,
         floor_id: p.floor.clone(),
         seated: pane.is_some(),
     }
@@ -164,7 +177,7 @@ pub(super) fn office_model(
     let pane_of = |id: &str| panes.iter().find(|p| p.person_id == id);
     let open = |dir: &str| open_dirs.iter().any(|d| crate::presets::same_folder(d, dir));
 
-    let founder = company.people.iter().find(|p| p.rank == Rank::Founder).map(|p| to_person(p, role_of(&p.role), pane_of(&p.id)));
+    let founder = company.people.iter().find(|p| p.rank == Rank::Founder).map(|p| to_person(p, role_of(&p.role), pane_of(&p.id), jobs));
     let names = Names { floors: &company.floors, roles };
     // Someone with nothing to merge is as done as someone merged: the walk never
     // sends the owner to a Review that says there is nothing to review.
@@ -178,7 +191,7 @@ pub(super) fn office_model(
             let here: Vec<&Person> = company.people.iter().filter(|p| p.floor.as_deref() == Some(f.id.as_str())).collect();
             // The Lead sits first.
             let seated = here.iter().filter(|p| p.rank == Rank::Lead).chain(here.iter().filter(|p| p.rank != Rank::Lead));
-            let people: Vec<OfficePerson> = seated.map(|p| to_person(p, role_of(&p.role), pane_of(&p.id))).collect();
+            let people: Vec<OfficePerson> = seated.map(|p| to_person(p, role_of(&p.role), pane_of(&p.id), jobs)).collect();
             let mut wanted: Vec<&str> = people.iter().filter(|p| p.state == OfficeState::Needs).map(|p| p.id.as_str()).collect();
             for r in &rows {
                 if let Some(id) = r.person_id.as_deref().filter(|id| people.iter().any(|p| p.id == *id)) {

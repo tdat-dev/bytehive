@@ -15,6 +15,8 @@ mod view;
 mod words;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod doing_tests;
 
 // Named, not the Inbox's glob: its colours would clash with the Company's own (look.rs).
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};

@@ -191,7 +191,7 @@ pub(super) fn status_line(name: &str, s: &TaskStatus) -> String {
 }
 
 /// A job's title is the whole ask: a line that names it takes its first words.
-fn clip(title: &str) -> String {
+pub(super) fn clip(title: &str) -> String {
     const MAX: usize = 60;
     if title.chars().count() <= MAX {
         return title.to_string();
