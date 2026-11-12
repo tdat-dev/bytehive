@@ -40,10 +40,8 @@ const NO_STATE_CHANGE: u32 = 0x4;
 
 /// A terminal has focus: keys belong to it, not to GPUI.
 static ACTIVE: AtomicBool = AtomicBool::new(false);
-/// ConPTY opened win32-input-mode (it does on every session).
-static WIN32_MODE: AtomicBool = AtomicBool::new(false);
 /// The focused terminal's writer, and where it notes when you last typed into it.
-static SINK: Mutex<Option<(Sender<Vec<u8>>, Arc<AtomicU64>)>> = Mutex::new(None);
+static SINK: Mutex<Option<(Sender<Vec<u8>>, Arc<AtomicU64>, Arc<AtomicBool>)>> = Mutex::new(None);
 static HOOK: AtomicIsize = AtomicIsize::new(0);
 /// A UniKey character is being pulled out of its WM_CHAR right now.
 static IN_PACKET: AtomicBool = AtomicBool::new(false);
@@ -58,29 +56,24 @@ pub fn install() {
 }
 
 /// Where keys go from now on: the focused terminal's writer, and its last-input time.
-pub fn set_sink(sink: Sender<Vec<u8>>, last_input: Arc<AtomicU64>) {
-    *SINK.lock().unwrap() = Some((sink, last_input));
+pub fn set_sink(sink: Sender<Vec<u8>>, last_input: Arc<AtomicU64>, win32: Arc<AtomicBool>) {
+    *SINK.lock().unwrap() = Some((sink, last_input, win32));
+}
+
+/// The terminal that has the keys wants Windows key records: its own ConPTY
+/// said so (keymode.rs), whatever the other terminals' ConPTYs say.
+fn win32() -> bool {
+    SINK.lock().unwrap().as_ref().is_some_and(|(_, _, w)| w.load(Ordering::Relaxed))
 }
 
 pub fn set_active(active: bool) {
     ACTIVE.store(active, Ordering::Relaxed);
 }
 
-/// Follow ConPTY switching win32-input-mode in this output.
-pub fn watch_mode(bytes: &[u8]) {
-    let last = |needle: &[u8]| bytes.windows(needle.len()).rposition(|w| w == needle);
-    match (last(b"\x1b[?9001h"), last(b"\x1b[?9001l")) {
-        (Some(on), Some(off)) => WIN32_MODE.store(on > off, Ordering::Relaxed),
-        (Some(_), None) => WIN32_MODE.store(true, Ordering::Relaxed),
-        (None, Some(_)) => WIN32_MODE.store(false, Ordering::Relaxed),
-        (None, None) => {}
-    }
-}
-
 /// Text as console key events, one press and release per UTF-16 unit. What an
 /// IME commits or UniKey types has no key behind it, so Vk and Sc stay 0.
-pub fn text_records(text: &str) -> Vec<u8> {
-    if !WIN32_MODE.load(Ordering::Relaxed) {
+pub fn text_records(text: &str, win32: bool) -> Vec<u8> {
+    if !win32 {
         return text.as_bytes().to_vec();
     }
     let mut out = Vec::new();
@@ -164,7 +157,7 @@ mod tests {
         let _one = super::TEST_KEYS.lock().unwrap_or_else(|e| e.into_inner());
         let (tx, rx) = std::sync::mpsc::channel();
         let last = std::sync::Arc::new(super::AtomicU64::new(0));
-        super::set_sink(tx, last.clone());
+        super::set_sink(tx, last.clone(), Arc::new(AtomicBool::new(true)));
         let before = crate::fleet::now_ms();
         super::send(b"a".to_vec());
         assert_eq!(rx.recv().unwrap(), b"a");
@@ -215,7 +208,7 @@ fn take_packet(msg: &MSG) -> bool {
     if units.is_empty() {
         return false;
     }
-    send(text_records(&String::from_utf16_lossy(&units)));
+    send(text_records(&String::from_utf16_lossy(&units), win32()));
     true
 }
 
@@ -238,7 +231,7 @@ fn packet_to_char(msg: &mut MSG) {
 }
 
 fn send(bytes: Vec<u8>) {
-    if let Some((sink, last_input)) = SINK.lock().unwrap().as_ref() {
+    if let Some((sink, last_input, _)) = SINK.lock().unwrap().as_ref() {
         last_input.store(crate::fleet::now_ms(), Ordering::Relaxed);
         let _ = sink.send(bytes);
     }
@@ -261,7 +254,15 @@ unsafe extern "system" fn on_message(code: i32, wparam: WPARAM, lparam: LPARAM) 
         }
     }
     if code >= 0 && removing(wparam) && ACTIVE.load(Ordering::Relaxed) {
-        let msg = unsafe { &mut *(lparam as *mut MSG) };
+        to_terminal(unsafe { &mut *(lparam as *mut MSG) });
+    }
+    unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+}
+
+/// A key, a UniKey letter or a character taken off the queue while a terminal
+/// has the keyboard: sent to it, and the message blanked so GPUI never sees it.
+fn to_terminal(msg: &mut MSG) {
+    {
         match msg.message {
             WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP => {
                 let vk = msg.wParam as u16;
@@ -277,7 +278,7 @@ unsafe extern "system" fn on_message(code: i32, wparam: WPARAM, lparam: LPARAM) 
                     let enhanced = msg.lParam & (1 << 24) != 0;
                     let repeat = (msg.lParam & 0xffff) as u32;
                     let ch = character(vk, sc);
-                    if WIN32_MODE.load(Ordering::Relaxed) {
+                    if win32() {
                         send(record(vk, sc, ch, down, control_state(enhanced), repeat.max(1)));
                     } else if down && ch != 0 {
                         send(String::from_utf16_lossy(&[ch]).into_bytes());
@@ -286,11 +287,10 @@ unsafe extern "system" fn on_message(code: i32, wparam: WPARAM, lparam: LPARAM) 
                 }
             }
             WM_CHAR if !IN_PACKET.load(Ordering::Relaxed) => {
-                send(text_records(&String::from_utf16_lossy(&[msg.wParam as u16])));
+                send(text_records(&String::from_utf16_lossy(&[msg.wParam as u16]), win32()));
                 msg.message = WM_NULL;
             }
             _ => {}
         }
     }
-    unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
 }

@@ -17,6 +17,7 @@ mod gridpins;
 mod icons;
 mod import;
 mod inbox;
+mod keymode;
 mod keys;
 mod laws;
 mod limits;

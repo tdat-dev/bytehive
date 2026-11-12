@@ -156,6 +156,8 @@ pub struct Terminal {
     /// When you last typed or pasted into it, ms since the epoch (0: never).
     /// Output within a moment of it is its echo, not the agent at work.
     last_input: Arc<AtomicU64>,
+    /// Its own ConPTY wants Windows key records (keymode.rs).
+    win32: Arc<std::sync::atomic::AtomicBool>,
     writer: Sender<Vec<u8>>,
     copies: Arc<Mutex<Vec<String>>>,
     cell_px: Arc<Mutex<WindowSize>>,
@@ -197,6 +199,8 @@ impl Terminal {
         let last_output = Arc::new(AtomicU64::new(now_ms()));
         let heard = last_output.clone();
         let mut processor: Processor = Processor::new();
+        let mut mode = crate::keymode::ModeWatch::new();
+        let win32 = mode.flag();
         let output_wake = wake.clone();
         let exit = Arc::new(Mutex::new(None));
         let exited = exit.clone();
@@ -204,7 +208,7 @@ impl Terminal {
             &spec,
             size,
             move |bytes: &[u8]| {
-                keys::watch_mode(bytes);
+                mode.feed(bytes);
                 processor.advance(&mut *grid.lock().unwrap(), bytes);
                 heard.store(now_ms(), Ordering::Relaxed);
                 let _ = output_wake.try_send(());
@@ -245,6 +249,7 @@ impl Terminal {
                 exit,
                 last_output,
                 last_input: Arc::new(AtomicU64::new(0)),
+                win32,
                 writer,
                 copies,
                 cell_px,
@@ -266,7 +271,7 @@ impl Terminal {
 
     /// Take the keyboard: keys.rs hands keys to this terminal from now on.
     pub fn claim_keys(&self) {
-        keys::set_sink(self.writer.clone(), self.last_input.clone());
+        keys::set_sink(self.writer.clone(), self.last_input.clone(), self.win32.clone());
     }
 
     /// When you last typed or pasted into it, ms since the epoch (0: never).
@@ -297,7 +302,7 @@ impl Terminal {
 
     /// Type 	ext into the CLI as if it came from the keyboard.
     pub fn type_text(&self, text: &str) {
-        self.write(keys::text_records(text));
+        self.write(keys::text_records(text, self.win32.load(Ordering::Relaxed)));
     }
 
     /// How long since the CLI last wrote anything, in ms.

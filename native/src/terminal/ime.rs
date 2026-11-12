@@ -24,7 +24,7 @@ impl EntityInputHandler for Terminal {
     fn replace_text_in_range(&mut self, _: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
         self.preedit.clear();
         self.note_input();
-        self.write(keys::text_records(text));
+        self.write(keys::text_records(text, self.win32.load(std::sync::atomic::Ordering::Relaxed)));
         cx.notify();
     }
 
