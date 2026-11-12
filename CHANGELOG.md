@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.7] - 2026-11-12
+
+### Fixed
+
+- **Keys stop going missing after a while.** Whether a terminal takes Windows
+  key records was one setting for the whole app, and every agent's terminal
+  could change it: when any agent ended or started, the terminal you were
+  typing in could lose arrows, Enter, Esc, shortcuts and UniKey's backspaces,
+  until another agent started. After an hour of agents coming and going it
+  looked random. Each terminal now follows only its own console.
+
 ## [0.16.6] - 2026-11-11
 
 ### Fixed
