@@ -78,3 +78,48 @@ mod tests {
         assert!(!w.flag().load(Ordering::Relaxed));
     }
 }
+
+/// What a real ConPTY says about the mode over a session's life, measured
+/// 2026-11-12: `ESC[?9001h` as it starts, `ESC[?9001l ESC[?1004l` when the
+/// pseudoconsole closes (an agent stopped, removed or restarted), nothing as
+/// the program alone exits. Run by hand:
+/// cargo test conpty_mode_over_a_life -- --ignored --nocapture
+#[cfg(test)]
+mod conpty {
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    #[ignore]
+    fn conpty_mode_over_a_life() {
+        for (program, args) in [("cmd.exe", vec!["/c", "echo hi"]), ("powershell.exe", vec!["-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Milliseconds 300; exit"])] {
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let (into, done) = (seen.clone(), Arc::new(Mutex::new(false)));
+            let ended = done.clone();
+            let mut spec = agent_core::CommandSpec::new(program);
+            spec.args = args.iter().map(|a| a.to_string()).collect();
+            let size = portable_pty::PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
+            let mut agent = agent_core::Agent::spawn(&spec, size, move |b: &[u8]| into.lock().unwrap().extend_from_slice(b), move |_| *ended.lock().unwrap() = true).unwrap();
+            let mut answered = 0;
+            for _ in 0..50 {
+                if *done.lock().unwrap() {
+                    break;
+                }
+                // ConPTY asks where the cursor is and waits: answer as a terminal does.
+                let asks = String::from_utf8_lossy(&seen.lock().unwrap()).matches("\x1b[6n").count();
+                while answered < asks {
+                    let _ = agent.write_input(b"\x1b[1;1R");
+                    answered += 1;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            // The app stops an agent by dropping it: the pseudoconsole closes.
+            drop(agent);
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            let bytes = seen.lock().unwrap().clone();
+            let text = String::from_utf8_lossy(&bytes).replace('\x1b', "ESC");
+            let at = |n: &str| text.match_indices(n).map(|(i, _)| i).collect::<Vec<_>>();
+            println!("{program}: 9001h at {:?}, 9001l at {:?}, length {}\n  tail: {:?}", at("ESC[?9001h"), at("ESC[?9001l"), text.len(), &text[text.len().saturating_sub(160)..]);
+        }
+    }
+}
