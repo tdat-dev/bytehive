@@ -797,12 +797,15 @@ dependencies = [
  "async-channel",
  "base64 0.22.1",
  "browser-hub",
+ "bytemuck",
  "chrono",
  "dashboard",
  "embed-resource",
+ "glam",
  "gpui-kit",
  "image",
  "minisign-verify",
+ "pollster",
  "portable-pty",
  "regex",
  "serde",
@@ -813,6 +816,7 @@ dependencies = [
  "tray-icon",
  "ureq",
  "uuid",
+ "wgpu",
  "windows-sys 0.60.2",
 ]
 
@@ -2281,6 +2285,12 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glam"
+version = "0.30.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
 
 [[package]]
 name = "glib"

@@ -26,6 +26,13 @@ impl Inbox {
         }
 
         let floors = match &snap.model {
+            // P0 of the 3D office: the spike in place of the floors, its cost written over it.
+            _ if crate::office3d::spike::wanted() => div()
+                .relative()
+                .size_full()
+                .child(crate::office3d::spike::view())
+                .child(text(META, INK_2).absolute().top(px(S3)).left(px(S4)).child(crate::office3d::spike::line()))
+                .into_any_element(),
             Some(m) => self.co_floors(m, cx),
             None => text(BODY, INK_2).p(px(S4)).child(snap.note.clone().unwrap_or_else(|| words::STARTING.into())).into_any_element(),
         };

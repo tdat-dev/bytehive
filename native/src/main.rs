@@ -22,6 +22,7 @@ mod laws;
 mod limits;
 mod memory;
 mod notify;
+mod office3d;
 mod pipeline;
 mod plan;
 mod planparse;

@@ -32,6 +32,11 @@ supervise = { path = "../crates/supervise" }
 tray-icon = "0.23"
 ureq = { version = "3", features = ["json"] }
 uuid = { version = "1", features = ["v4"] }
+# The Company's 3D office draws with its own GPU device (office3d/gpu.rs): DX12 only.
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "dx12", "wgsl"] }
+glam = "0.30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
 windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
