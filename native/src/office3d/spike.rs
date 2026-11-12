@@ -68,8 +68,11 @@ pub fn view() -> impl IntoElement {
                 let t = s.started.elapsed().as_secs_f32() * 0.35;
                 let frame = Frame { view_proj: spike_view(t, w as f32 / h.max(1) as f32).to_cols_array_2d(), model: glam::Mat4::IDENTITY.to_cols_array_2d(), sun: [0.4, 0.8, 0.3, 0.0] };
                 let gpu = s.gpu.as_mut().ok()?;
-                let bytes = gpu.draw(w, h, &frame, [0.020, 0.020, 0.024]).ok()?;
-                let buffer = image::ImageBuffer::from_raw(w, h, bytes)?;
+                // Nothing new yet (both frames still on the card): keep the picture.
+                let Some((fw, fh, bytes)) = gpu.draw(w, h, &frame, [0.020, 0.020, 0.024]).ok()? else {
+                    return s.shown.clone().map(|shown| (shown, None));
+                };
+                let buffer = image::ImageBuffer::from_raw(fw, fh, bytes)?;
                 let image = Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
                 s.draw_ms = begun.elapsed().as_secs_f32() * 1000.0;
                 s.frames += 1;

@@ -3,9 +3,9 @@
 //! to show a GPU surface (its DirectComposition target is topmost, and
 //! paint_surface is macOS only). GPUI then shows the bytes as an image.
 
-use std::sync::mpsc;
-
 use bytemuck::{Pod, Zeroable};
+
+use super::readback::Readback;
 
 /// A vertex: where, which way it faces, its colour.
 #[repr(C)]
@@ -41,15 +41,13 @@ pub struct Gpu {
     pub adapter: String,
 }
 
-/// The textures and the readback buffer for one size.
+/// The textures and the readback buffers for one size.
 struct Target {
     width: u32,
     height: u32,
     color: wgpu::Texture,
     depth: wgpu::TextureView,
-    readback: wgpu::Buffer,
-    /// Bytes per row in the readback buffer: a multiple of 256, as wgpu wants.
-    row: u32,
+    readback: Readback,
 }
 
 /// The card GPUI draws on (the first adapter, on a laptop the one wired to the
@@ -99,19 +97,24 @@ impl Gpu {
             let texture = |format, usage| self.device.create_texture(&wgpu::TextureDescriptor { label: Some("office"), size, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] });
             let color = texture(COLOR, wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC);
             let depth = texture(DEPTH, wgpu::TextureUsages::RENDER_ATTACHMENT).create_view(&Default::default());
-            let row = (width * 4).div_ceil(256) * 256;
-            let readback = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("readback"), size: (row * height) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
-            self.target = Some(Target { width, height, color, depth, readback, row });
+            let readback = Readback::new(&self.device, width, height);
+            self.target = Some(Target { width, height, color, depth, readback });
         }
         self.target.as_ref().unwrap()
     }
 
-    /// Draw one frame and hand back its BGRA bytes, rows packed tight.
-    pub fn draw(&mut self, width: u32, height: u32, frame: &Frame, clear: [f64; 3]) -> Result<Vec<u8>, String> {
+    /// Draw a frame if a readback buffer is free, and hand back the newest
+    /// finished one as (width, height, BGRA bytes), rows packed tight. Never
+    /// waits on the GPU: right after a resize, or while both frames are still
+    /// on the card, there is nothing new and the caller keeps its picture.
+    pub fn draw(&mut self, width: u32, height: u32, frame: &Frame, clear: [f64; 3]) -> Result<Option<(u32, u32, Vec<u8>)>, String> {
         let (width, height) = (width.max(1), height.max(1));
-        self.queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(frame));
+        self.device.poll(wgpu::PollType::Poll).map_err(|e| format!("poll: {e}"))?;
+        let done = self.target.as_mut().and_then(|t| t.readback.take().map(|bytes| (t.width, t.height, bytes)));
         self.target(width, height);
-        let t = self.target.as_ref().unwrap();
+        let t = self.target.as_mut().unwrap();
+        let Some(slot) = t.readback.free() else { return Ok(done) };
+        self.queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(frame));
         let view = t.color.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("office") });
         {
@@ -130,26 +133,11 @@ impl Gpu {
         }
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo { texture: &t.color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-            wgpu::TexelCopyBufferInfo { buffer: &t.readback, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(t.row), rows_per_image: Some(height) } },
+            wgpu::TexelCopyBufferInfo { buffer: t.readback.buffer(slot), layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(t.readback.row), rows_per_image: Some(height) } },
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
-        let slice = t.readback.slice(..);
-        let (tx, rx) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| {
-            let _ = tx.send(r);
-        });
-        self.device.poll(wgpu::PollType::wait_indefinitely()).map_err(|e| format!("poll: {e}"))?;
-        rx.recv().map_err(|e| e.to_string())?.map_err(|e| format!("map: {e}"))?;
-        let mut out = Vec::with_capacity((width * height * 4) as usize);
-        {
-            let data = slice.get_mapped_range().map_err(|e| format!("map: {e:?}"))?;
-            for y in 0..height as usize {
-                let start = y * t.row as usize;
-                out.extend_from_slice(&data[start..start + width as usize * 4]);
-            }
-        }
-        t.readback.unmap();
-        Ok(out)
+        t.readback.submitted(slot);
+        Ok(done)
     }
 }

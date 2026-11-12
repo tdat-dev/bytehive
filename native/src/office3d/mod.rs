@@ -4,4 +4,5 @@
 
 pub mod gpu;
 pub mod mesh;
+mod readback;
 pub mod spike;
