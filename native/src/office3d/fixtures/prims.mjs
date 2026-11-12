@@ -3,6 +3,7 @@
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 const T = await import(pathToFileURL(process.argv[2]).href);
+const { RoundedBoxGeometry } = await import(pathToFileURL(process.argv[2].replace(/build[\/]three\.module\.js$/, "examples/jsm/geometries/RoundedBoxGeometry.js")).href);
 const cases = {
   box: new T.BoxGeometry(1.2, 0.5, 0.8),
   plane: new T.PlaneGeometry(2, 1.5),
@@ -15,6 +16,11 @@ const cases = {
   sphere_cap: new T.SphereGeometry(0.34, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
   torus: new T.TorusGeometry(0.34, 0.03, 8, 24),
   torus_arc: new T.TorusGeometry(0.2, 0.038, 6, 12, Math.PI * 1.1),
+  capsule_body: new T.CapsuleGeometry(0.29, 0.24, 6, 14),
+  capsule_leg: new T.CapsuleGeometry(0.125, 0.4, 4, 10),
+  box_split: new T.BoxGeometry(1, 1, 1, 3, 3, 3),
+  soft_desk: new RoundedBoxGeometry(2.5, 0.92, 0.68, 1, 0.05),
+  soft_cushion: new RoundedBoxGeometry(0.3, 0.56, 0.96, 1, 0.13),
 };
 const r = (a) => Array.from(a, (v) => Math.round(v * 1e5) / 1e5);
 const out = {};

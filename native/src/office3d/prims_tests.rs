@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 use serde_json::Value;
 
 use super::geom::Geom;
+use super::lathe::capsule;
 use super::prims::*;
 
 fn golden(name: &str) -> (Vec<f32>, Vec<f32>) {
@@ -40,4 +41,9 @@ fn shapes_match_three_corner_for_corner() {
     same("sphere_cap", sphere_part(0.34, 16, 8, (0.0, PI * 2.0), (0.0, PI / 2.0)));
     same("torus", torus(0.34, 0.03, 8, 24, PI * 2.0));
     same("torus_arc", torus(0.2, 0.038, 6, 12, PI * 1.1));
+    same("capsule_body", capsule(0.29, 0.24, 6, 14));
+    same("capsule_leg", capsule(0.125, 0.4, 4, 10));
+    same("box_split", box_split(1.0, 1.0, 1.0, 3, 3, 3));
+    same("soft_desk", rounded_box(2.5, 0.92, 0.68, 1, 0.05));
+    same("soft_cushion", rounded_box(0.3, 0.56, 0.96, 1, 0.13));
 }

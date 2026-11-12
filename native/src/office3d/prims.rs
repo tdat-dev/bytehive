@@ -25,22 +25,28 @@ impl Mesh {
 
 /// BoxGeometry(width, height, depth), one segment a side.
 pub fn box_geom(width: f32, height: f32, depth: f32) -> Geom {
+    box_split(width, height, depth, 1, 1, 1)
+}
+
+/// BoxGeometry(width, height, depth, widthSegments, heightSegments, depthSegments).
+pub fn box_split(width: f32, height: f32, depth: f32, ws: u32, hs: u32, ds: u32) -> Geom {
     let mut m = Mesh::default();
-    // buildPlane(u, v, w, udir, vdir, width, height, depth), in three's order.
-    let planes: [(usize, usize, usize, f32, f32, f32, f32, f32); 6] = [
-        (2, 1, 0, -1.0, -1.0, depth, height, width),
-        (2, 1, 0, 1.0, -1.0, depth, height, -width),
-        (0, 2, 1, 1.0, 1.0, width, depth, height),
-        (0, 2, 1, 1.0, -1.0, width, depth, -height),
-        (0, 1, 2, 1.0, -1.0, width, height, depth),
-        (0, 1, 2, -1.0, -1.0, width, height, -depth),
+    // buildPlane(u, v, w, udir, vdir, width, height, depth, gridX, gridY), in three's order.
+    let planes: [(usize, usize, usize, f32, f32, f32, f32, f32, u32, u32); 6] = [
+        (2, 1, 0, -1.0, -1.0, depth, height, width, ds, hs),
+        (2, 1, 0, 1.0, -1.0, depth, height, -width, ds, hs),
+        (0, 2, 1, 1.0, 1.0, width, depth, height, ws, ds),
+        (0, 2, 1, 1.0, -1.0, width, depth, -height, ws, ds),
+        (0, 1, 2, 1.0, -1.0, width, height, depth, ws, hs),
+        (0, 1, 2, -1.0, -1.0, width, height, -depth, ws, hs),
     ];
-    for (u, v, w, udir, vdir, pw, ph, pd) in planes {
+    for (u, v, w, udir, vdir, pw, ph, pd, gx, gy) in planes {
         let start = m.pos.len() as u32;
-        for iy in 0..2 {
-            let y = iy as f32 * ph - ph / 2.0;
-            for ix in 0..2 {
-                let x = ix as f32 * pw - pw / 2.0;
+        let (sw, sh) = (pw / gx as f32, ph / gy as f32);
+        for iy in 0..=gy {
+            let y = iy as f32 * sh - ph / 2.0;
+            for ix in 0..=gx {
+                let x = ix as f32 * sw - pw / 2.0;
                 let mut p = [0.0f32; 3];
                 p[u] = x * udir;
                 p[v] = y * vdir;
@@ -51,10 +57,48 @@ pub fn box_geom(width: f32, height: f32, depth: f32) -> Geom {
                 m.normal.push(Vec3::from(n));
             }
         }
-        let (a, b, c, d) = (start, start + 2, start + 3, start + 1);
-        m.index.extend([a, b, d, b, c, d]);
+        let row = gx + 1;
+        for iy in 0..gy {
+            for ix in 0..gx {
+                let a = start + ix + row * iy;
+                let b = start + ix + row * (iy + 1);
+                let c = start + (ix + 1) + row * (iy + 1);
+                let d = start + (ix + 1) + row * iy;
+                m.index.extend([a, b, d, b, c, d]);
+            }
+        }
     }
     m.done()
+}
+
+/// JavaScript's Math.sign: 0 stays 0 (Rust's signum gives 1).
+fn sign(v: f64) -> f64 {
+    if v > 0.0 { 1.0 } else if v < 0.0 { -1.0 } else { 0.0 }
+}
+
+/// RoundedBoxGeometry(width, height, depth, segments, radius), from three's
+/// examples: a unit box cut in (segments * 2 + 1) a side, each corner pushed
+/// out onto a rounded corner of the real size.
+pub fn rounded_box(width: f32, height: f32, depth: f32, segments: u32, radius: f32) -> Geom {
+    let n = segments * 2 + 1;
+    let radius = (width / 2.0).min(height / 2.0).min(depth / 2.0).min(radius) as f64;
+    let mut g = box_split(1.0, 1.0, 1.0, n, n, n);
+    if n == 1 {
+        return g;
+    }
+    let half = 0.5 / n as f64;
+    let size = [width as f64 / 2.0 - radius, height as f64 / 2.0 - radius, depth as f64 / 2.0 - radius];
+    for i in 0..g.len() {
+        let p = g.pos[i].as_dvec3().to_array();
+        let mut nrm = [p[0] - sign(p[0]) * half, p[1] - sign(p[1]) * half, p[2] - sign(p[2]) * half];
+        let len = (nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]).sqrt();
+        if len > 0.0 {
+            nrm = nrm.map(|v| v / len);
+        }
+        g.pos[i] = Vec3::new((size[0] * sign(p[0]) + nrm[0] * radius) as f32, (size[1] * sign(p[1]) + nrm[1] * radius) as f32, (size[2] * sign(p[2]) + nrm[2] * radius) as f32);
+        g.normal[i] = Vec3::new(nrm[0] as f32, nrm[1] as f32, nrm[2] as f32);
+    }
+    g
 }
 
 /// PlaneGeometry(width, height, 1, 1): in XY, facing +Z.
