@@ -239,7 +239,7 @@ impl Inbox {
                         .child(button("cloud-pass-save", if c.busy { "Working…" } else { "Save passphrase" }).on_click(cx.listener(move |this, _, _, cx| this.cloud_save_pass(has_keys, cx)))),
                 )
         });
-        section("Save sessions to Remote")
+        section("Saved sessions")
             .child(toggle("cloud-on", c.saved.on, "Save sessions to Remote", status).on_click(cx.listener(|this, _, _, cx| this.cloud_toggle(cx))))
             .when(c.saved.on, |s| s.child(account).child(pass).children(form))
             .children(c.note.clone().map(|n| div().py(px(8.0)).text_size(px(12.0)).text_color(color(INK_3)).child(n)))
