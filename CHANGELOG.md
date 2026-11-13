@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.11] - 2026-11-13
+
+### Fixed
+
+- **UniKey no longer doubles letters.** When UniKey rewrote a word, the
+  letter after the one it changed could come out twice ("lâuu", "củaa",
+  "việệc"). The key log showed why: the key was turned into its character
+  once by ByteHive and, when that character was a moment late, a second time.
+  It is turned into a character once now, in the terminal and in ByteHive's
+  own text boxes.
+
 ## [0.16.10] - 2026-11-13
 
 ### Added
