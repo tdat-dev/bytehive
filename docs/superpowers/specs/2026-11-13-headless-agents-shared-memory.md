@@ -93,6 +93,15 @@ routing, not the loop.
 | Codex, second turn by `exec resume` | +27,260 | +27,008 | about 250 fresh |
 | Antigravity, default | 30,578 | 0 | 11.5 s |
 | Antigravity, second turn by `--conversation` | +22,225 | +8,192 | about 14,000 fresh, 41 s |
+| OpenCode, `-m deepseek/deepseek-flash` | 63,942 | 0 | the global `~/.config/opencode/AGENTS.md` alone is 121 KB |
+
+Per-turn hooks were tested on 2026-11-13 too (see the harness report,
+`2026-11-13-harness-research.md`): a hook given per run reached the model in
+Claude (`--settings` hooks), Codex (`-c hooks...` plus
+`--dangerously-bypass-hook-trust`) and Antigravity (`.agents/hooks.json` in the
+worktree, `PreInvocation` with an `ephemeralMessage`). An OpenCode plugin in
+the worktree's `.opencode/plugins/` using `experimental.chat.system.transform`
+did not reach the model.
 
 What this says:
 
