@@ -184,7 +184,8 @@ impl Inbox {
 
         let browser = self.browser_section(cx);
         let remote = self.remote_section(cx);
-        vec![agents.into_any_element(), inbox.into_any_element(), terminal.into_any_element(), browser.into_any_element(), remote.into_any_element(), sessions.into_any_element(), system.into_any_element()]
+        let cloud = self.cloud_section(cx);
+        vec![agents.into_any_element(), inbox.into_any_element(), terminal.into_any_element(), browser.into_any_element(), remote.into_any_element(), cloud.into_any_element(), sessions.into_any_element(), system.into_any_element()]
     }
 
     fn set_delay(&mut self, by: i64, cx: &mut Context<Self>) {

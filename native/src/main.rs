@@ -5,6 +5,7 @@ mod board;
 mod boxdraw;
 mod brand;
 mod bridge;
+mod cloud;
 mod company;
 mod conductor;
 mod finishnote;

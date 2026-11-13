@@ -76,6 +76,7 @@ impl Inbox {
             tips: tips::Tips::default(),
             browser: browser::BrowserWatch::default(),
             remote: remote::Remote::new(),
+            cloud: settings::cloud::CloudUi::load(),
             tray: crate::tray::Tray::new(),
             plans: Default::default(),
             uses: HashMap::new(),

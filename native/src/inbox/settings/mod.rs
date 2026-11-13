@@ -3,6 +3,7 @@
 //! right. Every change is saved the moment it is made.
 
 mod browser;
+pub(super) mod cloud;
 mod remote;
 mod rows;
 mod sections;
@@ -36,6 +37,7 @@ impl Inbox {
         focus.focus(window, cx);
         self.settings = Some(Settings { scroll: ScrollHandle::new(), on: 0, resetting: false, tips_again: false, cli_spot: Default::default(), focus });
         self.remote_open_settings(window, cx);
+        self.cloud_open_settings();
         cx.notify();
     }
 

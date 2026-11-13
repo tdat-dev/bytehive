@@ -184,6 +184,8 @@ pub struct Inbox {
     browser: browser::BrowserWatch,
     /// The phone dashboard and Settings > Remote.
     remote: remote::Remote,
+    /// Settings > Save sessions to Remote; the saving itself runs in crate::cloud.
+    cloud: settings::cloud::CloudUi,
     tray: Option<crate::tray::Tray>,
     prefs: Prefs,
     sheet: Option<Sheet>,
@@ -269,6 +271,7 @@ impl Inbox {
             changed = true;
         }
         self.check_limits(hits, cx);
+        self.cloud_feed();
         self.poll_changes(cx);
         self.conductor_tick(cx);
         {

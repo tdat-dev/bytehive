@@ -25,6 +25,13 @@ dashboard = { path = "../crates/dashboard" }
 # gpui-pre has no semver promise: exact pin, upgrades are deliberate.
 gpui-kit = "=0.9.0"
 portable-pty = "0.9"
+# Remote store (cloud/crypto.rs): sealed with AES-256-GCM, keys from the passphrase.
+aes-gcm = "0.10"
+getrandom = "0.2"
+hkdf = "0.12"
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+sha2 = "0.10"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -37,7 +44,7 @@ wgpu = { version = "30", default-features = false, features = ["std", "parking_l
 glam = "0.30"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
-windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
 embed-resource = "3"
