@@ -205,6 +205,7 @@ fn take_packet(msg: &MSG) -> bool {
         }
     }
     IN_PACKET.store(false, Ordering::Relaxed);
+    crate::keylog::line(|| format!("  packet took {:?}", String::from_utf16_lossy(&units)));
     if units.is_empty() {
         return false;
     }
@@ -224,6 +225,7 @@ fn packet_to_char(msg: &mut MSG) {
         if PeekMessageW(&mut ch, msg.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE | PM_QS_POSTMESSAGE) != 0 {
             msg.message = WM_CHAR;
             msg.wParam = ch.wParam;
+            crate::keylog::line(|| format!("  packet became char {:#06x} for GPUI", ch.wParam));
             msg.lParam = ch.lParam;
         }
     }
@@ -231,6 +233,7 @@ fn packet_to_char(msg: &mut MSG) {
 }
 
 fn send(bytes: Vec<u8>) {
+    crate::keylog::line(|| format!("  send {}", crate::keylog::shown(&bytes)));
     if let Some((sink, last_input, _)) = SINK.lock().unwrap().as_ref() {
         last_input.store(crate::fleet::now_ms(), Ordering::Relaxed);
         let _ = sink.send(bytes);
@@ -247,6 +250,19 @@ fn removing(wparam: WPARAM) -> bool {
 }
 
 unsafe extern "system" fn on_message(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code >= 0 {
+        let msg = unsafe { &*(lparam as *const MSG) };
+        if matches!(msg.message, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP | WM_CHAR) {
+            crate::keylog::line(|| {
+                let kind = match msg.message {
+                    WM_KEYDOWN | WM_SYSKEYDOWN => "down",
+                    WM_KEYUP | WM_SYSKEYUP => "up  ",
+                    _ => "char",
+                };
+                format!("{kind} w={:#06x} l={:#010x} flags={wparam:#x} active={} packet={} win32={}", msg.wParam, msg.lParam as u32, ACTIVE.load(Ordering::Relaxed), IN_PACKET.load(Ordering::Relaxed), win32())
+            });
+        }
+    }
     if code >= 0 && removing(wparam) && !ACTIVE.load(Ordering::Relaxed) && !IN_PACKET.load(Ordering::Relaxed) {
         let msg = unsafe { &mut *(lparam as *mut MSG) };
         if msg.message == WM_KEYDOWN && msg.wParam as u16 == VK_PACKET {

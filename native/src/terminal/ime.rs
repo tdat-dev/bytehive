@@ -22,6 +22,7 @@ impl EntityInputHandler for Terminal {
 
     /// An IME committed: its text goes to the program as typed characters.
     fn replace_text_in_range(&mut self, _: Option<Range<usize>>, text: &str, _: &mut Window, cx: &mut Context<Self>) {
+        crate::keylog::line(|| format!("  ime commit {text:?}"));
         self.preedit.clear();
         self.note_input();
         self.write(keys::text_records(text, self.win32.load(std::sync::atomic::Ordering::Relaxed)));
@@ -29,6 +30,7 @@ impl EntityInputHandler for Terminal {
     }
 
     fn replace_and_mark_text_in_range(&mut self, _: Option<Range<usize>>, text: &str, _: Option<Range<usize>>, _: &mut Window, cx: &mut Context<Self>) {
+        crate::keylog::line(|| format!("  ime mark {text:?}"));
         self.preedit = text.to_string();
         cx.notify();
     }

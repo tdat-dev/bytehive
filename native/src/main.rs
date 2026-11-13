@@ -24,6 +24,7 @@ mod gridpins;
 mod icons;
 mod import;
 mod inbox;
+mod keylog;
 mod keymode;
 mod keys;
 mod laws;
