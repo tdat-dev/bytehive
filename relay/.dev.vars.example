@@ -1,0 +1,6 @@
+TOKEN_SECRET=at-least-32-random-characters
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+DEV_LOGIN=1
+# Web Push: `node vapid-keys.mjs` appends these to .dev.vars with a new key pair.
+VAPID_SUBJECT=mailto:you@example.com

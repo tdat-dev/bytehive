@@ -42,3 +42,10 @@ crates/*/target/
 src-tauri/target/
 src-tauri/gen/
 native/target/
+
+# ByteHive Remote crates
+remote/*/target/
+remote/noise-wasm/pkg/
+# Relay
+.dev.vars
+.wrangler/
