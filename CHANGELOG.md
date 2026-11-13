@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.10] - 2026-11-13
+
+### Added
+
+- **A key log for chasing typing bugs, off unless asked for.** With a file
+  named `keylog.on` in `~/.bytehive/native` when ByteHive starts, every key
+  the terminal takes and every byte it sends are written to `keylog.txt` there,
+  to find why UniKey sometimes doubles the last letter of a word. Without that
+  file nothing is written.
+
 ## [0.16.9] - 2026-11-13
 
 ### Added
