@@ -1,6 +1,12 @@
 //! ByteHive drawn by itself: Rust + GPUI, no WebView. One window: the Inbox,
 //! with the live fleet in its queue and the focused agent on its stage.
 
+// A windowed app: Windows opens no console beside it (it did, and the tray's
+// "Error removing system tray icon" showed in it). Debug builds keep the
+// console for their logs. Everything the app starts in the background runs
+// with CREATE_NO_WINDOW, so nothing flashes a console either.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod board;
 mod boxdraw;
 mod brand;
