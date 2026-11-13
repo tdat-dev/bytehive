@@ -21,7 +21,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_PACKET, VK_PROCESSKEY, VK_RCONTROL, VK_RMENU, VK_SCROLL, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, MSG, PM_QS_POSTMESSAGE, PM_REMOVE, PeekMessageW, SetWindowsHookExW, TranslateMessage, WH_GETMESSAGE, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_NULL, WM_SYSKEYDOWN,
+    CallNextHookEx, MSG, PM_QS_POSTMESSAGE, PM_REMOVE, PeekMessageW, PostMessageW, SetWindowsHookExW, TranslateMessage, WH_GETMESSAGE, WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_NULL, WM_SYSKEYDOWN,
     WM_SYSKEYUP,
 };
 
@@ -194,23 +194,41 @@ mod tests {
 /// and take the WM_CHAR at once, so the letter goes out in its place (as
 /// Firefox does). Only posted messages are peeked: nothing sent to a window
 /// runs from inside this hook. Should no WM_CHAR come, the key is left to GPUI.
+///
+/// Returns whether the key must be blanked: whenever TranslateMessage made a
+/// WM_CHAR, even one not in the queue yet. Left to GPUI, that key was
+/// translated a second time, and UniKey's letter came out twice ("lâuu",
+/// "củaa": seen in a key log, 2026-11-13); the one not caught here arrives
+/// through the WM_CHAR arm instead, once.
 fn take_packet(msg: &MSG) -> bool {
-    let mut units = Vec::new();
     IN_PACKET.store(true, Ordering::Relaxed);
-    unsafe {
-        TranslateMessage(msg);
-        let mut ch: MSG = std::mem::zeroed();
-        while PeekMessageW(&mut ch, msg.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE | PM_QS_POSTMESSAGE) != 0 {
-            units.push(ch.wParam as u16);
-        }
-    }
+    let made = unsafe { TranslateMessage(msg) } != 0;
+    let units = take_chars(msg);
     IN_PACKET.store(false, Ordering::Relaxed);
-    crate::keylog::line(|| format!("  packet took {:?}", String::from_utf16_lossy(&units)));
-    if units.is_empty() {
-        return false;
+    crate::keylog::line(|| format!("  packet made={made} took {:?}", String::from_utf16_lossy(&units)));
+    if !units.is_empty() {
+        send(text_records(&String::from_utf16_lossy(&units), win32()));
     }
-    send(text_records(&String::from_utf16_lossy(&units), win32()));
-    true
+    made || !units.is_empty()
+}
+
+/// The WM_CHARs TranslateMessage just posted for `msg`'s window. Sometimes they
+/// are not there at the first look: a few more, a yield apart, before giving up.
+fn take_chars(msg: &MSG) -> Vec<u16> {
+    let mut units = Vec::new();
+    for _ in 0..4 {
+        unsafe {
+            let mut ch: MSG = std::mem::zeroed();
+            while PeekMessageW(&mut ch, msg.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE | PM_QS_POSTMESSAGE) != 0 {
+                units.push(ch.wParam as u16);
+            }
+        }
+        if !units.is_empty() {
+            break;
+        }
+        std::thread::yield_now();
+    }
+    units
 }
 
 /// The same race in the app's own text boxes (Home, New agent, Ctrl+K, the
@@ -219,17 +237,25 @@ fn take_packet(msg: &MSG) -> bool {
 /// the letter in its place.
 fn packet_to_char(msg: &mut MSG) {
     IN_PACKET.store(true, Ordering::Relaxed);
-    unsafe {
-        TranslateMessage(msg);
-        let mut ch: MSG = std::mem::zeroed();
-        if PeekMessageW(&mut ch, msg.hwnd, WM_CHAR, WM_CHAR, PM_REMOVE | PM_QS_POSTMESSAGE) != 0 {
-            msg.message = WM_CHAR;
-            msg.wParam = ch.wParam;
-            crate::keylog::line(|| format!("  packet became char {:#06x} for GPUI", ch.wParam));
-            msg.lParam = ch.lParam;
-        }
-    }
+    let made = unsafe { TranslateMessage(msg) } != 0;
+    let units = take_chars(msg);
     IN_PACKET.store(false, Ordering::Relaxed);
+    crate::keylog::line(|| format!("  packet for GPUI made={made} took {:?}", String::from_utf16_lossy(&units)));
+    match units.as_slice() {
+        // The key becomes its character, in its place.
+        [first, rest @ ..] => {
+            msg.message = WM_CHAR;
+            msg.wParam = *first as usize;
+            // A character in two halves: the second follows straight after.
+            for &unit in rest {
+                unsafe { PostMessageW(msg.hwnd, WM_CHAR, unit as usize, msg.lParam) };
+            }
+        }
+        // Made but not caught: it comes as a WM_CHAR of its own; the key must
+        // not reach TranslateMessage again, or the letter comes twice.
+        [] if made => msg.message = WM_NULL,
+        [] => {}
+    }
 }
 
 fn send(bytes: Vec<u8>) {
