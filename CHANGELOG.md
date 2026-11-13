@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.9] - 2026-11-13
+
+### Added
+
+- **Read your sessions from any device.** Settings > Remote > Save sessions
+  to Remote: sign in with GitHub and set a Remote passphrase, and every Claude
+  session in your open projects is saved as it goes. Open remote.zoldify.com
+  on another computer or your phone, sign in, type the passphrase once (it is
+  remembered there for 15 days) and read them, even while this computer is
+  off. Sessions are locked with your passphrase before they leave this
+  computer: the server cannot read them, and a forgotten passphrase cannot be
+  recovered. Only the conversation and the steps are saved, not command
+  output. Codex, OpenCode and Antigravity sessions come next.
+
 ## [0.16.8] - 2026-11-13
 
 ### Fixed
