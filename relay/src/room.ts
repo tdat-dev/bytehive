@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { FLUSH_BYTES, LIMITS } from "./limits";
 import { wake } from "./push";
+import * as store from "./store";
 
 // One per account. It routes frames between the account's machines and devices
 // and reads nothing inside them. Who may do what is settled end to end: a
@@ -25,7 +26,16 @@ export class Room extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS subs (peer TEXT PRIMARY KEY, endpoint TEXT);
       CREATE TABLE IF NOT EXISTS notes (peer TEXT PRIMARY KEY, machine TEXT, sealed TEXT);
     `);
+    store.initStore(ctx.storage.sql);
   }
+
+  // The session store (store.ts), called by the Worker after it checked the login.
+  async getVault(): Promise<store.Vault | null> { return store.getVault(this.ctx.storage.sql); }
+  async setVault(v: unknown, replace: boolean) { return store.setVault(this.ctx.storage.sql, v, replace); }
+  async putSession(machine: string, p: unknown) { return store.put(this.ctx.storage.sql, machine, p); }
+  async dropSession(machine: string, sid: unknown) { store.drop(this.ctx.storage.sql, machine, sid); }
+  async listSessions() { return store.list(this.ctx.storage.sql); }
+  async sessionSegments(sid: string, from: number) { return store.segments(this.ctx.storage.sql, sid, from); }
 
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -109,6 +119,7 @@ export class Room extends DurableObject<Env> {
       this.ctx.storage.sql.exec("UPDATE peers SET revoked = 1 WHERE id = ?", m.peer);
       this.ctx.storage.sql.exec("DELETE FROM subs WHERE peer = ?", m.peer);
       this.ctx.storage.sql.exec("DELETE FROM notes WHERE peer = ?", m.peer);
+      if (isMachine(m.peer)) store.dropMachine(this.ctx.storage.sql, m.peer);
       for (const w of this.ctx.getWebSockets(m.peer)) w.close(4001, "revoked");
     }
     if (m.t === "push" && isMachine(peerOf(ws))) this.push(peerOf(ws), m.peer, m.sealed);

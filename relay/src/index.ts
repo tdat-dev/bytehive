@@ -1,6 +1,7 @@
 import { accountFor, authorizeUrl } from "./github";
 import { allowedEndpoint } from "./push";
 import { PEER } from "./room";
+import { storeRoute } from "./storeroutes";
 import { sign, verify } from "./token";
 
 export { Room } from "./room";
@@ -14,7 +15,7 @@ function cors(env: Env, res: Response): Response {
   const r = new Response(res.body, res);
   r.headers.set("Access-Control-Allow-Origin", env.APP_ORIGIN);
   r.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
-  r.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  r.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
   return r;
 }
 
@@ -39,6 +40,8 @@ export default {
     const url = new URL(req.url);
     const q = url.searchParams;
     if (req.method === "OPTIONS") return cors(env, new Response(null, { status: 204 }));
+    const stored = await storeRoute(url, req, env);
+    if (stored) return cors(env, stored);
 
     switch (url.pathname) {
       case "/auth/start": {

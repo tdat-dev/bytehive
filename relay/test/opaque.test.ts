@@ -49,9 +49,10 @@ describe("the relay is opaque", () => {
       return rows;
     });
 
-    // Notes and subscriptions are the notification tables: nothing of a frame goes in them.
-    expect(Object.keys(dump).sort()).toEqual(["notes", "peers", "subs", "usage"]);
-    expect([dump.notes, dump.subs]).toEqual([[], []]);
+    // Notes and subscriptions are the notification tables, the rest the session
+    // store (sealed by machines over HTTP): nothing of a frame goes in any of them.
+    expect(Object.keys(dump).sort()).toEqual(["notes", "peers", "segments", "sessions", "subs", "usage", "vault"]);
+    expect([dump.notes, dump.subs, dump.segments, dump.sessions, dump.vault]).toEqual([[], [], [], [], []]);
     const text = JSON.stringify(dump);
     const needles = {
       marker: "hunter2",
