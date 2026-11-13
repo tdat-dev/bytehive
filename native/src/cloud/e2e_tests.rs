@@ -41,7 +41,8 @@ fn get_json(token: &str, path: &str) -> serde_json::Value {
 #[ignore]
 fn a_session_goes_up_sealed_and_another_device_reads_it() {
     assert!(std::env::var("BYTEHIVE_RELAY").is_ok(), "set BYTEHIVE_RELAY to the local relay");
-    let account = format!("e2e-{}", uuid::Uuid::new_v4().simple());
+    // BYTEHIVE_E2E_ACCOUNT=dev leaves the session where the web page's dev sign-in looks.
+    let account = std::env::var("BYTEHIVE_E2E_ACCOUNT").unwrap_or_else(|_| format!("e2e-{}", uuid::Uuid::new_v4().simple()));
     let token = machine_login(&account);
 
     // The passphrase makes the vault, as Settings does.
