@@ -10,5 +10,7 @@
     ]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
-  "vars": { "APP_ORIGIN": "http://127.0.0.1:17640" }
+  // The deployed relay. A local run (`wrangler dev`) takes APP_ORIGIN from .dev.vars.
+  "routes": [{ "pattern": "relay.zoldify.com", "custom_domain": true }],
+  "vars": { "APP_ORIGIN": "https://remote.zoldify.com", "VAPID_SUBJECT": "mailto:tvmaroka1@gmail.com" }
 }

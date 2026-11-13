@@ -1,0 +1,10 @@
+{
+  // The Remote web page: static files only, a Worker of its own apart from the relay,
+  // so the two are deployed and replaced separately. Build first:
+  //   VITE_RELAY=https://relay.zoldify.com VITE_RELAY_WS=wss://relay.zoldify.com npx vite build
+  "$schema": "../relay/node_modules/wrangler/config-schema.json",
+  "name": "bytehive-remote-web",
+  "compatibility_date": "2026-10-13",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "routes": [{ "pattern": "remote.zoldify.com", "custom_domain": true }]
+}
