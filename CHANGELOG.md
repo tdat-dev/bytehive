@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.8] - 2026-11-13
+
+### Fixed
+
+- **No terminal window opens beside ByteHive any more.** The app was built as
+  a console program, so Windows opened a console with it on every start, and
+  messages such as "Error removing system tray icon" showed up there. It is a
+  windowed app again, as it was before the native rewrite.
+
 ## [0.16.7] - 2026-11-12
 
 ### Fixed
