@@ -1,6 +1,6 @@
 # Harness research: how ByteHive should build its harness
 
-Date: 2026-11-13. Status: research report, waiting for the owner's yes.
+Date: 2026-11-13. Status: research report (two passes), waiting for the owner's yes.
 Companion: `2026-11-13-headless-agents-shared-memory.md` (headless runs, token
 measurements).
 
@@ -141,53 +141,101 @@ start of every agent.
 11. Learn from runs: keep failures and fixes, feed the right ones back next
     time.
 
-## 5. What ByteHive's harness should be
+## 5. Deeper evidence (second pass, same day)
 
-ByteHive should not write its own inner loop (model calls and tool running).
-The owner's plans only work through the official CLIs, and each vendor tunes
-its loop for its model. ByteHive should be the outer harness: it owns
-everything that decides what each agent sees and when work counts as done.
+A source-code study of eleven production harnesses (arXiv 2609.00006, July
+2026 snapshots of Claude Code, Codex, Gemini CLI, Mistral Vibe, OpenHands,
+Aider, Mini-SWE-Agent, Hermes, Pi, OpenCode, OpenClaw) and a survey of 391
+repositories (marmelab, Sep 2026) add measured facts, some of which correct
+section 4:
 
-| Outer harness part | What ByteHive does | Built on |
+- Loop sophistication does not predict results: a 50-line loop over one bash
+  tool scores 74% on SWE-bench Verified. Harness value is in context, tools,
+  checks and safety, not in a clever loop.
+- Fewer tools is one of the few changes that improves success, tokens and time
+  together (Vercel: 80% of tools removed, success 80% to 100%, tokens halved).
+  Past about 15 tools, load them on demand (Claude Code's deferred tools).
+- Rules in prose are mostly not followed: written security rules in 481
+  CLAUDE.md files had an effect 4% to 16% of the time. A rule that matters must
+  be a script: a hook, a lint, a test. Write the lint's message as the fix.
+- Context files help only when people write them: machine-written ones lowered
+  task success and raised cost by over 20%; human-written ones helped by about
+  4% (ETH Zurich, 138 tasks).
+- A second reviewer agent can hurt: removing harness parts one at a time
+  (NLAH, arXiv 2603.25723), adding a reviewer lowered success by 8 points on a
+  41% baseline. A four-role team scored 72.2% against a single agent's 71.8%.
+  Past four hand-overs between agents, tasks "almost always failed"
+  (Microsoft). Anthropic's evaluator paid off only at the edge of what the
+  model does alone.
+- What works for "it says done but it is not": a verify-on-stop guard
+  (Hermes). When a turn changed code and ran no check since, the stop is
+  refused and the agent is told to verify. It costs one hook, not an agent.
+- Cheap caps beat clever stuck detection: hash the tool call, warn after two
+  identical failures, stop after eight.
+- Harnesses rot: every control compensates for something a model once got
+  wrong. Give each one the incident it exists for and a condition to remove
+  it; garden them (OpenAI's doc-gardening agent).
+- Few harnesses check themselves: 60% have neither a test nor an eval. A guard
+  needs a test both ways (fires when it should, stays quiet when it should
+  not), and a harness change needs an eval: 20 to 50 frozen tasks from real
+  failures, one change at a time.
+- Permission rules written ahead are worse than approving actions as they come
+  (113 people, 20 points fewer bad actions blocked), and 93% of prompts get
+  approved anyway.
+- The meta-harness has arrived: Databricks' Omnigent (June 2026) drives 23
+  harnesses (Claude Code, Codex, OpenCode, Antigravity and more) behind one
+  API, through five integration modes (SDK, CLI subprocess, ACP subprocess,
+  native TUI, native server), tests each adapter against a conformance bench,
+  lets any harness call another as a sub-agent, enforces one policy through
+  each vendor's own hooks, and keeps sessions on a server with multi-device
+  sync. That is where ByteHive is going; it should take the good parts and
+  stay small.
+- ACP (Agent Client Protocol) is the common way to drive a harness without a
+  terminal: Antigravity (`agy acp`) and OpenCode (`opencode acp`) ship it, and
+  adapters exist for Claude Code and Codex.
+
+## 6. What ByteHive's harness should be
+
+ByteHive stays an outer harness (a meta-harness): it does not run its own
+model loop. What it owns, in order of value:
+
+| Part | What it does | Why (evidence) |
 |-|-|-|
-| Launch profiles | per role: model, tools, MCP set, permissions; lean by default (Claude 14k not 58k) | `fleet.rs run_extras`, per-CLI flags in section 3 |
-| The map | a brief of at most about 100 lines per run: task, where the docs are, the laws, who else is working | per-run text injection |
-| Live news | each turn, only what changed since that agent's last turn (a card moved, a hand-off arrived), through the per-turn hooks | hooks in section 3; empty when nothing changed |
-| Task artifacts | the board card is the feature list: checklist items with done flags, edited through card tools only; a progress note per card | board, `card_*` MCP tools |
-| Session start | the brief tells the agent to get bearings first: progress note, `git log`, start the app per worktree, smoke test | init script per project |
-| Hand-off | `handoff_write` at the end of a task, at most 300 words; the next agent gets it in its brief; context reset when usage passes a threshold | new MCP tools |
-| Evaluator | a separate agent, ideally another CLI (another model is less kind to the work), with the card's criteria; runs only for cards marked hard or on request | Company already has QA seats |
-| Guardrails | PreToolUse hooks for destructive commands; lints with fix-it messages | hooks, project linters |
-| Ledger | tokens in, cached, out and cost per run and per card; time | `usage.jsonl` |
-| Learning | every failed check, send-back or revert is written as a short lesson tied to the card's kind; similar lessons go into the next brief for that kind of task | project memory, new experience file |
-
-What ByteHive keeps out: no giant instruction files, no transcript pasting, no
-global file edits behind the owner's back, no evaluator on easy tasks.
-
-## 6. How to know it works
-
-Pick five real tasks from the board. Run each three ways: today's setup, lean
-launch plus brief, and lean plus brief plus hooks plus hand-off. Record tokens,
-time, whether the result passed review, and how many send-backs. Keep a piece
-only if it pays for itself, and run the same five again when a new model
-lands.
+| Guard plane | One policy file per project (blocked commands, protected paths, required checks) turned into each CLI's own hook: Claude PreToolUse, Codex PreToolUse (Bash), Antigravity PreToolUse, OpenCode plugin. Every guard ships with tests both ways. | prose rules hold 4% to 16%; Omnigent does this across vendors |
+| Verify-on-stop | A Stop hook: if the turn edited files and ran no check since, the stop is refused with "run the checks first" (the project's check command, from the policy file). | cheapest fix for a false "done"; Hermes |
+| Lean launch | Per role: a short tool list, only the bytehive MCP, no skills unless the role needs them; tokens per start measured. | fewer tools improves success; 58k to 14k measured here |
+| The map | A brief of at most 100 lines, written by people, pointing to docs; nothing machine-generated pasted in. | OpenAI; ETH Zurich |
+| Live news | A per-turn hook adds only what changed since the agent's last turn. | cheap, tested in three CLIs |
+| Hand-off | A written note in files (card, progress note, git), never more than four hand-offs on one task. | Anthropic; Microsoft |
+| Reviewer | Off by default. On for cards marked risky, and then a different vendor than the doer, judged against the card's own checks. | NLAH -8 points; Omnigent's Polly |
+| Caps | Same failing call twice: warn; eight times: stop and ask. A token cap per card (the Company has one). | Hermes; cheap |
+| Telemetry | Per session: tools used, guards fired, stops refused, checks run, tokens. Read from the transcripts ByteHive already parses. | 5 of 391 repos measure; nothing improves unseen |
+| Harness bench | 20 to 50 frozen tasks from the owner's real past corrections; run a CLI with and without a change; keep what wins. | the only way to know a part helps |
+| Garden | Each guard and rule records its incident and expiry; a monthly pass proposes removals. | harness rot |
 
 ## 7. Plan
 
-1. Lean launch profiles and the brief (the biggest token saving, no new UI).
-2. Live news hook for Claude, Codex and Antigravity.
-3. `handoff_write`, `handoff_get`, context reset on a usage threshold.
-4. Evaluator seat on another CLI for cards marked hard.
-5. Ledger and the lesson file.
-6. The five-task comparison, then remove what does not carry weight.
+1. Verify-on-stop and the guard plane for Claude Code first (hooks given per
+   run through `--settings`, so nothing global changes), with tests both ways.
+2. The same guards for Codex (`-c hooks...`) and Antigravity
+   (`.agents/hooks.json` in the worktree).
+3. Lean launch profiles and the brief.
+4. Telemetry from transcripts, shown per agent: what it ran, what was blocked,
+   tokens.
+5. Harness bench with tasks taken from past sessions where the owner corrected
+   an agent.
+6. ACP as the headless driver for Antigravity and OpenCode (ties into the
+   headless spec).
+7. A reviewer on another vendor for risky cards, measured on the bench before
+   it becomes a default.
 
 ## 8. For the owner to decide
 
 - Your global CLAUDE.md, OpenCode AGENTS.md (121 KB) and skills cost 30k to
-  60k tokens on every agent start. ByteHive can leave them out of its own
-  agents only, keep them as they are, or you can slim them. Which?
-- Should the evaluator be a different CLI from the doer by default?
-- Start with step 1 now?
+  60k tokens on every agent start, and the evidence says big instruction
+  files hurt. ByteHive can leave them out of its own agents, or you can slim
+  them. Which?
+- Start with step 1 (verify-on-stop and guards) now?
 
 ## Sources
 
@@ -195,8 +243,12 @@ lands.
 - https://www.anthropic.com/engineering/harness-design-long-running-apps
 - https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
 - https://openai.com/index/harness-engineering/ (read from a copy at github.com/celesteanders/harness)
+- https://arxiv.org/abs/2609.00006 (Harness Engineering: a source-code study of eleven systems)
+- https://marmelab.com/blog/2026/09/24/the-state-of-ai-harness-engineering-2026.html
+- https://arxiv.org/abs/2603.25723 (Natural-Language Agent Harnesses, the ablation)
 - https://arxiv.org/abs/2604.21003 (The Last Harness You'll Ever Build)
 - https://arxiv.org/abs/2607.14159 (MemoHarness)
+- https://www.anthropic.com/engineering/code-execution-with-mcp
 - https://antigravity.google/docs/hooks
 - https://developers.openai.com/codex/hooks
 - https://opencode.ai/docs/plugins/
