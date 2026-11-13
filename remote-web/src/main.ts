@@ -12,6 +12,7 @@ import { leaveHome, showHome, showMachine } from "./views/home";
 import { showSignIn } from "./views/signin";
 import { leaveAgent, showAgent } from "./views/agent";
 import { leaveNewAgent, showNewAgent } from "./views/newagent";
+import { showSaved } from "./views/saved";
 
 const PAIR_KEY = "bytehive.pair";
 const app = document.getElementById("app")!;
@@ -171,6 +172,8 @@ async function main(): Promise<void> {
     if (route[1] === "m" && route[3] === "new") return showNewAgent(app, ctx, route[2]);
     if (route[1] === "m" && route[2]) return showMachine(app, ctx, route[2]);
     if (route[1] === "pair") return showPair(app, ctx);
+    // Saved sessions need the login only: they open with no machine online.
+    if (route[1] === "saved") return void showSaved(app, t!, route[2]);
     drawing = showHome(app, ctx);
   }
 

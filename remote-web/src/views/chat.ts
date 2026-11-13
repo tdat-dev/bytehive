@@ -155,6 +155,15 @@ function stepRow(i: StepItem): HTMLElement {
   return more;
 }
 
+/** One item of a conversation as the log shows it; the saved sessions page draws the same. */
+export function chatLine(i: ChatItem): HTMLElement {
+  const d = el("div", undefined, `item ${i.kind}`);
+  if (i.kind === "text") d.innerHTML = renderMarkdown(i.text);
+  else if (i.kind === "user" || i.kind === "note") d.textContent = i.text;
+  else d.append(stepRow(i));
+  return d;
+}
+
 const ENTRY = /^[\s│┃|]*(?:[❯>›]\s*)?\d\.\s/;
 
 /**
@@ -241,13 +250,7 @@ export function openChat(root: HTMLElement, s: MachineSession, peer: string, age
     }
   };
 
-  function line(i: ChatItem): HTMLElement {
-    const d = el("div", undefined, `item ${i.kind}`);
-    if (i.kind === "text") d.innerHTML = renderMarkdown(i.text);
-    else if (i.kind === "user" || i.kind === "note") d.textContent = i.text;
-    else d.append(stepRow(i));
-    return d;
-  }
+  const line = chatLine;
 
   /** What stands above the items. Built again only when it changes: the log is read aloud as it grows. */
   let head: Element[] = [];

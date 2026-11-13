@@ -388,3 +388,19 @@ details[open] > summary.step-row::after { content: "Hide"; }
   .tab[aria-selected="true"] { outline: 2px solid; }
   .machine, .needs, .ask, .composer, .invite, .pending-text, .item.user, .session { border: 1px solid CanvasText; }
 }
+
+/* Saved sessions (views/saved.ts): the store's list and its read-only reader. */
+.saved { display: flex; flex-direction: column; gap: 16px; max-width: 760px; margin: 0 auto; padding: 0 16px 32px; min-height: var(--app-h, 100dvh); }
+.saved h1 { font-size: 24px; letter-spacing: -.01em; }
+.saved .hint { color: var(--ink-2); }
+.saved-machine h2 { font-size: 13px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; margin: 8px 0; }
+.saved-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.saved-row { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); text-decoration: none; }
+.saved-row:hover { background: var(--hover); }
+.saved-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.saved-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-sub { font-size: 13px; color: var(--ink-2); }
+.unlock { display: flex; flex-direction: column; gap: 10px; max-width: 360px; }
+.unlock label { display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); }
+.unlock input { padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--field-line); background: var(--well); color: var(--ink); font: inherit; }
+.saved .log { overflow: visible; }

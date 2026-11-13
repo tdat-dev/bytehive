@@ -127,7 +127,7 @@ export async function showHome(root: HTMLElement, app: App): Promise<void> {
     lead.append(el("h1", "No computer paired yet", "pulse"));
     lead.append(el("p", "Turn on Remote in ByteHive's settings on your computer. It gives you a code to pair this device with.", "pulse-line"));
     lead.append(link("Pair a computer", "#/pair", "btn primary"), foot);
-    foot.append(themeButton());
+    foot.append(link("Saved sessions", "#/saved", "btn quiet"), themeButton());
   } else {
     lead.append(...pulse(app, known));
     const needs = known.flatMap((m) => (app.fleet.get(`m:${m.id}`)?.agents ?? [])
@@ -141,7 +141,7 @@ export async function showHome(root: HTMLElement, app: App): Promise<void> {
       lead.append(s);
     }
     rest.append(...known.map((m) => machineCard(app, m)));
-    foot.append(link("Pair a computer", "#/pair", "btn quiet"), notifyControl(), themeButton());
+    foot.append(link("Pair a computer", "#/pair", "btn quiet"), link("Saved sessions", "#/saved", "btn quiet"), notifyControl(), themeButton());
     rest.append(foot);
   }
   swap(root, page);
