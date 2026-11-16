@@ -8,7 +8,7 @@ use serde_json::Value;
 use super::furnish::{RoomPlan, furnished};
 use super::geom::Geom;
 
-fn digest(g: &Geom) -> Vec<f64> {
+pub(super) fn digest(g: &Geom) -> Vec<f64> {
     let sum = |v: &[glam::Vec3], abs: bool| {
         let mut s = [0.0f64; 3];
         for p in v {
@@ -28,7 +28,7 @@ fn digest(g: &Geom) -> Vec<f64> {
     d
 }
 
-fn same_list(room: &str, what: &str, got: &[Geom], want: &Value) {
+pub(super) fn same_list(room: &str, what: &str, got: &[Geom], want: &Value) {
     let want = want.as_array().unwrap();
     assert_eq!(got.len(), want.len(), "{room} {what}: how many geometries");
     for (i, (g, w)) in got.iter().zip(want).enumerate() {

@@ -6,6 +6,9 @@
 // scene that uses it (P3): until then some pieces have no caller.
 #![allow(dead_code)]
 
+pub mod build_parts;
+#[cfg(test)]
+mod build_tests;
 mod earcut;
 pub mod clay;
 pub mod colour;
@@ -36,4 +39,5 @@ mod prims_tests;
 mod readback;
 pub mod shadow;
 pub mod slab;
+pub mod surfaces;
 pub mod spike;
