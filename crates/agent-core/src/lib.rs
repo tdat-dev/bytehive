@@ -27,6 +27,7 @@ pub mod land;
 pub mod launch;
 pub mod muse;
 pub mod opencode;
+pub mod opencode_events;
 pub mod planusage;
 #[cfg(windows)]
 pub mod pipe_session;

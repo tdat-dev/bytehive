@@ -6,6 +6,7 @@
 pub mod codex;
 pub mod crypto;
 pub mod items;
+pub mod opencode;
 pub mod relay;
 pub mod secret;
 pub mod sync;
