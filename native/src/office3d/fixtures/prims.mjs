@@ -34,6 +34,7 @@ const { RoundedBoxGeometry } = await import(pathToFileURL(process.argv[2].replac
 const cases = {
   box: new T.BoxGeometry(1.2, 0.5, 0.8),
   plane: new T.PlaneGeometry(2, 1.5),
+  plane_split: new T.PlaneGeometry(2.5, 1.6, 1, 6),
   circle: new T.CircleGeometry(0.5, 6),
   cylinder: new T.CylinderGeometry(0.3, 0.5, 1.2, 8, 2),
   cylinder_open: new T.CylinderGeometry(0.2, 0.2, 1, 6, 1, true),

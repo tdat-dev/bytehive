@@ -8,6 +8,10 @@
 
 mod earcut;
 pub mod clay;
+pub mod colour;
+pub mod furnish;
+#[cfg(test)]
+mod furnish_tests;
 pub mod geom;
 pub mod glow;
 pub mod gpu;
@@ -23,6 +27,8 @@ pub mod palette;
 pub mod pick;
 pub mod mesh;
 pub mod prims;
+pub mod props;
+pub mod props_wall;
 pub mod quality;
 pub mod seed;
 #[cfg(test)]

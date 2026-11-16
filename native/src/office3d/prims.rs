@@ -103,17 +103,28 @@ pub fn rounded_box(width: f32, height: f32, depth: f32, segments: u32, radius: f
 
 /// PlaneGeometry(width, height, 1, 1): in XY, facing +Z.
 pub fn plane(width: f32, height: f32) -> Geom {
+    plane_split(width, height, 1, 1)
+}
+
+/// PlaneGeometry(width, height, widthSegments, heightSegments).
+pub fn plane_split(width: f32, height: f32, gx: u32, gy: u32) -> Geom {
     let mut m = Mesh::default();
-    for iy in 0..2 {
-        let y = iy as f32 * height - height / 2.0;
-        for ix in 0..2 {
-            let x = ix as f32 * width - width / 2.0;
+    let (sw, sh) = (width / gx as f32, height / gy as f32);
+    for iy in 0..=gy {
+        let y = iy as f32 * sh - height / 2.0;
+        for ix in 0..=gx {
+            let x = ix as f32 * sw - width / 2.0;
             m.pos.push(Vec3::new(x, -y, 0.0));
             m.normal.push(Vec3::Z);
         }
     }
-    let (a, b, c, d) = (0, 2, 3, 1);
-    m.index.extend([a, b, d, b, c, d]);
+    let row = gx + 1;
+    for iy in 0..gy {
+        for ix in 0..gx {
+            let (a, b, c, d) = (ix + row * iy, ix + row * (iy + 1), (ix + 1) + row * (iy + 1), (ix + 1) + row * iy);
+            m.index.extend([a, b, d, b, c, d]);
+        }
+    }
     m.done()
 }
 

@@ -33,6 +33,7 @@ fn same(name: &str, g: Geom) {
 fn shapes_match_three_corner_for_corner() {
     same("box", box_geom(1.2, 0.5, 0.8));
     same("plane", plane(2.0, 1.5));
+    same("plane_split", plane_split(2.5, 1.6, 1, 6));
     same("circle", circle(0.5, 6));
     same("cylinder", cylinder(0.3, 0.5, 1.2, 8, 2, false));
     same("cylinder_open", cylinder(0.2, 0.2, 1.0, 6, 1, true));
