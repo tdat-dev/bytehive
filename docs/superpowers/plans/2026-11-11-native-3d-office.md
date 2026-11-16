@@ -74,6 +74,14 @@ camera flights between floors, people that hop and animate, quality tiers.
   (2 x 0.14) folds its outline over itself and would need the full earcut
   (filterPoints, cureLocalIntersections, splitEarcut). The office has none.
   Next in P1: the clay WGSL, the shadow map, picking.
+- **Clay light done (2026-11-16):** `office.wgsl` is three r170's
+  MeshStandardMaterial path (Lambert / PI, GGX with F Schlick, Smith
+  correlated V, GGX D; hemisphere mixed on n.y) with clay's foot darkening,
+  room glow and edge light, then three's fitted ACES at exposure 1.05;
+  `clay.rs` holds the lights and the three looks. naga validates the WGSL in
+  `cargo test`. Next: the sun's shadow (PCFSoftShadowMap: 3 x 3 with lerped
+  edges, bias -0.0006, normalBias 0.03, intensity 0.62, the frustum scene.ts
+  sets near line 523), then picking.
 - **P2 pure ports with their tests:** `layout.ts`, `model.ts`, `nav.ts`,
   `palette.ts`, `quality.ts`, file by file, tests ported first.
 - **P3 the building:** `build.ts`, `props.ts`, `setting.ts`, `light.ts`,
