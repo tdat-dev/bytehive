@@ -68,6 +68,12 @@ camera flights between floors, people that hop and animate, quality tiers.
   buildSideFaces); the lids use earcut, so test the side faces corner for
   corner and the lids by area and bounds (a convex fan covers the same
   surface). Then the clay WGSL, shadow map, picking.
+- **roundedSlab done (2026-11-16):** `slab.rs` and `earcut.rs`, floor, wall
+  (0.34 thick) and lawn matched corner for corner, normals included. The
+  earcut port covers convex outlines only; a slab thinner than two bevels
+  (2 x 0.14) folds its outline over itself and would need the full earcut
+  (filterPoints, cureLocalIntersections, splitEarcut). The office has none.
+  Next in P1: the clay WGSL, the shadow map, picking.
 - **P2 pure ports with their tests:** `layout.ts`, `model.ts`, `nav.ts`,
   `palette.ts`, `quality.ts`, file by file, tests ported first.
 - **P3 the building:** `build.ts`, `props.ts`, `setting.ts`, `light.ts`,

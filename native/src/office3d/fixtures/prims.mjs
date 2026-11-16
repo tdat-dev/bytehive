@@ -3,6 +3,33 @@
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 const T = await import(pathToFileURL(process.argv[2]).href);
+const ex = (rel) => pathToFileURL(process.argv[2].replace(/build[\/]three\.module\.js$/, rel)).href;
+const { toCreasedNormals } = await import(ex("examples/jsm/utils/BufferGeometryUtils.js"));
+// roundedSlab and flatTopped from the office's geometry.ts, word for word.
+function flatTopped(g) {
+  const s = toCreasedNormals(g, 0.9);
+  const pos = g.getAttribute("position");
+  const normal = s.getAttribute("normal");
+  for (let i = 0; i < pos.count; i += 3) {
+    const flat = Math.abs(pos.getY(i) - pos.getY(i + 1)) < 1e-5 && Math.abs(pos.getY(i) - pos.getY(i + 2)) < 1e-5;
+    if (flat) for (let k = 0; k < 3; k += 1) normal.setXYZ(i + k, 0, pos.getY(i) < -1e-5 ? -1 : 1, 0);
+  }
+  return s;
+}
+function roundedSlab(w, d, h, r, bevel = 0.14) {
+  const hw = w / 2 - bevel, hd = d / 2 - bevel;
+  const q = Math.max(0.01, Math.min(r - bevel, hw, hd));
+  const s = new T.Shape();
+  s.absarc(hw - q, hd - q, q, 0, Math.PI / 2, false);
+  s.absarc(-hw + q, hd - q, q, Math.PI / 2, Math.PI, false);
+  s.absarc(-hw + q, -hd + q, q, Math.PI, Math.PI * 1.5, false);
+  s.absarc(hw - q, -hd + q, q, Math.PI * 1.5, Math.PI * 2, false);
+  const depth = Math.max(0.01, h - bevel * 2);
+  const g = new T.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3, curveSegments: 8 });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, -(depth + bevel), 0);
+  return flatTopped(g);
+}
 const { RoundedBoxGeometry } = await import(pathToFileURL(process.argv[2].replace(/build[\/]three\.module\.js$/, "examples/jsm/geometries/RoundedBoxGeometry.js")).href);
 const cases = {
   box: new T.BoxGeometry(1.2, 0.5, 0.8),
@@ -21,6 +48,9 @@ const cases = {
   box_split: new T.BoxGeometry(1, 1, 1, 3, 3, 3),
   soft_desk: new RoundedBoxGeometry(2.5, 0.92, 0.68, 1, 0.05),
   soft_cushion: new RoundedBoxGeometry(0.3, 0.56, 0.96, 1, 0.13),
+  slab_floor: roundedSlab(9.5, 7.2, 0.42, 0.42, 0.17),
+  slab_wall: roundedSlab(6, 0.34, 2.6, 0.17),
+  slab_lawn: roundedSlab(14, 11, 0.55, 1.6),
 };
 const r = (a) => Array.from(a, (v) => Math.round(v * 1e5) / 1e5);
 const out = {};
