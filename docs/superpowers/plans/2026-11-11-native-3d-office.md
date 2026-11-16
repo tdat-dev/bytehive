@@ -113,6 +113,15 @@ camera flights between floors, people that hop and animate, quality tiers.
   geometry (shell, desk, chair, wallGrid, hexFloor, screen, deskFor,
   deskThing, noteParts, stringLights, roof, liftCar); its canvas words wait
   for P5's overlays. Then setting.ts.
+- **P3 building parts done (2026-11-16):** `build_parts.rs` (shell, desk,
+  chair and its back, board, deskThing, stickies, noteParts, stringLights
+  with three's Matrix4.lookAt, liftCar) and `surfaces.rs` (wallGrid,
+  hexFloor), matched as digests in `build.json`; the gold bundler exports
+  build.ts's private parts on the way in and stubs Vite's import.meta.glob.
+  Lesson: pass sizes to `rounded_slab` in f64. The wall's 0.34 held as an f32
+  left its rounded ends 2e-9 apart and the outline grew two points.
+  Left in P3: the roof (roofSteps) and setting.ts. deskFor and roomSteps
+  need people.ts, so they move to P4.
 - **P4 people and life marks:** `people.ts`, `life.ts`, animation clock.
 - **P5 interaction:** camera flights (`mixShots`, `easeLevel`), hover and click
   through picking, anchors projected to the page so GPUI draws the words over
