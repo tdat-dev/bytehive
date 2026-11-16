@@ -21,6 +21,7 @@ mod gitexclude;
 mod gridcards;
 mod gridfit;
 mod gridpins;
+mod guard;
 mod icons;
 mod import;
 mod inbox;

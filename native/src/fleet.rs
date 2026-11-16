@@ -446,7 +446,10 @@ fn run_extras_with(spec: &Spec, program: &str, company: impl FnOnce(&Spec) -> Re
     if program != "claude" {
         return Ok((Vec::new(), Vec::new()));
     }
-    Ok((vec!["--append-system-prompt".to_string(), crate::laws::for_role(spec.role.as_deref()).to_string()], Vec::new()))
+    let mut args = vec!["--append-system-prompt".to_string(), crate::laws::for_role(spec.role.as_deref()).to_string()];
+    // Rules that hold because a script checks them, not because the prompt says so.
+    args.extend(crate::guard::claude_args());
+    Ok((args, Vec::new()))
 }
 
 #[cfg(test)]
