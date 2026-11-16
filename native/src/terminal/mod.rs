@@ -4,6 +4,7 @@
 
 
 mod colors;
+mod drop;
 mod focus;
 mod mouse;
 mod paint;
@@ -425,6 +426,10 @@ impl Render for Terminal {
         div()
             .size_full()
             .track_focus(&self.focus)
+            // Files dragged in from outside: their paths typed in (drop.rs).
+            .on_drop(cx.listener(Self::on_files))
+            // Lit while files are held over it, as the Tauri pane's drop target.
+            .drag_over::<ExternalPaths>(|s, _, _, _| s.bg(gpui_kit::hsla(0.11, 0.9, 0.6, 0.08)))
             .on_key_down(cx.listener(Self::on_key_down))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::on_mouse_down))
