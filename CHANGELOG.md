@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.13] - 2026-11-16
+
+### Added
+
+- **Codex agents check their work too.** The guards from 0.16.12 now cover
+  Codex: it can't finish a turn that changed code with no test or build after
+  the last change, and destructive commands are refused. Codex often edits
+  files with shell commands instead of its patch tool, so ByteHive watches the
+  project's files around every step rather than trusting the tool name. In a
+  trial Codex edited, was asked to check, and ran the tests before finishing.
+
+### Fixed
+
+- **A whitespace check no longer passes for a test run.** Only a real test,
+  build or linter counts as checking the work; `git diff --check` and other
+  git commands no longer do.
+
 ## [0.16.12] - 2026-11-16
 
 ### Added
