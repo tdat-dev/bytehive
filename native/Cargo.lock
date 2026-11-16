@@ -833,6 +833,7 @@ dependencies = [
  "hmac",
  "image",
  "minisign-verify",
+ "naga",
  "pbkdf2",
  "pollster",
  "portable-pty",

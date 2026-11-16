@@ -42,10 +42,11 @@ pub fn spike_scene() -> Vec<Vertex> {
     out
 }
 
-/// Look at the middle of the tower from a camera turning around it.
-pub fn spike_view(t: f32, aspect: f32) -> Mat4 {
+/// Look at the middle of the tower from a camera turning around it: the
+/// view-projection and where the camera stands.
+pub fn spike_view(t: f32, aspect: f32) -> (Mat4, Vec3) {
     let eye = Vec3::new(t.cos() * 22.0, 14.0, t.sin() * 22.0);
-    Mat4::perspective_rh(40f32.to_radians(), aspect.max(0.1), 0.5, 200.0) * Mat4::look_at_rh(eye, Vec3::new(0.0, 4.0, 0.0), Vec3::Y)
+    (Mat4::perspective_rh(40f32.to_radians(), aspect.max(0.1), 0.5, 200.0) * Mat4::look_at_rh(eye, Vec3::new(0.0, 4.0, 0.0), Vec3::Y), eye)
 }
 
 #[cfg(test)]

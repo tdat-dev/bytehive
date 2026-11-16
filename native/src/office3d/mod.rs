@@ -7,13 +7,16 @@
 #![allow(dead_code)]
 
 mod earcut;
+pub mod clay;
 pub mod geom;
 pub mod gpu;
 pub mod lathe;
+pub mod pick;
 pub mod mesh;
 pub mod prims;
 #[cfg(test)]
 mod prims_tests;
 mod readback;
+pub mod shadow;
 pub mod slab;
 pub mod spike;
