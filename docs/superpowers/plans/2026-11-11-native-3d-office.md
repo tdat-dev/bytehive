@@ -87,6 +87,10 @@ camera flights between floors, people that hop and animate, quality tiers.
   PCFSoft 3 x 3 with blended outer taps, bias, normalBias, intensity). Spike
   on the Intel UHD 630: 116 fps, 0.9 ms a frame on the UI thread. Next in P1:
   picking (ray against each pickable's box, as scene.ts's proxies).
+- **P1 done (2026-11-16):** picking in `pick.rs` (a ray from the camera, as
+  Raycaster.setFromCamera, against each proxy's box; nearest wins). Next is
+  P2: port layout.ts, model.ts, nav.ts, palette.ts and quality.ts with their
+  tests, tests first.
 - **P2 pure ports with their tests:** `layout.ts`, `model.ts`, `nav.ts`,
   `palette.ts`, `quality.ts`, file by file, tests ported first.
 - **P3 the building:** `build.ts`, `props.ts`, `setting.ts`, `light.ts`,

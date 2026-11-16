@@ -11,6 +11,7 @@ pub mod clay;
 pub mod geom;
 pub mod gpu;
 pub mod lathe;
+pub mod pick;
 pub mod mesh;
 pub mod prims;
 #[cfg(test)]
