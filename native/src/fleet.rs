@@ -443,6 +443,9 @@ fn run_extras_with(spec: &Spec, program: &str, company: impl FnOnce(&Spec) -> Re
         // The Company launch is claude's flags only (launch.ts).
         eprintln!("[bytehive] {} runs {program}, which has no Company launch: started as a plain agent", spec.name);
     }
+    if program == "codex" {
+        return Ok((crate::guard::codex_args(), Vec::new()));
+    }
     if program != "claude" {
         return Ok((Vec::new(), Vec::new()));
     }

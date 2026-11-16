@@ -49,24 +49,58 @@ fn install(dir: &Path) -> std::io::Result<PathBuf> {
     Ok(settings)
 }
 
-/// `--settings <file>` for a Claude agent, or nothing when the guards can't run here.
-pub fn claude_args() -> Vec<String> {
+/// The installed settings file, once per run; None when the guards can't run here.
+fn installed() -> Option<&'static PathBuf> {
     // A test run never writes into the owner's data folder; install() is tested on its own.
     if cfg!(test) {
-        return Vec::new();
+        return None;
     }
     static SETTINGS: OnceLock<Option<PathBuf>> = OnceLock::new();
-    let settings = SETTINGS.get_or_init(|| {
-        if !has_node() {
-            return None;
-        }
-        let dir = crate::fleet::data_dir()?;
-        install(&dir).map_err(|e| eprintln!("[bytehive] the agent guards were not written: {e}")).ok()
-    });
-    match settings {
+    SETTINGS
+        .get_or_init(|| {
+            if !has_node() {
+                return None;
+            }
+            let dir = crate::fleet::data_dir()?;
+            install(&dir).map_err(|e| eprintln!("[bytehive] the agent guards were not written: {e}")).ok()
+        })
+        .as_ref()
+}
+
+/// `--settings <file>` for a Claude agent, or nothing when the guards can't run here.
+pub fn claude_args() -> Vec<String> {
+    match installed() {
         Some(p) => vec!["--settings".into(), p.to_string_lossy().into_owned()],
         None => Vec::new(),
     }
+}
+
+/// Codex's hooks as `-c` overrides. Codex starts through `cmd /c`, so the values
+/// carry no double quote, pipe or angle bracket, and a script path cmd would
+/// split or expand is left out: that agent starts without guards.
+fn codex_overrides(script: &Path) -> Option<Vec<String>> {
+    let path = script.to_string_lossy().replace('\\', "/");
+    if path.chars().any(|c| c.is_whitespace() || "\"'%^&|<>".contains(c)) {
+        return None;
+    }
+    let hook = |event: &str, matcher: Option<&str>, kind: &str, timeout: u32| {
+        let matcher = matcher.map(|m| format!("matcher='{m}',")).unwrap_or_default();
+        format!("hooks.{event}=[{{{matcher}hooks=[{{type='command',command='node {path} {kind}',timeout={timeout}}}]}}]")
+    };
+    Some(vec![
+        "--dangerously-bypass-hook-trust".into(),
+        "-c".into(),
+        hook("PreToolUse", None, "pre", 10),
+        "-c".into(),
+        hook("PostToolUse", None, "post", 10),
+        "-c".into(),
+        hook("Stop", None, "stop", 15),
+    ])
+}
+
+/// The hooks for a Codex agent, or nothing when the guards can't run here.
+pub fn codex_args() -> Vec<String> {
+    installed().and_then(|settings| codex_overrides(&settings.with_file_name("guard.mjs"))).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -94,6 +128,25 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(20));
         install(dir.path()).unwrap();
         assert_eq!(std::fs::metadata(&script).unwrap().modified().unwrap(), before);
+    }
+
+    #[test]
+    fn hands_codex_its_hooks_as_overrides_cmd_will_not_mangle() {
+        let args = codex_overrides(Path::new("C:\\Users\\ana\\.bytehive\\native\\hooks\\guard.mjs")).unwrap();
+        assert_eq!(args[0], "--dangerously-bypass-hook-trust");
+        assert_eq!(args.iter().filter(|a| *a == "-c").count(), 3);
+        assert_eq!(args[2], "hooks.PreToolUse=[{hooks=[{type='command',command='node C:/Users/ana/.bytehive/native/hooks/guard.mjs pre',timeout=10}]}]");
+        assert!(args[4].starts_with("hooks.PostToolUse=[{hooks=") && args[4].contains(" post',"));
+        assert!(args[6].starts_with("hooks.Stop=[{hooks=") && args[6].contains(" stop',"));
+        for a in &args {
+            assert!(!a.contains(['"', '|', '<', '>', '&', '%', '^']), "{a}");
+        }
+    }
+
+    #[test]
+    fn leaves_codex_unguarded_when_the_path_would_break_on_cmd() {
+        assert_eq!(codex_overrides(Path::new("C:\\Users\\Ana Lee\\.bytehive\\hooks\\guard.mjs")), None);
+        assert_eq!(codex_overrides(Path::new("C:\\Users\\a%b\\guard.mjs")), None);
     }
 
     /// The script's own tests (guard.test.mjs), when Node is here to run them.

@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { audit, lastTurn, refuse, stopAnswer } from "./guard.mjs";
+import { audit, lastTurn, moved, note, patchFiles, refuse, stopAnswer, stopFromNotes } from "./guard.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./guard.mjs", import.meta.url));
 
@@ -115,6 +115,16 @@ test("the project's own check command counts", () => {
   assert.equal(stopAnswer({}, lines, { check: "./ci.sh" }), null);
 });
 
+test("only a real test, build or lint counts as a check", () => {
+  const after = (cmd) => stopAnswer({}, [user("x"), tool("Edit", { file_path: "a.rs" }), tool("Bash", { command: cmd })]);
+  for (const c of ["cargo test", "rtk cargo build -j 2", "npm test", "npm run lint", "pnpm build", "npx vitest run", "node --test", "pytest -q", "python -m pytest", "go test ./...", "tsc --noEmit", "./run-tests.sh", "node greet.test.mjs"]) {
+    assert.equal(after(c), null, `should count: ${c}`);
+  }
+  for (const c of ["git diff --check", "git status", "rtk git commit -m test", "cat package.json", "echo checked", "ls tests"]) {
+    assert.equal(after(c)?.decision, "block", `should not count: ${c}`);
+  }
+});
+
 test("audit names each changed file once", () => {
   const turn = lastTurn([user("x"), tool("Edit", { file_path: "a.rs" }), tool("Edit", { file_path: "a.rs" })]);
   assert.deepEqual(audit(turn).changed, ["a.rs"]);
@@ -134,4 +144,73 @@ test("as a hook process: it answers on stdout, and says nothing when all is well
   fs.mkdirSync(path.join(dir, ".bytehive"));
   fs.writeFileSync(path.join(dir, ".bytehive", "guards.json"), JSON.stringify({ verify: false }));
   assert.equal(run("stop", { transcript_path: transcript, cwd: dir }).stdout, "", "turned off by the project");
+});
+
+// Codex: the turn is followed through PostToolUse notes, not its transcript.
+const patch = (...files) => `*** Begin Patch\n${files.map((f) => `*** Update File: ${f}\n@@\n-a\n+b`).join("\n")}\n*** End Patch`;
+const call = (tool_name, command) => ({ tool_name, tool_input: { command } });
+
+test("codex: reads the files an apply_patch touches", () => {
+  assert.deepEqual(patchFiles(patch("src/a.rs", "README.md")), ["src/a.rs", "README.md"]);
+  assert.deepEqual(patchFiles("*** Add File: new.ts\n+x"), ["new.ts"]);
+  assert.deepEqual(patchFiles("echo hi"), []);
+});
+
+test("codex: a patched file with no check after it blocks the stop", () => {
+  let s = note(null, call("apply_patch", patch("src/a.rs")));
+  assert.equal(stopFromNotes({}, s)?.decision, "block");
+  s = note(s, call("Bash", "cargo test"));
+  assert.equal(stopFromNotes({}, s), null);
+  s = note(s, call("apply_patch", patch("src/b.rs")));
+  assert.match(stopFromNotes({}, s)?.reason ?? "", /a\.rs, b\.rs/);
+});
+
+test("codex: docs, a turn with nothing noted, a second stop and a project that turned it off all go", () => {
+  assert.equal(stopFromNotes({}, note(null, call("apply_patch", patch("docs/x.md")))), null);
+  assert.equal(stopFromNotes({}, null), null);
+  const s = note(null, call("apply_patch", patch("a.rs")));
+  assert.equal(stopFromNotes({ stop_hook_active: true }, s), null);
+  assert.equal(stopFromNotes({}, s, { verify: false }), null);
+});
+
+test("codex: an edit made by a shell command is seen through the worktree", () => {
+  const before = { "src/a.rs": " M|10:1" };
+  const after = { "src/a.rs": " M|11:2", "src/new.rs": "??|5:3" };
+  assert.deepEqual(moved(before, after).sort(), ["src/a.rs", "src/new.rs"]);
+  const s = note(null, call("PowerShell", "(Get-Content a.rs) -replace 'x','y' | Set-Content a.rs"), {}, before, after);
+  assert.equal(stopFromNotes({}, s)?.decision, "block");
+  assert.equal(stopFromNotes({}, note(null, call("Bash", "ls"), {}, before, before)), null, "nothing moved");
+  assert.equal(stopFromNotes({}, note(null, call("Bash", "sed -i s/a/b/ a.rs && cargo test"), {}, before, after)), null, "edit and check in one command");
+});
+
+test("codex: a real shell edit in a git worktree blocks the stop until a check runs", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "guard-git-"));
+  const git = (...a) => spawnSync("git", ["-C", dir, ...a], { encoding: "utf8" });
+  git("init", "-q");
+  fs.writeFileSync(path.join(dir, "a.js"), "one\n");
+  git("add", "-A");
+  git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init");
+  const turn = { session_id: `g${Date.now()}`, turn_id: "t1", cwd: dir };
+  const env = { ...process.env, BYTEHIVE_WORKSPACE: dir };
+  const run = (kind, event) => spawnSync(process.execPath, [SCRIPT, kind], { input: JSON.stringify({ ...turn, ...event }), encoding: "utf8", env });
+  const shell = (id, command) => ({ tool_name: "Bash", tool_use_id: id, tool_input: { command } });
+  run("pre", shell("u1", "edit a.js"));
+  fs.writeFileSync(path.join(dir, "a.js"), "two\n");
+  run("post", shell("u1", "edit a.js"));
+  assert.match(JSON.parse(run("stop", {}).stdout).reason, /a\.js/);
+  run("pre", shell("u2", "npm test"));
+  run("post", shell("u2", "npm test"));
+  assert.equal(run("stop", {}).stdout, "");
+});
+
+test("codex: the hook process keeps notes per turn and blocks the stop", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "guard-codex-"));
+  const turn = { session_id: `s${Date.now()}`, turn_id: "t1", cwd: dir };
+  const env = { ...process.env, BYTEHIVE_WORKSPACE: dir };
+  const run = (kind, event) => spawnSync(process.execPath, [SCRIPT, kind], { input: JSON.stringify({ ...turn, ...event }), encoding: "utf8", env });
+  assert.equal(run("post", call("apply_patch", patch("src/a.rs"))).stdout, "");
+  assert.equal(JSON.parse(run("stop", {}).stdout).decision, "block");
+  run("post", call("Bash", "npm test"));
+  assert.equal(run("stop", {}).stdout, "");
+  assert.equal(run("stop", { turn_id: "t2" }).stdout, "", "another turn starts clean");
 });

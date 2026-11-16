@@ -5,12 +5,17 @@
 //   node guard.mjs pre    PreToolUse on Bash and PowerShell: refuse commands that destroy work.
 //   node guard.mjs stop   Stop: a turn that changed code and ran no check after the
 //                         last change is not done yet. Asked once; a second stop goes.
+//   node guard.mjs post   PostToolUse (Codex only): notes the turn's edits and checks.
+//
+// Claude Code and Codex speak the same hook shapes; Codex is wired in with -c.
 //
 // The hook event comes on stdin as JSON; the answer goes to stdout. A project
 // tunes it in <project>/.bytehive/guards.json:
 //   { "verify": true, "check": "cargo test", "block": ["regex", ...] }
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,7 +33,9 @@ const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 /** The tools that run a command: Bash, and PowerShell on Windows. */
 export const SHELLS = new Set(["Bash", "PowerShell"]);
 /** A command that checks the work: tests, a build, a type check, a linter. */
-const CHECK = /\b(?:test|tests|build|check|lint|clippy|tsc|vitest|jest|pytest|mocha|playwright|cargo|npm|pnpm|yarn|bun|go|make|gradle|mvn|dotnet|ruff|mypy|eslint)\b/i;
+// A test runner, a build or a linter actually run. A bare word like "check" is
+// not enough: `git diff --check` would pass for one (seen with Codex).
+const CHECK = /\b(?:cargo\s+(?:test|build|check|clippy|nextest)|(?:npm|pnpm|yarn|bun)\s+(?:test|t|run\s+[\w:.-]+|build)|npx\s+(?:vitest|jest|tsc|eslint|playwright|mocha)|node\s+--test|go\s+(?:test|build|vet)|deno\s+test|python\d?\s+-m\s+(?:pytest|unittest)|pytest|vitest|jest|mocha|tsc|eslint|ruff|mypy|make|gradle|mvn|dotnet\s+(?:test|build)|ctest|phpunit|rspec)\b|\b[\w./\\-]*test[\w-]*\.(?:sh|ps1|cmd|bat|mjs|js|py)\b/i;
 /** Files whose change needs no check. */
 const QUIET = /\.(?:md|mdx|txt|rst|adoc)$/i;
 
@@ -95,6 +102,11 @@ export function audit(turn, config = {}) {
 export function stopAnswer(event, lines, config = {}) {
   if (event.stop_hook_active || config.verify === false) return null;
   const { changed, checked } = audit(lastTurn(lines), config);
+  return verdict(changed, checked, config);
+}
+
+/** Block the stop when code changed with no check after it. */
+function verdict(changed, checked, config) {
   if (!changed.length || checked) return null;
   const how = config.check ? `\`${config.check}\`` : "the project's tests or build";
   const files = changed.slice(0, 5).join(", ") + (changed.length > 5 ? ` and ${changed.length - 5} more` : "");
@@ -102,6 +114,87 @@ export function stopAnswer(event, lines, config = {}) {
     decision: "block",
     reason: `ByteHive: you changed ${files} and ran no check after the last change. Run ${how} and report what it printed before you finish. If this change needs no check, say why in one line.`,
   };
+}
+
+// Codex: its transcript is not a stable format (its docs say so), so the turn is
+// followed as it happens instead. PostToolUse notes each edit and each check in a
+// small file kept per session and turn; Stop reads it.
+
+/** The files an apply_patch touches. */
+export function patchFiles(patch) {
+  return [...String(patch).matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((m) => m[1].trim());
+}
+
+/** Files whose state differs between two worktree snapshots. */
+export function moved(before, after) {
+  const keys = new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]);
+  return [...keys].filter((k) => (before ?? {})[k] !== (after ?? {})[k]);
+}
+
+/**
+ * The turn's record after one more tool call. `before` and `after` are worktree
+ * snapshots around the call (null outside git): Codex edits files with shell
+ * commands as often as with apply_patch, so a change is whatever moved.
+ */
+export function note(state, event, config = {}, before = null, after = null) {
+  const s = { changed: [], edit: -1, check: -1, n: 0, ...state };
+  const cmd = String(event.tool_input?.command ?? "");
+  const files = (before && after ? moved(before, after) : event.tool_name === "apply_patch" ? patchFiles(cmd) : []).filter((f) => !QUIET.test(f));
+  if (files.length) {
+    s.edit = s.n;
+    s.changed = [...new Set([...s.changed, ...files.map((f) => path.basename(f))])];
+  }
+  // A command that edits and then checks (`... && npm test`) counts as checked.
+  if (SHELLS.has(event.tool_name) && (CHECK.test(cmd) || (config.check && cmd.includes(config.check)))) {
+    s.check = s.n + 0.5;
+  }
+  s.n += 1;
+  return s;
+}
+
+/** The worktree's uncommitted files with their size and time, or null outside git. */
+export function snapshot(cwd) {
+  const r = spawnSync("git", ["-C", cwd, "status", "--porcelain=v1", "-uall", "-z"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+  if (r.status !== 0) return null;
+  const out = {};
+  for (const entry of r.stdout.split("\0")) {
+    if (entry.length < 4) continue;
+    const file = entry.slice(3);
+    let stamp = "gone";
+    try {
+      const st = fs.statSync(path.join(cwd, file));
+      stamp = `${st.size}:${Math.round(st.mtimeMs)}`;
+    } catch {}
+    out[file] = `${entry.slice(0, 2)}|${stamp}`;
+  }
+  return out;
+}
+
+/** The Stop answer for a turn followed by `note`. */
+export function stopFromNotes(event, state, config = {}) {
+  if (event.stop_hook_active || config.verify === false || !state) return null;
+  return verdict(state.changed ?? [], (state.check ?? -1) > (state.edit ?? -1), config);
+}
+
+const notesFile = (event) => {
+  const safe = (s) => String(s ?? "").replace(/[^\w-]/g, "").slice(0, 80);
+  return path.join(os.tmpdir(), "bytehive-guard", `${safe(event.session_id)}-${safe(event.turn_id)}.json`);
+};
+
+function readNotes(event, file = notesFile(event)) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Where a tool call's before-snapshot waits for its PostToolUse. */
+const beforeFile = (event) => notesFile(event).replace(/\.json$/, `-${String(event.tool_use_id ?? "").replace(/[^\w-]/g, "").slice(0, 80)}.before.json`);
+
+function writeJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(value));
 }
 
 function tail(file, bytes = 4 * 1024 * 1024) {
@@ -134,8 +227,22 @@ async function main(kind) {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } }));
     }
   }
+  const cwd = String(event.cwd ?? process.cwd());
+  // Codex (it sends a turn id): a snapshot before each tool call, compared after it.
+  if (kind === "pre" && event.turn_id) {
+    const snap = snapshot(cwd);
+    if (snap) writeJson(beforeFile(event), snap);
+  }
+  if (kind === "post" && event.turn_id) {
+    const bf = beforeFile(event);
+    const before = readNotes(event, bf);
+    fs.rmSync(bf, { force: true });
+    const after = before ? snapshot(cwd) : null;
+    writeJson(notesFile(event), note(readNotes(event), event, config, before, after));
+  }
   if (kind === "stop") {
-    const answer = stopAnswer(event, tail(String(event.transcript_path ?? "")), config);
+    // Codex sends a turn id and is followed by notes; Claude's transcript is read.
+    const answer = event.turn_id ? stopFromNotes(event, readNotes(event), config) : stopAnswer(event, tail(String(event.transcript_path ?? "")), config);
     if (answer) process.stdout.write(JSON.stringify(answer));
   }
 }
