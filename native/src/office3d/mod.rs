@@ -15,6 +15,7 @@ pub mod layout;
 #[cfg(test)]
 mod layout_tests;
 pub mod nav;
+pub mod palette;
 pub mod pick;
 pub mod mesh;
 pub mod prims;
