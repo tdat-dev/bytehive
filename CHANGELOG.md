@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.12] - 2026-11-16
+
+### Added
+
+- **Claude agents check their work before they say done.** When an agent
+  changed code and ran no test or build after the last change, ByteHive stops
+  it from finishing and asks it to run the project's checks and report what
+  they printed. In a trial the agent's one-line edit had broken the test; the
+  check caught it and the agent fixed it before finishing. Doc-only changes
+  are let through, and the agent is asked only once.
+- **Commands that throw work away are refused.** A Claude agent that tries
+  `git reset --hard`, `git push --force`, `git clean -fd`, `git checkout -- .`,
+  or deleting a whole drive or home folder is told no and why, and to ask you.
+  Both rules are scripts, not instructions, so they hold every time. A project
+  can set its own check command, block more commands or turn the check off in
+  `.bytehive/guards.json`. Needs Node; your own Claude settings are not
+  touched.
+
 ## [0.16.11] - 2026-11-13
 
 ### Fixed
