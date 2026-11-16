@@ -14,6 +14,7 @@ pub mod lathe;
 pub mod layout;
 #[cfg(test)]
 mod layout_tests;
+pub mod nav;
 pub mod pick;
 pub mod mesh;
 pub mod prims;
