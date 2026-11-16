@@ -102,6 +102,17 @@ camera flights between floors, people that hop and animate, quality tiers.
   crumbs and rail targets (the Company page has them). Next: P3, the building.
 - **P3 the building:** `build.ts`, `props.ts`, `setting.ts`, `light.ts`,
   `geometry.ts`.
+- **P3 progress (2026-11-16):** goldens now come from the office's own
+  TypeScript, bundled with three by esbuild and run in node
+  (`native/src/office3d/fixtures/gold/README.md`). Done and matched:
+  `seed.rs` (seeded, hashOf), `light.rs` (lightAt, shadeAt, bake,
+  deskBlockers), `glow.rs` (flare, pool, wash), `colour.rs` (dim, shift,
+  three's rounding), `props.rs` + `props_wall.rs` (every prop), `furnish.rs`
+  (whole rooms: six floors, every geometry as a digest in `furnish.json`,
+  plus lamps and blockers; a mutation check fails it). Next: build.ts's
+  geometry (shell, desk, chair, wallGrid, hexFloor, screen, deskFor,
+  deskThing, noteParts, stringLights, roof, liftCar); its canvas words wait
+  for P5's overlays. Then setting.ts.
 - **P4 people and life marks:** `people.ts`, `life.ts`, animation clock.
 - **P5 interaction:** camera flights (`mixShots`, `easeLevel`), hover and click
   through picking, anchors projected to the page so GPUI draws the words over
