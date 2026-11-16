@@ -9,6 +9,7 @@ use serde_json::Value;
 use super::geom::Geom;
 use super::lathe::capsule;
 use super::prims::*;
+use super::slab::rounded_slab;
 
 fn golden(name: &str) -> (Vec<f32>, Vec<f32>) {
     let all: Value = serde_json::from_str(include_str!("fixtures/prims.json")).unwrap();
@@ -46,4 +47,7 @@ fn shapes_match_three_corner_for_corner() {
     same("box_split", box_split(1.0, 1.0, 1.0, 3, 3, 3));
     same("soft_desk", rounded_box(2.5, 0.92, 0.68, 1, 0.05));
     same("soft_cushion", rounded_box(0.3, 0.56, 0.96, 1, 0.13));
+    same("slab_floor", rounded_slab(9.5, 7.2, 0.42, 0.42, Some(0.17)));
+    same("slab_wall", rounded_slab(6.0, 0.34, 2.6, 0.17, None));
+    same("slab_lawn", rounded_slab(14.0, 11.0, 0.55, 1.6, None));
 }

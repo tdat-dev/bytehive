@@ -6,6 +6,7 @@
 // scene that uses it (P3): until then some pieces have no caller.
 #![allow(dead_code)]
 
+mod earcut;
 pub mod geom;
 pub mod gpu;
 pub mod lathe;
@@ -14,4 +15,5 @@ pub mod prims;
 #[cfg(test)]
 mod prims_tests;
 mod readback;
+pub mod slab;
 pub mod spike;

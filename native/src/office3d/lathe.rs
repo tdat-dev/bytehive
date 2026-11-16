@@ -47,7 +47,7 @@ pub fn lathe(points: &[(f64, f64)], segments: u32) -> Geom {
 }
 
 /// A point on an arc, EllipseCurve.getPoint with equal radii and no turn.
-fn arc_point(cx: f64, cy: f64, r: f64, start: f64, end: f64, t: f64) -> (f64, f64) {
+pub(super) fn arc_point(cx: f64, cy: f64, r: f64, start: f64, end: f64, t: f64) -> (f64, f64) {
     let mut delta = end - start;
     let same = delta.abs() < f64::EPSILON;
     while delta < 0.0 {
