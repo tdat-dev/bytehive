@@ -138,6 +138,7 @@ pub fn reset_sent() {
 fn read_items(s: &Source) -> Option<Vec<crate::transcript::Item>> {
     match s.cli.as_str() {
         "claude" => crate::transcript::read_session(&s.run_dir, &s.session, None).ok().map(|r| r.chat.items),
+        "codex" => super::codex::read(&s.session),
         _ => None,
     }
 }

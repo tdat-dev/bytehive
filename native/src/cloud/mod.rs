@@ -3,6 +3,7 @@
 //! (docs/superpowers/specs/2026-11-13-remote-session-store.md).
 #![allow(dead_code)]
 
+pub mod codex;
 pub mod crypto;
 pub mod items;
 pub mod relay;

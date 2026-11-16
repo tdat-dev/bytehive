@@ -156,19 +156,24 @@ pub fn session_exists_in(codex: &Path, session_id: &str) -> bool {
 /// Any rollout file under `root` (any day) carrying this session id.
 /// File names only, no reads: cheap enough to scan without a day cap.
 fn rollout_with_id(root: &Path, id: &str) -> bool {
-    for y in sorted_dirs(root) {
-        for m in sorted_dirs(&y) {
-            for d in sorted_dirs(&m) {
+    rollout_file(root, id).is_some()
+}
+
+/// The rollout file of session `id` under `root` (`~/.codex/sessions`), newest day first.
+pub fn rollout_file(root: &Path, id: &str) -> Option<PathBuf> {
+    for y in sorted_dirs(root).into_iter().rev() {
+        for m in sorted_dirs(&y).into_iter().rev() {
+            for d in sorted_dirs(&m).into_iter().rev() {
                 let Ok(entries) = std::fs::read_dir(&d) else { continue };
                 for ent in entries.flatten() {
                     if rollout_id(&ent.path()).as_deref() == Some(id) {
-                        return true;
+                        return Some(ent.path());
                     }
                 }
             }
         }
     }
-    false
+    None
 }
 
 pub fn sorted_dirs(p: &Path) -> Vec<PathBuf> {
