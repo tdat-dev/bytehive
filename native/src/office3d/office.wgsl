@@ -20,14 +20,20 @@ struct Frame {
     room: vec4<f32>,
     rim: vec4<f32>,
     storey: vec4<f32>,
+    // The sun's view-projection, then (bias, normal bias, intensity, on).
+    light: mat4x4<f32>,
+    shadow: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> frame: Frame;
+@group(0) @binding(1) var shadow_map: texture_depth_2d;
+@group(0) @binding(2) var shadow_cmp: sampler_comparison;
 
 struct Out {
     @builtin(position) clip: vec4<f32>,
     @location(0) normal: vec3<f32>,
     @location(1) color: vec3<f32>,
     @location(2) world: vec3<f32>,
+    @location(3) shadow_pos: vec4<f32>,
 };
 
 @vertex
@@ -38,7 +44,46 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) 
     o.normal = (frame.model * vec4<f32>(normal, 0.0)).xyz;
     o.color = color;
     o.world = world.xyz;
+    // three moves the point along its normal before looking it up (normalBias).
+    o.shadow_pos = frame.light * vec4<f32>(world.xyz + normalize(o.normal) * frame.shadow.y, 1.0);
     return o;
+}
+
+// The sun's depth map: depth only, nothing else.
+@vertex
+fn vs_shadow(@location(0) pos: vec3<f32>) -> @builtin(position) vec4<f32> {
+    return frame.light * frame.model * vec4<f32>(pos, 1.0);
+}
+
+fn lit_at(uv: vec2<f32>, z: f32) -> f32 {
+    return textureSampleCompareLevel(shadow_map, shadow_cmp, uv, z);
+}
+
+// getShadow with PCFSoftShadowMap: a 3 x 3 compare, the outer taps blended
+// by where the point sits between texels; then shadow.intensity.
+fn shadow_at(sp: vec4<f32>) -> f32 {
+    if (frame.shadow.w == 0.0) {
+        return 1.0;
+    }
+    let ndc = sp.xyz / sp.w;
+    let coord = vec2<f32>(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
+    let z = ndc.z + frame.shadow.x;
+    if (any(coord < vec2<f32>(0.0)) || any(coord > vec2<f32>(1.0)) || z > 1.0) {
+        return 1.0;
+    }
+    let size = vec2<f32>(textureDimensions(shadow_map));
+    let t = 1.0 / size;
+    let dx = t.x;
+    let dy = t.y;
+    let f = fract(coord * size + 0.5);
+    let uv = coord - f * t;
+    let s = lit_at(uv, z) + lit_at(uv + vec2<f32>(dx, 0.0), z) + lit_at(uv + vec2<f32>(0.0, dy), z) + lit_at(uv + t, z)
+        + mix(lit_at(uv + vec2<f32>(-dx, 0.0), z), lit_at(uv + vec2<f32>(2.0 * dx, 0.0), z), f.x)
+        + mix(lit_at(uv + vec2<f32>(-dx, dy), z), lit_at(uv + vec2<f32>(2.0 * dx, dy), z), f.x)
+        + mix(lit_at(uv + vec2<f32>(0.0, -dy), z), lit_at(uv + vec2<f32>(0.0, 2.0 * dy), z), f.y)
+        + mix(lit_at(uv + vec2<f32>(dx, -dy), z), lit_at(uv + vec2<f32>(dx, 2.0 * dy), z), f.y)
+        + mix(mix(lit_at(uv + vec2<f32>(-dx, -dy), z), lit_at(uv + vec2<f32>(2.0 * dx, -dy), z), f.x), mix(lit_at(uv + vec2<f32>(-dx, 2.0 * dy), z), lit_at(uv + vec2<f32>(2.0 * dx, 2.0 * dy), z), f.x), f.y);
+    return mix(1.0, s * (1.0 / 9.0), frame.shadow.z);
 }
 
 const RECIPROCAL_PI: f32 = 0.3183098861837907;
@@ -99,7 +144,7 @@ fn fs(i: Out) -> @location(0) vec4<f32> {
     let diffuse = i.color * low;
     // The sun, then the hemisphere, as RE_Direct and RE_IndirectDiffuse.
     let l = normalize(frame.sun.xyz);
-    let irradiance = saturate(dot(n, l)) * frame.sun_color.rgb;
+    let irradiance = saturate(dot(n, l)) * frame.sun_color.rgb * shadow_at(i.shadow_pos);
     let direct = irradiance * RECIPROCAL_PI * diffuse + irradiance * brdf_ggx(l, v, n);
     let hemi = mix(frame.ground.rgb, frame.sky.rgb, 0.5 * n.y + 0.5);
     let indirect = hemi * RECIPROCAL_PI * diffuse;

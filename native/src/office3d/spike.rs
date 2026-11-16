@@ -67,7 +67,7 @@ pub fn view() -> impl IntoElement {
                 let begun = Instant::now();
                 let t = s.started.elapsed().as_secs_f32() * 0.35;
                 let (view_proj, eye) = spike_view(t, w as f32 / h.max(1) as f32);
-                let frame = super::clay::frame(view_proj, eye, glam::Vec3::new(0.4, 0.8, 0.3), super::clay::INDOOR);
+                let frame = super::clay::frame(view_proj, eye, super::shadow::sun_dir(), super::shadow::fit_sun(0.0, 10.0), super::clay::INDOOR);
                 let gpu = s.gpu.as_mut().ok()?;
                 // Nothing new yet (both frames still on the card): keep the picture.
                 let Some((fw, fh, bytes)) = gpu.draw(w, h, &frame, [0.020, 0.020, 0.024]).ok()? else {

@@ -6,6 +6,7 @@
 use bytemuck::{Pod, Zeroable};
 
 use super::readback::Readback;
+use super::shadow::Shadow;
 
 /// A vertex: where, which way it faces, its colour.
 #[repr(C)]
@@ -32,6 +33,10 @@ pub struct Frame {
     pub room: [f32; 4],
     pub rim: [f32; 4],
     pub storey: [f32; 4],
+    /// The sun's view-projection for its shadow map.
+    pub light: [[f32; 4]; 4],
+    /// (bias, normal bias, intensity, 1 when shadows are on).
+    pub shadow: [f32; 4],
 }
 
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
@@ -41,6 +46,7 @@ pub struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
+    shadow: Shadow,
     uniforms: wgpu::Buffer,
     bind: wgpu::BindGroup,
     vertices: wgpu::Buffer,
@@ -75,17 +81,31 @@ impl Gpu {
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor { label: Some("office"), memory_hints: wgpu::MemoryHints::MemoryUsage, ..Default::default() })).map_err(|e| format!("no device: {e}"))?;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("office"), source: wgpu::ShaderSource::Wgsl(include_str!("office.wgsl").into()) });
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor { label: Some("frame"), size: std::mem::size_of::<Frame>() as u64, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
+        let vertex = || wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attributes };
+        let shadow = Shadow::new(&device, &shader, &uniforms, vertex());
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("frame"),
-            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::VERTEX_FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None }],
+            entries: &[
+                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::VERTEX_FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Depth, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison), count: None },
+            ],
         });
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("frame"), layout: &layout, entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniforms.as_entire_binding() }] });
+        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("frame"),
+            layout: &layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: uniforms.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&shadow.view) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&shadow.sampler) },
+            ],
+        });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("office"), bind_group_layouts: &[Some(&layout)], immediate_size: 0 });
-        let attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("office"),
             layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attributes })] },
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[Some(vertex())] },
             primitive: wgpu::PrimitiveState { cull_mode: Some(wgpu::Face::Back), ..Default::default() },
             depth_stencil: Some(wgpu::DepthStencilState { format: DEPTH, depth_write_enabled: Some(true), depth_compare: Some(wgpu::CompareFunction::Less), stencil: Default::default(), bias: Default::default() }),
             multisample: Default::default(),
@@ -95,7 +115,7 @@ impl Gpu {
         });
         let vertices = device.create_buffer(&wgpu::BufferDescriptor { label: Some("mesh"), size: std::mem::size_of_val(mesh).max(16) as u64, usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         queue.write_buffer(&vertices, 0, bytemuck::cast_slice(mesh));
-        Ok(Self { device, queue, pipeline, uniforms, bind, vertices, count: mesh.len() as u32, target: None, adapter: name })
+        Ok(Self { device, queue, pipeline, shadow, uniforms, bind, vertices, count: mesh.len() as u32, target: None, adapter: name })
     }
 
     fn target(&mut self, width: u32, height: u32) -> &Target {
@@ -125,6 +145,7 @@ impl Gpu {
         self.queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(frame));
         let view = t.color.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("office") });
+        self.shadow.pass(&mut encoder, &self.vertices, self.count);
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("office"),

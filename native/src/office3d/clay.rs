@@ -35,7 +35,7 @@ fn lit(c: &str, level: f32) -> [f32; 4] {
 }
 
 /// Everything a frame's draw needs: the camera, the lights, one clay.
-pub fn frame(view_proj: Mat4, eye: Vec3, sun_dir: Vec3, clay: Clay) -> Frame {
+pub fn frame(view_proj: Mat4, eye: Vec3, sun_dir: Vec3, light: Mat4, clay: Clay) -> Frame {
     let sun = sun_dir.normalize();
     Frame {
         view_proj: view_proj.to_cols_array_2d(),
@@ -48,6 +48,9 @@ pub fn frame(view_proj: Mat4, eye: Vec3, sun_dir: Vec3, clay: Clay) -> Frame {
         room: lit(clay.self_, clay.self_level),
         rim: lit(clay.rim, clay.rim_level),
         storey: [clay.foot, GROUND, STOREY, STOREY - SLAB],
+        // scene.ts: bias -0.0006, normalBias 0.03, intensity 0.62.
+        light: light.to_cols_array_2d(),
+        shadow: [-0.0006, 0.03, 0.62, 1.0],
     }
 }
 
@@ -61,7 +64,7 @@ mod tests {
 
     #[test]
     fn the_frame_is_laid_out_as_the_shader_reads_it() {
-        // Two matrices, then eight vec4s: 2 * 64 + 8 * 16 bytes, no padding.
-        assert_eq!(std::mem::size_of::<super::Frame>(), 256);
+        // Two matrices, eight vec4s, the light's matrix, one vec4: no padding.
+        assert_eq!(std::mem::size_of::<super::Frame>(), 2 * 64 + 8 * 16 + 64 + 16);
     }
 }

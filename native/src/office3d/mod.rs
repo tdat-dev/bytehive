@@ -16,5 +16,6 @@ pub mod prims;
 #[cfg(test)]
 mod prims_tests;
 mod readback;
+pub mod shadow;
 pub mod slab;
 pub mod spike;

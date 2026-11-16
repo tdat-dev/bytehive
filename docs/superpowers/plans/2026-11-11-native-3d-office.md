@@ -82,6 +82,11 @@ camera flights between floors, people that hop and animate, quality tiers.
   `cargo test`. Next: the sun's shadow (PCFSoftShadowMap: 3 x 3 with lerped
   edges, bias -0.0006, normalBias 0.03, intensity 0.62, the frustum scene.ts
   sets near line 523), then picking.
+- **Sun shadow done (2026-11-16):** `shadow.rs` (1024 map, fitSun box, back
+  faces in, LessEqual compare sampler) and `shadow_at` in `office.wgsl` (the
+  PCFSoft 3 x 3 with blended outer taps, bias, normalBias, intensity). Spike
+  on the Intel UHD 630: 116 fps, 0.9 ms a frame on the UI thread. Next in P1:
+  picking (ray against each pickable's box, as scene.ts's proxies).
 - **P2 pure ports with their tests:** `layout.ts`, `model.ts`, `nav.ts`,
   `palette.ts`, `quality.ts`, file by file, tests ported first.
 - **P3 the building:** `build.ts`, `props.ts`, `setting.ts`, `light.ts`,
