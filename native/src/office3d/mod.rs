@@ -19,6 +19,7 @@ pub mod palette;
 pub mod pick;
 pub mod mesh;
 pub mod prims;
+pub mod quality;
 #[cfg(test)]
 mod prims_tests;
 mod readback;
