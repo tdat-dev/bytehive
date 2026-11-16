@@ -53,6 +53,21 @@ camera flights between floors, people that hop and animate, quality tiers.
   vertex colours and merging; the clay lighting in WGSL; a directional shadow
   map with PCF; ACES and sRGB; picking by ray against bounds. Tested on the CPU
   side (geometry counts, normals, bounds, picks).
+- **P1 progress (2026-11-16).** Done, each matched corner for corner against
+  three.js 0.170 goldens (`native/src/office3d/fixtures/prims.json`, made by
+  `fixtures/prims.mjs` with node and the real `three.module.js`, fetched by
+  `npm pack three@0.170.0` into a scratch folder): `geom.rs` (tint, moved,
+  merged, paint, ramp, sRGB hex to linear), `prims.rs` (Box with segments,
+  Plane, Circle, Cylinder, Cone, Sphere and its parts, Torus, RoundedBox),
+  `lathe.rs` (Lathe, Capsule), async readback (`readback.rs`, 3.3 ms a frame on
+  the UI thread). Next: `roundedSlab` (geometry.ts): a rounded rectangle Shape
+  of four `absarc`s, `ExtrudeGeometry` with bevel (curveSegments 8,
+  bevelSegments 3), `rotateX(-PI/2)`, then `flatTopped` (`toCreasedNormals(g,
+  0.9)` and flat normals on level faces). Port addShape's bevel rings from
+  ExtrudeGeometry.js (getBevelVec, the ring loops, buildLidFaces,
+  buildSideFaces); the lids use earcut, so test the side faces corner for
+  corner and the lids by area and bounds (a convex fan covers the same
+  surface). Then the clay WGSL, shadow map, picking.
 - **P2 pure ports with their tests:** `layout.ts`, `model.ts`, `nav.ts`,
   `palette.ts`, `quality.ts`, file by file, tests ported first.
 - **P3 the building:** `build.ts`, `props.ts`, `setting.ts`, `light.ts`,
