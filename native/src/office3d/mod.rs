@@ -7,6 +7,7 @@
 #![allow(dead_code)]
 
 mod earcut;
+pub mod clay;
 pub mod geom;
 pub mod gpu;
 pub mod lathe;

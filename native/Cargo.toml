@@ -72,4 +72,6 @@ codegen-units = 4
 strip = true
 
 [dev-dependencies]
+# The office's WGSL checked at test time, by the parser wgpu itself uses.
+naga = { version = "30", features = ["wgsl-in"] }
 tempfile = "3"

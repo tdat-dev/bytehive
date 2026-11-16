@@ -24,6 +24,14 @@ pub struct Frame {
     pub model: [[f32; 4]; 4],
     /// The sun's direction (towards the light), w unused.
     pub sun: [f32; 4],
+    /// The lights and the clay: see office.wgsl and clay.rs.
+    pub sun_color: [f32; 4],
+    pub sky: [f32; 4],
+    pub ground: [f32; 4],
+    pub eye: [f32; 4],
+    pub room: [f32; 4],
+    pub rim: [f32; 4],
+    pub storey: [f32; 4],
 }
 
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
