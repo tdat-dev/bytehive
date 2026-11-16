@@ -93,6 +93,13 @@ camera flights between floors, people that hop and animate, quality tiers.
   tests, tests first.
 - **P2 pure ports with their tests:** `layout.ts`, `model.ts`, `nav.ts`,
   `palette.ts`, `quality.ts`, file by file, tests ported first.
+- **P2 done (2026-11-16):** `layout.rs` (+ `layout_tests.rs`, layout.test.ts
+  case for case), `nav.rs` (nav_up, clamp_level, frame_delay), `palette.rs`
+  (the meshes' colours, accents, beads, WCAG contrast), `quality.rs` (the
+  steps). model.ts was already ported by Ana in `inbox/company/model.rs`; the
+  layout takes (floor id, person ids in seat order) so it does not depend on
+  it. Kept for P6: storing the quality setting, reading the battery, the
+  crumbs and rail targets (the Company page has them). Next: P3, the building.
 - **P3 the building:** `build.ts`, `props.ts`, `setting.ts`, `light.ts`,
   `geometry.ts`.
 - **P4 people and life marks:** `people.ts`, `life.ts`, animation clock.
