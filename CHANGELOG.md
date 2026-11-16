@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.14] - 2026-11-16
+
+### Fixed
+
+- **Drag files into a terminal again.** Files dragged in from Explorer onto an
+  agent's terminal now type their paths there, as the old app did: a path with
+  a space in quotes, a space after the last, no Enter, and the terminal takes
+  the keyboard. The terminal lights up while files are held over it.
+
 ## [0.16.13] - 2026-11-16
 
 ### Added
