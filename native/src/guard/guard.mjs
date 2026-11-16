@@ -2,7 +2,7 @@
 // --settings (docs/superpowers/specs/2026-11-13-harness-research.md, section 6).
 // Rules a model may skip when they are only words, kept here as a script:
 //
-//   node guard.mjs pre    PreToolUse on Bash: refuse commands that destroy work.
+//   node guard.mjs pre    PreToolUse on Bash and PowerShell: refuse commands that destroy work.
 //   node guard.mjs stop   Stop: a turn that changed code and ran no check after the
 //                         last change is not done yet. Asked once; a second stop goes.
 //
@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 /** Commands that throw work away, each with the words the agent is told. */
 export const BLOCK = [
   [/\brm\s+(?:-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*|--recursive\s+--force|--force\s+--recursive)\s+(?:\/|~|\$HOME|[a-z]:[\\/]?)(?:\s|\*|$)/i, "it deletes a whole drive or home folder"],
+  [/\b(?:Remove-Item|rm|del|rd|rmdir)\b[^\n;|]*-Recurse[^\n;|]*\s(?:[a-z]:\\?|~|\$HOME|\$env:USERPROFILE)(?:[\s*]|$)/i, "it deletes a whole drive or home folder"],
   [/\bgit\s+push\b[^\n;&|]*\s(?:--force(?!-with-lease)\b|-f\b)/, "a force push rewrites what others have"],
   [/\bgit\s+reset\s+(?:[^\n;&|]*\s)?--hard\b/, "it throws away uncommitted work"],
   [/\bgit\s+clean\s+-[a-z]*(?:f[a-z]*d|d[a-z]*f)/i, "it deletes untracked files for good"],
@@ -24,6 +25,8 @@ export const BLOCK = [
 ];
 
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+/** The tools that run a command: Bash, and PowerShell on Windows. */
+export const SHELLS = new Set(["Bash", "PowerShell"]);
 /** A command that checks the work: tests, a build, a type check, a linter. */
 const CHECK = /\b(?:test|tests|build|check|lint|clippy|tsc|vitest|jest|pytest|mocha|playwright|cargo|npm|pnpm|yarn|bun|go|make|gradle|mvn|dotnet|ruff|mypy|eslint)\b/i;
 /** Files whose change needs no check. */
@@ -82,7 +85,7 @@ export function audit(turn, config = {}) {
         changed.push(path.basename(String(file)));
       }
       const cmd = String(p.input?.command ?? "");
-      if (p.name === "Bash" && (CHECK.test(cmd) || (config.check && cmd.includes(config.check)))) lastCheck = i;
+      if (SHELLS.has(p.name) && (CHECK.test(cmd) || (config.check && cmd.includes(config.check)))) lastCheck = i;
     }
   });
   return { changed: [...new Set(changed)], checked: lastCheck > lastEdit };
@@ -124,7 +127,7 @@ async function main(kind) {
     event = JSON.parse(raw);
   } catch {}
   const config = readConfig([process.env.BYTEHIVE_WORKSPACE, event.cwd, process.cwd()]);
-  if (kind === "pre" && event.tool_name === "Bash") {
+  if (kind === "pre" && SHELLS.has(event.tool_name)) {
     const why = refuse(String(event.tool_input?.command ?? ""), config);
     if (why) {
       const reason = `ByteHive guard: refused because ${why}. If it is really needed, ask the owner to run it.`;

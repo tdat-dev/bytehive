@@ -23,7 +23,7 @@ fn settings_json(script: &Path) -> String {
     let cmd = |kind: &str| format!("node \"{path}\" {kind}");
     serde_json::json!({
         "hooks": {
-            "PreToolUse": [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": cmd("pre"), "timeout": 10 }] }],
+            "PreToolUse": [{ "matcher": "Bash|PowerShell", "hooks": [{ "type": "command", "command": cmd("pre"), "timeout": 10 }] }],
             "Stop": [{ "hooks": [{ "type": "command", "command": cmd("stop"), "timeout": 15 }] }],
         }
     })
@@ -80,7 +80,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
         let pre = v["hooks"]["PreToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
         assert!(pre.starts_with("node \"") && pre.ends_with("guard.mjs\" pre") && !pre.contains('\\'), "{pre}");
-        assert_eq!(v["hooks"]["PreToolUse"][0]["matcher"], "Bash");
+        assert_eq!(v["hooks"]["PreToolUse"][0]["matcher"], "Bash|PowerShell");
         assert!(v["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap().ends_with(" stop"));
         assert_eq!(std::fs::read_to_string(dir.path().join("hooks/guard.mjs")).unwrap(), SCRIPT);
     }

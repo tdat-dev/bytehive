@@ -28,6 +28,9 @@ test("refuses commands that throw work away", () => {
     "git clean -xdf",
     "git checkout -- .",
     "git restore .",
+    "Remove-Item -Recurse -Force C:\\",
+    "Remove-Item -Recurse -Force ~",
+    "Remove-Item -Force -Recurse $env:USERPROFILE",
   ]) {
     assert.ok(refuse(c), `should refuse: ${c}`);
   }
@@ -47,6 +50,9 @@ test("lets everyday commands through", () => {
     "git checkout main",
     "git restore src/a.ts",
     "cargo test",
+    "Remove-Item -Recurse -Force .\\target",
+    "Remove-Item -Recurse -Force C:\\Users\\me\\proj\\dist",
+    "Remove-Item notes.txt",
   ]) {
     assert.equal(refuse(c), null, `should allow: ${c}`);
   }
@@ -73,6 +79,11 @@ test("a turn that changed code and checked nothing is not done", () => {
   const a = stopAnswer({}, lines);
   assert.equal(a?.decision, "block");
   assert.match(a.reason, /a\.rs/);
+});
+
+test("a PowerShell check counts, and a PowerShell command is guarded too", () => {
+  const lines = [user("fix"), tool("Edit", { file_path: "a.rs" }), tool("PowerShell", { command: "npm test" })];
+  assert.equal(stopAnswer({}, lines), null);
 });
 
 test("a check after the last change lets the turn end", () => {
@@ -119,6 +130,7 @@ test("as a hook process: it answers on stdout, and says nothing when all is well
   const pre = run("pre", { tool_name: "Bash", tool_input: { command: "git reset --hard" }, cwd: dir });
   assert.equal(JSON.parse(pre.stdout).hookSpecificOutput.permissionDecision, "deny");
   assert.equal(run("pre", { tool_name: "Bash", tool_input: { command: "ls" }, cwd: dir }).stdout, "");
+  assert.equal(JSON.parse(run("pre", { tool_name: "PowerShell", tool_input: { command: "git push --force" }, cwd: dir }).stdout).hookSpecificOutput.permissionDecision, "deny");
   fs.mkdirSync(path.join(dir, ".bytehive"));
   fs.writeFileSync(path.join(dir, ".bytehive", "guards.json"), JSON.stringify({ verify: false }));
   assert.equal(run("stop", { transcript_path: transcript, cwd: dir }).stdout, "", "turned off by the project");
