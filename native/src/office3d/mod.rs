@@ -9,9 +9,13 @@
 mod earcut;
 pub mod clay;
 pub mod geom;
+pub mod glow;
 pub mod gpu;
 pub mod lathe;
 pub mod layout;
+pub mod light;
+#[cfg(test)]
+mod light_tests;
 #[cfg(test)]
 mod layout_tests;
 pub mod nav;
@@ -20,6 +24,7 @@ pub mod pick;
 pub mod mesh;
 pub mod prims;
 pub mod quality;
+pub mod seed;
 #[cfg(test)]
 mod prims_tests;
 mod readback;
