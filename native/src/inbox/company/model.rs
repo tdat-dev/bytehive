@@ -8,7 +8,13 @@ use crate::company::types::{Company, Job, JobStatus, Person, Rank, RoleDef};
 use std::collections::BTreeMap;
 use supervise::task_state::{TaskState, TaskStatus};
 
+use crate::company::engine::air::{BoardCounts, Flight};
+
+use super::looks::look_of;
 use super::words::{RESUME_DETAIL, clip, going, resume_title, status_line};
+
+/// Papers past three would only stack higher (model.ts MAX_PAPERS).
+const MAX_PAPERS: usize = 3;
 
 /// The one place a person's state comes from. Stopped covers no seat and a
 /// merged agent: the chair is empty.
@@ -41,6 +47,8 @@ pub(super) struct Pane {
     /// Their branch holds nothing a merge would bring in: no commit ahead of the
     /// base and nothing uncommitted (a Lead who only hands out cards, a QA who reports).
     pub nothing_to_merge: bool,
+    /// Their terminal put something out in the last moments: steam and bytes over the desk.
+    pub printing: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -54,6 +62,13 @@ pub(super) struct OfficePerson {
     pub floor_id: Option<String>,
     /// Their seat is in the fleet: their desk can be opened.
     pub seated: bool,
+    /// For the 3D office: the CLI they run, their look, their seat on the floor, a terminal printing.
+    pub cli: String,
+    pub shirt: String,
+    pub hair: String,
+    pub prop: String,
+    pub seat: usize,
+    pub printing: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,6 +83,10 @@ pub(super) struct OfficeFloor {
     pub people: Vec<OfficePerson>,
     /// People here someone is waiting on.
     pub needs: usize,
+    /// For the 3D office: the Lead, the papers to review on their desk, the board's counts.
+    pub lead: Option<String>,
+    pub papers: usize,
+    pub board: Option<(u32, u32, u32)>,
 }
 
 /// `cards` is how far along it is, from the boards: None until its cards are on one.
@@ -95,6 +114,8 @@ pub(super) struct OfficeModel {
     pub needs: Vec<NeedRow>,
     pub jobs: Vec<OfficeJob>,
     pub counts: Counts,
+    /// Messages in the air, for the paper plane.
+    pub flights: Vec<Flight>,
 }
 
 impl OfficeModel {
@@ -133,19 +154,26 @@ fn job_for<'a>(jobs: &'a [Job], p: &Person) -> Option<&'a Job> {
     jobs.iter().rev().find(|j| j.status == JobStatus::Running && j.people.contains(&p.id))
 }
 
-fn to_person(p: &Person, role: Option<&RoleDef>, pane: Option<&Pane>, jobs: &[Job]) -> OfficePerson {
+fn to_person(p: &Person, role: Option<&RoleDef>, pane: Option<&Pane>, jobs: &[Job], seat: usize) -> OfficePerson {
+    let (shirt, hair, prop) = look_of(p, role);
     let title = role.map_or_else(|| title_case(&p.role), |r| r.title.clone());
     // A seat is named after its role, which the line already says: name the Job instead.
-    let seat = pane.and_then(|x| x.doing.clone()).filter(|d| *d != title);
+    let on_seat = pane.and_then(|x| x.doing.clone()).filter(|d| *d != title);
     OfficePerson {
         id: p.id.clone(),
         name: p.name.clone(),
         rank: p.rank.clone(),
         state: office_state(pane.map(|x| &x.status)),
-        doing: job_for(jobs, p).map(|j| clip(&j.title)).or(seat),
+        doing: job_for(jobs, p).map(|j| clip(&j.title)).or(on_seat),
         title,
         floor_id: p.floor.clone(),
         seated: pane.is_some(),
+        cli: p.cli.clone(),
+        shirt,
+        hair,
+        prop,
+        seat,
+        printing: pane.is_some_and(|x| x.printing),
     }
 }
 
@@ -177,7 +205,7 @@ pub(super) fn office_model(
     let pane_of = |id: &str| panes.iter().find(|p| p.person_id == id);
     let open = |dir: &str| open_dirs.iter().any(|d| crate::presets::same_folder(d, dir));
 
-    let founder = company.people.iter().find(|p| p.rank == Rank::Founder).map(|p| to_person(p, role_of(&p.role), pane_of(&p.id), jobs));
+    let founder = company.people.iter().find(|p| p.rank == Rank::Founder).map(|p| to_person(p, role_of(&p.role), pane_of(&p.id), jobs, 0));
     let names = Names { floors: &company.floors, roles };
     // Someone with nothing to merge is as done as someone merged: the walk never
     // sends the owner to a Review that says there is nothing to review.
@@ -191,7 +219,7 @@ pub(super) fn office_model(
             let here: Vec<&Person> = company.people.iter().filter(|p| p.floor.as_deref() == Some(f.id.as_str())).collect();
             // The Lead sits first.
             let seated = here.iter().filter(|p| p.rank == Rank::Lead).chain(here.iter().filter(|p| p.rank != Rank::Lead));
-            let people: Vec<OfficePerson> = seated.map(|p| to_person(p, role_of(&p.role), pane_of(&p.id), jobs)).collect();
+            let people: Vec<OfficePerson> = seated.enumerate().map(|(seat, p)| to_person(p, role_of(&p.role), pane_of(&p.id), jobs, seat)).collect();
             let mut wanted: Vec<&str> = people.iter().filter(|p| p.state == OfficeState::Needs).map(|p| p.id.as_str()).collect();
             for r in &rows {
                 if let Some(id) = r.person_id.as_deref().filter(|id| people.iter().any(|p| p.id == *id)) {
@@ -202,7 +230,9 @@ pub(super) fn office_model(
             wanted.dedup();
             let open = open(&f.dir);
             let lit = open && people.iter().any(|p| p.state != OfficeState::Stopped);
-            OfficeFloor { id: f.id.clone(), name: f.name.clone(), dir: f.dir.clone(), open, lit, needs: wanted.len(), people }
+            let lead = people.iter().find(|p| p.rank == Rank::Lead).map(|p| p.id.clone());
+            let papers = people.iter().filter(|p| p.state == OfficeState::Review).count().min(MAX_PAPERS);
+            OfficeFloor { id: f.id.clone(), name: f.name.clone(), dir: f.dir.clone(), open, lit, needs: wanted.len(), people, lead, papers, board: None }
         })
         .filter(|f| !f.people.is_empty() || f.open)
         .collect();
@@ -249,5 +279,14 @@ pub(super) fn office_model(
             })
         })
         .collect();
-    OfficeModel { founder, floors, needs, jobs, counts }
+    OfficeModel { founder, floors, needs, jobs, counts, flights: vec![] }
+}
+
+/// The boards and the messages in the air, which only the 3D office reads.
+pub(super) fn with_air(mut m: OfficeModel, boards: &BTreeMap<String, BoardCounts>, flights: &[Flight]) -> OfficeModel {
+    for f in &mut m.floors {
+        f.board = boards.get(&f.id).copied();
+    }
+    m.flights = flights.to_vec();
+    m
 }

@@ -34,7 +34,7 @@ fn job(id: &str, title: &str, status: JobStatus, people: &[&str]) -> Job {
 /// A seat titled after its role, as fleet_host names every seat.
 fn seat(id: &str, title: &str) -> Pane {
     let status = TaskStatus { state: TaskState::Working, ask: None, limit: None, blocked: None, spent: false, stuck: None, clash: None };
-    Pane { person_id: id.into(), status, doing: Some(title.into()), nothing_to_merge: false }
+    Pane { person_id: id.into(), status, doing: Some(title.into()), nothing_to_merge: false, printing: false }
 }
 
 fn doing(jobs: &[Job], panes: &[Pane], id: &str) -> Option<String> {

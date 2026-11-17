@@ -28,6 +28,8 @@ struct Live {
     due: bool,
     /// Something changed since the last frame.
     dirty: bool,
+    /// When the office was last painted.
+    seen: Instant,
 }
 
 thread_local! {
@@ -44,9 +46,32 @@ fn wall_ms() -> f64 {
 fn with<R>(f: impl FnOnce(&mut Live) -> R) -> R {
     LIVE.with(|cell| {
         let mut cell = cell.borrow_mut();
-        let live = cell.get_or_insert_with(|| Live { scene: Scene::new(Quality::Auto, false), shown: None, before: None, bounds: None, started: Instant::now(), waiting: false, due: false, dirty: true });
+        let live = cell.get_or_insert_with(|| Live { scene: Scene::new(Quality::Auto, false), shown: None, before: None, bounds: None, started: Instant::now(), waiting: false, due: false, dirty: true, seen: Instant::now() });
         f(live)
     })
+}
+
+/// Windows' "Show animations" is off: the office holds still (prefers-reduced-motion).
+pub fn reduced_motion() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW};
+    let mut on: i32 = 1;
+    // SAFETY: SPI_GETCLIENTAREAANIMATION writes one BOOL to the pointer given.
+    let ok = unsafe { SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&mut on as *mut i32).cast(), 0) };
+    ok != 0 && on == 0
+}
+
+/// How long the office keeps its GPU memory once nobody can see it (scene.ts AWAY_MS).
+const AWAY: Duration = Duration::from_secs(120);
+
+/// Nobody has looked for a while: give the card its memory back. The next
+/// paint builds the office again from the model it is handed.
+pub fn release_if_away() {
+    LIVE.with(|cell| {
+        let mut cell = cell.borrow_mut();
+        if cell.as_ref().is_some_and(|l| l.seen.elapsed() > AWAY) {
+            *cell = None;
+        }
+    });
 }
 
 /// Why the office cannot be drawn, if it cannot.
@@ -79,6 +104,21 @@ pub fn line() -> String {
 /// Where the words go over the picture, in the canvas's own pixels.
 pub fn anchors() -> Vec<Anchor> {
     with(|l| l.scene.as_ref().map(Scene::anchors).unwrap_or_default())
+}
+
+/// The camera is between levels.
+pub fn moving() -> bool {
+    with(|l| l.scene.as_ref().is_ok_and(Scene::moving))
+}
+
+/// Who the pointer is over.
+pub fn hovered() -> Option<String> {
+    with(|l| l.scene.as_ref().ok().and_then(|s| s.hovered().map(String::from)))
+}
+
+/// The canvas's size, in its own pixels, as last painted.
+pub fn size() -> (f32, f32) {
+    with(|l| l.bounds.map_or((1.0, 1.0), |b| (f32::from(b.size.width), f32::from(b.size.height))))
 }
 
 /// Leaves this much room on the left at the Building, for the job box.
@@ -144,6 +184,7 @@ fn paint(bounds: Bounds<Pixels>, _: (), window: &mut Window, cx: &mut App) {
     let (w, h) = (f32::from(bounds.size.width) as f64, f32::from(bounds.size.height) as f64);
     let (image, old, next) = with(|l| {
         l.bounds = Some(bounds);
+        l.seen = Instant::now();
         let Ok(s) = l.scene.as_mut() else { return (None, None, None) };
         s.resize(w, h, scale);
         let now = wall_ms();
@@ -184,9 +225,12 @@ fn paint(bounds: Bounds<Pixels>, _: (), window: &mut Window, cx: &mut App) {
                 let handle = window.window_handle();
                 cx.spawn(async move |cx| {
                     cx.background_executor().timer(Duration::from_millis(ms as u64)).await;
-                    with(|l| {
-                        l.waiting = false;
-                        l.due = true;
+                    // Only an office still alive: a released one is not woken by its own timer.
+                    LIVE.with(|cell| {
+                        if let Some(l) = cell.borrow_mut().as_mut() {
+                            l.waiting = false;
+                            l.due = true;
+                        }
                     });
                     let _ = handle.update(cx, |_, window, _| window.refresh());
                 })

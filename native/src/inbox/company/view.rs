@@ -28,7 +28,7 @@ impl Inbox {
             cx.on_next_frame(window, |_, _, cx| cx.notify());
         }
 
-        let office3d = crate::office3d::view::demo_wanted();
+        let office3d = crate::office3d::view::demo_wanted() || (snap.model.is_some() && office::office3d_on());
         let floors = match &snap.model {
             // P0 of the 3D office: the spike in place of the floors, its cost written over it.
             _ if crate::office3d::spike::wanted() => div()
@@ -44,6 +44,7 @@ impl Inbox {
                 .child(crate::office3d::view::demo())
                 .child(text(META, INK_2).absolute().top(px(S3)).left(px(S4)).child(crate::office3d::view::line()))
                 .into_any_element(),
+            Some(m) if office3d => self.co_office3d(m, window, cx),
             Some(m) => self.co_floors(m, cx),
             None => text(BODY, INK_2).p(px(S4)).child(snap.note.clone().unwrap_or_else(|| words::STARTING.into())).into_any_element(),
         };
@@ -103,6 +104,11 @@ impl Inbox {
         }
         let confirm = snap.model.as_ref().and_then(|m| self.co_confirm(m, cx));
         let needs = snap.model.as_ref().map_or(0, |m| m.needs.len());
+        // At a floor of the 3D office, the bar says which, and the way back to the building.
+        let at_floor = match (&self.company.level3d, &snap.model) {
+            (crate::office3d::layout::Level::Floor(id), Some(m)) if office3d => m.floors.iter().find(|f| &f.id == id).map(|f| f.name.clone()),
+            _ => None,
+        };
         div()
             .relative()
             .size_full()
@@ -122,7 +128,7 @@ impl Inbox {
             )
             // The Inbox's amber haze over the top (agents_view).
             .child(div().absolute().left(relative(0.62)).ml(px(-1100.0)).top(relative(-0.12)).mt(px(-460.0)).w(px(2200.0)).h(px(920.0)).child(img(haze()).size_full().object_fit(ObjectFit::Fill)))
-            .child(self.co_bar(needs, cx))
+            .child(self.co_bar(needs, at_floor, cx))
             .child(div().flex().flex_1().min_h_0().child(stage).child(side))
             .child(self.dock(cx))
             .children(confirm)
@@ -153,7 +159,7 @@ impl Inbox {
 
     /// The Inbox's top bar (chrome.rs top_bar): Home, a headline of what waits,
     /// the way back to the Inbox where the Company door stands there.
-    fn co_bar(&self, needs: usize, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn co_bar(&self, needs: usize, at_floor: Option<String>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let rest = match needs {
             0 => "Nothing needs you.".to_string(),
             1 => "1 needs you.".to_string(),
@@ -195,8 +201,32 @@ impl Inbox {
                     .text_size(px(24.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(c(INK_3))
-                    .child(div().flex_none().font_weight(FontWeight::SEMIBOLD).text_color(c(INK)).child(format!("{}. ", words::COMPANY)))
-                    .child(div().min_w_0().truncate().child(rest)),
+                    .child(match at_floor {
+                        // Company, then the floor: Company goes back up to the building.
+                        Some(name) => div()
+                            .flex()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .id("co-building")
+                                    .occlude()
+                                    .flex_none()
+                                    .cursor_pointer()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(c(INK_2))
+                                    .hover(|d| d.text_color(c(INK)))
+                                    .tooltip(tip("Back to the building (Esc)"))
+                                    .on_click(cx.listener(|this, _, _, cx| this.co_level(crate::office3d::layout::Level::Building, cx)))
+                                    .child(words::COMPANY),
+                            )
+                            .child(div().flex_none().px(px(10.0)).text_color(c(INK_3)).child("\u{203a}"))
+                            .child(div().min_w_0().truncate().font_weight(FontWeight::SEMIBOLD).text_color(c(INK)).child(name)),
+                        None => div()
+                            .flex()
+                            .min_w_0()
+                            .child(div().flex_none().font_weight(FontWeight::SEMIBOLD).text_color(c(INK)).child(format!("{}. ", words::COMPANY)))
+                            .child(div().min_w_0().truncate().child(rest)),
+                    }),
             )
             .child(
                 div()

@@ -5,7 +5,7 @@ use super::super::host::{Host, Op, Restore};
 use super::super::org::person_by_id;
 use super::super::reduce::{Effect, Seen, note_person, typeable};
 use super::super::requests::{self, not_understood};
-use super::super::types::{FOUNDER_ID, Person, Rank};
+use super::super::types::{CompanyRequest, FOUNDER_ID, Person, Rank};
 use super::{Engine, FOUNDER_WAITS, NO_PROJECT};
 
 /// How long a new CLI gets to reach its prompt.
@@ -239,6 +239,16 @@ impl Engine {
             }
         };
         let r = super::super::reduce::apply_request(s, &req);
+        // What is handed to someone other than its sender flies to them (engine.ts).
+        let (ts, from) = match &req {
+            CompanyRequest::Message { ts, from, .. } | CompanyRequest::Plan { ts, from, .. } | CompanyRequest::JobDone { ts, from, .. } => (*ts, from.clone()),
+        };
+        let now = host.now_ms();
+        for e in &r.effects {
+            if let Effect::Deliver { person_id, .. } = e {
+                self.air.sent(ts, &from, person_id, now);
+            }
+        }
         if &r.state != s {
             // Only the Jobs it changed: an idle Job's file is left as it is.
             let jobs: Vec<_> = r.state.jobs.iter().filter(|j| !s.jobs.contains(j)).cloned().collect();

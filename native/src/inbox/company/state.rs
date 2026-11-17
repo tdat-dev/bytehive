@@ -57,6 +57,8 @@ pub(in crate::inbox) struct CompanyUi {
     pub fresh: HashMap<String, Option<u64>>,
     pub fresh_at: u64,
     pub fresh_busy: bool,
+    /// Where the 3D office's camera is: the Building or one floor.
+    pub level3d: crate::office3d::layout::Level,
 }
 
 impl CompanyUi {
@@ -110,14 +112,15 @@ impl Inbox {
         if self.company.open { self.close_company(window, cx) } else { self.open_company(window, cx) }
     }
 
-    /// Esc on the page puts away its confirm, then its menu. The page itself stays.
+    /// Esc on the page puts away its confirm, then its menu, then takes the 3D
+    /// office one level up. The page itself stays.
     pub(in crate::inbox) fn company_escape(&mut self, cx: &mut Context<Self>) -> bool {
         let co = &mut self.company;
         let done = co.confirm.take().is_some() || co.menu.take().is_some();
         if done {
             cx.notify();
         }
-        done
+        done || self.co_level_up(cx)
     }
 
     /// The box's example names the company's first project.

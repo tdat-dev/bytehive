@@ -82,6 +82,7 @@ impl Engine {
         let now = host.now_ms();
         let floors = self.floors_with_people();
         self.floor_cards.retain(|id, _| floors.iter().any(|f| &f.id == id));
+        self.air.keep_boards(|id| floors.iter().any(|f| f.id == id));
         for (floor, read) in boards {
             if !floors.iter().any(|f| f.id == floor) {
                 continue;
@@ -91,6 +92,7 @@ impl Engine {
                 Ok(Some(b)) => b,
                 Ok(None) => {
                     self.floor_cards.remove(&floor);
+                    self.air.no_board(&floor);
                     continue;
                 }
                 Err(_) => {
@@ -99,6 +101,7 @@ impl Engine {
                 }
             };
             self.floor_cards.insert(floor.clone(), cards_on_board(&board.lists));
+            self.air.board(&floor, &board.lists);
             let Some(s) = &self.state else { break };
             let contact = floor_contact(&s.company, &floor).map(|p| p.id.clone());
             let working = |id: &str| host.seat(id).is_some_and(|x| x.running && now - x.last_output_at < WORKING_WINDOW_MS);

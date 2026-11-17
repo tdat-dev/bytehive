@@ -9,13 +9,15 @@ use crate::company::engine::Engine;
 use crate::company::fleet_host::{FleetHost, Outbound, fresh_tokens};
 use crate::company::host::{Host, Project};
 
-use super::model::{Pane, office_model};
+use super::model::{Pane, office_model, with_air};
 use super::*;
 
 /// The engine's heartbeat: the lock, requests, and what waits to be typed.
 const BEAT_MS: u64 = 1500;
 /// How often what each person has used is read again, off the UI thread.
 const FRESH_MS: u64 = 30_000;
+/// How long after its last output a terminal counts as printing.
+const PRINTING_MS: u64 = 2500;
 /// How long a failure stays on the page.
 const FAILURE_MS: u64 = 6_000;
 
@@ -66,6 +68,9 @@ impl Inbox {
             return;
         }
         self.co_read_fresh(now, cx);
+        if !self.company.open {
+            crate::office3d::view::release_if_away();
+        }
         // A failure is said, then goes: the next try says its own.
         let co = &mut self.company;
         if (co.failure.is_some() || co.box_failure.is_some()) && now.saturating_sub(co.failed_at) > FAILURE_MS {
@@ -172,7 +177,9 @@ impl Inbox {
             .iter()
             .filter_map(|s| {
                 let id = s.spec.person.clone()?;
-                Some(Pane { person_id: id, status: s.status(cx), doing: s.spec.title.clone(), nothing_to_merge: s.changes.empty == Some(true) })
+                // Output in the last moments: the terminal is printing (live.ts PRINTING_MS).
+                let printing = s.terminal.as_ref().is_some_and(|t| now_ms().saturating_sub(t.read(cx).last_output_ms()) < PRINTING_MS);
+                Some(Pane { person_id: id, status: s.status(cx), doing: s.spec.title.clone(), nothing_to_merge: s.changes.empty == Some(true), printing })
             })
             .collect();
         let mut cache = self.company.view.borrow_mut();
@@ -188,7 +195,7 @@ impl Inbox {
         let alerts = if view.jobs.is_empty() { Vec::new() } else { view.alerts.clone() };
         let (projects, _) = self.co_projects();
         let open: Vec<String> = projects.into_iter().filter_map(|p| p.dir).collect();
-        let model = office_model(company, &view.jobs, &alerts, &panes, &view.roles, &view.job_cards, &open);
+        let model = with_air(office_model(company, &view.jobs, &alerts, &panes, &view.roles, &view.job_cards, &open), &view.boards, &view.flights);
         Snapshot { model: Some(model), note: None, error: view.error.clone() }
     }
 }

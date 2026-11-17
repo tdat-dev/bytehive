@@ -50,7 +50,7 @@ fn job(id: &str, status: JobStatus) -> Job {
 }
 
 fn pane(id: &str, state: TaskState) -> Pane {
-    Pane { person_id: id.into(), status: status(state), doing: None, nothing_to_merge: false }
+    Pane { person_id: id.into(), status: status(state), doing: None, nothing_to_merge: false, printing: false }
 }
 
 fn model_of(c: &Company, jobs: &[Job], alerts: &[Alert], panes: &[Pane], open: &[&str]) -> OfficeModel {
@@ -322,7 +322,7 @@ fn the_model_puts_what_a_person_asks_in_needs_you_before_merges_after_plans() {
     planned.plan = Some(JobPlan { summary: "s".into(), cards: vec![], hires: vec![], token_cap: None, new_roles: None, reuse: None, extra: Map::new() });
     let mut merging = job("J-2", JobStatus::AwaitingMerge);
     merging.people = vec!["x".into()];
-    let panes = [Pane { person_id: "x".into(), status: asking, doing: None, nothing_to_merge: false }];
+    let panes = [Pane { person_id: "x".into(), status: asking, doing: None, nothing_to_merge: false, printing: false }];
     let m = model_of(&company(vec![person("x", Rank::Staff, "a")]), &[planned, merging], &[], &panes, &[]);
     assert_eq!(m.needs.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), ["plan-J-1", "ask-x", "merge-J-2"]);
     assert_eq!((m.needs[1].kind, m.needs[1].title.as_str(), m.needs[1].standing), (NeedKind::Alert, "X wants to run rm x", false));

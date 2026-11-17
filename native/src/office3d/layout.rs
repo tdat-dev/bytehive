@@ -112,6 +112,12 @@ pub enum Level {
     Desk { person: String, floor: Option<String> },
 }
 
+impl Default for Level {
+    fn default() -> Self {
+        Level::Building
+    }
+}
+
 /// The Founder's desk, out on the roof in front of the penthouse.
 pub const FOUNDER_DESK: Seat = Seat { x: -1.6, z: 1.4, rot: PI };
 

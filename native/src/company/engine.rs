@@ -13,6 +13,8 @@ use super::types::{Company, Job, RoleDef};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+#[path = "engine_air.rs"]
+pub mod air;
 #[path = "engine_ops.rs"]
 mod ops;
 #[path = "engine_owner.rs"]
@@ -84,6 +86,9 @@ pub struct CompanyView {
     pub locked_by_other: bool,
     /// Why the company could not be loaded.
     pub error: Option<String>,
+    /// Each floor's board (To do, Doing, Done), by floor id; and messages in the air.
+    pub boards: BTreeMap<String, air::BoardCounts>,
+    pub flights: Vec<air::Flight>,
 }
 
 pub struct Engine {
@@ -112,6 +117,8 @@ pub struct Engine {
     outbox: Vec<Pending>,
     /// Each floor's last good tally of cards by Job, by floor id.
     floor_cards: HashMap<String, BTreeMap<String, JobCards>>,
+    /// Messages in the air and each floor's board counts, for the 3D office.
+    air: air::Air,
     /// What the last Node check said; None until it has said anything.
     node: Option<Result<(), String>>,
     /// Slow work under way off the UI thread.
@@ -151,6 +158,7 @@ impl Engine {
             excluded: HashSet::new(),
             outbox: Vec::new(),
             floor_cards: HashMap::new(),
+            air: air::Air::default(),
             node: None,
             ops: Vec::new(),
             changes: 0,
@@ -254,6 +262,7 @@ impl Engine {
         self.quiet.clear();
         self.outbox.clear();
         self.floor_cards.clear();
+        self.air.clear();
         self.requests.reset();
         self.changed();
     }
@@ -386,7 +395,7 @@ impl Engine {
                 t.1 += total;
             }
         }
-        let base = CompanyView { alerts, job_cards, locked_by_other: self.elsewhere, error: self.load_error.clone(), ..CompanyView::default() };
+        let base = CompanyView { alerts, job_cards, boards: self.air.boards(), flights: self.air.flights(), locked_by_other: self.elsewhere, error: self.load_error.clone(), ..CompanyView::default() };
         let Some(s) = &self.state else { return base };
         CompanyView { company: Some(s.company.clone()), jobs: s.jobs.clone(), roles: s.roles.clone(), ..base }
     }

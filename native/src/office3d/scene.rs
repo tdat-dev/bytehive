@@ -162,6 +162,15 @@ impl Scene {
         self.aim(instant);
     }
 
+    /// The camera is between levels: the words over the picture wait.
+    pub fn moving(&self) -> bool {
+        self.tween.is_some()
+    }
+
+    pub fn hovered(&self) -> Option<&str> {
+        self.hovered.as_deref()
+    }
+
     pub fn level(&self) -> &Level {
         &self.level
     }
