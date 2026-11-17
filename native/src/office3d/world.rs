@@ -8,7 +8,8 @@ use std::collections::HashMap;
 use glam::Vec3;
 
 use super::clay::{Clay, INDOOR, MATTE, NIGHT};
-use super::floor::{Room, floor_for, room_for, top_for};
+use super::floor::{floor_for, room_for, top_for};
+use super::light::RoomLight;
 use super::geom::Geom;
 use super::layout::{FOUNDER_DESK, FloorSpot, Seat, Tower};
 use super::life::{Busy, Rising, rising_all};
@@ -89,7 +90,8 @@ pub struct Body {
 struct Built {
     key: String,
     room_key: String,
-    room: Option<Room>,
+    /// The room's light, for the desks put in it; its geometry is on the card only.
+    light: Option<RoomLight>,
     parts: Vec<Part>,
 }
 
@@ -229,7 +231,7 @@ impl World {
                 let keep = b.parts.len().min(6);
                 Self::free(r, &b.parts[keep..]);
                 b.parts.truncate(keep);
-                (b.room.take().unwrap(), b.parts)
+                (b.light.take().unwrap(), b.parts)
             }
             other => {
                 if let Some(b) = other {
@@ -249,17 +251,17 @@ impl World {
                     Some(h) => Part::new(up(r, h), Look::LightOver, at).ordered(2),
                     None => Part { on: false, ..Part::new(r.mesh(&[]), Look::LightOver, at) },
                 });
-                (room, parts)
+                (room.light, parts)
             }
         };
-        let (room, mut parts) = room;
-        let built = floor_for(&plan, spot, &room);
+        let (light, mut parts) = room;
+        let built = floor_for(&plan, spot, &light);
         let at = Place::Up(spot.y as f32);
         let in_room = if f.lit { INDOOR } else { NIGHT };
         parts.push(Part::clay(up(r, &built.solid), in_room, at));
         parts.push(Part::new(up(r, &built.lit), Look::Flat, at));
         parts.push(Part::new(up(r, &built.thrown), Look::Light, at).ordered(1));
-        self.floors.insert(f.id.clone(), Built { key, room_key, room: Some(room), parts });
+        self.floors.insert(f.id.clone(), Built { key, room_key, light: Some(light), parts });
     }
 
     /// Brings the card up to the model.

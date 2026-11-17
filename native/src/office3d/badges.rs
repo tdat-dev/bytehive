@@ -9,6 +9,8 @@ use super::render::Renderer;
 use super::render_types::TexId;
 
 const LOGO_SIZE: u32 = 512;
+/// The most a badge's logo is kept at.
+const BADGE_PX: u32 = 128;
 const INK: &str = "#14161c";
 /// Logos drawn in white, for a dark tile: on the white card they take the ink instead.
 const WHITE_LOGOS: [&str; 12] = ["amp", "cline", "copilot", "cursor", "goose", "grok", "hermes", "kilo", "kimi", "ollama", "opencode", "roo"];
@@ -50,7 +52,11 @@ pub fn logo_texture(r: &mut Renderer) -> TexId {
 /// A CLI's badge picture and its ink. A CLI with no logo shows the bare card.
 pub fn badge_texture(r: &mut Renderer, cli: &str) -> (TexId, Vec3) {
     let key = crate::brand::brand_of(cli).map(|b| b.key).unwrap_or(cli);
-    let picture = crate::brand::logo_png(key).and_then(|bytes| image::load_from_memory(bytes).ok()).map(|i| i.to_rgba8());
+    // The badge is a few pixels across even close to: no more than this is ever seen.
+    let picture = crate::brand::logo_png(key).and_then(|bytes| image::load_from_memory(bytes).ok()).map(|i| {
+        let i = if i.width() > BADGE_PX || i.height() > BADGE_PX { i.thumbnail(BADGE_PX, BADGE_PX) } else { i };
+        i.to_rgba8()
+    });
     match picture {
         Some(p) => {
             let (w, h) = (p.width() as usize, p.height() as usize);

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-17
+
+### Added
+
+- **The 3D office is back, in the native app.** The Company page now shows
+  the company as the office tower the old app had: a floor for each project,
+  everyone at their desk in their own look, the Founder on the roof, the
+  lit rooms at night, the town and the sky behind. It is drawn by the app
+  itself on your graphics card, matched part by part to the old office.
+  - Click a floor, or its sign, to fly to it; the bar says where you are, and
+    Company takes you back. Click someone to open their desk.
+  - Who needs you has the honey mark over their head, and their tag says so.
+  - Steam rises over the desks where someone works, bytes while their
+    terminal prints, a paper plane carries each message between floors, and
+    someone who finishes a job gives a small hop.
+  - Each floor's board shows its To do, Doing and Done counts.
+  - It draws only when something moves, holds still when Windows' animations
+    are off, and gives its graphics memory back two minutes after you leave
+    the page. `BYTEHIVE_OFFICE3D=off` keeps the plain list.
+
 ## [0.16.14] - 2026-11-16
 
 ### Fixed

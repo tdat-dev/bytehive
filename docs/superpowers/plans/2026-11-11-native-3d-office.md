@@ -144,6 +144,24 @@ camera flights between floors, people that hop and animate, quality tiers.
   `life.json`. The rig is checked as matrices; no pose has lean and turn
   both set, so their order cannot show. The badge logos and the rising
   marks' additive draw wait for the renderer in P5.
+- **P5 and P6 done (2026-11-17), released as native-v0.17.0.** `lens.rs`
+  (three's camera with setViewOffset, matched to PerspectiveCamera; the CSS
+  ease), `stage.rs` (pick boxes, pickFrom, focus band, word anchors),
+  `render*.rs` + `scene.wgsl` (one pipeline per three material: clay, glass,
+  flat, sky, pictures, additive light, haze over all, the mark over all,
+  stars, rising marks; 4x MSAA; the sun's map redrawn only on a change, as
+  three's autoUpdate off), `world.rs` + `draws.rs` (what is on the card, and
+  each frame's draws in three's order), `scene.rs` + `view.rs` (the scene
+  driver and the GPUI canvas: draws on demand, readback a frame behind,
+  frees the device after two minutes unseen). The Company page maps its model
+  to `world_in.rs` (looks.rs ports lookOf; the engine keeps board counts and
+  flights in engine_air.rs) and draws the tags of shell.ts in tags3d.rs.
+  Memory, release build, 1148 x 712 panel, Intel UHD 630: opening the office
+  costs +248 MB private; the P0 spike measured the same way now costs
+  +146 MB (it was +66 MB at P0), so the office itself is about +100 MB over
+  the device. Idle CPU 1.7% of a core, 5% with people at work.
+  Left: the letter badge for a CLI with no logo, the Desk level inside the
+  office (a click opens the desk as the 2D list does), the quality setting.
 - **P5 interaction:** camera flights (`mixShots`, `easeLevel`), hover and click
   through picking, anchors projected to the page so GPUI draws the words over
   them instead of canvas textures.

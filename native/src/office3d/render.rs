@@ -316,6 +316,34 @@ pub fn light_for(x: f32, roof_y: f32) -> Mat4 {
 
 #[cfg(test)]
 mod tests {
+    fn private_mb() -> u64 {
+        let out = std::process::Command::new("powershell").args(["-NoProfile", "-c", &format!("(Get-Process -Id {}).PrivateMemorySize64", std::process::id())]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().parse::<u64>().unwrap_or(0) / 1_048_576
+    }
+
+    /// Where the renderer's own memory goes (BYTEHIVE_OFFICE_MEM=1).
+    #[test]
+    #[ignore]
+    fn weigh_the_device() {
+        if std::env::var("BYTEHIVE_OFFICE_MEM").is_err() {
+            return;
+        }
+        let m0 = private_mb();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::DX12, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::LowPower, ..Default::default() })).unwrap();
+        let (device, _queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor { label: None, memory_hints: wgpu::MemoryHints::MemoryUsage, ..Default::default() })).unwrap();
+        let m1 = private_mb();
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: None, source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()) });
+        let layouts = super::layouts(&device);
+        let main = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[Some(&layouts.frame), Some(&layouts.draw), Some(&layouts.picture)], immediate_size: 0 });
+        let one = super::pipeline(&device, &shader, &main, super::Look::Lit);
+        let m2 = private_mb();
+        let rest: Vec<_> = super::LOOKS.iter().map(|&l| super::pipeline(&device, &shader, &main, l)).collect();
+        let m3 = private_mb();
+        eprintln!("device +{} one pipeline +{} ten more +{}", m1 - m0, m2 - m1, m3 - m2);
+        drop((one, rest));
+    }
+
     #[test]
     fn the_scene_shader_parses_and_validates() {
         let text = include_str!("scene.wgsl");

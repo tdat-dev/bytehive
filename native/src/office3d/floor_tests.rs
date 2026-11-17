@@ -62,7 +62,7 @@ fn floors_match_the_office() {
         one(&format!("{id} room thrown"), &room.thrown, &r["deskLight"]);
         assert_eq!(room.haze.is_some(), r.get("hazeLight").is_some(), "{id} haze");
 
-        let floor = floor_for(&plan, &spot, &room);
+        let floor = floor_for(&plan, &spot, &room.light);
         let w = &f["floor"];
         one(&format!("{id} desks"), &floor.solid, &w[if plan.lit { "indoor" } else { "night" }]);
         one(&format!("{id} desks lit"), &floor.lit, &w["glow"]);

@@ -363,6 +363,40 @@ impl Scene {
 mod tests {
     use super::*;
 
+    fn private_mb() -> u64 {
+        let out = std::process::Command::new("powershell").args(["-NoProfile", "-c", &format!("(Get-Process -Id {}).PrivateMemorySize64", std::process::id())]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().parse::<u64>().unwrap_or(0) / 1_048_576
+    }
+
+    /// What each step costs in private memory (BYTEHIVE_OFFICE_MEM=1).
+    #[test]
+    #[ignore]
+    fn weigh_the_office() {
+        if std::env::var("BYTEHIVE_OFFICE_MEM").is_err() {
+            return;
+        }
+        let m0 = private_mb();
+        let mut r = Renderer::new().unwrap();
+        let m1 = private_mb();
+        let logo = logo_texture(&mut r);
+        let mut w = World::new(&mut r, logo);
+        let m2 = private_mb();
+        let model = super::super::demo::demo_office(0.0);
+        let t = model.tower();
+        w.set(&mut r, &model, &t);
+        let m3 = private_mb();
+        drop((w, r));
+        let mut s = Scene::new(Quality::High, false).unwrap();
+        s.resize(1148.0, 712.0, 1.0);
+        s.set_model(model, 0.0);
+        let _ = s.shoot(0.0);
+        let m4 = private_mb();
+        let _ = s.shoot(10.0);
+        let _ = s.shoot(20.0);
+        let m5 = private_mb();
+        eprintln!("start {m0} device +{} setting +{} floors +{} | scene after a frame {m4}, three frames {m5}", m1 - m0, m2 - m1, m3 - m2);
+    }
+
     /// Draws the demo office to BYTEHIVE_OFFICE_SHOT (a .png), to look at by eye.
     /// BYTEHIVE_OFFICE_LEVEL picks a floor id, or "founder" for the roof desk.
     #[test]

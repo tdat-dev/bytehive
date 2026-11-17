@@ -77,7 +77,7 @@ pub struct Floor {
     pub seated: Vec<(usize, Seat)>,
 }
 
-pub fn floor_for(f: &FloorPlan, spot: &FloorSpot, room: &Room) -> Floor {
+pub fn floor_for(f: &FloorPlan, spot: &FloorSpot, light: &RoomLight) -> Floor {
     let mut all = DeskParts::default();
     let mut seated = Vec::new();
     let papers_on = paper_desk(f);
@@ -101,7 +101,7 @@ pub fn floor_for(f: &FloorPlan, spot: &FloorSpot, room: &Room) -> Floor {
         let face = mv(Geom::merged(face), BOARD_X, BOARD_Y, z);
         if f.lit { all.lit.push(face) } else { all.solid.push(face) }
     }
-    Floor { solid: bake(Geom::merged(all.solid), &room.light), lit: Geom::merged(all.lit), thrown: Geom::merged(all.thrown), seated }
+    Floor { solid: bake(Geom::merged(all.solid), light), lit: Geom::merged(all.lit), thrown: Geom::merged(all.thrown), seated }
 }
 
 /// The Founder's desk out on the roof, at the roof's height, and their seat.

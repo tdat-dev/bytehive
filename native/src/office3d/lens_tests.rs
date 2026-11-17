@@ -119,3 +119,35 @@ fn boxes_bands_and_anchors_follow_the_tower() {
     assert_eq!(ann.clear, Some(super::lens::MARK_PX));
     assert!(marks.iter().all(|a| a.visible), "the Building shot holds every word");
 }
+
+#[test]
+#[ignore]
+fn count_the_vertices() {
+    use super::floor::{floor_for, room_for};
+    let m = super::demo::demo_office(0.0);
+    let t = m.tower();
+    let mut total = 0usize;
+    let mut say = |name: &str, n: usize| {
+        total += n;
+        eprintln!("{name}: {n}");
+    };
+    say("town", super::town::town().len());
+    say("plot", super::setting::plot().len());
+    say("field", super::town::field().len());
+    let r = super::roof::roof(&t);
+    say("roof", r.deck.len() + r.solid.len() + r.lit.len() + r.clear.len() + r.thrown.len() + r.car.len());
+    for (f, spot) in m.floors.iter().zip(&t.floors) {
+        let plan = f.plan();
+        let room = room_for(&plan, spot);
+        say(&format!("{} shell", f.id), room.shell.len());
+        say(&format!("{} things", f.id), room.things.len());
+        say(&format!("{} wall", f.id), room.wall.len());
+        say(&format!("{} lit+thrown", f.id), room.lit.len() + room.thrown.len());
+        let fl = floor_for(&plan, spot, &room.light);
+        say(&format!("{} desks", f.id), fl.solid.len() + fl.lit.len());
+    }
+    let p = &m.floors[2].people[0];
+    let s = super::people_shapes::shapes_of(&p.looks());
+    say("one person", s.torso.len() + s.legs.len() + s.arm_l.len() + s.arm_r.len());
+    eprintln!("total {total} vertices, {} MB at 36 bytes", total * 36 / 1_048_576);
+}
