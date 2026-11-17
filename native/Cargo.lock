@@ -838,6 +838,7 @@ dependencies = [
  "pollster",
  "portable-pty",
  "regex",
+ "resvg 0.45.1",
  "serde",
  "serde_json",
  "sha2 0.10.9",

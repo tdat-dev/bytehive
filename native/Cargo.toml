@@ -16,7 +16,7 @@ anyhow = "1"
 base64 = "0.22"
 browser-hub = { path = "../crates/browser-hub" }
 # The live view decodes the browser's JPEG frames (the same image crate GPUI uses).
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 minisign-verify = "0.2"
 tauri-winrt-notification = "0.7"
 async-channel = "2"
@@ -44,6 +44,8 @@ wgpu = { version = "30", default-features = false, features = ["std", "parking_l
 glam = "0.30"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
+# The office's roof sign draws design/logo.svg (the same resvg GPUI uses).
+resvg = { version = "0.45", default-features = false }
 windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]

@@ -80,6 +80,11 @@ fn program_word(words: &[&str]) -> Option<String> {
     words.iter().map(|w| stem(w)).zip(words).find(|(s, w)| !LAUNCHERS.contains(&s.as_str()) && !LAUNCH_WORDS.contains(&w.to_ascii_lowercase().as_str()) && !w.starts_with('-')).map(|(s, _)| s)
 }
 
+/// A CLI's logo as PNG bytes, for the 3D office's badges.
+pub fn logo_png(key: &str) -> Option<&'static [u8]> {
+    LOGOS.iter().find(|(k, _)| *k == key).map(|(_, bytes)| *bytes)
+}
+
 /// What an agent's tile shows.
 pub enum Mark {
     Logo { image: Arc<Image>, fills: bool, color: u32 },

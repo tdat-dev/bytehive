@@ -6,13 +6,16 @@
 // scene that uses it (P3): until then some pieces have no caller.
 #![allow(dead_code)]
 
+pub mod badges;
 pub mod build_parts;
 #[cfg(test)]
 mod build_tests;
 mod earcut;
 pub mod clay;
 pub mod colour;
+pub mod demo;
 pub mod desk;
+pub mod draws;
 pub mod floor;
 #[cfg(test)]
 mod floor_tests;
@@ -46,11 +49,16 @@ pub mod prims;
 pub mod props;
 pub mod props_wall;
 pub mod quality;
+pub mod scene;
 pub mod seed;
 #[cfg(test)]
 mod prims_tests;
 mod readback;
 pub mod shadow;
+pub mod render;
+pub mod render_pipes;
+pub mod render_tex;
+pub mod render_types;
 pub mod roof;
 #[cfg(test)]
 mod roof_tests;
@@ -62,4 +70,6 @@ pub mod slab;
 pub mod stage;
 pub mod surfaces;
 pub mod town;
+pub mod world;
+pub mod world_in;
 pub mod spike;

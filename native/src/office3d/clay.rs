@@ -14,7 +14,7 @@ pub const STOREY: f32 = 4.0;
 pub const SLAB: f32 = 0.56;
 
 /// ClayLook in clay.ts.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clay {
     pub self_: &'static str,
     pub self_level: f32,
