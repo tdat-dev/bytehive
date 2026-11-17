@@ -38,6 +38,9 @@ pub mod seed;
 mod prims_tests;
 mod readback;
 pub mod shadow;
+pub mod roof;
+#[cfg(test)]
+mod roof_tests;
 pub mod slab;
 pub mod surfaces;
 pub mod spike;

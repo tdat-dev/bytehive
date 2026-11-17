@@ -13,7 +13,7 @@ const exposeBuild = {
       const norm = args.path.split(path.sep).join("/");
       if (!norm.endsWith("/company/office/build.ts")) return undefined;
       const text = await readFile(args.path, "utf8");
-      const more = "\nexport { shellGeometry, deskGeometry, chairGeometry, chairBackGeometry, boardGeometry, wallGrid, hexFloor, deskThing, noteParts, stringLights, liftCar };\n";
+      const more = "\nexport { shellGeometry, deskGeometry, chairGeometry, chairBackGeometry, boardGeometry, wallGrid, hexFloor, deskThing, noteParts, stringLights, liftCar, roofSteps, finished };\n";
       return { contents: text + more, loader: "ts" };
     });
   },
