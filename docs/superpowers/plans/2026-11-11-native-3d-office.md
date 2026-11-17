@@ -122,6 +122,16 @@ camera flights between floors, people that hop and animate, quality tiers.
   left its rounded ends 2e-9 apart and the outline grew two points.
   Left in P3: the roof (roofSteps) and setting.ts. deskFor and roomSteps
   need people.ts, so they move to P4.
+- **P3 done (2026-11-17):** `roof.rs` (roofSteps: deck, rail, penthouse,
+  string lights, planters, sign, lift shaft and mast, the car's stops) in
+  `roof.json` for towers of one and three floors; `setting.rs` (plot, trees,
+  shrubs, bench, street lamps, spill), `town.rs` (three rows of blocks with
+  windows rounded through a hex string as three does, the field) and
+  `sky.rs` (stars, moon, halo, and the sky's picture painted to pixels: sRGB
+  gradient, 26 clouds blurred by a gaussian) in `setting.json`. The sky
+  picture has no golden (no canvas in node): `shoot_the_sky` (ignored) writes
+  it for an eye check. Logo plate, canvas words and the sky's texture upload
+  wait for P5.
 - **P4 people and life marks:** `people.ts`, `life.ts`, animation clock.
 - **P5 interaction:** camera flights (`mixShots`, `easeLevel`), hover and click
   through picking, anchors projected to the page so GPUI draws the words over

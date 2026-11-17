@@ -41,6 +41,11 @@ pub mod shadow;
 pub mod roof;
 #[cfg(test)]
 mod roof_tests;
+pub mod setting;
+#[cfg(test)]
+mod setting_tests;
+pub mod sky;
 pub mod slab;
 pub mod surfaces;
+pub mod town;
 pub mod spike;
