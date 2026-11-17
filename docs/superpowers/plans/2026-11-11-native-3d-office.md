@@ -133,6 +133,17 @@ camera flights between floors, people that hop and animate, quality tiers.
   it for an eye check. Logo plate, canvas words and the sky's texture upload
   wait for P5.
 - **P4 people and life marks:** `people.ts`, `life.ts`, animation clock.
+- **P4 done (2026-11-17):** `people_pose.rs` (pose from state and clock, the
+  rig as world matrices per part, spots, hops), `people_shapes.rs` (torso
+  with head and six hairs, legs, arms with held props, the honey mark,
+  badge plane), `people_desk.rs` (props set down, papers, lamp, desk glows,
+  screen colour, paper plane and its flight) in `people.json`; `desk.rs`
+  (deskFor) and `floor.rs` (roomSteps, buildFloor, buildTop) in
+  `floor.json` for three floors and the Founder in each state; `life.rs`
+  (risingAt, and each mark at a moment as the vertex shader moves it) in
+  `life.json`. The rig is checked as matrices; no pose has lean and turn
+  both set, so their order cannot show. The badge logos and the rising
+  marks' additive draw wait for the renderer in P5.
 - **P5 interaction:** camera flights (`mixShots`, `easeLevel`), hover and click
   through picking, anchors projected to the page so GPUI draws the words over
   them instead of canvas textures.
