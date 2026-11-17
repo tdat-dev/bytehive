@@ -12,6 +12,10 @@ mod build_tests;
 mod earcut;
 pub mod clay;
 pub mod colour;
+pub mod desk;
+pub mod floor;
+#[cfg(test)]
+mod floor_tests;
 pub mod furnish;
 #[cfg(test)]
 mod furnish_tests;
