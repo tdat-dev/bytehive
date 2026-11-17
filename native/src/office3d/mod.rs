@@ -27,6 +27,11 @@ mod light_tests;
 mod layout_tests;
 pub mod nav;
 pub mod palette;
+pub mod people_desk;
+pub mod people_pose;
+pub mod people_shapes;
+#[cfg(test)]
+mod people_tests;
 pub mod pick;
 pub mod mesh;
 pub mod prims;

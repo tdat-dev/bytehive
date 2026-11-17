@@ -11,11 +11,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const exposed = [
   ["/company/office/build.ts", "shellGeometry, deskGeometry, chairGeometry, chairBackGeometry, boardGeometry, wallGrid, hexFloor, deskThing, noteParts, stringLights, liftCar, roofSteps, finished"],
   ["/company/office/setting.ts", "starField, moonGeometry, tree, bench, streetLamp, shrub"],
+  ["/company/office/people.ts", "torsoGeometry, legsGeometry, armGeometry, bubbleGeometry"],
 ];
 const expose = {
   name: "expose",
   setup(b) {
-    b.onLoad({ filter: /(build|setting)\.ts$/ }, async (args) => {
+    b.onLoad({ filter: /(build|setting|people)\.ts$/ }, async (args) => {
       const norm = args.path.split(path.sep).join("/");
       const more = exposed.find(([end]) => norm.endsWith(end));
       if (!more) return undefined;
