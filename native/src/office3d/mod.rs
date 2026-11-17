@@ -24,6 +24,9 @@ pub mod glow;
 pub mod gpu;
 pub mod lathe;
 pub mod layout;
+pub mod lens;
+#[cfg(test)]
+mod lens_tests;
 pub mod life;
 pub mod light;
 #[cfg(test)]
@@ -56,6 +59,7 @@ pub mod setting;
 mod setting_tests;
 pub mod sky;
 pub mod slab;
+pub mod stage;
 pub mod surfaces;
 pub mod town;
 pub mod spike;
