@@ -264,6 +264,15 @@ impl Renderer {
         Ok(done)
     }
 
+    /// The newest finished frame, without drawing another; and whether one is still on its way.
+    pub fn collect(&mut self) -> (Option<(u32, u32, Vec<u8>)>, bool) {
+        let _ = self.device.poll(wgpu::PollType::Poll);
+        match self.target.as_mut() {
+            Some(t) => (t.readback.take().map(|bytes| (t.width, t.height, bytes)), t.readback.busy()),
+            None => (None, false),
+        }
+    }
+
     /// Wait for the card to finish what it was given (tests and shots only).
     pub fn wait(&self) {
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());

@@ -38,6 +38,11 @@ impl Readback {
         self.slots.iter().position(|s| s.state.load(Ordering::Acquire) == FREE)
     }
 
+    /// A frame is on its way back from the card.
+    pub fn busy(&self) -> bool {
+        self.slots.iter().any(|s| s.state.load(Ordering::Acquire) == PENDING)
+    }
+
     pub fn buffer(&self, slot: usize) -> &wgpu::Buffer {
         &self.slots[slot].buffer
     }

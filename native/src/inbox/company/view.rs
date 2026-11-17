@@ -7,6 +7,9 @@
 use super::look::*;
 use super::*;
 
+/// How much of the job box's reach the picture moves over for (shell.ts JOB_BOX_SHARE).
+const JOB_BOX_SHARE: f32 = 0.38;
+
 impl Inbox {
     pub(in crate::inbox) fn company_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let snap = self.company_snapshot(cx);
@@ -25,6 +28,7 @@ impl Inbox {
             cx.on_next_frame(window, |_, _, cx| cx.notify());
         }
 
+        let office3d = crate::office3d::view::demo_wanted();
         let floors = match &snap.model {
             // P0 of the 3D office: the spike in place of the floors, its cost written over it.
             _ if crate::office3d::spike::wanted() => div()
@@ -32,6 +36,13 @@ impl Inbox {
                 .size_full()
                 .child(crate::office3d::spike::view())
                 .child(text(META, INK_2).absolute().top(px(S3)).left(px(S4)).child(crate::office3d::spike::line()))
+                .into_any_element(),
+            // The 3D office with the demo company, to look at while it is ported.
+            _ if crate::office3d::view::demo_wanted() => div()
+                .relative()
+                .size_full()
+                .child(crate::office3d::view::demo())
+                .child(text(META, INK_2).absolute().top(px(S3)).left(px(S4)).child(crate::office3d::view::line()))
                 .into_any_element(),
             Some(m) => self.co_floors(m, cx),
             None => text(BODY, INK_2).p(px(S4)).child(snap.note.clone().unwrap_or_else(|| words::STARTING.into())).into_any_element(),
@@ -68,7 +79,16 @@ impl Inbox {
             side = side.child(rail.overflow_hidden());
             if let Some(b) = job_box {
                 let w = (size.width.as_f32() * 0.32).clamp(300.0, 460.0);
-                stage = stage.child(div().flex_none().px(px(S4)).pb(px(S4)).child(div().w(px(w)).p(px(S4)).rounded(px(R_CARD)).bg(c(RAISED)).shadow(vec![ring(line()), lift()]).child(b)));
+                let card = div().w(px(w)).p(px(S4)).rounded(px(R_CARD)).bg(c(RAISED)).shadow(vec![ring(line()), lift()]).child(b);
+                if office3d {
+                    // Over the building it stands on the picture, and the picture moves over for it (shell.ts clearForJobBox).
+                    crate::office3d::view::set_clear(((S4 + w) * JOB_BOX_SHARE) as f64);
+                    stage = stage.child(div().absolute().left(px(S4)).bottom(px(S4)).occlude().child(card));
+                } else {
+                    stage = stage.child(div().flex_none().px(px(S4)).pb(px(S4)).child(card));
+                }
+            } else if office3d {
+                crate::office3d::view::set_clear(0.0);
             }
         }
         // A confirm or a menu for a job that has gone goes with it.

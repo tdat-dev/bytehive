@@ -132,9 +132,9 @@ impl Scene {
     }
 
     /// The office to show. Someone who was working and has stopped with nothing to ask has finished: a small jump.
-    pub fn set_model(&mut self, m: OfficeIn, now: f64) {
+    pub fn set_model(&mut self, m: OfficeIn, now: f64) -> bool {
         if m == self.model && self.shot.is_some() {
-            return;
+            return false;
         }
         let tower = m.tower();
         self.world.set(&mut self.r, &m, &tower);
@@ -154,6 +154,7 @@ impl Scene {
         if first || !same_shot(&to, &self.tween.as_ref().map_or(self.shot.unwrap(), |t| t.to)) {
             self.aim(first);
         }
+        true
     }
 
     pub fn set_level(&mut self, l: Level, instant: bool) {
@@ -167,7 +168,7 @@ impl Scene {
 
     /// The canvas, in CSS pixels, and its device pixel ratio.
     pub fn resize(&mut self, w: f64, h: f64, dpr: f64) {
-        if w <= 0.0 || h <= 0.0 {
+        if w <= 0.0 || h <= 0.0 || ((w, h) == self.css && dpr == self.dpr) {
             return;
         }
         self.css = (w, h);
@@ -330,6 +331,11 @@ impl Scene {
             self.frames += 1;
         }
         Ok(out)
+    }
+
+    /// A finished picture, if one came back, and whether another is on its way.
+    pub fn collect(&mut self) -> (Option<(u32, u32, Vec<u8>)>, bool) {
+        self.r.collect()
     }
 
     /// Draws until a picture comes back, waiting on the card: for shots, never on the UI thread.

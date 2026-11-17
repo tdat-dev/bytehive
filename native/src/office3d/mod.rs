@@ -70,6 +70,7 @@ pub mod slab;
 pub mod stage;
 pub mod surfaces;
 pub mod town;
+pub mod view;
 pub mod world;
 pub mod world_in;
 pub mod spike;
