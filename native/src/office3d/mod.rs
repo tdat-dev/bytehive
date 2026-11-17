@@ -24,6 +24,7 @@ pub mod glow;
 pub mod gpu;
 pub mod lathe;
 pub mod layout;
+pub mod life;
 pub mod light;
 #[cfg(test)]
 mod light_tests;
