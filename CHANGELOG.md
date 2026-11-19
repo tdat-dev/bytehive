@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-19
+
+### Changed
+
+- **Browser recordings are 30 frames a second.** The video always plays at a
+  steady 30 fps, and the recorder now keeps up with the tab: about 30 new
+  pictures a second where the page moves (it was 16), measured on a machine
+  with some room. A machine at full load gets fewer new pictures, never a
+  slower video.
+
 ## [0.18.0] - 2026-11-19
 
 ### Added
