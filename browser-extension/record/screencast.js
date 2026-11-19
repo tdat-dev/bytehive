@@ -27,7 +27,7 @@ export async function toOffscreen(op, extra = {}) {
  *  one only after the last is acked, so a slow machine gets fewer frames, not
  *  a backlog. */
 export function startCast(cdp, tabId) {
-  return cdp(tabId, "Page.startScreencast", { format: "jpeg", quality: 80, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 });
+  return cdp(tabId, "Page.startScreencast", { format: "jpeg", quality: 70, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 });
 }
 
 export function stopCast(cdp, tabId) {

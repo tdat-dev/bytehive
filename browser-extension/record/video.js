@@ -10,6 +10,7 @@ const MAX_MS = 10 * 60_000; // a recording stops by itself after this
 const KEEP_MS = 10 * 60_000; // a finished one nobody fetched is dropped
 const MAX_KEYS = 60;
 const AFTER_MS = 700;
+const IN_FLIGHT = 8; // pictures on their way to the recorder at once
 const PULL_MS = 1000; // a frame is asked for after this long without one
 const SETTLE_MS = 1500; // after the debugger attaches, before the view is measured
 export const PART = 4 * 1024 * 1024;
@@ -66,14 +67,28 @@ async function viewSize(tabId) {
   }
 }
 
-/** A frame to the encoder. A screencast frame is acked once it is encoded,
- *  so Chrome paces itself to the encoder instead of piling frames up. */
+/** A frame to the encoder. Chrome sends the next screencast frame only
+ *  after this one is acked: ack at once while fewer than IN_FLIGHT frames
+ *  are being encoded, else when one is done. One at a time gave 16 fps;
+ *  a few at once keeps capture and encoding busy together, and Chrome still
+ *  slows down instead of piling frames up. */
 function takeFrame(rec, data, at = Date.now(), sessionId = null) {
   rec.latest = data;
   rec.lastFrame = Date.now();
   if (++rec.frames === 1) addKey(rec, "start");
-  const ack = () => { if (sessionId != null) deps.cdp(rec.tabId, "Page.screencastFrameAck", { sessionId }).catch(() => {}); };
-  toOffscreen("frame", { id: rec.id, data, at }).then(ack, ack);
+  const ack = () => deps.cdp(rec.tabId, "Page.screencastFrameAck", { sessionId }).catch(() => {});
+  rec.inFlight = (rec.inFlight ?? 0) + 1;
+  if (sessionId != null) {
+    if (rec.inFlight < IN_FLIGHT) ack();
+    else rec.owed = ack;
+  }
+  const done = () => {
+    rec.inFlight--;
+    const owed = rec.owed;
+    rec.owed = null;
+    owed?.();
+  };
+  toOffscreen("frame", { id: rec.id, data, at }).then(done, done);
 }
 
 /** Chrome paints a covered window only while something animates, so a still
@@ -96,9 +111,14 @@ export function onCdpEvent(tabId, method, p) {
   const at = Date.now() - rec.started;
   if (method === "Page.screencastFrame") {
     // When Chrome painted it: the worker gets frames in bursts, so its own
-    // clock would bunch them up. A clock that is far off is not trusted.
+    // clock would bunch them up. Chrome's clock is not quite ours, so its
+    // times are moved onto ours by the gap seen on the first frame, and never
+    // later than now.
     const painted = (p.metadata?.timestamp ?? 0) * 1000;
-    takeFrame(rec, p.data, Math.abs(painted - Date.now()) < 5000 ? painted : Date.now(), p.sessionId);
+    const now = Date.now();
+    rec.skew ??= now - painted;
+    const at = Math.min(now, painted + rec.skew);
+    takeFrame(rec, p.data, Math.abs(at - now) < 2000 ? at : now, p.sessionId);
   } else if (method === "Page.loadEventFired") {
     // A new document: make sure the screencast carries on with it.
     startCast(deps.cdp, tabId).catch(() => {});
@@ -180,7 +200,7 @@ export async function stopVideo(agent, { discard = false, auto = false } = {}) {
   }
   const ms = Date.now() - rec.started;
   const { actions, errors } = counts(rec.events);
-  const md = toMarkdown(`${agent}: ${clock(ms)} of video, ${v.width}x${v.height}, ${rec.frames} frames from the tab, ${v.encoded} in the video, ${new Date(rec.started).toISOString()}`, rec.events) +
+  const md = toMarkdown(`${agent}: ${clock(ms)} of video, ${v.width}x${v.height}, ${v.ticks} frames at 30 fps, ${v.real} of them new pictures, ${new Date(rec.started).toISOString()}`, rec.events) +
     (rec.keys.length ? "\nNumbers in [brackets] are frames/NNN-*.jpg.\n" : "");
   const files = new Map([["video.mp4", { size: v.size, video: true }]]);
   const put = (name, bytes) => files.set(name, { size: bytes.length, bytes });

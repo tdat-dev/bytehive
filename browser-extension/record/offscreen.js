@@ -1,13 +1,18 @@
 /* The recorder: an offscreen document, because a service worker has no
- * VideoEncoder. The service worker sends it the tab's frames (JPEG) with the
- * time each one came; each is encoded at that time (WebCodecs H.264, VP9 when
+ * VideoEncoder. The service worker sends it the tab's pictures (JPEG) with
+ * the time Chrome painted each; they are encoded (WebCodecs H.264, VP9 when
  * this Chrome has no H.264 encoder) and muxed into an MP4.
  *
- * Not a canvas stream with MediaRecorder: in a hidden document Chrome takes a
- * canvas frame only when it renders the page, which is seldom, so the video
- * came out at 3 fps or empty. Here every frame is encoded and stop flushes
- * them all. A still page needs no repeated frames: an MP4 frame lasts until
- * the next one. */
+ * The video is a steady 30 frames a second. Taking a picture only decodes it
+ * and queues it, so Chrome is never kept waiting; a separate loop encodes the
+ * ticks of the clock (1/30 s each) a little behind real time, each with the
+ * newest picture painted by then. A page that paints less often, or not at
+ * all while still, repeats its picture, which costs almost nothing to store.
+ *
+ * Measured, so not done again: a canvas stream with MediaRecorder in this
+ * hidden document gave 3 fps or empty files (Chrome takes a canvas frame only
+ * when it renders the page); encoding inside the picture's own call made
+ * Chrome wait for the encoder and sent 2 pictures a second. */
 
 import { Muxer, ArrayBufferTarget } from "../vendor/mp4-muxer.mjs";
 
@@ -16,9 +21,18 @@ const CODECS = [
   { codec: "avc1.4d0028", mux: "avc" },
   { codec: "vp09.00.40.08", mux: "vp9" },
 ];
+/** Which encoder to ask for first. Measured on a busy machine: the GPU one
+ *  (Windows Media Foundation) fell 9 s behind a 30 fps clock, the software
+ *  one stayed within half a second. */
+const ENCODER = "prefer-software";
 const BITRATE = 2_500_000;
-const KEY_EVERY_US = 2_000_000;
-const MAX_QUEUE = 8; // frames waiting for the encoder; more are dropped
+const FPS = 30;
+const KEY_EVERY = 2 * FPS; // a key frame every 2 s
+const QUEUE = 4; // frames waiting in the encoder before the loop waits for it
+const LAG_US = 250_000; // ticks are encoded this far behind real time
+const MAX_WAITING = 12; // pictures queued for the loop; more and the middle ones go
+const RUN_MS = 100; // how often the loop wakes up on its own
+const at30 = (tick) => Math.round((tick * 1_000_000) / FPS);
 
 const recs = new Map(); // id -> recording
 
@@ -29,31 +43,38 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
 });
 
 const ops = {
-  /** Answered once the frame is encoded: the worker acks the screencast only
-   *  then, so Chrome sends frames as fast as they are encoded and no faster. */
-  async frame(m) {
-    const r = recs.get(m.id);
-    if (!r) return false;
-    r.chain = r.chain.then(() => frame(r, m.data, m.at)).catch((e) => (r.error ??= String(e?.message ?? e)));
-    await r.chain;
-    return true;
-  },
   async start(m) {
     await ops.drop(m);
-    recs.set(m.id, { id: m.id, chain: Promise.resolve(), t0: m.started, want: m.width > 0 && m.height > 0 ? [m.width, m.height] : null });
+    const r = { id: m.id, t0: m.started, want: m.width > 0 && m.height > 0 ? [m.width, m.height] : null, waiting: [], tick: 0, real: 0 };
+    r.timer = setInterval(() => kick(r), RUN_MS);
+    recs.set(m.id, r);
     return { ok: true };
+  },
+  /** A picture: decoded and queued, answered at once. */
+  async frame(m) {
+    const r = recs.get(m.id);
+    if (!r || r.stopped) return false;
+    const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${m.data}`)).blob());
+    if (r.stopped || !recs.has(r.id)) { bmp.close(); return false; }
+    r.ready ??= begin(r, ...(r.want ?? [bmp.width, bmp.height]));
+    await r.ready;
+    queue(r, { at: (m.at - r.t0) * 1000, bmp });
+    kick(r);
+    return true;
   },
   async stop(m) {
     const r = recs.get(m.id);
     if (!r) throw new Error("No such recording.");
-    r.stopped = true; // a frame still on its way is not encoded
-    await r.chain;
+    r.stopped = true;
+    clearInterval(r.timer);
     if (!r.enc) {
-      recs.delete(m.id);
+      await ops.drop(m);
       return { size: 0, error: r.error };
     }
-    // The last picture lasts until the moment stop was asked.
-    if (r.shown && !r.error) encode(r, r.shown, m.at, true);
+    // Every tick up to the moment stop was asked, with the last picture.
+    r.until = Math.max(at30(r.tick) + 1, (m.at - r.t0) * 1000);
+    await r.loop;
+    await run(r);
     await r.enc.flush().catch((e) => (r.error ??= String(e?.message ?? e)));
     if (r.error || !r.chunks) {
       const why = r.error ?? "the encoder gave nothing";
@@ -62,10 +83,10 @@ const ops = {
     }
     r.enc.close();
     r.muxer.finalize();
-    r.shown?.close();
+    closeAll(r);
     r.blob = new Blob([r.target.buffer], { type: "video/mp4" });
-    r.enc = r.muxer = r.target = r.shown = r.canvas = r.g = null;
-    return { size: r.blob.size, mime: "video/mp4", width: r.width, height: r.height, codec: r.codec, encoded: r.encoded ?? 0 };
+    r.enc = r.muxer = r.target = r.canvas = r.g = null;
+    return { size: r.blob.size, mime: "video/mp4", width: r.width, height: r.height, codec: r.codec, real: r.real, ticks: r.tick };
   },
   async part(m) {
     const blob = recs.get(m.id)?.blob;
@@ -76,61 +97,125 @@ const ops = {
   async drop(m) {
     const r = recs.get(m.id);
     if (r) {
+      r.stopped = true;
+      clearInterval(r.timer);
       try { if (r.enc?.state === "configured") r.enc.close(); } catch {}
-      r.shown?.close();
+      closeAll(r);
       recs.delete(m.id);
     }
     return { left: recs.size };
   },
 };
 
-async function frame(r, b64, at) {
-  const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${b64}`)).blob());
-  if (!recs.has(r.id) || r.stopped) return bmp.close();
-  if (!r.enc) await begin(r, ...(r.want ?? [bmp.width, bmp.height]), at);
-  r.shown?.close();
-  r.shown = bmp;
-  // A slow machine: let frames go rather than pile up in memory.
-  if (r.enc.encodeQueueSize > MAX_QUEUE) return;
-  encode(r, bmp, at, false);
-  r.encoded = (r.encoded ?? 0) + 1;
+/** In paint order, one per tick: only the newest picture painted by a tick
+ *  is shown in it, so an older one of the same tick goes at once. A loop
+ *  that is still behind keeps the oldest (needed next) and the newest, and
+ *  lets the ones between go. */
+function queue(r, p) {
+  let i = r.waiting.length;
+  while (i > 0 && r.waiting[i - 1].at > p.at) i--;
+  const slot = (at) => Math.ceil((at * FPS) / 1_000_000);
+  const before = r.waiting[i - 1];
+  if (before && slot(before.at) === slot(p.at)) { before.bmp.close(); r.waiting[i - 1] = p; }
+  else r.waiting.splice(i, 0, p);
+  while (r.waiting.length > MAX_WAITING) r.waiting.splice(1, 1)[0].bmp.close();
 }
 
-function encode(r, bmp, at, last) {
+function kick(r) {
+  if (!r.running && r.enc && !r.error && !r.stopped) r.loop = run(r);
+}
+
+/** Encode the ticks that are due: up to LAG behind now, or to the end once
+ *  stopped. */
+async function run(r) {
+  r.running = true;
+  try {
+    for (;;) {
+      const horizon = r.until ?? (Date.now() - r.t0) * 1000 - LAG_US;
+      const t = at30(r.tick);
+      if (t >= horizon || r.error) break;
+      // The newest picture painted by this tick (the very first one shows
+      // from the start).
+      while (r.waiting.length && (r.waiting[0].at <= t || !r.shown)) {
+        r.shown?.close();
+        r.shown = r.waiting.shift().bmp;
+        r.fresh = true;
+        r.real++;
+      }
+      if (!r.shown) break;
+      if (r.enc.encodeQueueSize > QUEUE) await room(r);
+      tick(r, t);
+      // Let the next picture in: a loop that never yields keeps Chrome
+      // waiting on its answer, and the tab sends fewer pictures.
+      await new Promise((ok) => setTimeout(ok, 0));
+    }
+  } finally {
+    r.running = false;
+  }
+}
+
+function room(r) {
+  return new Promise((ok) => {
+    const t = setTimeout(ok, 1000);
+    r.enc.addEventListener("dequeue", () => { clearTimeout(t); ok(); }, { once: true });
+  });
+}
+
+function tick(r, t) {
+  if (r.fresh) {
+    r.base?.close();
+    r.base = baseFrame(r, r.shown);
+    r.fresh = false;
+  }
+  // A copy of the picture's frame with this tick's time: no pixels move.
+  const vf = new VideoFrame(r.base, { timestamp: t, duration: at30(r.tick + 1) - t });
+  r.enc.encode(vf, { keyFrame: r.tick % KEY_EVERY === 0 });
+  vf.close();
+  r.tick++;
+}
+
+/** The picture as a frame of the video's size: straight from the bitmap when
+ *  it is that size (or a pixel more, cut for even sides), else drawn fitted
+ *  on the canvas. Reading a canvas back for every tick is what kept the
+ *  recorder at 13 pictures a second. */
+function baseFrame(r, bmp) {
   const { width: W, height: H } = r;
-  // A frame of another size (the window was resized) is fitted, not stretched.
-  // Nearly the same shape (a pixel cut off for even sides) fills the frame.
+  if (bmp.width - W >= 0 && bmp.width - W <= 1 && bmp.height - H >= 0 && bmp.height - H <= 1)
+    return new VideoFrame(bmp, { timestamp: 0, visibleRect: { x: 0, y: 0, width: W, height: H } });
+  paint(r, bmp);
+  return new VideoFrame(r.canvas, { timestamp: 0 });
+}
+
+function paint(r, bmp) {
+  const { width: W, height: H } = r;
+  // A picture of another size (the window was resized) is fitted, not
+  // stretched. Nearly the same shape (a pixel cut for even sides) fills it.
   const fx = W / bmp.width, fy = H / bmp.height;
   const s = Math.min(fx, fy);
-  const fill = Math.abs(fx - fy) < 0.01;
-  const w = fill ? W : Math.round(bmp.width * s), h = fill ? H : Math.round(bmp.height * s);
+  const full = Math.abs(fx - fy) < 0.01;
+  const w = full ? W : Math.round(bmp.width * s), h = full ? H : Math.round(bmp.height * s);
   if (w !== W || h !== H) { r.g.fillStyle = "#000"; r.g.fillRect(0, 0, W, H); }
   r.g.drawImage(bmp, (W - w) >> 1, (H - h) >> 1, w, h);
-  // Time 0 is when recording started, as on the timeline; the first frame
-  // shows from there.
-  let ts = r.lastTs < 0 ? 0 : Math.round((at - r.t0) * 1000);
-  if (ts <= r.lastTs) ts = r.lastTs + (last ? 1000 : 1);
-  // The muxer wants a duration; it spaces frames by their timestamps anyway.
-  const vf = new VideoFrame(r.canvas, { timestamp: ts, duration: 33_333 });
-  const key = r.lastKey < 0 || ts - r.lastKey >= KEY_EVERY_US;
-  if (key) r.lastKey = ts;
-  r.enc.encode(vf, { keyFrame: key });
-  vf.close();
-  r.lastTs = ts;
 }
 
-async function begin(r, w, h, at) {
+function closeAll(r) {
+  r.base?.close();
+  r.base = null;
+  r.shown?.close();
+  r.shown = null;
+  for (const p of r.waiting) p.bmp.close();
+  r.waiting = [];
+}
+
+async function begin(r, w, h) {
   // H.264 wants even sides.
   r.width = w - (w % 2);
   r.height = h - (h % 2);
   r.canvas = new OffscreenCanvas(r.width, r.height);
   r.g = r.canvas.getContext("2d", { alpha: false });
   let pick = null;
-  // The software encoder first: measured on a busy machine, the GPU one
-  // (Windows Media Foundation) held frames back and kept up with 6 a second,
-  // the software one with 16 and more.
-  for (const c of CODECS.flatMap((c) => [{ ...c, hw: "prefer-software" }, { ...c, hw: "no-preference" }])) {
-    const config = { codec: c.codec, hardwareAcceleration: c.hw, width: r.width, height: r.height, bitrate: BITRATE, bitrateMode: "variable", framerate: 30, latencyMode: "realtime", ...(c.mux === "avc" ? { avc: { format: "avc" } } : {}) };
+  for (const c of CODECS.flatMap((c) => [{ ...c, hw: ENCODER }, { ...c, hw: "no-preference" }])) {
+    const config = { codec: c.codec, hardwareAcceleration: c.hw, width: r.width, height: r.height, bitrate: BITRATE, bitrateMode: "variable", framerate: FPS, latencyMode: "realtime", ...(c.mux === "avc" ? { avc: { format: "avc" } } : {}) };
     try { if ((await VideoEncoder.isConfigSupported(config)).supported) { pick = { ...c, config }; break; } } catch {}
   }
   if (!pick) throw new Error("This Chrome cannot encode video.");
@@ -144,9 +229,6 @@ async function begin(r, w, h, at) {
     error: (e) => (r.error ??= String(e?.message ?? e)),
   });
   r.enc.configure(pick.config);
-  r.t0 ??= at;
-  r.lastTs = -1;
-  r.lastKey = -1;
 }
 
 function base64(bytes) {
