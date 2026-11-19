@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-19
+
+### Added
+
+- **Agents can record their browser tab as a video.** `browser_record` (it
+  replaces `browser_gif`) saves an MP4 of the agent's tab, smooth where the
+  page moves, even when the window is covered. Next to it go `timeline.md`,
+  every click, typed text, page change, console error and failed request with
+  its second in the video, and a picture from just before and after each
+  action in `frames/`. All of it lands in `.bytehive/recordings/`; the agent
+  gets back two lines and opens a file only when it needs to check something,
+  so a recording costs it next to no tokens. `format: "gif"` still makes a GIF.
+- **The video looks like a person using Chrome.** While recording, the
+  agent's cursor is a plain white arrow: no name tag, no coloured frame, no
+  "is using this tab" bar and no typed-text bubble. (Stop the agent from
+  ByteHive during a recording; the Stop button on the page is hidden then.)
+
+### Fixed
+
+- `browser_console` no longer lists a message twice after the page comes back
+  with Back (Chrome replays it from the back/forward cache).
+
 ## [0.17.0] - 2026-11-17
 
 ### Added
