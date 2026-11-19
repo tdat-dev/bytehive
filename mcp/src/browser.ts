@@ -12,7 +12,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
-type ToolResult = { content: Content[]; isError?: boolean; gif?: string };
+type RecordFile = { name: string; size: number };
+type ToolResult = { content: Content[]; isError?: boolean; gif?: string; part?: string; record?: { files: RecordFile[] } };
 
 /** The hub of the ByteHive that started this agent (it sets BYTEHIVE_HUB_FILE),
  *  else the installed ByteHive's. Guessing "the last ByteHive opened" sent agents
@@ -108,7 +109,13 @@ export class HubClient {
     clearTimeout(w.timer);
     // Only the MCP fields: the browser adds its own notes for ByteHive.
     if (m.type === "result" && m.result?.content)
-      w.resolve({ content: m.result.content, ...(m.result.isError ? { isError: true } : {}), ...(m.result.gif ? { gif: m.result.gif } : {}) });
+      w.resolve({
+        content: m.result.content,
+        ...(m.result.isError ? { isError: true } : {}),
+        ...(m.result.gif ? { gif: m.result.gif } : {}),
+        ...(typeof m.result.part === "string" ? { part: m.result.part } : {}),
+        ...(m.result.record ? { record: m.result.record } : {}),
+      });
     else w.resolve(err(m.error ?? "The browser did not answer."));
   }
 
@@ -146,10 +153,44 @@ export function uploadPaths(paths: string[], base: string): string[] {
   });
 }
 
-/** Where a recording is saved when the agent names no path. */
-export function gifPath(base: string, agent: string, now = new Date()): string {
+/** Where a recording is saved when the agent names no path: a .gif file, or
+ *  a folder for a video (video, timeline.md, frames/). */
+export function recordingPath(base: string, agent: string, ext = "", now = new Date()): string {
   const stamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  return path.join(base, ".bytehive", "recordings", `${agent.replace(/[^\w-]+/g, "_")}-${stamp}.gif`);
+  return path.join(base, ".bytehive", "recordings", `${agent.replace(/[^\w-]+/g, "_")}-${stamp}${ext}`);
+}
+
+/** A finished video recording: pull every file from the browser in parts and
+ *  write it under dir. The names come from the extension, so each must stay
+ *  inside dir. Always frees the recording in the browser at the end. */
+export async function saveRecording(hub: Pick<HubClient, "call">, dir: string, files: RecordFile[]): Promise<number> {
+  let total = 0;
+  try {
+    for (const f of files) {
+      const file = path.resolve(dir, f.name);
+      const rel = path.relative(dir, file);
+      if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`Bad file name ${f.name}`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const fd = fs.openSync(file, "w");
+      try {
+        let offset = 0;
+        while (offset < f.size) {
+          const r = await hub.call("record", { action: "part", name: f.name, offset });
+          if (r.isError || typeof r.part !== "string") throw new Error(r.content.map((c) => ("text" in c ? c.text : "")).join(" ") || `No data for ${f.name}`);
+          const bytes = Buffer.from(r.part, "base64");
+          if (!bytes.length) break;
+          fs.writeSync(fd, bytes);
+          offset += bytes.length;
+        }
+        total += offset;
+      } finally {
+        fs.closeSync(fd);
+      }
+    }
+  } finally {
+    await hub.call("record", { action: "done" });
+  }
+  return total;
 }
 
 export function registerBrowserTools(server: McpServer, hub: HubClient, base = process.cwd(), agent = "Agent") {
@@ -261,19 +302,30 @@ export function registerBrowserTools(server: McpServer, hub: HubClient, base = p
     "resize",
   );
   server.registerTool(
-    "browser_gif",
+    "browser_record",
     {
-      description: "Record what you do in your tab as an animated GIF: action start, do the steps, then action stop. The GIF is saved to a file (path, or .bytehive/recordings/ in the workspace). It shows logged-in pages, so tell the user before sharing it.",
-      inputSchema: { action: z.enum(["start", "stop"]), path: z.string().optional(), tabId },
+      description: "Record your tab: action start, do the steps, then stop. Saves a video (or format gif) plus timeline.md and keyframes under .bytehive/recordings/ (or path). Read those files only when you need to check something. It shows logged-in pages: ask before sharing.",
+      inputSchema: { action: z.enum(["start", "stop"]), format: z.enum(["video", "gif"]).optional(), path: z.string().optional(), tabId },
     },
-    async ({ action, path: out, tabId: tab }) => {
-      const r = await hub.call("gif", { action, tabId: tab });
-      if (action !== "stop" || r.isError || !r.gif) return { content: r.content, ...(r.isError ? { isError: true } : {}) } as never;
-      const file = out ? (path.isAbsolute(out) ? out : path.resolve(base, out)) : gifPath(base, agent);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, Buffer.from(r.gif, "base64"));
-      const kb = Math.round(fs.statSync(file).size / 1024);
-      return { content: [...r.content, { type: "text", text: `Saved ${file} (${kb} KB).` }] } as never;
+    async ({ action, format, path: out, tabId: tab }) => {
+      const r = await hub.call("record", { action, format, tabId: tab });
+      const plain = { content: r.content, ...(r.isError ? { isError: true } : {}) };
+      if (action !== "stop" || r.isError) return plain as never;
+      const where = (ext: string) => (out ? (path.isAbsolute(out) ? out : path.resolve(base, out)) : recordingPath(base, agent, ext));
+      try {
+        if (r.gif) {
+          const file = where(".gif");
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          fs.writeFileSync(file, Buffer.from(r.gif, "base64"));
+          return { content: [...r.content, { type: "text", text: `Saved ${file}` }] } as never;
+        }
+        if (!r.record) return plain as never;
+        const dir = where("");
+        await saveRecording(hub, dir, r.record.files);
+        return { content: [...r.content, { type: "text", text: `Saved in ${dir}` }] } as never;
+      } catch (e) {
+        return err(`The recording was made but not saved: ${e instanceof Error ? e.message : String(e)}`) as never;
+      }
     },
   );
   tool(

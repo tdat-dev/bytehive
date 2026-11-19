@@ -17,7 +17,10 @@
  *
  * op: "move" {x, y} (resolves on arrival) · "click" {x, y, button} ·
  *     "key" {text} · "type" {text} · "show" · "hide" / "unhide" (around the
- *     agent's own screenshots). Every op carries {name, color, from}. */
+ *     agent's own screenshots). Every op carries {name, color, from, plain}.
+ *
+ * plain (while the agent records a video): only the arrow, always shown, as a
+ * person's mouse would be. No name, frame, pill, chip or coloured rings. */
 export function cursorAct(op, o) {
   const IDLE_MS = 6000;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -59,6 +62,8 @@ export function cursorAct(op, o) {
   .dot{position:fixed;left:0;top:0;width:8px;height:8px;border-radius:50%;background:var(--c);animation:dot .45s ease-out forwards}
   @keyframes ring{0%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(.4);opacity:.9}100%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(4.2);opacity:0}}
   @keyframes dot{0%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(1);opacity:.9}100%{transform:translate(var(--x),var(--y)) translate(-50%,-50%) scale(.2);opacity:0}}
+  .plain .frame,.plain .pill,.plain .tag,.plain .chip,.plain .fx{display:none}
+  .plain .cur{opacity:1}
   @media (prefers-reduced-motion:reduce){.ring,.dot{animation-duration:.01s}.cur,.frame,.pill,.chip{transition:none}}
 </style>
 <div class="wrap">
@@ -99,6 +104,7 @@ export function cursorAct(op, o) {
     S.wrap.style.setProperty("--c", o.color);
     S.wrap.style.setProperty("--c-soft", `${o.color}40`);
   }
+  S.wrap.classList.toggle("plain", !!o.plain);
   const wake = () => {
     S.wrap.classList.add("on");
     clearTimeout(S.idle);

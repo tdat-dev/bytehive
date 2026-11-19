@@ -10,7 +10,7 @@
  * DevTools Protocol), so clicks and keys are real browser input. */
 
 import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf, markForUpload, unmarkUpload } from "./page.js";
-import { GIFEncoder, quantize, applyPalette } from "./vendor/gifenc.esm.js";
+import { initRecord, recordTool, gifTool, isRecording, onCdpEvent, onTabClosed, noteBefore, noteAfter } from "./record/index.js";
 import { cursorAct } from "./cursor.js";
 
 // The app before its rename registered "com.maestro.browser": tried when the
@@ -96,10 +96,15 @@ async function onMessage(msg) {
   if (msg?.type !== "call") return;
   setStatus("ready", "");
   const { id, agent, tool, args = {} } = msg;
+  const who = agent || "Agent";
+  // While the agent records a video, its actions go on the timeline.
+  const note = noteBefore(who, tool, args);
   try {
-    const result = await run(agent || "Agent", tool, args);
+    const result = await run(who, tool, args);
+    noteAfter(who, note);
     send({ type: "result", id, result });
   } catch (e) {
+    noteAfter(who, note, e?.message ?? e);
     send({ type: "error", id, error: String(e?.message ?? e) });
   }
 }
@@ -240,10 +245,12 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   consoleLog.delete(tabId);
   networkLog.delete(tabId);
   dialogs.delete(tabId);
+  onTabClosed(tabId);
 });
 
 chrome.debugger.onEvent.addListener((src, method, p) => {
   const tabId = src.tabId;
+  onCdpEvent(tabId, method, p);
   if (method === "Runtime.consoleAPICalled") {
     const text = p.args.map((a) => a.value ?? a.description ?? a.unserializableValue ?? "").join(" ");
     push(consoleLog, tabId, { level: p.type, text, at: Date.now() }, MAX_CONSOLE);
@@ -404,70 +411,6 @@ async function point(tabId, args) {
   throw new Error("Give a ref (from browser_read_page) or a coordinate [x, y] (from a screenshot).");
 }
 
-// ---------------------------------------------------------------- GIF recording
-
-/** An agent's recording: frames copied from its tab twice a second, only
- *  while it records, only while the tab is showing (the copy is free then). */
-const recordings = new Map(); // agent -> { tabId, frames: [{ data, at }], timer, busy }
-const GIF_FPS_MS = 500;
-const GIF_MAX_FRAMES = 240; // two minutes
-const GIF_WIDTH = 640;
-
-function startRecording(agent, tabId) {
-  stopRecording(agent);
-  const rec = { tabId, frames: [], busy: false, started: Date.now() };
-  rec.timer = setInterval(async () => {
-    if (rec.busy) return;
-    if (rec.frames.length >= GIF_MAX_FRAMES) return stopRecording(agent, true);
-    rec.busy = true;
-    try {
-      const tab = await chrome.tabs.get(rec.tabId);
-      if (tab.active) {
-        await awake(tab.id);
-        const img = await grab(tab, GIF_WIDTH, 70);
-        const last = rec.frames[rec.frames.length - 1];
-        // A still page adds time to the last frame instead of another frame.
-        if (last && last.data === img.data) last.until = Date.now();
-        else rec.frames.push({ data: img.data, at: Date.now(), until: Date.now() });
-      }
-    } catch {} finally { rec.busy = false; }
-  }, GIF_FPS_MS);
-  recordings.set(agent, rec);
-  return rec;
-}
-
-function stopRecording(agent, keep = false) {
-  const rec = recordings.get(agent);
-  if (!rec) return null;
-  clearInterval(rec.timer);
-  if (!keep) recordings.delete(agent);
-  return rec;
-}
-
-/** Encode the frames as an animated GIF (base64), one frame at a time so
- *  memory stays small. */
-async function encodeGif(frames) {
-  const gif = GIFEncoder();
-  for (let i = 0; i < frames.length; i++) {
-    const f = frames[i];
-    const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${f.data}`)).blob());
-    const c = new OffscreenCanvas(bmp.width, bmp.height);
-    const g = c.getContext("2d", { willReadFrequently: true });
-    g.drawImage(bmp, 0, 0);
-    bmp.close();
-    const { data, width, height } = g.getImageData(0, 0, c.width, c.height);
-    const palette = quantize(data, 256);
-    const index = applyPalette(data, palette);
-    const next = frames[i + 1]?.at ?? f.until + GIF_FPS_MS;
-    gif.writeFrame(index, width, height, { palette, delay: Math.max(GIF_FPS_MS, next - f.at) });
-  }
-  gif.finish();
-  const bytes = gif.bytes();
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-}
-
 /** Where each tab's cursor last was, so a new page starts it there. */
 const lastPos = new Map();
 
@@ -478,7 +421,7 @@ async function cursor(tabId, agent, op, extra = {}) {
     const [r] = await chrome.scripting.executeScript({
       target: { tabId },
       func: cursorAct,
-      args: [op, { ...extra, name: agent, color: HEX[colorFor(agent)], from: lastPos.get(tabId) }],
+      args: [op, { ...extra, name: agent, color: HEX[colorFor(agent)], from: lastPos.get(tabId), plain: isRecording(agent) }],
     });
     if (Array.isArray(r?.result)) lastPos.set(tabId, r.result);
   } catch {}
@@ -718,21 +661,10 @@ async function run(agent, tool, a) {
       const win = await chrome.windows.get(t.windowId);
       return text(`The window is now ${win.width}x${win.height}.`);
     }
-    case "gif": {
-      if (a.action === "start") {
-        const t = await tabFor(agent, a.tabId);
-        startRecording(agent, t.id);
-        return text("Recording. Do the steps, then call browser_gif with action stop. Frames are taken while the tab is showing.");
-      }
-      const rec = stopRecording(agent);
-      if (!rec) throw new Error("Nothing is being recorded. Start with action start.");
-      if (!rec.frames.length) throw new Error("No frames were recorded: the tab was not showing.");
-      const gif = await encodeGif(rec.frames);
-      const secs = Math.round((Date.now() - rec.started) / 1000);
-      const r = text(`Recorded ${rec.frames.length} frames over ${secs}s.`);
-      r.gif = gif;
-      return r;
-    }
+    case "record":
+      return recordTool(agent, a);
+    case "gif":
+      return gifTool(agent, a);
     case "dialog": {
       const t = await tabFor(agent, a.tabId);
       await dbg(t.id);
@@ -746,4 +678,5 @@ async function run(agent, tool, a) {
   }
 }
 
+initRecord({ cdp, dbg, cursor, grab, awake, tabFor });
 connect();
