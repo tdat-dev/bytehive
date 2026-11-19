@@ -4,7 +4,7 @@ Date: 2026-11-19. Owner asked for fuller video recording from "ByteHive for Chro
 
 ## Goals
 
-- An agent records its own tab as a real video (MP4, WebM when Chrome cannot write MP4), smooth, at the page's own paint rate up to about 30 fps.
+- An agent records its own tab as a real video (MP4), at the page's own paint rate as far as the encoder keeps up (16 fps measured on a machine at 88% CPU).
 - The same recording serves two readers: the owner watches the video; the agent reads a short timeline and, only when it needs to, a keyframe image.
 - No click from the owner: works on the agent's tab even when it is covered or behind another window.
 - The video looks like a person using a normal Chrome: a plain white arrow, no agent name, no colour frame, no "is using this tab" pill, no typed-text chip, no coloured click rings.
@@ -19,8 +19,10 @@ Date: 2026-11-19. Owner asked for fuller video recording from "ByteHive for Chro
 ## How it works
 
 1. `browser_record start` (MCP) calls hub tool `record` with `{action:"start", format}`.
-2. The extension (service worker) attaches the debugger as it already does, sets the cursor to plain mode, and runs `Page.startScreencast` (JPEG, quality 80, at most 1920x1080). Each `Page.screencastFrame` is acked at once and passed to an offscreen document (`record/offscreen.html`).
-3. The offscreen document draws each frame on a canvas whose size is fixed by the first frame (even numbers, for H.264); later frames of another size are fitted with black bars. `canvas.captureStream(0)` plus `requestFrame()` per frame, and once every 500 ms while the page is still, feeds a `MediaRecorder` (`video/mp4;codecs=avc1` first, then VP9 WebM, 4 Mbit/s, 1 s slices).
+2. The extension (service worker) attaches the debugger as it already does, sets the cursor to plain mode, and runs `Page.startScreencast` (JPEG, quality 80, at most 1920x1080). Each `Page.screencastFrame` goes to an offscreen document (`record/offscreen.html`) with the time Chrome painted it, and is acked only once it is encoded, so Chrome sends frames at the encoder's pace.
+3. The offscreen document encodes each frame with WebCodecs `VideoEncoder` (H.264 High, software encoder first, then any; VP9 when there is no H.264; realtime mode, 2.5 Mbit/s variable) at its own timestamp, and muxes into MP4 with `vendor/mp4-muxer.mjs` (MIT). Time 0 of the video is the start of the recording, the same as the timeline's. The size is the tab's view in device pixels, measured 1.5 s after the debugger attached (Chrome's "started debugging" bar shortens the view a moment after). A frame of another shape is fitted with black bars; one off by a pixel fills the frame. Stop encodes the last picture again at the stop time and flushes the encoder.
+   - Measured, not guessed: a canvas stream with `MediaRecorder` in the hidden offscreen document gave 3 fps or an empty file (Chrome takes a canvas frame only when it renders that page); the GPU encoder (Media Foundation) held frames back at about 6 fps on a busy machine, the software one about 16.
+   - A covered window paints only while something animates, so a still page or a change made by script can send no screencast frame. After a second without one, the service worker takes `Page.captureScreenshot` (which makes Chrome paint) as the next frame.
 4. While recording, the service worker writes a timeline: every agent action on that tab (navigate, click with point and ref, type, key, scroll, form input, upload), console errors and exceptions, and failed requests (status 400+ or a network error), each with its second in the video. The same lines repeated are folded into one with a count.
 5. Keyframes: the newest screencast frame is kept; at each action it is saved as `before`, and the first frame at least 700 ms after the action as `after`. Also the first and last frames. Same image twice is kept once. At most 60.
 6. `stop`: screencast ends, the cursor leaves plain mode, the recorder finishes. The result holds the summary text and a list of files with sizes. The MCP side then pulls each file in parts of 4 MB (`{action:"part", name, offset}`) and ends with `{action:"done"}`, which frees the memory. Parts keep every hub message far below tungstenite's 16 MB frame and Chrome's limits. An unclaimed finished recording is dropped after 10 minutes.
@@ -32,7 +34,7 @@ Date: 2026-11-19. Owner asked for fuller video recording from "ByteHive for Chro
 
 `<workspace>/.bytehive/recordings/<agent>-<time>/` (or the `path` given):
 
-- `video.mp4` (or `video.webm`)
+- `video.mp4`
 - `timeline.md`: one line per event, `0:12.4 click "Save" (412,188)`
 - `frames/NNN-<second>s-<before|after>-<action>.jpg`
 
@@ -49,7 +51,7 @@ The stop result is only: the folder, video length and size, the count of actions
 - `record/index.js`: the `record` and `gif` tool calls, the per-agent state, noting actions.
 - `record/screencast.js`: CDP screencast on and off, frames to the offscreen document, keyframes.
 - `record/timeline.js`: pure functions for events, folding and markdown (unit tested with node).
-- `record/offscreen.html`, `record/offscreen.js`: canvas, MediaRecorder, parts.
+- `record/offscreen.html`, `record/offscreen.js`: VideoEncoder, MP4 muxer, parts.
 - `record/gif.js`: the old GIF code.
 
 `manifest.json` adds the `offscreen` permission. In MCP, `browser_gif` becomes `browser_record` (`action`, `format`, `path`, `tabId`).
@@ -57,7 +59,8 @@ The stop result is only: the folder, video length and size, the count of actions
 ## Errors
 
 - A tab Chrome will not let the extension drive (chrome://, Web Store): start fails with the existing message.
-- No frame came (the tab never painted): stop says so and writes no video.
+- No frame came: stop takes one screenshot first, so even a page that never painted gets a short video.
+- The console replays messages when a page comes back from the back/forward cache: the extension drops a message it has already seen (same time, kind and text), for browser_console too.
 - The tab closes while recording: the recording stops and keeps what it has.
 - `start` while recording: the old recording is stopped and dropped first.
 

@@ -10,6 +10,8 @@ const MAX_MS = 10 * 60_000; // a recording stops by itself after this
 const KEEP_MS = 10 * 60_000; // a finished one nobody fetched is dropped
 const MAX_KEYS = 60;
 const AFTER_MS = 700;
+const PULL_MS = 1000; // a frame is asked for after this long without one
+const SETTLE_MS = 1500; // after the debugger attaches, before the view is measured
 export const PART = 4 * 1024 * 1024;
 
 const live = new Map(); // agent -> recording
@@ -25,20 +27,65 @@ export async function startVideo(agent, tab) {
   await deps.dbg(tab.id);
   await ensureOffscreen();
   const id = `${agent}-${Date.now()}`;
-  await toOffscreen("start", { id });
-  const rec = { id, agent, tabId: tab.id, started: Date.now(), events: [], keys: [], latest: null, frames: 0, reqs: new Map() };
+  const size = await viewSize(tab.id);
+  const started = Date.now();
+  await toOffscreen("start", { id, started, ...size });
+  const rec = { id, agent, tabId: tab.id, started, events: [], keys: [], latest: null, frames: 0, reqs: new Map() };
   rec.auto = setTimeout(() => stopVideo(agent, { auto: true }).catch(() => {}), MAX_MS);
+  rec.lastFrame = 0;
+  rec.pull = setInterval(() => pullFrame(rec), PULL_MS);
   live.set(agent, rec);
   try {
     await startCast(deps.cdp, tab.id);
   } catch (e) {
     live.delete(agent);
     clearTimeout(rec.auto);
+    clearInterval(rec.pull);
     await toOffscreen("drop", { id }).catch(() => {});
     throw e;
   }
   // The cursor turns plain: just an arrow, the way a person's mouse looks.
   void deps.cursor(tab.id, agent, "show");
+}
+
+/** The video's size: the tab's view in device pixels, as the screencast sends
+ *  it (at most 1920x1080). Taken from the tab, not the first frame, which can
+ *  come from a window still settling. Empty when the page can't be asked. */
+async function viewSize(tabId) {
+  // Chrome shows its "started debugging" bar a moment after the debugger
+  // attaches, and the view gets shorter: measure after it.
+  const wait = deps.attachedAt(tabId) + SETTLE_MS - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  try {
+    const r = await deps.cdp(tabId, "Runtime.evaluate", { expression: "[innerWidth, innerHeight, devicePixelRatio]", returnByValue: true });
+    const [w, h, d] = r.result.value;
+    const s = Math.min(1, 1920 / (w * d), 1080 / (h * d));
+    return { width: Math.round(w * d * s), height: Math.round(h * d * s) };
+  } catch {
+    return {};
+  }
+}
+
+/** A frame to the encoder. A screencast frame is acked once it is encoded,
+ *  so Chrome paces itself to the encoder instead of piling frames up. */
+function takeFrame(rec, data, at = Date.now(), sessionId = null) {
+  rec.latest = data;
+  rec.lastFrame = Date.now();
+  if (++rec.frames === 1) addKey(rec, "start");
+  const ack = () => { if (sessionId != null) deps.cdp(rec.tabId, "Page.screencastFrameAck", { sessionId }).catch(() => {}); };
+  toOffscreen("frame", { id: rec.id, data, at }).then(ack, ack);
+}
+
+/** Chrome paints a covered window only while something animates, so a still
+ *  page (or one changed by script) can send no screencast frame at all. After
+ *  a quiet second, ask for a picture: a screenshot makes Chrome paint. */
+async function pullFrame(rec, force = false) {
+  if (!force && (rec.pulling || Date.now() - rec.lastFrame < PULL_MS)) return;
+  rec.pulling = true;
+  try {
+    const shot = await deps.cdp(rec.tabId, "Page.captureScreenshot", { format: "jpeg", quality: 80, optimizeForSpeed: true });
+    if ((force || live.get(rec.agent) === rec) && shot?.data && Date.now() - rec.lastFrame >= PULL_MS) takeFrame(rec, shot.data);
+  } catch {} finally { rec.pulling = false; }
 }
 
 /** CDP events of every tab: frames and trouble for the one being recorded. */
@@ -48,10 +95,10 @@ export function onCdpEvent(tabId, method, p) {
   if (!rec) return;
   const at = Date.now() - rec.started;
   if (method === "Page.screencastFrame") {
-    deps.cdp(tabId, "Page.screencastFrameAck", { sessionId: p.sessionId }).catch(() => {});
-    rec.latest = p.data;
-    if (++rec.frames === 1) addKey(rec, "start");
-    toOffscreen("frame", { id: rec.id, data: p.data }).catch(() => {});
+    // When Chrome painted it: the worker gets frames in bursts, so its own
+    // clock would bunch them up. A clock that is far off is not trusted.
+    const painted = (p.metadata?.timestamp ?? 0) * 1000;
+    takeFrame(rec, p.data, Math.abs(painted - Date.now()) < 5000 ? painted : Date.now(), p.sessionId);
   } else if (method === "Page.loadEventFired") {
     // A new document: make sure the screencast carries on with it.
     startCast(deps.cdp, tabId).catch(() => {});
@@ -115,21 +162,27 @@ export async function stopVideo(agent, { discard = false, auto = false } = {}) {
   }
   live.delete(agent);
   clearTimeout(rec.auto);
+  clearInterval(rec.pull);
   await stopCast(deps.cdp, rec.tabId).catch(() => {});
   void deps.cursor(rec.tabId, agent, "show");
   if (discard) { await toOffscreen("drop", { id: rec.id }).catch(() => {}); return null; }
+  // A page that never painted still gets its one picture.
+  if (!rec.frames) await pullFrame(rec, true);
   addKey(rec, "end");
-  const v = await toOffscreen("stop", { id: rec.id });
-  if (v?.error) throw new Error(v.error);
+  const v = await toOffscreen("stop", { id: rec.id, at: Date.now() });
+  if (v?.error && !v.size) {
+    await toOffscreen("drop", { id: rec.id }).catch(() => {});
+    throw new Error(`The video could not be made: ${v.error}`);
+  }
   if (!v?.size) {
     await toOffscreen("drop", { id: rec.id }).catch(() => {});
-    throw new Error("No frames came from the tab, so there is no video.");
+    throw new Error(rec.frames ? `The tab sent ${rec.frames} frame(s) but the video came out empty.` : "No frames came from the tab, so there is no video.");
   }
   const ms = Date.now() - rec.started;
   const { actions, errors } = counts(rec.events);
-  const md = toMarkdown(`${agent}: ${clock(ms)} of video, ${v.width}x${v.height}, ${new Date(rec.started).toISOString()}`, rec.events) +
+  const md = toMarkdown(`${agent}: ${clock(ms)} of video, ${v.width}x${v.height}, ${rec.frames} frames from the tab, ${v.encoded} in the video, ${new Date(rec.started).toISOString()}`, rec.events) +
     (rec.keys.length ? "\nNumbers in [brackets] are frames/NNN-*.jpg.\n" : "");
-  const files = new Map([[`video.${/mp4/.test(v.mime) ? "mp4" : "webm"}`, { size: v.size, video: true }]]);
+  const files = new Map([["video.mp4", { size: v.size, video: true }]]);
   const put = (name, bytes) => files.set(name, { size: bytes.length, bytes });
   put("timeline.md", new TextEncoder().encode(md));
   for (const k of rec.keys) put(k.name, Uint8Array.from(atob(k.data), (c) => c.charCodeAt(0)));

@@ -1,6 +1,6 @@
 /* The two ends of a video recording that talk to Chrome: the tab's CDP
  * screencast (frames each time the page paints, covered tab or not) and the
- * offscreen document that turns them into a video (offscreen.js). */
+ * offscreen document that encodes them into an MP4 (offscreen.js). */
 
 const OFFSCREEN = "record/offscreen.html";
 let opening = null;

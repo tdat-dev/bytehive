@@ -206,6 +206,7 @@ const brief = (t) => ({ tabId: t.id, title: t.title ?? "", url: t.url ?? t.pendi
 // ---------------------------------------------------------------- debugger
 
 const attached = new Set();
+const attachedAt = new Map(); // tabId -> when ByteHive attached the debugger
 const consoleLog = new Map(); // tabId -> [{level, text, at}]
 const networkLog = new Map(); // tabId -> Map(requestId -> entry)
 const dialogs = new Map(); // tabId -> {type, message}
@@ -219,6 +220,7 @@ async function dbg(tabId) {
     if (!/already attached/i.test(m)) throw new Error(`Can't control this tab: ${m}. Chrome doesn't let extensions drive chrome:// pages, the Web Store, or other extensions' pages.`);
   }
   attached.add(tabId);
+  attachedAt.set(tabId, Date.now());
   await Promise.all(["Page.enable", "Runtime.enable", "Network.enable"].map((m) => cdp(tabId, m).catch(() => {})));
   // Windows tells Chrome a window covered by another one is hidden, and Chrome
   // then stops painting its page and slows its timers to once a minute: the
@@ -241,6 +243,8 @@ const cdp = (tabId, method, params = {}) => chrome.debugger.sendCommand({ tabId 
 chrome.debugger.onDetach.addListener((src) => attached.delete(src.tabId));
 chrome.tabs.onRemoved.addListener((tabId) => {
   lastPos.delete(tabId);
+  seenConsole.delete(tabId);
+  attachedAt.delete(tabId);
   attached.delete(tabId);
   consoleLog.delete(tabId);
   networkLog.delete(tabId);
@@ -248,8 +252,21 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   onTabClosed(tabId);
 });
 
+/** Chrome sends a console message again when a page comes back from the
+ *  back/forward cache (same time, same text): the recent ones per tab, to
+ *  drop the copies. */
+const seenConsole = new Map(); // tabId -> Set of keys, the newest 200
+
 chrome.debugger.onEvent.addListener((src, method, p) => {
   const tabId = src.tabId;
+  if (method === "Runtime.consoleAPICalled") {
+    const key = `${p.timestamp}|${p.type}|${p.args.map((a) => a.value ?? a.description ?? "").join(" ")}`;
+    const seen = seenConsole.get(tabId) ?? new Set();
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (seen.size > 200) seen.delete(seen.values().next().value);
+    seenConsole.set(tabId, seen);
+  }
   onCdpEvent(tabId, method, p);
   if (method === "Runtime.consoleAPICalled") {
     const text = p.args.map((a) => a.value ?? a.description ?? a.unserializableValue ?? "").join(" ");
@@ -678,5 +695,5 @@ async function run(agent, tool, a) {
   }
 }
 
-initRecord({ cdp, dbg, cursor, grab, awake, tabFor });
+initRecord({ cdp, dbg, cursor, grab, awake, tabFor, attachedAt: (tabId) => attachedAt.get(tabId) ?? 0 });
 connect();
