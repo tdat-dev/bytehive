@@ -4,7 +4,7 @@ use serde_json::json;
 const LAWS: &str = "Work on the board.";
 
 fn inputs<'a>(server: Option<&'a Path>, mcp_file: Option<&'a Path>) -> Inputs<'a> {
-    Inputs { laws: LAWS, server, mcp_file, claude_guard: vec!["--settings".into(), "G".into()], codex_guard: vec!["--dangerously-bypass-hook-trust".into()] }
+    Inputs { laws: LAWS, server, mcp_file, claude_guard: vec!["--settings".into(), "G".into()], codex_guard: vec!["--dangerously-bypass-hook-trust".into()], opencode_dir: None }
 }
 
 fn has_pair(args: &[String], a: &str, b: &str) -> bool {
@@ -87,6 +87,38 @@ fn antigravity_gets_the_laws_as_a_rules_file_kept_out_of_git() {
     assert!(text.contains(LAWS) && text.starts_with("---\ntrigger: always_on\n---"));
     assert_eq!(p.exclude.as_deref(), Some(".agents/rules/bytehive.md"));
     assert!(p.args.is_empty());
+}
+
+#[test]
+fn opencode_runs_on_its_own_server_with_bytehives_config_folder() {
+    let dir = Path::new(r"C:\Users\me\.bytehive\native\harness\opencode");
+    let p = plan("opencode", "D:\\p", &Inputs { opencode_dir: Some(dir), ..inputs(None, None) });
+    assert_eq!(p.args, ["--standalone"]);
+    assert_eq!(p.env, [("OPENCODE_CONFIG_DIR".to_string(), dir.to_string_lossy().into_owned())]);
+    // No folder: it starts as before, on the shared service.
+    assert_eq!(plan("opencode", "D:\\p", &inputs(None, None)), Plan::default());
+}
+
+#[test]
+fn opencodes_folder_has_the_laws_and_the_owners_config_but_not_their_agents_md() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (owner, lean) = (tmp.path().join("owner"), tmp.path().join("lean"));
+    std::fs::create_dir_all(owner.join("skills/one")).unwrap();
+    std::fs::write(owner.join("skills/one/SKILL.md"), "skill").unwrap();
+    std::fs::write(owner.join("AGENTS.md"), "121 KB of the owner's").unwrap();
+    std::fs::write(owner.join("opencode.json"), "{\"model\":\"a\"}").unwrap();
+    std::fs::write(owner.join("service.json"), "{\"password\":\"x\"}").unwrap();
+    std::fs::write(owner.join("opencode.json.bak"), "old").unwrap();
+    opencode::prepare(&lean, &owner, LAWS).unwrap();
+    assert_eq!(std::fs::read_to_string(lean.join("AGENTS.md")).unwrap(), opencode::agents_md(LAWS));
+    assert_eq!(std::fs::read_to_string(lean.join("opencode.json")).unwrap(), "{\"model\":\"a\"}");
+    assert_eq!(std::fs::read_to_string(lean.join("skills/one/SKILL.md")).unwrap(), "skill", "a folder is joined, not copied");
+    assert!(!lean.join("service.json").exists() && !lean.join("opencode.json.bak").exists());
+    // The owner changes their config: the next launch takes it.
+    std::fs::write(owner.join("opencode.json"), "{\"model\":\"b\"}").unwrap();
+    opencode::prepare(&lean, &owner, LAWS).unwrap();
+    assert_eq!(std::fs::read_to_string(lean.join("opencode.json")).unwrap(), "{\"model\":\"b\"}");
+    assert_eq!(std::fs::read_to_string(owner.join("AGENTS.md")).unwrap(), "121 KB of the owner's", "the owner's file is untouched");
 }
 
 #[test]

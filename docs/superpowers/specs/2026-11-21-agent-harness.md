@@ -20,7 +20,7 @@ Per run where the CLI has a way, so the owner's files are not touched and the ap
 | Claude | `--append-system-prompt` | `--mcp-config <data>/harness/claude-mcp.json` | `--settings` hooks |
 | Codex | `-c developer_instructions='…'` | `-c mcp_servers.bytehive.command/args/env_vars` | `-c hooks.*` |
 | Antigravity (agy) | `<run dir>/.agents/rules/bytehive.md`, kept out of git by `info/exclude` | entry in `~/.gemini/antigravity/mcp_config.json` | none found |
-| OpenCode | the MCP server's own instructions | entry `mcp.bytehive` in `~/.config/opencode/opencode.json` | none found |
+| OpenCode | `AGENTS.md` of ByteHive's own config folder for it (`OPENCODE_CONFIG_DIR`, `--standalone`) | entry `mcp.servers.bytehive` in `~/.config/opencode/opencode.json`, copied into that folder | none found |
 | Gemini, Qwen, Aider, Cursor, Copilot, Goose | none yet (not installed here, nothing tested) | none yet | none yet |
 
 `harness::coverage` holds this table in code. A test fails when a preset has no line in it, and when Claude or Codex lose a piece.
@@ -29,7 +29,7 @@ Per run where the CLI has a way, so the owner's files are not touched and the ap
 
 - Claude: a per-run `--mcp-config` server named `bytehive` replaces the global one of the same name (init event: one `bytehive`, `source: "dynamic"`, the per-run server's tool listed, the global one's not).
 - Codex 0.165: `-c` overrides replace the config.toml entry, `env_vars` is accepted (`codex mcp get bytehive --json`), and the 1483-character laws pass through `cmd /c` whole. Codex starts MCP servers with a short list of variables, so the identity names go in `env_vars`.
-- OpenCode 2.2.5: `OPENCODE_CONFIG_CONTENT` is loaded by `debug config`, but the TUI talks to a shared background service (`opencode serve --service`), which never sees a per-run config; `--standalone` listed no servers at all. Its own `mcp add --global` wrote a v2 `mcp.servers` entry into the v1 file beside the old one, so the file is edited by ByteHive instead.
+- OpenCode 2.2.5: `OPENCODE_CONFIG_CONTENT` is loaded by `debug config`, but the TUI talks to a shared background service (`opencode serve --service`), which never sees a per-run config. `--standalone` gives the CLI a private server that does see them; its `mcp list` answers before the servers connect (about 4 s), which once read as no servers. Its own `mcp add --global` wrote a v2 `mcp.servers` entry into the v1 file beside the old one, so the file is edited by ByteHive instead.
 - Antigravity 1.5.13: `--settings` rejects `mcpServers`, `hooks`, `rules`, `instructions` ("unknown setting"). `agy mcp list` shows the edited entry.
 - Before: OpenCode's and Antigravity's entries pointed at `D:/bytehive/mcp/dist/index.js` (an old dev build without browser_record), Antigravity's with `D:\bytehive` fixed in as the workspace for every project; Codex's config.toml the same.
 
@@ -39,9 +39,16 @@ Per run where the CLI has a way, so the owner's files are not touched and the ap
 - The browser tools: Claude Code (client name `claude-code`) loads MCP schemas only when needed and keeps the 19 separate tools; every other client gets one `browser` tool (`mcp/src/browsergate.ts`), 2.5 KB instead of 9.5 KB per request. `BYTEHIVE_BROWSER_TOOLS=each|one` overrides. Measured: Codex ignores tools added mid-session (`tools/list_changed`), so loading them later was no option. A real Codex run used the single tool to list browsers, pick one and read a page.
 - News (`native/src/guard/news.mjs`, wired with the guards): UserPromptSubmit tells the agent in a few lines which cards were added, moved or deleted and which facts were saved or changed since its last turn; Stop takes in the agent's own turn so it is not told what it did. Measured: Claude (`--settings`) and Codex (`-c hooks.UserPromptSubmit`) both put the hook's `additionalContext` in front of the model. A change someone else makes during the agent's turn is taken in silently with it.
 
+## OpenCode's own config folder (0.19.3)
+
+- OpenCode reads `<config dir>/AGENTS.md` into every request; the owner's is 121 KB. A one-word `opencode run --standalone` cost 56,840 input tokens, 27,968 with `OPENCODE_CONFIG_DIR` pointing at a folder whose AGENTS.md is a code word (it answered the code word, same model).
+- `harness/opencode.rs` keeps `<data>/harness/opencode` (`opencode-director` for the Director): AGENTS.md is the laws, the owner's `*.json` files are copied in at each launch (not service.json, not backups), the owner's folders (node_modules, skills, rules) are junctions. The agent starts with `--standalone` and that variable.
+- With its own server the agent's variables reach the bytehive MCP server: a `fleet_send` from such a run was written with `"from":"Probe"`, the BYTEHIVE_AGENT it was given. OpenCode 2 offers MCP tools through Code Mode (searched, not all sent).
+- OpenCode 2 reads servers under `mcp.servers`; it still migrates 1.x entries in memory (`debug config`), so ByteHive writes its entry in the 2.x place and leaves the rest.
+- Costs: each OpenCode agent runs its own server and its own copies of the MCP servers; a task typed in its first seconds can come before they connect.
+
 ## Not done
 
 - News for Antigravity (its `.agents/hooks.json` PreInvocation format is not written down here yet) and for OpenCode (no hook that fires).
 
 - Guards for OpenCode and Antigravity: OpenCode's plugin did not fire from a worktree in an earlier test, and agy's hooks only add messages. Both need their own work.
-- An OpenCode agent's MCP server runs in the shared service, so it cannot be told which agent it serves.

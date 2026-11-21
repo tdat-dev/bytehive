@@ -13,5 +13,5 @@ pub const RULES: &str = ".agents/rules/bytehive.md";
 
 pub fn plan(run_dir: &str, laws: &str) -> Plan {
     let text = format!("---\ntrigger: always_on\n---\n\n# ByteHive\n\n{laws}\n");
-    Plan { args: Vec::new(), file: Some((Path::new(run_dir).join(RULES), text)), exclude: Some(RULES.to_string()) }
+    Plan { args: Vec::new(), file: Some((Path::new(run_dir).join(RULES), text)), exclude: Some(RULES.to_string()), ..Default::default() }
 }

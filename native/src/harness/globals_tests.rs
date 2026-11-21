@@ -11,9 +11,22 @@ fn an_old_entry_is_pointed_at_the_app_and_the_old_file_kept() {
     std::fs::write(&file, "{\n  \"mcp\": {\n    \"bytehive\": { \"type\": \"local\", \"command\": [\"node\", \"D:/bytehive/mcp/dist/index.js\"], \"enabled\": true }\n  }\n}\n").unwrap();
     assert_eq!(keep(&target(file.clone()), true), Ok(true));
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-    assert_eq!(v["mcp"]["bytehive"]["command"], json!(["node", "C:/app/mcp-server/bytehive-mcp.mjs"]));
+    assert_eq!(v["mcp"]["servers"]["bytehive"]["command"], json!(["node", "C:/app/mcp-server/bytehive-mcp.mjs"]));
     assert!(std::fs::read_to_string(dir.path().join("opencode.json.bytehive-bak")).unwrap().contains("D:/bytehive/mcp/dist"));
     // The second start finds it right and writes nothing.
+    assert_eq!(keep(&target(file), true), Ok(false));
+}
+
+#[test]
+fn opencodes_other_servers_stay_beside_bytehive() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("opencode.json");
+    std::fs::write(&file, "{\n  \"model\": \"x\",\n  \"mcp\": {\n    \"servers\": { \"pencil\": { \"type\": \"local\", \"command\": [\"p.exe\"] } }\n  }\n}\n").unwrap();
+    assert_eq!(keep(&target(file.clone()), true), Ok(true));
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(v["mcp"]["servers"]["pencil"]["command"], json!(["p.exe"]));
+    assert_eq!(v["mcp"]["servers"]["bytehive"], json!({ "type": "local", "command": ["node", "C:/app/mcp-server/bytehive-mcp.mjs"] }));
+    assert_eq!(v["model"], json!("x"));
     assert_eq!(keep(&target(file), true), Ok(false));
 }
 
@@ -32,7 +45,7 @@ fn an_installed_cli_with_no_file_yet_gets_one() {
     assert_eq!(keep(&target(file.clone()), true), Ok(true));
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(v["$schema"], json!("https://opencode.ai/config.json"));
-    assert_eq!(v["mcp"]["bytehive"]["type"], json!("local"));
+    assert_eq!(v["mcp"]["servers"]["bytehive"]["type"], json!("local"));
 }
 
 #[test]

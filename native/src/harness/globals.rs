@@ -4,7 +4,7 @@
 //! Found 2026-11-21: OpenCode's and Antigravity's entries pointed at an old dev
 //! copy (D:/bytehive/mcp/dist), Antigravity's with one project folder fixed in,
 //! so their agents had an old board and no browser recording. OpenCode's own
-//! `mcp add` wrote a v2 entry into the v1 file beside the old one, so the file
+//! `mcp add` wrote its entry beside the old one, so the file
 //! is edited here instead, one entry, nothing else (jsonedit.rs). The first
 //! change keeps a copy of the file as it was (`.bytehive-bak`).
 
@@ -19,6 +19,8 @@ struct Target {
     cli: &'static str,
     file: PathBuf,
     key: &'static str,
+    /// The object under `key` that holds the servers, when it is one level down.
+    inner: Option<&'static str>,
     entry: Value,
     /// The file when the CLI has none yet.
     fresh: Value,
@@ -26,17 +28,22 @@ struct Target {
 
 fn targets(home: &Path, server: &str) -> Vec<Target> {
     vec![
+        // OpenCode 2 reads mcp.servers.<name> only (Config.MCP {timeout, servers});
+        // a 1.x entry straight under mcp is not loaded at all (measured 2.2.5:
+        // "No MCP servers configured" with three 1.x entries in the file).
         Target {
             cli: "opencode",
             file: home.join(".config").join("opencode").join("opencode.json"),
             key: "mcp",
-            entry: json!({ "type": "local", "command": ["node", server], "enabled": true }),
+            inner: Some("servers"),
+            entry: json!({ "type": "local", "command": ["node", server] }),
             fresh: json!({ "$schema": "https://opencode.ai/config.json" }),
         },
         Target {
             cli: "agy",
             file: home.join(".gemini").join("antigravity").join("mcp_config.json"),
             key: "mcpServers",
+            inner: None,
             entry: json!({ "command": "node", "args": [server] }),
             fresh: json!({}),
         },
@@ -50,7 +57,22 @@ fn keep(t: &Target, installed: bool) -> Result<bool, String> {
         Err(_) if installed => serde_json::to_string_pretty(&t.fresh).expect("json"),
         Err(_) => return Ok(false),
     };
-    let Some(next) = set_member(&text, t.key, "bytehive", &t.entry)? else { return Ok(false) };
+    let edit = match t.inner {
+        None => set_member(&text, t.key, "bytehive", &t.entry)?,
+        // One level down: the inner object is written whole, with the other
+        // servers in it as they were.
+        Some(inner) => {
+            let v: Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("not plain JSON: {e}"))?;
+            let mut servers = match &v[t.key][inner] {
+                Value::Object(m) => m.clone(),
+                Value::Null => Default::default(),
+                _ => return Err(format!("{}.{inner} is not an object", t.key)),
+            };
+            servers.insert("bytehive".into(), t.entry.clone());
+            set_member(&text, t.key, inner, &Value::Object(servers))?
+        }
+    };
+    let Some(next) = edit else { return Ok(false) };
     if t.file.is_file() {
         let bak = t.file.with_extension("json.bytehive-bak");
         if !bak.exists() {

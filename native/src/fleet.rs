@@ -445,7 +445,7 @@ fn run_extras_with(spec: &Spec, program: &str, company: impl FnOnce(&Spec) -> Re
     }
     // The laws, the app's MCP server and the guards, the way this CLI takes them.
     let plan = crate::harness::for_run(program, spec.role.as_deref(), spec.run_dir())?;
-    Ok((plan.args, Vec::new()))
+    Ok((plan.args, plan.env))
 }
 
 #[cfg(test)]

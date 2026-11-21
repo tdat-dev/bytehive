@@ -20,6 +20,7 @@ mod antigravity;
 mod codex;
 mod globals;
 mod jsonedit;
+mod opencode;
 
 use std::path::{Path, PathBuf};
 
@@ -32,8 +33,6 @@ pub enum Way {
     PerRun,
     /// ByteHive's entry in the CLI's own config, kept right at every start.
     KeptInConfig,
-    /// The bytehive MCP server's own instructions, read when it connects.
-    FromMcp,
     /// The CLI offers no way that was found to work.
     None,
 }
@@ -53,9 +52,9 @@ pub fn coverage(program: &str) -> Coverage {
         "codex" => Coverage { laws: PerRun, mcp: PerRun, guards: PerRun },
         // Its rules file is per run; --settings takes no MCP or hooks (measured).
         "agy" | "antigravity" => Coverage { laws: PerRun, mcp: KeptInConfig, guards: None },
-        // Its TUI talks to a shared background service, which never sees a
-        // per-run config (measured), so the MCP entry lives in opencode.json.
-        "opencode" => Coverage { laws: FromMcp, mcp: KeptInConfig, guards: None },
+        // A config folder of its own per run, its AGENTS.md the laws (opencode.rs);
+        // the MCP entry is the one kept in the owner's opencode.json, copied in.
+        "opencode" => Coverage { laws: PerRun, mcp: KeptInConfig, guards: None },
         _ => Coverage { laws: None, mcp: None, guards: None },
     }
 }
@@ -67,6 +66,8 @@ pub struct Plan {
     pub file: Option<(PathBuf, String)>,
     /// A path, relative to the run folder, to keep out of `git status`.
     pub exclude: Option<String>,
+    /// Variables for the agent's process.
+    pub env: Vec<(String, String)>,
 }
 
 /// What the plan is built from: the laws, the app's MCP server, the guards' args
@@ -77,6 +78,8 @@ pub struct Inputs<'a> {
     pub mcp_file: Option<&'a Path>,
     pub claude_guard: Vec<String>,
     pub codex_guard: Vec<String>,
+    /// OpenCode's prepared config folder (opencode.rs).
+    pub opencode_dir: Option<&'a Path>,
 }
 
 pub fn plan(program: &str, run_dir: &str, i: &Inputs) -> Plan {
@@ -97,6 +100,7 @@ pub fn plan(program: &str, run_dir: &str, i: &Inputs) -> Plan {
             Plan { args, ..Default::default() }
         }
         "agy" | "antigravity" => antigravity::plan(run_dir, i.laws),
+        "opencode" => opencode::plan(i.opencode_dir),
         _ => Plan::default(),
     }
 }
@@ -105,12 +109,19 @@ pub fn plan(program: &str, run_dir: &str, i: &Inputs) -> Plan {
 pub fn for_run(program: &str, role: Option<&str>, run_dir: &str) -> Result<Plan, String> {
     let server = server();
     let mcp_file = server.as_deref().and_then(claude_mcp_file);
+    let laws = crate::laws::for_role(role);
+    if matches!(coverage(program).mcp, Way::KeptInConfig) {
+        // Before OpenCode's folder copies the owner's opencode.json.
+        sync_globals();
+    }
+    let opencode_dir = if program == "opencode" { opencode_folder(role, laws) } else { None };
     let inputs = Inputs {
-        laws: crate::laws::for_role(role),
+        laws,
         server: server.as_deref(),
         mcp_file: mcp_file.as_deref(),
         claude_guard: crate::guard::claude_args(),
         codex_guard: crate::guard::codex_args(),
+        opencode_dir: opencode_dir.as_deref(),
     };
     let plan = plan(program, run_dir, &inputs);
     if let Some((path, text)) = &plan.file {
@@ -124,10 +135,20 @@ pub fn for_run(program: &str, role: Option<&str>, run_dir: &str) -> Result<Plan,
             }
         });
     }
-    if matches!(coverage(program).mcp, Way::KeptInConfig) {
-        sync_globals();
-    }
     Ok(plan)
+}
+
+/// OpenCode's config folder for agents of this role, ready; None when it could
+/// not be made, and the agent starts the old way (the shared service).
+fn opencode_folder(role: Option<&str>, laws: &str) -> Option<PathBuf> {
+    if cfg!(test) {
+        return None;
+    }
+    let name = if role == Some("conductor") { "opencode-director" } else { "opencode" };
+    let dir = crate::fleet::data_dir()?.join("harness").join(name);
+    let owner = opencode::owners_dir()?;
+    opencode::prepare(&dir, &owner, laws).map_err(|e| eprintln!("[bytehive] OpenCode's config folder was not made: {e}")).ok()?;
+    Some(dir)
 }
 
 /// The installed app's MCP server; None in tests, which never read the machine.
