@@ -14,7 +14,11 @@ describe("project memory tools", () => {
     expect(memoryForInstructions(dir)).toBe("");
     expect(memorySave(dir, "Run tests with npx vitest run", "Ana", 1)).toMatch(/^Saved \[m1\]/);
     expect(memorySave(dir, "run tests with npx vitest run.", "Bob", 2)).toMatch(/^Already in memory as \[m1\]/);
-    expect(memoryUpdate(dir, "m1", "Run tests with npm test", "Bob", 3)).toContain("[m1] Run tests with npm test");
+    memorySave(dir, "The board lives in .bytehive", "Ana", 2);
+    expect(memoryUpdate(dir, "m1", "Run tests with npm test", "Bob", 3)).toBe("Updated [m1] Run tests with npm test\n(2 facts in memory)");
+    expect(memorySave(dir, "A third fact", "Ana", 4)).not.toContain("board lives");
+    memoryDelete(dir, "m2");
+    memoryDelete(dir, "m3");
     const file = JSON.parse(fs.readFileSync(path.join(dir, ".bytehive", "memory.json"), "utf8"));
     expect(file.entries[0]).toMatchObject({ id: "m1", by: "Bob", at: 3 });
     expect(memoryForInstructions(dir)).toContain("PROJECT MEMORY");

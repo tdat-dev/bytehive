@@ -34,8 +34,11 @@ export function saveMemory(dir: string, m: ProjectMemory): void {
   fs.renameSync(tmp, p);
 }
 
-/** What the agent gets back after a change: the entry, then the whole list. */
-const after = (verb: string, e: MemoryEntry, m: ProjectMemory) => `${verb} [${e.id}].\n\n${memoryText(m)}`;
+/** What the agent gets back after a change: only the entry. The whole list came
+ *  back every time once, thousands of tokens on a grown memory for one saved
+ *  sentence; memory_get is there when the agent wants the rest. */
+const count = (m: ProjectMemory) => `(${m.entries.length} facts in memory)`;
+const after = (verb: string, e: MemoryEntry, m: ProjectMemory) => `${verb} [${e.id}] ${e.text.replace(/\n+/g, " ")}\n${count(m)}`;
 
 export function memoryGet(dir: string): string {
   return memoryText(loadMemory(dir));
@@ -61,7 +64,7 @@ export function memoryDelete(dir: string, id: string): string {
   const m = loadMemory(dir);
   const e = deleteFact(m, id);
   saveMemory(dir, m);
-  return `Deleted [${e.id}].\n\n${memoryText(m)}`;
+  return `Deleted [${e.id}].\n${count(m)}`;
 }
 
 /** The memory, for the server's instructions at start: the agent knows the
