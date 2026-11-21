@@ -11,6 +11,7 @@ mod board;
 mod boxdraw;
 mod brand;
 mod bridge;
+mod cleanenv;
 mod cloud;
 mod company;
 mod conductor;
@@ -64,6 +65,9 @@ const FONTS: [&[u8]; 5] = [
 ];
 
 fn main() {
+    // Opened from inside an agent: every terminal still gets Windows' own
+    // environment, not that session's (NO_COLOR and the rest). Before any thread.
+    cleanenv::restore();
     // Started by Chrome as the extension's native messaging host: relay, no window.
     if browser_hub::host::wanted() {
         browser_hub::host::run();
