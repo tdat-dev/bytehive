@@ -16,7 +16,9 @@ import {
   addList,
   renameList,
   deleteList,
+  resolveCard,
 } from "./ops.js";
+import { boardText, cardView } from "./boardview.js";
 import { evidenceDir, workFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
@@ -31,7 +33,8 @@ type ToolResult = {
 };
 
 const ok = (data: unknown): ToolResult => ({
-  content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }],
+  // One line of JSON: an agent reads it as well as an indented one, for a third fewer tokens.
+  content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data) }],
 });
 
 const fail = (e: unknown): ToolResult => ({
@@ -73,8 +76,9 @@ pick up an unfinished task instead of starting over.
 
 This project keeps a shared memory (.bytehive/memory.json) that every agent
 reads and the user edits in ByteHive: what anyone working here should know
-(conventions, decisions, where things live, gotchas). Read it with memory_get
-before you start. When you learn something lasting about the project, save it
+(conventions, decisions, where things live, gotchas). When it has facts, they
+are at the end of these instructions as they stood when you started, so do not
+read them again; call memory_get only to see what changed since. When you learn something lasting about the project, save it
 with memory_save, one fact per entry; fix a fact that turned out wrong with
 memory_update, and remove a stale one with memory_delete. Never save secrets,
 and never save notes about one task in progress.
@@ -115,13 +119,19 @@ export function createServer(dir: string): McpServer {
     "board_get",
     {
       description:
-        "Read the ByteHive kanban board for this workspace (.bytehive/board.json): all lists and their cards, including ids to use with the other tools. The Founder can pass floor to read another project.",
-      inputSchema: { floor: z.string().optional().describe("Founder only: a floor id from company_status") },
+        "Read the ByteHive kanban board for this workspace: every list, the open cards with their checklist ids, and the newest finished cards by title. Pass card for one card in full, all for every finished card too. The Founder can pass floor to read another project.",
+      inputSchema: {
+        card: z.string().optional().describe("A card id or title: that card in full"),
+        all: z.boolean().optional().describe("Every finished card too, and descriptions uncut"),
+        floor: z.string().optional().describe("Founder only: a floor id from company_status"),
+      },
     },
-    async ({ floor }) => {
+    async ({ card, all, floor }) => {
       try {
         if (floor && !personId) return fail("Only members of the company have floors.");
-        return ok(loadBoard(floor ? floorDir(companyRoot(), personId!, floor) : dir));
+        const board = loadBoard(floor ? floorDir(companyRoot(), personId!, floor) : dir);
+        if (card) return ok(cardView(board, resolveCard(board, card).card));
+        return ok(boardText(board, all === true));
       } catch (e) {
         return fail(e);
       }

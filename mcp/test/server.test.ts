@@ -76,9 +76,18 @@ describe("bytehive-mcp server", () => {
 
   it("board_get returns the default board without creating the file", async () => {
     const res = await client.callTool({ name: "board_get", arguments: {} });
-    const board = JSON.parse(text(res));
-    expect(board.lists.map((l: { title: string }) => l.title)).toEqual(["To do", "Doing", "Done"]);
+    const lists = text(res).split("\n").filter((l: string) => l.startsWith("## ")).map((l: string) => l.split(" [")[0].slice(3));
+    expect(lists).toEqual(["To do", "Doing", "Done"]);
     expect(fs.existsSync(path.join(dir, ".bytehive", "board.json"))).toBe(false);
+  });
+
+  it("board_get with card gives that one card whole", async () => {
+    await client.callTool({ name: "card_add", arguments: { list: "To do", title: "one", desc: "the whole story", checklist: ["a"] } });
+    const res = await client.callTool({ name: "board_get", arguments: { card: "one" } });
+    const got = JSON.parse(text(res));
+    expect(got.list).toBe("To do");
+    expect(got.card.desc).toBe("the whole story");
+    expect(got.card.checklist[0].text).toBe("a");
   });
 
   it("card_add persists to board.json", async () => {
