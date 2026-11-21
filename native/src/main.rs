@@ -23,6 +23,7 @@ mod gridcards;
 mod gridfit;
 mod gridpins;
 mod guard;
+mod harness;
 mod icons;
 mod import;
 mod inbox;
@@ -75,6 +76,9 @@ fn main() {
     if !single::claim() {
         return;
     }
+    // The CLIs that read the bytehive MCP server only from their own config file
+    // point at this app's server (a few file reads, off the UI thread).
+    std::thread::spawn(harness::sync_globals);
     gpui_kit::application().with_assets(icons::Icons).run(|cx| {
         gpui_kit::init(cx);
         // The kit's own widgets (the New agent folder field) follow its theme:

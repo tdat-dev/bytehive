@@ -16,25 +16,36 @@ fn failed(e: impl std::fmt::Display) -> String {
 }
 
 /// What to add to an exclude file holding `text`, or None when it has the line.
-fn addition(text: &str) -> Option<String> {
-    if text.lines().any(|l| l.trim() == LINE) {
+fn addition_of(text: &str, line: &str) -> Option<String> {
+    if text.lines().any(|l| l.trim() == line) {
         return None;
     }
     let gap = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
-    Some(format!("{gap}{LINE}\n"))
+    Some(format!("{gap}{line}\n"))
+}
+
+#[cfg(test)]
+fn addition(text: &str) -> Option<String> {
+    addition_of(text, LINE)
 }
 
 /// Keep `.bytehive/` out of `git status` in the repo at `dir`, if it is one.
 /// Blocking (a few git calls): run it off the UI thread.
 pub fn keep_out(dir: &str) -> Result<(), String> {
+    keep_out_line(dir, LINE)
+}
+
+/// Keep `line` (a path of ByteHive's in the repo, such as `.bytehive/` or an
+/// agent's rules file) out of `git status` in the repo at `dir`, if it is one.
+pub fn keep_out_line(dir: &str, line: &str) -> Result<(), String> {
     // Not a repo, no git, or a folder that has gone: there is no status to keep clean.
     // Asked of git because a worktree's exclude file is its main checkout's.
     let Ok(rel) = git(&["rev-parse", "--git-path", "info/exclude"], dir) else { return Ok(()) };
-    if git(&["check-ignore", "-q", ".bytehive/"], dir).is_ok() {
+    if git(&["check-ignore", "-q", line], dir).is_ok() {
         return Ok(());
     }
-    // A team that commits the folder wants new files in it to show up.
-    if git(&["ls-files", "--", ".bytehive"], dir).is_ok_and(|tracked| !tracked.is_empty()) {
+    // A team that commits the path wants new files in it to show up.
+    if git(&["ls-files", "--", line.trim_end_matches('/')], dir).is_ok_and(|tracked| !tracked.is_empty()) {
         return Ok(());
     }
     let file = Path::new(dir).join(rel);
@@ -43,7 +54,7 @@ pub fn keep_out(dir: &str) -> Result<(), String> {
         Err(e) if e.kind() == ErrorKind::NotFound => String::new(),
         Err(e) => return Err(failed(e)),
     };
-    let Some(add) = addition(&text) else { return Ok(()) };
+    let Some(add) = addition_of(&text, line) else { return Ok(()) };
     if let Some(info) = file.parent() {
         fs::create_dir_all(info).map_err(failed)?;
     }

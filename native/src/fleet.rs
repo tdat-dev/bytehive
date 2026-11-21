@@ -428,8 +428,8 @@ type Extras = (Vec<String>, Vec<(String, String)>);
 /// claude starts with their own launch (prompt file, MCP config, plugin, denied
 /// tools, who they are), and a launch that can't be built keeps them stopped with
 /// the reason: as a plain agent they would take orders nobody gave them. Anyone
-/// else gets ByteHive's protocol at the system-prompt level, so a Claude agent
-/// must follow it; only claude has the flag (pane.ts). Added to this run only,
+/// else gets ByteHive's harness (crate::harness: laws, the app's MCP server,
+/// guards), each piece the way its CLI takes it. Added to this run only,
 /// never to the saved args.
 fn run_extras(spec: &Spec, program: &str) -> Result<Extras, String> {
     run_extras_with(spec, program, crate::company::seat::for_seat)
@@ -443,16 +443,9 @@ fn run_extras_with(spec: &Spec, program: &str, company: impl FnOnce(&Spec) -> Re
         // The Company launch is claude's flags only (launch.ts).
         eprintln!("[bytehive] {} runs {program}, which has no Company launch: started as a plain agent", spec.name);
     }
-    if program == "codex" {
-        return Ok((crate::guard::codex_args(), Vec::new()));
-    }
-    if program != "claude" {
-        return Ok((Vec::new(), Vec::new()));
-    }
-    let mut args = vec!["--append-system-prompt".to_string(), crate::laws::for_role(spec.role.as_deref()).to_string()];
-    // Rules that hold because a script checks them, not because the prompt says so.
-    args.extend(crate::guard::claude_args());
-    Ok((args, Vec::new()))
+    // The laws, the app's MCP server and the guards, the way this CLI takes them.
+    let plan = crate::harness::for_run(program, spec.role.as_deref(), spec.run_dir())?;
+    Ok((plan.args, Vec::new()))
 }
 
 #[cfg(test)]

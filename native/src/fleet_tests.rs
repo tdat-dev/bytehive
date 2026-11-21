@@ -35,8 +35,15 @@ fn the_director_gets_the_dispatch_laws() {
 }
 
 #[test]
-fn a_cli_with_no_system_prompt_flag_gets_nothing_added() {
-    assert_eq!(run_extras(&spec("codex", None), "codex"), Ok((vec![], vec![])));
+fn codex_gets_the_laws_as_developer_instructions() {
+    let (args, env) = run_extras(&spec("codex", None), "codex").unwrap();
+    assert_eq!(args, ["-c".to_string(), format!("developer_instructions='{}'", crate::laws::for_role(None))]);
+    assert!(env.is_empty());
+}
+
+#[test]
+fn a_cli_with_no_harness_way_gets_nothing_added() {
+    assert_eq!(run_extras(&spec("aider", None), "aider"), Ok((vec![], vec![])));
 }
 
 #[test]
@@ -69,7 +76,7 @@ fn a_person_seat_whose_launch_fails_does_not_start_on_the_laws() {
 #[test]
 fn a_person_on_a_cli_other_than_claude_starts_as_a_plain_seat() {
     let got = run_extras_with(&person("codex"), "codex", |_| panic!("only claude runs a Company launch"));
-    assert_eq!(got, Ok((vec![], vec![])));
+    assert_eq!(got, run_extras(&spec("codex", None), "codex"));
 }
 
 #[test]
