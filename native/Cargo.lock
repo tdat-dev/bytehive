@@ -849,6 +849,7 @@ dependencies = [
  "ureq",
  "uuid",
  "wgpu",
+ "windows 0.62.2",
  "windows-sys 0.60.2",
 ]
 

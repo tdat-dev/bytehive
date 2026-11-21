@@ -15,6 +15,7 @@ mod cleanenv;
 mod cloud;
 mod company;
 mod conductor;
+mod desktop;
 mod finishnote;
 mod fleet;
 mod follow;

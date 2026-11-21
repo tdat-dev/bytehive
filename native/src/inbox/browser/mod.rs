@@ -94,6 +94,8 @@ impl Inbox {
             Ok(hub) => {
                 // The hub starts with asking on; match what you chose last time.
                 hub.set_ask_risky(w.ask_risky);
+                // Pages Chrome keeps from the extension are driven from Windows.
+                hub.set_desktop(Box::new(crate::desktop::run));
                 w.hub = Some(hub);
             }
             Err(e) => eprintln!("browser hub: {e}"),
