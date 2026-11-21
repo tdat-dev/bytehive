@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-21
+
+### Added
+
+- **Every agent gets the whole ByteHive harness, whatever its CLI.** The laws
+  (board, fleet, memory), the installed app's bytehive MCP server, the guards
+  and who the agent is now come with every launch, each the way that CLI takes
+  it: Claude gets the MCP server for the run as well, Codex now gets the laws
+  and the app's MCP server for the run, Antigravity gets the laws as a rules
+  file in its folder (kept out of `git status`). OpenCode and Antigravity read
+  their MCP servers only from their own config file, so ByteHive keeps its one
+  entry there pointing at the app at every start, changing nothing else and
+  keeping a `.bytehive-bak` copy the first time.
+
+### Fixed
+
+- OpenCode, Antigravity and Codex agents ran an old bytehive MCP server (no
+  browser recording, Antigravity's tied to one project folder): they run the
+  installed app's now.
+
 ## [0.18.2] - 2026-11-21
 
 ### Fixed
