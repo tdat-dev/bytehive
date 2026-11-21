@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.4] - 2026-11-21
+
+### Added
+
+- **Agents can use the pages Chrome keeps from every extension.**
+  chrome://extensions and the other chrome:// pages, the Chrome Web Store,
+  other extensions' pages and the dialogs Chrome opens (the folder chooser of
+  Load unpacked) used to fail with "cannot be scripted". ByteHive now reads
+  and drives them from Windows, the way a screen reader does, with the same
+  browser tools: refs there start with `d`, and the window comes to the front
+  while the agent works in it. An agent can switch on Developer mode, press
+  Load unpacked, pick the folder and load an extension, with no command-line
+  flag and no Chrome restart. Removing, installing or turning off an
+  extension waits for your OK, like any risky click. Extension 0.2.2.
+
 ## [0.19.3] - 2026-11-21
 
 ### Changed
