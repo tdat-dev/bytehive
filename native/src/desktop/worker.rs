@@ -8,25 +8,26 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::Value;
-use windows::Win32::Foundation::POINT;
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
 use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation};
 
 use super::tree::{self, Node};
-use super::{act, keys, shot, words};
+use super::{act, shot, words};
 
-struct Job {
-    agent: String,
+pub(super) struct Job {
+    pub agent: String,
     tool: String,
-    args: Value,
+    pub args: Value,
     desk: Value,
     reply: Sender<Result<Value, String>>,
 }
 
-/// The last outline an agent read, and the window it came from.
-struct Page {
-    hwnd: isize,
-    nodes: Vec<Node>,
+/// The last outline an agent read, the window it came from, and the field it
+/// last picked (where `type` goes without keys).
+pub(super) struct Page {
+    pub hwnd: isize,
+    pub nodes: Vec<Node>,
+    pub field: Option<usize>,
 }
 
 pub fn ask(agent: &str, tool: &str, args: &Value, desk: &Value) -> Result<Value, String> {
@@ -43,6 +44,7 @@ pub fn ask(agent: &str, tool: &str, args: &Value, desk: &Value) -> Result<Value,
 }
 
 fn serve(rx: Receiver<Job>) {
+    super::idle::watch();
     let uia: Option<IUIAutomation> = unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED).ok();
         CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()
@@ -92,14 +94,14 @@ fn handle(uia: &IUIAutomation, pages: &mut HashMap<String, Page>, job: &Job) -> 
             let nodes = outline(uia, hwnd, a["filter"] == "all")?;
             let max = a["max"].as_u64().unwrap_or(400) as usize;
             let body = lines(&nodes, origin, |_| true, max);
-            pages.insert(job.agent.clone(), Page { hwnd, nodes });
+            pages.insert(job.agent.clone(), Page { hwnd, nodes, field: None });
             Ok(words::text(format!("{head}\n\n{}", body.join("\n"))))
         }
         "find" => {
             let q: Vec<String> = a["query"].as_str().unwrap_or("").to_lowercase().split_whitespace().map(String::from).collect();
             let nodes = outline(uia, hwnd, true)?;
             let hits = lines(&nodes, origin, |n| { let name = n.name.to_lowercase(); q.iter().all(|w| name.contains(w)) }, 30);
-            pages.insert(job.agent.clone(), Page { hwnd, nodes });
+            pages.insert(job.agent.clone(), Page { hwnd, nodes, field: None });
             Ok(words::text(if hits.is_empty() { format!("Nothing on this page matches \"{}\".", a["query"].as_str().unwrap_or("")) } else { hits.join("\n") }))
         }
         "page_text" => {
@@ -112,112 +114,34 @@ fn handle(uia: &IUIAutomation, pages: &mut HashMap<String, Page>, job: &Job) -> 
             Ok(words::text(format!("{head}\n\n{text}")))
         }
         "form_input" => {
-            let node = lookup(pages, &job.agent, hwnd, a["ref"].as_str().unwrap_or(""))?;
+            let i = index(pages, &job.agent, hwnd, a["ref"].as_str().unwrap_or(""))?;
+            let page = pages.get_mut(&job.agent).ok_or("Read this page first.")?;
+            let node = &page.nodes[i];
             if let Some(h) = guard(a, &format!("Set {} \"{}\"", node.kind, node.name), &node.name, &url) {
                 return Ok(h);
             }
-            act::set_value(node, &a["value"]).map(words::text)
+            // Text makes Chrome come to the front: done while the person is idle, their window given back.
+            let done = if a["value"].is_boolean() { act::set_value(node, &a["value"])? } else { super::keys::settle(hwnd, || act::set_value(node, &a["value"]))? };
+            if act::writable(&node.el) {
+                page.field = Some(i);
+            }
+            Ok(words::text(done))
         }
-        "computer" => computer(uia, pages, job, hwnd, origin, &url),
+        "computer" => super::computer::run(uia, pages, job, hwnd, origin, &url),
         "upload" => Err(words::NO_UPLOAD.into()),
         "javascript" | "console" | "network" | "dialog" => Err(words::NO_SCRIPT.into()),
         other => Err(format!("{other} is not available on this page. {}", words::NO_SCRIPT)),
     }
 }
 
-fn lookup<'a>(pages: &'a HashMap<String, Page>, agent: &str, hwnd: isize, r: &str) -> Result<&'a Node, String> {
+/// Where a ref sits in the agent's last outline of this window.
+pub(super) fn index(pages: &HashMap<String, Page>, agent: &str, hwnd: isize, r: &str) -> Result<usize, String> {
     let i = words::parse_ref(r)?;
     let page = pages.get(agent).filter(|p| p.hwnd == hwnd).ok_or("Read this page first: read_page or find gives the refs.")?;
-    page.nodes.get(i).ok_or_else(|| format!("No {r} on this page: read_page again."))
+    if i < page.nodes.len() { Ok(i) } else { Err(format!("No {r} on this page: read_page again.")) }
 }
 
 /// A risky step on a guarded page waits for the user, unless they already said yes.
-fn guard(a: &Value, what: &str, name: &str, url: &str) -> Option<Value> {
+pub(super) fn guard(a: &Value, what: &str, name: &str, url: &str) -> Option<Value> {
     (a["_ask"] == true && a["confirmed"] != true && words::risky(name)).then(|| words::hold(what, url))
-}
-
-/// The name of whatever is at a screen point.
-fn name_at(uia: &IUIAutomation, x: i32, y: i32) -> String {
-    unsafe { uia.ElementFromPoint(POINT { x, y }).and_then(|e| e.CurrentName()).map(|n| n.to_string()).unwrap_or_default() }
-}
-
-fn computer(uia: &IUIAutomation, pages: &HashMap<String, Page>, job: &Job, hwnd: isize, origin: (i32, i32), url: &str) -> Result<Value, String> {
-    let a = &job.args;
-    let act = a["action"].as_str().unwrap_or("");
-    match act {
-        "screenshot" => return shot::screenshot(hwnd),
-        "wait" => {
-            std::thread::sleep(Duration::from_secs_f64(a["duration"].as_f64().unwrap_or(1.0).clamp(0.0, 30.0)));
-            return Ok(words::text("Waited."));
-        }
-        "type" => {
-            keys::ensure_front(hwnd)?;
-            keys::type_text(a["text"].as_str().unwrap_or(""));
-            return Ok(words::text("Typed."));
-        }
-        "key" => {
-            let spec = a["text"].as_str().unwrap_or("");
-            let combos = keys::parse(spec)?;
-            let confirms = combos.iter().any(|c| c.contains(&0x0D) || c.contains(&0x20));
-            if confirms {
-                let focused = unsafe { uia.GetFocusedElement().and_then(|e| e.CurrentName()).map(|n| n.to_string()).unwrap_or_default() };
-                if let Some(h) = guard(a, &format!("Press {spec} on \"{focused}\""), &focused, url) {
-                    return Ok(h);
-                }
-            }
-            keys::ensure_front(hwnd)?;
-            keys::press(&combos);
-            return Ok(words::text(format!("Pressed {spec}.")));
-        }
-        _ => {}
-    }
-    // Everything else has a target: a ref, or a point of the screenshot.
-    let node = match a["ref"].as_str() {
-        Some(r) => Some(lookup(pages, &job.agent, hwnd, r)?),
-        None => None,
-    };
-    let (x, y) = match (node, a["coordinate"].as_array()) {
-        (_, Some(c)) if c.len() == 2 => (origin.0 + c[0].as_f64().unwrap_or(0.0) as i32, origin.1 + c[1].as_f64().unwrap_or(0.0) as i32),
-        (Some(n), _) => n.center(),
-        _ => return Err("Give a ref (from read_page) or a coordinate [x, y] (from a screenshot).".into()),
-    };
-    match act {
-        "hover" => {
-            keys::move_to(x, y);
-            Ok(words::text("Hovering."))
-        }
-        "scroll" => {
-            keys::ensure_front(hwnd)?;
-            let n = a["scroll_amount"].as_i64().unwrap_or(3) as i32;
-            let dir = a["scroll_direction"].as_str().unwrap_or("down");
-            let notches = if matches!(dir, "up" | "left") { -n } else { n };
-            keys::wheel(x, y, notches, matches!(dir, "left" | "right"));
-            Ok(words::text(format!("Scrolled {dir}.")))
-        }
-        "left_click" | "right_click" | "double_click" | "triple_click" => {
-            let name = node.map(|n| n.name.clone()).unwrap_or_else(|| name_at(uia, x, y));
-            if act == "left_click" {
-                if let Some(h) = guard(a, &format!("Click \"{name}\""), &name, url) {
-                    return Ok(h);
-                }
-            }
-            // A ref, clicked once: pressed the way assistive tools do.
-            if let (Some(n), "left_click", None) = (node, act, a["coordinate"].as_array()) {
-                match act::press(n) {
-                    Ok(how) => {
-                        std::thread::sleep(Duration::from_millis(400));
-                        return Ok(words::text(format!("{how} {} \"{}\".", n.kind, n.name)));
-                    }
-                    Err(Some(e)) => return Err(e),
-                    Err(None) => {}
-                }
-            }
-            keys::ensure_front(hwnd)?;
-            let clicks = match act { "double_click" => 2, "triple_click" => 3, _ => 1 };
-            keys::click(x, y, act == "right_click", clicks);
-            std::thread::sleep(Duration::from_millis(400));
-            Ok(words::text(format!("{act} on \"{name}\" at {},{}.", x - origin.0, y - origin.1)))
-        }
-        other => Err(format!("Unknown action \"{other}\".")),
-    }
 }

@@ -46,7 +46,7 @@ bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"
 # The office's roof sign draws design/logo.svg (the same resvg GPUI uses).
 resvg = { version = "0.45", default-features = false }
-windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Cryptography", "Win32_Storage_Xps", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Environment", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Security_Cryptography", "Win32_Storage_Xps", "Win32_System_Diagnostics_ToolHelp", "Win32_System_LibraryLoader", "Win32_System_Environment", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 # UI Automation for the pages Chrome keeps from extensions (src/desktop): COM, so the
 # windows crate (the version GPUI already builds), not windows-sys.
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility"] }

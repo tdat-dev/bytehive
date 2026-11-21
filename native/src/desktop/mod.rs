@@ -9,6 +9,8 @@
 //! the search box filled and "Keyboard shortcuts" pressed, no flag and no restart.
 
 mod act;
+mod computer;
+mod idle;
 mod keys;
 mod shot;
 mod tree;
@@ -105,6 +107,57 @@ mod tests {
             println!("{want}: {} / Load unpacked shown: {shown}", said["content"][0]["text"]);
             assert_eq!(shown, want);
         }
+    }
+
+    /// With Chrome behind another window: steps by UI Automation must leave the
+    /// window in front alone, and a step that borrows real input must give it
+    /// back. Needs one Chrome window titled "New Tab" that is not in front.
+    #[test]
+    #[ignore]
+    fn behind_on_this_machine() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        let front = || unsafe { GetForegroundWindow() } as isize;
+        let before = front();
+        let go = |title: &str, tool: &str, args: serde_json::Value| {
+            let r = super::run("Probe", tool, &args, &json!({ "title": title })).unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+            let t = r["content"][0]["text"].as_str().unwrap_or("").to_string();
+            let kept = front() == before;
+            if !kept {
+                super::keys::give_back(before);
+            }
+            println!("--- {tool} {args} (front kept: {kept})\n{}", t.lines().take(6).collect::<Vec<_>>().join("\n"));
+            t
+        };
+        let r_of = |t: &str, pat: &str| t.lines().find(|l| l.contains(pat)).unwrap_or_else(|| panic!("no {pat} in {t}")).split(']').next().unwrap().trim_start_matches('[').to_string();
+        let start = std::env::var("BYTEHIVE_START_TITLE").unwrap_or_else(|_| "New Tab".into());
+        let t = go(&start, "find", json!({ "query": "Address and search bar" }));
+        go(&start, "form_input", json!({ "ref": r_of(&t, "textbox"), "value": "chrome://extensions" }));
+        go(&start, "computer", json!({ "action": "key", "text": "Enter" }));
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let t = go("Extensions", "find", json!({ "query": "Search extensions" }));
+        go("Extensions", "computer", json!({ "action": "left_click", "ref": r_of(&t, "\"Search extensions\"") }));
+        let t = go("Extensions", "find", json!({ "query": "Search extensions" }));
+        if let Some(l) = t.lines().find(|l| l.contains("textbox")) {
+            let r = l.split(']').next().unwrap().trim_start_matches('[');
+            go("Extensions", "computer", json!({ "action": "left_click", "ref": r }));
+            go("Extensions", "computer", json!({ "action": "type", "text": "Docs" }));
+            assert!(go("Extensions", "find", json!({ "query": "Search extensions" })).contains("value=\"Docs\""), "typed without keys");
+        }
+        go("Extensions", "computer", json!({ "action": "scroll", "scroll_direction": "down", "scroll_amount": 2 }));
+        let t = go("Extensions", "find", json!({ "query": "Developer mode" }));
+        let at = t.lines().find(|l| l.contains("button \"Developer mode\"")).unwrap().rsplit('@').next().unwrap().split(' ').next().unwrap().to_string();
+        let (x, y) = at.split_once(',').unwrap();
+        go("Extensions", "computer", json!({ "action": "left_click", "coordinate": [x.parse::<i32>().unwrap(), y.parse::<i32>().unwrap()] }));
+        go("Extensions", "computer", json!({ "action": "key", "text": "Escape" }));
+    }
+
+    /// Prints how long the person has been away from the real keyboard and mouse.
+    #[test]
+    #[ignore]
+    fn idle_on_this_machine() {
+        super::idle::watch();
+        let seen: Vec<u32> = (0..12).map(|_| { std::thread::sleep(std::time::Duration::from_millis(500)); super::idle::idle_ms() }).collect();
+        println!("real idle ms: {seen:?}");
     }
 
     /// Prints the outline of the Chrome window titled BYTEHIVE_READ_TITLE.

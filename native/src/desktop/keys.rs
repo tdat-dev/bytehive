@@ -1,29 +1,99 @@
 //! Real input for the desktop path: the mouse and keyboard as Windows sees
-//! them, so Chrome takes them like a person's. Only sent while the agent's
-//! Chrome window (or a dialog it opened) is in front.
+//! them, so Chrome takes them like a person's. The last resort (worker.rs
+//! tries UI Automation first), and it borrows the screen: only once the
+//! person has left the keyboard and mouse alone for a moment, and it gives
+//! back their window and their pointer right after.
 
-use windows_sys::Win32::Foundation::HWND;
+use std::time::{Duration, Instant};
+
+use windows_sys::Win32::Foundation::{HWND, POINT};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
-use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindow, SetCursorPos, SetForegroundWindow, GW_OWNER};
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetForegroundWindow, GetWindow, SetCursorPos, SetForegroundWindow, GW_OWNER};
 
-/// The agent's window or one of its dialogs is in front, or the reason not.
-pub fn ensure_front(hwnd: isize) -> Result<(), String> {
-    let front = || unsafe { GetForegroundWindow() } as isize;
+use super::idle::idle_ms;
+
+/// How long the person must have left the keyboard and mouse alone.
+const IDLE: u32 = 1500;
+/// How long a step waits for that before it gives up.
+const WAIT: Duration = Duration::from_secs(8);
+
+fn front() -> isize {
+    unsafe { GetForegroundWindow() as isize }
+}
+
+/// Bring a window forward. Windows lets only the app in front do that; a tap
+/// of Alt is the documented way past the lock for an app acting for the user.
+fn raise(hwnd: isize) -> bool {
+    unsafe {
+        if SetForegroundWindow(hwnd as HWND) == 0 {
+            send(&[key(0x12, false), key(0x12, true)]);
+            SetForegroundWindow(hwnd as HWND);
+        }
+    }
+    std::thread::sleep(Duration::from_millis(120));
+    front() == hwnd
+}
+
+/// Put the person's window back in front (the tests).
+#[cfg(test)]
+pub fn give_back(hwnd: isize) -> bool {
+    raise(hwnd)
+}
+
+/// Wait until the person has left the keyboard and mouse alone for a moment.
+fn wait_idle() -> Result<(), String> {
+    let start = Instant::now();
+    while idle_ms() < IDLE {
+        if start.elapsed() > WAIT {
+            return Err("The person is using the keyboard or mouse right now, and this step would take Chrome to the front in their way. Try again in a moment.".into());
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    Ok(())
+}
+
+/// Run a UI Automation step that Chrome answers by coming to the front
+/// (setting a field's text does, measured): only while the person is idle,
+/// and their window goes back in front right after.
+pub fn settle<T>(hwnd: isize, act: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    wait_idle()?;
     let ours = |f: isize| f == hwnd || unsafe { GetWindow(f as HWND, GW_OWNER) } as isize == hwnd;
-    if ours(front()) {
-        return Ok(());
+    let before = front();
+    let out = act();
+    std::thread::sleep(Duration::from_millis(120));
+    if !ours(before) && before != 0 && front() != before {
+        raise(before);
     }
-    unsafe { SetForegroundWindow(hwnd as HWND) };
-    std::thread::sleep(std::time::Duration::from_millis(150));
-    if ours(front()) {
-        return Ok(());
+    out
+}
+
+/// Run `act` with real input in the agent's Chrome window: wait until the
+/// person is idle, bring the window (or its dialog) forward, then give back
+/// the window they had in front and, unless `keep_pointer`, the pointer.
+pub fn borrow(hwnd: isize, keep_pointer: bool, act: impl FnOnce()) -> Result<(), String> {
+    wait_idle()?;
+    let ours = |f: isize| f == hwnd || unsafe { GetWindow(f as HWND, GW_OWNER) } as isize == hwnd;
+    let before = front();
+    let mut pointer = POINT { x: 0, y: 0 };
+    unsafe { GetCursorPos(&mut pointer) };
+    if !ours(before) && !raise(hwnd) {
+        return Err("Windows would not bring Chrome's window forward for real keys and clicks. Use a ref instead, or ask the person to bring Chrome forward.".into());
     }
-    Err("Chrome's window is not in front, and real clicks and keys go to the window in front. Ask the user to bring Chrome forward, or use a ref: buttons and fields with a ref work without it.".into())
+    act();
+    std::thread::sleep(Duration::from_millis(120));
+    if !ours(before) && before != 0 {
+        raise(before);
+    }
+    if !keep_pointer {
+        move_to(pointer.x, pointer.y);
+    }
+    Ok(())
 }
 
 fn send(inputs: &[INPUT]) {
     unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32) };
 }
+
 
 fn mouse(flags: MOUSE_EVENT_FLAGS, data: i32) -> INPUT {
     INPUT { r#type: INPUT_MOUSE, Anonymous: INPUT_0 { mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: data as u32, dwFlags: flags, time: 0, dwExtraInfo: 0 } } }
