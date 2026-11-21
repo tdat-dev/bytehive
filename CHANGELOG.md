@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.3] - 2026-11-21
+
+### Changed
+
+- **OpenCode agents cost half as many tokens.** OpenCode puts its global
+  `AGENTS.md` into every request, 121 KB on this machine. ByteHive now starts
+  it with a config folder of its own (`OPENCODE_CONFIG_DIR`) that holds the
+  ByteHive laws as AGENTS.md, a copy of the owner's OpenCode config and links
+  to their skills and plugins: one message went from 56,840 to 27,968 input
+  tokens. Each agent runs on a server of its own (`--standalone`), so the
+  bytehive MCP server now knows which agent is calling (a `fleet_send` names
+  its sender). The owner's own files are not changed.
+- OpenCode's bytehive MCP entry is written where OpenCode 2 reads it
+  (`mcp.servers`).
+
 ## [0.19.2] - 2026-11-21
 
 ### Added
