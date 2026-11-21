@@ -225,3 +225,75 @@ fn a_browser_that_leaves_fails_its_pending_calls() {
     assert_eq!(e["type"], "error");
     assert_eq!(e["id"], "x");
 }
+
+mod desktop {
+    use super::*;
+    use std::time::Duration;
+
+    /// A hub with one browser and one agent called Ana, the call already forwarded.
+    fn ready(hub: &Hub) -> (u64, mpsc::Receiver<String>, mpsc::Receiver<String>, u64) {
+        let (br, brx) = peer(hub);
+        let (ag, arx) = peer(hub);
+        hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
+        hub.on_message(ag, r#"{"type":"hello","role":"agent","token":"t","agent":"Ana"}"#);
+        last(&arx);
+        last(&brx);
+        hub.on_message(ag, r#"{"type":"call","id":7,"tool":"computer","args":{"action":"left_click","ref":"d3"}}"#);
+        let hid = last(&brx)["id"].as_u64().unwrap();
+        (br, brx, arx, hid)
+    }
+
+    fn wait(rx: &mpsc::Receiver<String>) -> Value {
+        serde_json::from_str(&rx.recv_timeout(Duration::from_secs(5)).expect("an answer")).unwrap()
+    }
+
+    const DESK: &str = r#"{"desktop":{"title":"Extensions","url":"chrome://extensions/"}}"#;
+
+    #[test]
+    fn a_locked_page_is_done_from_windows_and_answered_as_usual() {
+        let hub = Arc::new(Hub::for_test("t", |_, _| String::new()));
+        hub.set_me();
+        hub.set_desktop(Box::new(|agent, tool, args, desk| {
+            assert_eq!((agent, tool, args["ref"].as_str(), desk["url"].as_str()), ("Ana", "computer", Some("d3"), Some("chrome://extensions/")));
+            Ok(json!({ "content": [{ "type": "text", "text": "Clicked." }] }))
+        }));
+        let (br, _brx, arx, hid) = ready(&hub);
+        hub.on_message(br, &format!(r#"{{"type":"result","id":{hid},"result":{DESK}}}"#));
+        let back = wait(&arx);
+        assert_eq!(back["type"], "result");
+        assert_eq!(back["id"], 7);
+        assert_eq!(back["result"]["content"][0]["text"], "Clicked.");
+    }
+
+    #[test]
+    fn a_risky_desktop_step_waits_for_the_user_like_any_click() {
+        let hub = Arc::new(Hub::for_test("t", |_, _| String::new()));
+        hub.set_me();
+        hub.set_desktop(Box::new(|_, _, args, _| {
+            if args["confirmed"] == true {
+                return Ok(json!({ "content": [{ "type": "text", "text": "Removed." }] }));
+            }
+            Ok(json!({ "content": [], "needsConfirm": { "what": "Click \"Remove\"", "url": "chrome://extensions/" } }))
+        }));
+        let (br, brx, arx, hid) = ready(&hub);
+        hub.on_message(br, &format!(r#"{{"type":"result","id":{hid},"result":{DESK}}}"#));
+        assert_eq!(wait(&arx)["type"], "hold");
+        let ask = hub.asks();
+        assert_eq!(ask[0].what, "Click \"Remove\"");
+        hub.answer(ask[0].id, true);
+        let again = last(&brx);
+        assert_eq!(again["args"]["confirmed"], true);
+        hub.on_message(br, &json!({ "type": "result", "id": again["id"], "result": serde_json::from_str::<Value>(DESK).unwrap() }).to_string());
+        assert_eq!(wait(&arx)["result"]["content"][0]["text"], "Removed.");
+    }
+
+    #[test]
+    fn without_the_apps_hook_the_agent_is_told_to_ask_the_user() {
+        let hub = Hub::for_test("t", |_, _| String::new());
+        let (br, _brx, arx, hid) = ready(&hub);
+        hub.on_message(br, &format!(r#"{{"type":"result","id":{hid},"result":{DESK}}}"#));
+        let back = last(&arx);
+        assert_eq!(back["type"], "error");
+        assert_eq!(back["error"], super::super::desktop::NO_DESKTOP);
+    }
+}

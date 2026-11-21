@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, TcpListener};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -175,9 +175,14 @@ pub struct Hub {
     pub wanted_version: Box<dyn Fn() -> Option<String> + Send + Sync>,
     /// Maps a browser's signed-in email to its profile name. Swappable in tests.
     profile_of: Box<dyn Fn(&str, &str) -> String + Send + Sync>,
+    /// The app's way to do a step on a page Chrome keeps from extensions (desktop.rs).
+    desktop: OnceLock<DesktopFn>,
+    /// This hub, for the threads that run desktop steps.
+    me: OnceLock<Weak<Hub>>,
 }
 
 
+mod desktop;
 mod file;
 mod route;
 #[cfg(test)]
@@ -185,6 +190,7 @@ mod tests;
 #[cfg(test)]
 mod wire_tests;
 
+pub use desktop::DesktopFn;
 pub use file::{hub_file, own_hub_file, owns_browser, random_token, use_own_file};
 use file::{answers, fail, publish, reply, should_claim};
 use route::serve;
@@ -193,12 +199,12 @@ use route::serve;
 
 impl Hub {
     pub fn new(token: String, port: u16, on_change: OnChange) -> Self {
-        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token, port, on_change, wanted_version: Box::new(|| None), profile_of: Box::new(crate::profiles::profile_name) }
+        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token, port, on_change, wanted_version: Box::new(|| None), profile_of: Box::new(crate::profiles::profile_name), desktop: OnceLock::new(), me: OnceLock::new() }
     }
 
     #[cfg(test)]
     pub fn for_test(token: &str, profile_of: impl Fn(&str, &str) -> String + Send + Sync + 'static) -> Self {
-        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token: token.into(), port: 0, on_change: Box::new(|_| {}), wanted_version: Box::new(|| None), profile_of: Box::new(profile_of) }
+        Hub { inner: Mutex::new(Inner { ask_risky: true, ..Inner::default() }), token: token.into(), port: 0, on_change: Box::new(|_| {}), wanted_version: Box::new(|| None), profile_of: Box::new(profile_of), desktop: OnceLock::new(), me: OnceLock::new() }
     }
 
     /// Bind 127.0.0.1 on a free port, publish it, and serve in the background.
@@ -208,6 +214,7 @@ impl Hub {
         let mut hub = Hub::new(random_token(), port, on_change);
         hub.wanted_version = wanted_version;
         let hub = Arc::new(hub);
+        hub.set_me();
         publish(port, &hub.token);
         // Every ByteHive writes the one hub file, the last one opened wins, and
         // one that closes leaves its port there with nobody behind it: the
@@ -431,6 +438,15 @@ impl Hub {
                     "result" | "error" => {
                         let Some(hid) = v["id"].as_u64() else { return true };
                         let Some(p) = inner.pending.remove(&hid) else { return true };
+                        let desk = v["result"]["desktop"].clone();
+                        let (p, v) = if desk.is_object() {
+                            match self.to_desktop(&mut inner, from, hid, p, desk) {
+                                Ok(()) => return true,
+                                Err(p) => (p, json!({ "type": "error", "id": hid, "error": desktop::NO_DESKTOP })),
+                            }
+                        } else {
+                            (p, v)
+                        };
                         let confirm = v["result"]["needsConfirm"].clone();
                         let blocker = v["result"]["blocker"].clone();
                         match p.asker {
