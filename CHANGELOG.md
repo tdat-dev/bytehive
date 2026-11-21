@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.5] - 2026-11-21
+
+### Changed
+
+- **Agents on chrome:// and Web Store pages no longer take your screen.**
+  Clicks at a point, typing, scrolling and Escape now go through Windows'
+  accessibility layer, which needs neither the mouse nor Chrome in front.
+  When a step does need Chrome in front for a moment (setting a field's text,
+  a real key), ByteHive waits until you stop typing and moving the mouse,
+  then puts your window and your pointer back right away. Only your own
+  keys and mouse count, not input other programs send.
+
 ## [0.19.4] - 2026-11-21
 
 ### Added
