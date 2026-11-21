@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-11-21
+
+### Added
+
+- **Agents hear what changed at each new turn.** When the person approves a
+  card, another agent finishes one or saves a fact, a Claude or Codex agent is
+  told in a few lines with its next message, without calling `board_get` or
+  `memory_get` to look. What it changed itself is left out.
+
+### Changed
+
+- **Codex, OpenCode and Antigravity get the browser as one tool.** They send
+  every tool's schema with every request, and the 19 browser tools were 9.5 KB
+  of it even when no page was opened; one `browser` tool with an action is
+  2.5 KB. Claude Code keeps the separate tools: it loads them only when needed.
+
 ## [0.19.1] - 2026-11-21
 
 ### Changed

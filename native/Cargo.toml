@@ -1,6 +1,6 @@
 [package]
 name = "bytehive-native"
-version = "0.19.1"
+version = "0.19.2"
 description = "ByteHive drawn by itself: Rust + GPUI, no WebView."
 edition = "2024"
 publish = false
