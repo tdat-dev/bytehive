@@ -33,7 +33,15 @@ Per run where the CLI has a way, so the owner's files are not touched and the ap
 - Antigravity 1.5.13: `--settings` rejects `mcpServers`, `hooks`, `rules`, `instructions` ("unknown setting"). `agy mcp list` shows the edited entry.
 - Before: OpenCode's and Antigravity's entries pointed at `D:/bytehive/mcp/dist/index.js` (an old dev build without browser_record), Antigravity's with `D:\bytehive` fixed in as the workspace for every project; Codex's config.toml the same.
 
+## Fewer tokens, news each turn (0.19.1, 0.19.2)
+
+- `board_get` gives a short text view (`mcp/src/boardview.ts`): 70 KB to 7.8 KB on ByteHive's own board. The memory tools answer with the one fact they changed, not the 16 KB memory. The laws no longer send an agent to `memory_get` when the memory came in the MCP instructions.
+- The browser tools: Claude Code (client name `claude-code`) loads MCP schemas only when needed and keeps the 19 separate tools; every other client gets one `browser` tool (`mcp/src/browsergate.ts`), 2.5 KB instead of 9.5 KB per request. `BYTEHIVE_BROWSER_TOOLS=each|one` overrides. Measured: Codex ignores tools added mid-session (`tools/list_changed`), so loading them later was no option. A real Codex run used the single tool to list browsers, pick one and read a page.
+- News (`native/src/guard/news.mjs`, wired with the guards): UserPromptSubmit tells the agent in a few lines which cards were added, moved or deleted and which facts were saved or changed since its last turn; Stop takes in the agent's own turn so it is not told what it did. Measured: Claude (`--settings`) and Codex (`-c hooks.UserPromptSubmit`) both put the hook's `additionalContext` in front of the model. A change someone else makes during the agent's turn is taken in silently with it.
+
 ## Not done
+
+- News for Antigravity (its `.agents/hooks.json` PreInvocation format is not written down here yet) and for OpenCode (no hook that fires).
 
 - Guards for OpenCode and Antigravity: OpenCode's plugin did not fire from a worktree in an earlier test, and agy's hooks only add messages. Both need their own work.
 - An OpenCode agent's MCP server runs in the shared service, so it cannot be told which agent it serves.

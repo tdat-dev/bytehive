@@ -1,13 +1,15 @@
 //! ByteHive's guards for the Claude agents it starts (guard/guard.mjs): hooks
 //! given per run through `--settings`, so the owner's own Claude settings are
 //! never touched. Refuses commands that destroy work, and keeps a turn that
-//! changed code from ending before a check ran. Needs Node; without it the
-//! agent starts as before.
+//! changed code from ending before a check ran. With them, guard/news.mjs tells
+//! the agent at each new turn what changed on the board and in the memory.
+//! Needs Node; without it the agent starts as before.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 const SCRIPT: &str = include_str!("guard/guard.mjs");
+const NEWS: &str = include_str!("guard/news.mjs");
 
 /// Whether `node` is on PATH, looked up once without starting a process.
 fn has_node() -> bool {
@@ -20,11 +22,14 @@ fn has_node() -> bool {
 /// The settings JSON that wires the script in.
 fn settings_json(script: &Path) -> String {
     let path = script.to_string_lossy().replace('\\', "/");
+    let news = script.with_file_name("news.mjs").to_string_lossy().replace('\\', "/");
     let cmd = |kind: &str| format!("node \"{path}\" {kind}");
+    let tell = |kind: &str| format!("node \"{news}\" {kind}");
     serde_json::json!({
         "hooks": {
             "PreToolUse": [{ "matcher": "Bash|PowerShell", "hooks": [{ "type": "command", "command": cmd("pre"), "timeout": 10 }] }],
-            "Stop": [{ "hooks": [{ "type": "command", "command": cmd("stop"), "timeout": 15 }] }],
+            "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": tell("prompt"), "timeout": 5 }] }],
+            "Stop": [{ "hooks": [{ "type": "command", "command": cmd("stop"), "timeout": 15 }, { "type": "command", "command": tell("stop"), "timeout": 5 }] }],
         }
     })
     .to_string()
@@ -44,6 +49,7 @@ fn install(dir: &Path) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(&hooks)?;
     let script = hooks.join("guard.mjs");
     keep(&script, SCRIPT)?;
+    keep(&hooks.join("news.mjs"), NEWS)?;
     let settings = hooks.join("guard-settings.json");
     keep(&settings, &settings_json(&script))?;
     Ok(settings)
@@ -83,9 +89,11 @@ fn codex_overrides(script: &Path) -> Option<Vec<String>> {
     if path.chars().any(|c| c.is_whitespace() || "\"'%^&|<>".contains(c)) {
         return None;
     }
+    let news = path.replace("guard.mjs", "news.mjs");
+    let one = |script: &str, kind: &str, timeout: u32| format!("{{type='command',command='node {script} {kind}',timeout={timeout}}}");
     let hook = |event: &str, matcher: Option<&str>, kind: &str, timeout: u32| {
         let matcher = matcher.map(|m| format!("matcher='{m}',")).unwrap_or_default();
-        format!("hooks.{event}=[{{{matcher}hooks=[{{type='command',command='node {path} {kind}',timeout={timeout}}}]}}]")
+        format!("hooks.{event}=[{{{matcher}hooks=[{}]}}]", one(&path, kind, timeout))
     };
     Some(vec![
         "--dangerously-bypass-hook-trust".into(),
@@ -94,7 +102,9 @@ fn codex_overrides(script: &Path) -> Option<Vec<String>> {
         "-c".into(),
         hook("PostToolUse", None, "post", 10),
         "-c".into(),
-        hook("Stop", None, "stop", 15),
+        format!("hooks.UserPromptSubmit=[{{hooks=[{}]}}]", one(&news, "prompt", 5)),
+        "-c".into(),
+        format!("hooks.Stop=[{{hooks=[{},{}]}}]", one(&path, "stop", 15), one(&news, "stop", 5)),
     ])
 }
 
@@ -115,8 +125,11 @@ mod tests {
         let pre = v["hooks"]["PreToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
         assert!(pre.starts_with("node \"") && pre.ends_with("guard.mjs\" pre") && !pre.contains('\\'), "{pre}");
         assert_eq!(v["hooks"]["PreToolUse"][0]["matcher"], "Bash|PowerShell");
-        assert!(v["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap().ends_with(" stop"));
+        assert!(v["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap().ends_with("guard.mjs\" stop"));
+        assert!(v["hooks"]["Stop"][0]["hooks"][1]["command"].as_str().unwrap().ends_with("news.mjs\" stop"));
+        assert!(v["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"].as_str().unwrap().ends_with("news.mjs\" prompt"));
         assert_eq!(std::fs::read_to_string(dir.path().join("hooks/guard.mjs")).unwrap(), SCRIPT);
+        assert_eq!(std::fs::read_to_string(dir.path().join("hooks/news.mjs")).unwrap(), NEWS);
     }
 
     #[test]
@@ -134,10 +147,11 @@ mod tests {
     fn hands_codex_its_hooks_as_overrides_cmd_will_not_mangle() {
         let args = codex_overrides(Path::new("C:\\Users\\ana\\.bytehive\\native\\hooks\\guard.mjs")).unwrap();
         assert_eq!(args[0], "--dangerously-bypass-hook-trust");
-        assert_eq!(args.iter().filter(|a| *a == "-c").count(), 3);
+        assert_eq!(args.iter().filter(|a| *a == "-c").count(), 4);
         assert_eq!(args[2], "hooks.PreToolUse=[{hooks=[{type='command',command='node C:/Users/ana/.bytehive/native/hooks/guard.mjs pre',timeout=10}]}]");
         assert!(args[4].starts_with("hooks.PostToolUse=[{hooks=") && args[4].contains(" post',"));
-        assert!(args[6].starts_with("hooks.Stop=[{hooks=") && args[6].contains(" stop',"));
+        assert_eq!(args[6], "hooks.UserPromptSubmit=[{hooks=[{type='command',command='node C:/Users/ana/.bytehive/native/hooks/news.mjs prompt',timeout=5}]}]");
+        assert!(args[8].starts_with("hooks.Stop=[{hooks=") && args[8].contains("guard.mjs stop',") && args[8].contains("news.mjs stop',"));
         for a in &args {
             assert!(!a.contains(['"', '|', '<', '>', '&', '%', '^']), "{a}");
         }
@@ -155,8 +169,10 @@ mod tests {
         if !has_node() {
             return;
         }
-        let test = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/guard/guard.test.mjs");
-        let out = std::process::Command::new("node").arg("--test").arg(&test).output().unwrap();
-        assert!(out.status.success(), "{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        for name in ["guard.test.mjs", "news.test.mjs"] {
+            let test = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/guard").join(name);
+            let out = std::process::Command::new("node").arg("--test").arg(&test).output().unwrap();
+            assert!(out.status.success(), "{name}\n{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        }
     }
 }
