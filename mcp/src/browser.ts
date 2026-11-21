@@ -13,7 +13,7 @@ import { z } from "zod";
 
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 type RecordFile = { name: string; size: number };
-type ToolResult = { content: Content[]; isError?: boolean; gif?: string; part?: string; record?: { files: RecordFile[] } };
+export type ToolResult = { content: Content[]; isError?: boolean; gif?: string; part?: string; record?: { files: RecordFile[] } };
 
 /** The hub of the ByteHive that started this agent (it sets BYTEHIVE_HUB_FILE),
  *  else the installed ByteHive's. Guessing "the last ByteHive opened" sent agents
@@ -137,11 +137,13 @@ export class HubClient {
   }
 }
 
-const err = (text: string): ToolResult => ({ content: [{ type: "text", text }], isError: true });
+export const err = (text: string): ToolResult => ({ content: [{ type: "text", text }], isError: true });
 
 const tabId = z.number().int().optional().describe("Tab id from browser_tabs; defaults to your most recent tab");
 
-export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser_* tools. You work in your own tab group, named after you. Reuse your tab: browser_navigate goes to a page in it (and opens it the first time); open another with browser_tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with browser_read_page (gives refs), act with browser_computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in ByteHive; if they say no, don't retry.`;
+// Names the actions plainly: a client gets them as browser_<action> tools or as
+// the actions of one browser tool (browsergate.ts).
+export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser tools (browser_<action>, or one browser tool taking an action). You work in your own tab group, named after you. Reuse your tab: navigate goes to a page in it (and opens it the first time); open another with tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with read_page (gives refs), act with computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in ByteHive; if they say no, don't retry.`;
 
 /** Absolute paths for files to upload: relative ones are taken from the
  *  workspace; every file must exist, so the page never gets a bad path. */
@@ -191,147 +193,4 @@ export async function saveRecording(hub: Pick<HubClient, "call">, dir: string, f
     await hub.call("record", { action: "done" });
   }
   return total;
-}
-
-export function registerBrowserTools(server: McpServer, hub: HubClient, base = process.cwd(), agent = "Agent") {
-  const tool = (name: string, description: string, inputSchema: Record<string, z.ZodTypeAny>, hubTool: string) =>
-    server.registerTool(name, { description, inputSchema }, async (args: Record<string, unknown>) => hub.call(hubTool, args) as never);
-
-  tool("browser_list", "List the browsers (Chrome/Edge/Brave profiles) connected to ByteHive. The one marked * is the one you use.", {}, "list_browsers");
-  tool(
-    "browser_select",
-    "Choose which connected browser profile you use, by profile name, email or id from browser_list.",
-    { browser: z.string().describe("Profile name, email, or id") },
-    "select_browser",
-  );
-  tool(
-    "browser_tabs",
-    "Your tabs in the browser (your tab group). With all=true, also every other open tab, which you can take with browser_tab_adopt.",
-    { all: z.boolean().optional() },
-    "tabs",
-  );
-  tool(
-    "browser_tab_new",
-    "Open another tab in your tab group, optionally at a URL. Only when you need a second page next to the one you have; to go somewhere else, use browser_navigate in your current tab.",
-    { url: z.string().optional() },
-    "tab_new",
-  );
-  tool("browser_tab_adopt", "Move one of the user's tabs into your tab group so you can work in it. Only when the user asked you to.", { tabId: z.number().int() }, "tab_adopt");
-  tool("browser_tab_close", "Close one of your tabs.", { tabId }, "tab_close");
-  tool(
-    "browser_navigate",
-    'Go to a URL in your current tab (opening your first tab if you have none), or "back", "forward", "reload". Waits for the page to load.',
-    { url: z.string(), tabId },
-    "navigate",
-  );
-  tool(
-    "browser_read_page",
-    "Outline of the page: its interactive elements (or with filter=all, headings and images too), each with a ref to use in browser_computer / browser_form_input, and its position.",
-    { tabId, filter: z.enum(["interactive", "all"]).optional(), max: z.number().int().optional() },
-    "read_page",
-  );
-  tool(
-    "browser_find",
-    "Find elements whose text or label contains all the words of a query. Returns refs.",
-    { query: z.string(), tabId },
-    "find",
-  );
-  tool(
-    "browser_page_text",
-    "The page's visible text, for reading articles, results or tables.",
-    { tabId, max: z.number().int().optional().describe("Character limit, default 40000") },
-    "page_text",
-  );
-  tool(
-    "browser_form_input",
-    "Set a form field (text, textarea, select, checkbox) by ref, the way typing would.",
-    { ref: z.string(), value: z.union([z.string(), z.boolean(), z.number()]), tabId },
-    "form_input",
-  );
-  tool(
-    "browser_computer",
-    "Real mouse and keyboard in your tab. Actions: screenshot, left_click, right_click, double_click, triple_click, hover, scroll, type (text), key (e.g. \"Enter\", \"ctrl+a\"), wait (duration seconds). Target with ref (from browser_read_page) or coordinate [x, y] (from a screenshot).",
-    {
-      action: z.enum(["screenshot", "left_click", "right_click", "double_click", "triple_click", "hover", "scroll", "type", "key", "wait"]),
-      ref: z.string().optional(),
-      coordinate: z.array(z.number()).length(2).optional(),
-      text: z.string().optional(),
-      scroll_direction: z.enum(["up", "down", "left", "right"]).optional(),
-      scroll_amount: z.number().optional(),
-      duration: z.number().optional(),
-      tabId,
-    },
-    "computer",
-  );
-  tool(
-    "browser_javascript",
-    "Run JavaScript in the page and get the value of its last expression (await allowed).",
-    { code: z.string(), tabId },
-    "javascript",
-  );
-  tool(
-    "browser_console",
-    "Console messages from your tab since ByteHive started controlling it. Filter with a regex pattern.",
-    { pattern: z.string().optional(), onlyErrors: z.boolean().optional(), limit: z.number().int().optional(), clear: z.boolean().optional(), tabId },
-    "console",
-  );
-  tool(
-    "browser_network",
-    "Network requests from your tab since ByteHive started controlling it. Filter URLs with a regex pattern.",
-    { pattern: z.string().optional(), limit: z.number().int().optional(), clear: z.boolean().optional(), tabId },
-    "network",
-  );
-  server.registerTool(
-    "browser_file_upload",
-    {
-      description: "Attach files from this computer to a file field on the page. ref is the file field, or the button that opens the file chooser. Paths may be relative to the workspace.",
-      inputSchema: { ref: z.string(), paths: z.array(z.string()).min(1), tabId },
-    },
-    async (args) => {
-      try {
-        return (await hub.call("upload", { ...args, paths: uploadPaths(args.paths, base) })) as never;
-      } catch (e) {
-        return err(e instanceof Error ? e.message : String(e)) as never;
-      }
-    },
-  );
-  tool(
-    "browser_resize",
-    "Resize the Chrome window your tab is in (it is the user's window too; only when a page must be seen at a size, and say so).",
-    { width: z.number().int(), height: z.number().int(), tabId },
-    "resize",
-  );
-  server.registerTool(
-    "browser_record",
-    {
-      description: "Record your tab: action start, do the steps, then stop. Saves a video (or format gif) plus timeline.md and keyframes under .bytehive/recordings/ (or path). Read those files only when you need to check something. It shows logged-in pages: ask before sharing.",
-      inputSchema: { action: z.enum(["start", "stop"]), format: z.enum(["video", "gif"]).optional(), path: z.string().optional(), tabId },
-    },
-    async ({ action, format, path: out, tabId: tab }) => {
-      const r = await hub.call("record", { action, format, tabId: tab });
-      const plain = { content: r.content, ...(r.isError ? { isError: true } : {}) };
-      if (action !== "stop" || r.isError) return plain as never;
-      const where = (ext: string) => (out ? (path.isAbsolute(out) ? out : path.resolve(base, out)) : recordingPath(base, agent, ext));
-      try {
-        if (r.gif) {
-          const file = where(".gif");
-          fs.mkdirSync(path.dirname(file), { recursive: true });
-          fs.writeFileSync(file, Buffer.from(r.gif, "base64"));
-          return { content: [...r.content, { type: "text", text: `Saved ${file}` }] } as never;
-        }
-        if (!r.record) return plain as never;
-        const dir = where("");
-        await saveRecording(hub, dir, r.record.files);
-        return { content: [...r.content, { type: "text", text: `Saved in ${dir}` }] } as never;
-      } catch (e) {
-        return err(`The recording was made but not saved: ${e instanceof Error ? e.message : String(e)}`) as never;
-      }
-    },
-  );
-  tool(
-    "browser_dialog",
-    "Accept or dismiss an alert/confirm/prompt dialog that is blocking your tab.",
-    { accept: z.boolean(), text: z.string().optional().describe("Answer for a prompt()"), tabId },
-    "dialog",
-  );
 }

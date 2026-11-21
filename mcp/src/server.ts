@@ -21,7 +21,9 @@ import {
 import { boardText, cardView } from "./boardview.js";
 import { evidenceDir, workFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
-import { HubClient, registerBrowserTools, BROWSER_INSTRUCTIONS } from "./browser.js";
+import { HubClient, BROWSER_INSTRUCTIONS } from "./browser.js";
+import { browserTools } from "./browsertools.js";
+import { browserMode, registerBrowser } from "./browsergate.js";
 import { claimsCards, companyRoot, floorDir, registerCompanyTools, sendAsMember } from "./company.js";
 import { agentContext } from "./context/agentcontext.js";
 import { memoryDelete, memoryForInstructions, memoryGet, memorySave, memoryUpdate } from "./memory.js";
@@ -428,8 +430,11 @@ export function createServer(dir: string): McpServer {
 
   if (personId) registerCompanyTools(server, personId);
 
-  // The user's real browsers, through the ByteHive hub (see browser.ts).
-  registerBrowserTools(server, new HubClient(agentName ?? "Agent"), dir, agentName ?? "Agent");
+  // The user's real browsers, through the ByteHive hub (see browser.ts). How they
+  // are offered depends on the client (browsergate.ts), which is known once it
+  // has said hello: before it lists the tools.
+  const tools = browserTools(new HubClient(agentName ?? "Agent"), dir, agentName ?? "Agent");
+  server.server.oninitialized = () => registerBrowser(server, tools, browserMode(server.server.getClientVersion()?.name));
 
   return server;
 }

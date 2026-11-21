@@ -17,7 +17,8 @@ beforeEach(async () => {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createServer(dir);
   await server.connect(serverTransport);
-  client = new Client({ name: "test", version: "0.0.0" });
+  // Claude Code, which keeps every browser tool on its own (browsergate.ts).
+  client = new Client({ name: "claude-code", version: "0.0.0" });
   await client.connect(clientTransport);
 });
 
@@ -31,6 +32,20 @@ const text = (res: unknown): string =>
   (res as { content: { type: string; text: string }[] }).content[0].text;
 
 describe("bytehive-mcp server", () => {
+  it("gives any other client the browser as one tool", async () => {
+    const [ours, theirs] = InMemoryTransport.createLinkedPair();
+    await createServer(dir).connect(theirs);
+    const codex = new Client({ name: "codex-mcp-client", version: "0.0.0" });
+    await codex.connect(ours);
+    const tools = (await codex.listTools()).tools;
+    expect(tools.filter((t) => t.name.startsWith("browser")).map((t) => t.name)).toEqual(["browser"]);
+    const res = await codex.callTool({ name: "browser", arguments: { action: "navigate", args: {} } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("Bad args for navigate");
+    expect(text(res)).toContain("url: ");
+    await codex.close();
+  });
+
   it("lists all board, fleet and browser tools", async () => {
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(tools).toEqual([
