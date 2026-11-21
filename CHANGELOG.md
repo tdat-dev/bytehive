@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-21
+
+### Changed
+
+- **Agents spend far fewer tokens on the board and memory.** `board_get`
+  gives a short view: the open cards with their checklist ids and the five
+  newest finished cards by title (70 KB down to 8 KB on ByteHive's own board).
+  `card` reads one card whole, `all` reads everything. The memory tools answer
+  with the one fact they changed instead of the whole memory, and agents no
+  longer read the memory a second time when it already came in the MCP
+  instructions. Tool answers are one-line JSON.
+
 ## [0.19.0] - 2026-11-21
 
 ### Added
