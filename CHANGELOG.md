@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-11-21
+
+### Fixed
+
+- **Terminals keep their colours when ByteHive was opened from an agent.**
+  Opened from inside a Claude session (Claude Desktop, a Claude Code shell),
+  ByteHive passed that session's variables to every terminal: `NO_COLOR=1`
+  took the colour out of every CLI, and others turned off window titles and
+  git's editor and prompts. Now every terminal starts with the environment
+  Windows gives a fresh login, keeping only ByteHive's own `BYTEHIVE_*` settings.
+
 ## [0.18.1] - 2026-11-19
 
 ### Changed
