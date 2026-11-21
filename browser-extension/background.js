@@ -12,6 +12,7 @@
 import { snapshotPage, locateRef, fillRef, findInPage, pageText, labelAt, blockerOf, markForUpload, unmarkUpload } from "./page.js";
 import { initRecord, recordTool, gifTool, isRecording, onCdpEvent, onTabClosed, noteBefore, noteAfter } from "./record/index.js";
 import { cursorAct } from "./cursor.js";
+import { PAGE_TOOLS, locked, toDesktop } from "./locked.js";
 
 // The app before its rename registered "com.maestro.browser": tried when the
 // new name is not there yet.
@@ -462,6 +463,11 @@ async function withBlocker(tabId, result) {
 // ---------------------------------------------------------------- tools
 
 async function run(agent, tool, a) {
+  if (PAGE_TOOLS.has(tool)) {
+    // chrome://, the Web Store: Chrome lets no extension in, ByteHive drives it from Windows.
+    const t = await tabFor(agent, a.tabId);
+    if (locked(t.url || t.pendingUrl)) return toDesktop(t);
+  }
   switch (tool) {
     case "tabs": {
       const mine = (await agentTabs(agent)).map(brief);
