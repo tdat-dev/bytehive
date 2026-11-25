@@ -18,6 +18,9 @@ const { outputFiles: [file] } = await build({
   target: "node22",
   outfile: out,
   write: false,
+  // ws (the standalone browser hub) is CommonJS and requires node built-ins,
+  // which an ESM bundle can only do through a real require.
+  banner: { js: 'import { createRequire as __bhRequire } from "node:module"; const require = __bhRequire(import.meta.url);' },
 });
 
 const before = fs.existsSync(out) ? fs.readFileSync(out) : null;

@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { type HubAddr, installedHubFile, locateHub } from "./hub/claim.js";
 
 type Content = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 type RecordFile = { name: string; size: number };
@@ -27,6 +28,18 @@ export function hubFile(home: string = os.homedir()): string {
   return !fs.existsSync(now) && fs.existsSync(old) ? old : now;
 }
 
+/** The user's answer to a held step; "cannot-ask" when there was no way to ask. */
+export type AskUser = (what: string, url: string) => Promise<boolean | "cannot-ask">;
+
+/** Dial the hub the file names, or run one here when no ByteHive answers. Only
+ *  an agent of the installed ByteHive (or of none) may start one: a test run's
+ *  agents keep to their own ByteHive. */
+function defaultLocate(): Promise<HubAddr> {
+  const env = process.env.BYTEHIVE_HUB_FILE || process.env.MAESTRO_HUB_FILE;
+  const installed = installedHubFile();
+  return locateHub(hubFile(), { mayStart: !env || path.resolve(env) === path.resolve(installed), file: installed });
+}
+
 const CALL_TIMEOUT_MS = 90_000;
 const CONNECT_TIMEOUT_MS = 5_000;
 /** How long a click held for the user's OK may wait. */
@@ -38,21 +51,37 @@ export class HubClient {
   private next = 1;
   private waiting = new Map<number, { resolve: (r: ToolResult) => void; timer: NodeJS.Timeout; tool: string }>();
 
+  /** Asks this agent's user about a step the standalone hub held (see setAsk). */
+  private askUser: AskUser = async () => "cannot-ask";
+
   constructor(
     private agent: string,
-    private readHub: () => { port: number; token: string } = () => JSON.parse(fs.readFileSync(hubFile(), "utf8")),
+    private locate: () => Promise<HubAddr> = defaultLocate,
   ) {}
+
+  /** How to ask the user when ByteHive is closed: the MCP client's own prompt. */
+  setAsk(f: AskUser) {
+    this.askUser = f;
+  }
 
   private open(): Promise<void> {
     if (this.ready) return this.ready;
-    this.ready = new Promise<void>((resolve, reject) => {
-      let hub: { port: number; token: string };
-      try {
-        hub = this.readHub();
-      } catch {
-        return reject(new Error("ByteHive isn't running, so there is no browser to use. Open ByteHive and try again."));
+    this.ready = this.locate().then(
+      (hub) => this.dial(hub),
+      (e) => {
+        this.ready = null;
+        throw e;
+      },
+    );
+    return this.ready;
+  }
+
+  private dial(hub: HubAddr): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (typeof WebSocket === "undefined") {
+        this.ready = null;
+        return reject(new Error("Browser tools need Node 22 or newer."));
       }
-      if (typeof WebSocket === "undefined") return reject(new Error("Browser tools need Node 22 or newer."));
       const ws = new WebSocket(`ws://127.0.0.1:${hub.port}/`);
       const slow = setTimeout(() => {
         ws.close();
@@ -80,13 +109,12 @@ export class HubClient {
         drop("Lost the connection to ByteHive.");
         reject(new Error("Can't reach ByteHive. Is it open?"));
       });
-      ws.addEventListener("close", () => drop("ByteHive closed the connection."));
+      ws.addEventListener("close", () => drop("The browser hub closed the connection; try again."));
     });
-    return this.ready;
   }
 
   private onMessage(raw: string) {
-    let m: { type?: string; id?: number; result?: ToolResult; error?: string };
+    let m: { type?: string; id?: number; result?: ToolResult; error?: string; ask?: number; what?: string; url?: string };
     try {
       m = JSON.parse(raw);
     } catch {
@@ -95,6 +123,22 @@ export class HubClient {
     if (typeof m.id !== "number") return;
     const w = this.waiting.get(m.id);
     if (!w) return;
+    if (m.type === "confirm") {
+      // ByteHive is closed and the standalone hub held a step: this agent's
+      // user decides, in the client's own prompt, which the model can't answer.
+      clearTimeout(w.timer);
+      const id = m.id;
+      w.timer = setTimeout(() => {
+        this.waiting.delete(id);
+        w.resolve(err("The user did not answer in time, so it was not done."));
+      }, HOLD_TIMEOUT_MS);
+      const ws = this.ws;
+      const ask = m.ask;
+      void this.askUser(m.what ?? "a click", m.url ?? "")
+        .catch((): "cannot-ask" => "cannot-ask")
+        .then((a) => ws?.send(JSON.stringify({ type: "answer", ask, ok: a === true, ...(a === "cannot-ask" ? { why: "cannot-ask" } : {}) })));
+      return;
+    }
     if (m.type === "hold") {
       // ByteHive is asking the user first: wait for their answer, not the usual limit.
       clearTimeout(w.timer);
@@ -143,7 +187,7 @@ const tabId = z.number().int().optional().describe("Tab id from browser_tabs; de
 
 // Names the actions plainly: a client gets them as browser_<action> tools or as
 // the actions of one browser tool (browsergate.ts).
-export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser tools (browser_<action>, or one browser tool taking an action). You work in your own tab group, named after you. Reuse your tab: navigate goes to a page in it (and opens it the first time); open another with tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with read_page (gives refs), act with computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. Pages Chrome keeps from extensions (chrome://extensions and the other chrome:// pages, the Web Store) and Chrome's own dialogs (the folder chooser of Load unpacked) work too: ByteHive drives them from Windows, so their refs start with d, coordinates are pixels of a screenshot of the whole window, and the window comes to the front while it works. When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them in ByteHive; if they say no, don't retry.`;
+export const BROWSER_INSTRUCTIONS = `Browser: you can use the user's real Chrome (their logins included) through the browser tools (browser_<action>, or one browser tool taking an action). You work in your own tab group, named after you. Reuse your tab: navigate goes to a page in it (and opens it the first time); open another with tab_new only when you need two pages side by side, and close tabs you are done with. Read a page with read_page (gives refs), act with computer (click a ref or a screenshot coordinate, type, key), and check with a screenshot. Pages Chrome keeps from extensions (chrome://extensions and the other chrome:// pages, the Web Store) and Chrome's own dialogs (the folder chooser of Load unpacked) work too: ByteHive drives them from Windows, so their refs start with d, coordinates are pixels of a screenshot of the whole window, and the window comes to the front while it works (only while ByteHive is open). When you hit a login page or a CAPTCHA, stop and ask the user to handle it. Never submit payments or send messages the user didn't ask for. Clicks that send, post, pay or delete wait for the user to allow them, in ByteHive or, while ByteHive is closed, in a prompt from your app; if they say no, don't retry.`;
 
 /** Absolute paths for files to upload: relative ones are taken from the
  *  workspace; every file must exist, so the page never gets a bad path. */

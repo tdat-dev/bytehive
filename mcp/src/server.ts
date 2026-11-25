@@ -22,6 +22,7 @@ import { boardText, cardView } from "./boardview.js";
 import { evidenceDir, workFiles } from "./git.js";
 import { readFleet, queueMessage, readAgentScreen, queueSpawn } from "./fleet.js";
 import { HubClient, BROWSER_INSTRUCTIONS } from "./browser.js";
+import { askUser } from "./hub/ask.js";
 import { browserTools } from "./browsertools.js";
 import { browserMode, registerBrowser } from "./browsergate.js";
 import { claimsCards, companyRoot, floorDir, registerCompanyTools, sendAsMember } from "./company.js";
@@ -433,7 +434,9 @@ export function createServer(dir: string): McpServer {
   // The user's real browsers, through the ByteHive hub (see browser.ts). How they
   // are offered depends on the client (browsergate.ts), which is known once it
   // has said hello: before it lists the tools.
-  const tools = browserTools(new HubClient(agentName ?? "Agent"), dir, agentName ?? "Agent");
+  const hub = new HubClient(agentName ?? "Agent");
+  hub.setAsk((what, url) => askUser(server, what, url));
+  const tools = browserTools(hub, dir, agentName ?? "Agent");
   server.server.oninitialized = () => registerBrowser(server, tools, browserMode(server.server.getClientVersion()?.name));
 
   return server;
