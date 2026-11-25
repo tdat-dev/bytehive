@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.6] - 2026-11-25
+
+### Added
+
+- **Agents can use your Chrome while ByteHive is closed.** When no ByteHive is
+  open, the bytehive MCP server (in Claude Code, Codex and the rest) runs the
+  browser hub itself, and the extension connects to it on its own. Open
+  ByteHive and it takes the browser back within two seconds; a step in
+  progress at that moment asks the agent to try again. Clicks that send, post,
+  pay or delete still wait for your OK: without ByteHive, your agent app asks
+  you in its own prompt, and an app that can not ask gets a no. Pages Chrome
+  keeps from extensions (chrome://, the Web Store) still need ByteHive open.
+
 ## [0.19.5] - 2026-11-21
 
 ### Changed
