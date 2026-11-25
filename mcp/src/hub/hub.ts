@@ -107,6 +107,11 @@ export class Hub {
     });
   }
 
+  /** A browser is ready (it said who it is): calls waiting for one go on. */
+  browserJoined() {
+    for (const w of this.browserWaiters.splice(0)) w();
+  }
+
   /** One text message from a peer. False means: close it. */
   onMessage(from: number, text: string): boolean {
     let v: Record<string, unknown>;
@@ -121,7 +126,8 @@ export class Hub {
       if (v.type !== "hello" || v.token !== this.token) return false;
       if (v.role === "browser") {
         peer.role = { kind: "browser", info: { id: from, browser: "Browser", email: "", version: "" } };
-        for (const w of this.browserWaiters.splice(0)) w();
+        // Its browser_info comes next and wakes waiting calls; this is in case it doesn't.
+        setTimeout(() => this.browserJoined(), 300);
       } else if (v.role === "agent") {
         const name = typeof v.agent === "string" && v.agent.trim() ? v.agent.trim() : "Agent";
         peer.role = { kind: "agent", name, pick: null };

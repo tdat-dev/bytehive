@@ -143,3 +143,24 @@ release (version bump, CHANGELOG, tag). No app code changes.
    pid), and the app's ask still shows for a risky click.
 3. Open ByteHive while the standalone hub runs: the hub steps down, the next call
    goes through the app.
+
+### Results, 2026-11-25 (native 0.19.5 installed, real Chrome profile)
+
+Driven with an MCP stdio client (the SDK's, named `claude-code`) running the built
+bundle, as Claude Code runs it.
+
+- App open: `browser_list` showed the app's profile name, navigate to example.com,
+  `read_page`, click on "Learn more" all went through the app's hub.
+- App closed: the first call started a standalone hub (file showed
+  `standalone: true` and the MCP's pid), the native host joined within about 1 s,
+  and navigate, `read_page` and the click on "Learn more" (tab went to iana.org)
+  all worked. The hub file was removed when the process exited.
+- Risky click with the app closed (a "Send" button put on example.com): no
+  elicitation support → refused, title stayed "not sent"; user declined →
+  refused; user allowed → clicked, title "SENT".
+- Two MCP processes: the second dialled the first one's hub. Opening ByteHive
+  replaced the hub file within 2 s; the standalone hub stepped down, the call in
+  flight failed with "ByteHive just opened and took over the browser", and the
+  next calls went through the app.
+- Known wart: one call sent in the same instant as the step-down got "The browser
+  hub closed the connection; try again" (one retry fixes it).

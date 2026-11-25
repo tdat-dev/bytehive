@@ -20,6 +20,7 @@ export function onBrowserMessage(hub: Hub, from: number, info: BrowserInfo, v: M
     info.browser = typeof v.browser === "string" ? v.browser : "Browser";
     info.email = typeof v.email === "string" ? v.email : "";
     info.version = typeof v.version === "string" ? v.version : "";
+    hub.browserJoined();
     return;
   }
   if (v.type === "pause") {

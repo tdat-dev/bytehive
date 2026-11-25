@@ -127,6 +127,14 @@ describe("standalone hub routing", () => {
     expect(h.paused.has("Ana")).toBe(true);
   });
 
+  it("lets a call made before the browser arrived see who the browser is", async () => {
+    const h = await newHub(3000);
+    const listing = agent(h).call("list_browsers", {});
+    await new Promise((r) => setTimeout(r, 100));
+    await peer(h, "browser");
+    expect(text(await listing)).toMatch(/Google Chrome · me@x\.test/);
+  });
+
   it("says no browser is connected once the grace is over", async () => {
     const h = await newHub(100);
     const r = await agent(h).call("tabs", {});
