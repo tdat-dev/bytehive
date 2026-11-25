@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.7] - 2026-11-25
+
+### Fixed
+
+- **A click that sends, posts, pays or deletes always waits for your OK.** An
+  agent talking to ByteHive's browser hub directly could mark its own click as
+  already allowed and skip the question. ByteHive now ignores that mark: only
+  your answer lets such a click through.
+
 ## [0.19.6] - 2026-11-25
 
 ### Added

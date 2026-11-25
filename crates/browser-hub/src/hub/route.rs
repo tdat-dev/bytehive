@@ -94,6 +94,11 @@ impl Hub {
                 inner.next += 1;
                 let hid = inner.next;
                 let mut args = if args.is_object() { args } else { json!({}) };
+                // Only the user's answer (Hub::answer) marks a click confirmed; an
+                // agent that sent it would skip the check for send, post, pay, delete.
+                if let Some(o) = args.as_object_mut() {
+                    o.remove("confirmed");
+                }
                 args["_ask"] = json!(inner.ask_risky);
                 let call = json!({ "type": "call", "id": hid, "agent": name, "tool": tool, "args": args });
                 inner.pending.insert(hid, Pending { asker: Asker::Agent(from, id.clone()), browser: target, agent: name.clone(), call: call.clone() });

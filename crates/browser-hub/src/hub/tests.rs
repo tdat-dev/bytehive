@@ -213,6 +213,23 @@ fn a_risky_click_waits_for_the_user() {
 }
 
 #[test]
+fn an_agent_can_not_say_its_own_click_was_confirmed() {
+    // Only the user's answer (Hub::answer) marks a click confirmed: a client that
+    // sends confirmed itself would skip the check for send, post, pay, delete.
+    let hub = Hub::for_test("t", |_, _| "P".into());
+    let (br, brx) = peer(&hub);
+    let (ag, arx) = peer(&hub);
+    hub.on_message(br, r#"{"type":"hello","role":"browser","token":"t"}"#);
+    hub.on_message(ag, r#"{"type":"hello","role":"agent","token":"t","agent":"Ana"}"#);
+    last(&arx);
+    hub.on_message(ag, r#"{"type":"call","id":5,"tool":"computer","args":{"action":"left_click","ref":"ref_3","confirmed":true,"_ask":false}}"#);
+    let fwd = last(&brx);
+    assert_eq!(fwd["args"]["confirmed"], Value::Null, "the agent's confirmed never reaches the page");
+    assert_eq!(fwd["args"]["_ask"], true, "the hub's setting, not the agent's");
+    assert_eq!(fwd["args"]["ref"], "ref_3");
+}
+
+#[test]
 fn a_browser_that_leaves_fails_its_pending_calls() {
     let hub = Hub::for_test("t", |_, _| "P".into());
     let (br, _brx) = peer(&hub);
